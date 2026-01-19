@@ -21,7 +21,7 @@ class Dataset:
     syst_err: jnp.ndarray
     sys_names: List[str]
     sys_types: List[str]
-    luminosity: Optional[jnp.ndarray] = None
+    luminosity: jnp.ndarray
 
 
 class DataGroup:
@@ -33,7 +33,17 @@ class DataGroup:
         self.datasets.sort(key=lambda ds: ds.name)
         # concatenate central values
         self.cv = self._concatenate_central_values()
+        # total number of data points
+        self.num_data = sum(ds.num_data for ds in datasets)
+        # concatenate luminosities
+        self.lumi = self._concatenate_luminosities()
+        # list of dataset names
+        self.names = [ds.name for ds in datasets]
 
     def _concatenate_central_values(self) -> jnp.ndarray:
         """Concatenate central values from all datasets in the group."""
         return jnp.concatenate([ds.central_values for ds in self.datasets], axis=0)
+
+    def _concatenate_luminosities(self) -> jnp.ndarray:
+        """Concatenate luminosities from all datasets in the group."""
+        return jnp.concatenate([ds.luminosity for ds in self.datasets], axis=0)

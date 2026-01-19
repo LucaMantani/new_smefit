@@ -4,11 +4,12 @@ smefit.app.py
 Module contains the main class for the smefit app.
 """
 
-from reportengine.app import App
-from smefit.config import smefitConfig
-from smefit.environment import smefitEnvironment
 import pathlib
 
+from reportengine.app import App
+
+from smefit.config import smefitConfig
+from smefit.environment import smefitEnvironment
 
 smefit_providers = ["smefit.utils"]
 
@@ -31,6 +32,13 @@ class smefitApp(App):
             nargs="?",
             default=None,
             help="Name of the output directory.",
+        )
+
+        parser.add_argument(
+            "-f32",
+            "--float32",
+            action="store_true",
+            help="Use float32 precision for the computation",
         )
 
         return parser

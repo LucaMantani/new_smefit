@@ -11,7 +11,10 @@ from reportengine.app import App
 from smefit.config import smefitConfig
 from smefit.environment import smefitEnvironment
 
-smefit_providers = ["smefit.utils", "smefit.loader", "smefit.core"]
+smefit_providers = [
+    "smefit.utils",
+    "reportengine.report",
+]
 
 
 class smefitApp(App):

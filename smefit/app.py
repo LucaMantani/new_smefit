@@ -10,7 +10,7 @@ from smefit.environment import smefitEnvironment
 import pathlib
 
 
-smefit_providers = []
+smefit_providers = ["smefit.utils"]
 
 
 class smefitApp(App):
@@ -24,6 +24,14 @@ class smefitApp(App):
     def argparser(self):
         """Parser arguments for smefit."""
         parser = super().argparser
+
+        parser.add_argument(
+            "-o",
+            "--output",
+            nargs="?",
+            default=None,
+            help="Name of the output directory.",
+        )
 
         return parser
 

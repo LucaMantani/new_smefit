@@ -1,0 +1,41 @@
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.1.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+
+[tool.poetry]
+name = "smefit"
+version = "0.0.1"
+authors = [ "SMEFiT collaboration" ]
+description = "A framework for SMEFT analyses"
+repository = "https://github.com/LucaMantani/new_smefit"
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+prompt_toolkit = "*"
+h5py = "*"
+
+reportengine = "*"
+jax = "*"
+optax = "*"
+flax = "*"
+
+# Mark Sphinx and its extensions optional:
+sphinx = {version="*", optional=true}
+sphinxcontrib-bibtex = {version="*", optional=true}
+sphinx-rtd-theme = {version="*", optional=true}
+tabulate = {version="*", optional=true}
+sphinx-copybutton = {version="*", optional=true}
+
+
+[tool.poetry.extras]
+test = [
+    "pytest",
+    "hypothesis",
+]
+doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx-copybutton"]
+
+[tool.poetry.scripts]
+smefit = "smefit.app:main"

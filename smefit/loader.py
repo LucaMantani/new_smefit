@@ -26,9 +26,9 @@ def load_dataset(data_path, dataset_name):
 
     name = dataset["dataset_name"]
     num_data = dataset["num_data"]
-    central_values = jnp.array(dataset["data_central"])
-    stat_err = jnp.array(dataset["statistical_error"])
-    syst_err = jnp.array(dataset["systematics"])
+    central_values = jnp.atleast_1d(dataset["data_central"])
+    stat_err = jnp.atleast_1d(dataset["statistical_error"])
+    syst_err = jnp.atleast_1d(dataset["systematics"])
     sys_names = dataset["sys_names"]
     sys_types = dataset["sys_type"]
 

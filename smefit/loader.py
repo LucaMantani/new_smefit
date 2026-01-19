@@ -36,7 +36,6 @@ def load_dataset(data_path, dataset_name):
     for arr, label in [
         (central_values, "data_central"),
         (stat_err, "statistical_error"),
-        (syst_err, "systematics"),
     ]:
         if len(arr) != num_data:
             raise ValueError(

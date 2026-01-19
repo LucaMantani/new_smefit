@@ -1,3 +1,3 @@
-def run_test(data_path):
-    print(f"Running test with data from: {data_path}")
+def run_test(data):
+    print(data[0].name)
     print("Test ran successfully.")

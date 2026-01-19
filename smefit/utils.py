@@ -16,3 +16,4 @@ def run_test(data):
     print(data.num_data)
     print(data.lumi)
     print(data.names)
+    print(data.ndata_list)

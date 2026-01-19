@@ -39,6 +39,8 @@ class DataGroup:
         self.lumi = self._concatenate_luminosities()
         # list of dataset names
         self.names = [ds.name for ds in datasets]
+        # list of number of data points per dataset
+        self.ndata_list = [ds.num_data for ds in datasets]
 
     def _concatenate_central_values(self) -> jnp.ndarray:
         """Concatenate central values from all datasets in the group."""

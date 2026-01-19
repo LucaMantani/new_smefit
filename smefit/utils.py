@@ -1,3 +1,3 @@
-def run_test(data_cv):
-    print(data_cv)
+def run_test(data):
+    print(data.cv)
     print("Test ran successfully.")

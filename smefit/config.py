@@ -9,6 +9,7 @@ import pathlib
 
 from reportengine.configparser import Config
 
+from smefit.core import DataGroup
 from smefit.loader import load_dataset
 
 log = logging.getLogger(__name__)
@@ -34,4 +35,4 @@ class smefitConfig(Config):
             dataset = load_dataset(data_path, ds["name"])
             parsed_datasets.append(dataset)
 
-        return parsed_datasets
+        return DataGroup(parsed_datasets)

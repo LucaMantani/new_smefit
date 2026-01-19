@@ -13,7 +13,6 @@ from smefit.environment import smefitEnvironment
 
 smefit_providers = [
     "smefit.utils",
-    "smefit.commondata",
     "reportengine.report",
 ]
 

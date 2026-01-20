@@ -9,7 +9,7 @@ import pathlib
 
 from reportengine.configparser import Config
 
-from smefit.core import Coefficient, DataGroup, TheoryGroup
+from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.loader import load_dataset, load_theory
 
 log = logging.getLogger(__name__)
@@ -78,4 +78,4 @@ class smefitConfig(Config):
         coeffs = []
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
-        return coeffs
+        return CoefficientGroup(coeffs)

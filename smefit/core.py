@@ -6,7 +6,7 @@ Core module of smefit, containing the main data classes for the framework.
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
 import jax.scipy.linalg as la
@@ -297,3 +297,32 @@ class TheoryGroup:
                         )
             offset += n
         return eft_quad_pred
+
+
+class CoefficientGroup:
+    """Class representing a group of EFT coefficients in smefit."""
+
+    def __init__(self, coefficients: List[Coefficient]):
+        self.coefficients = coefficients
+        # order coefficients by name for consistency
+        self.coefficients.sort(key=lambda c: c.name)
+        # build coefficient index mapping
+        self.coeff_index = {c.name: i for i, c in enumerate(self.coefficients)}
+        # names of the coefficients
+        self.names = [c.name for c in self.coefficients]
+
+    @property
+    def free_coeffs(self) -> List[Coefficient]:
+        """Return list of free coefficients."""
+        return [c for c in self.coefficients if c.free]
+
+    def free_names(self) -> List[str]:
+        return [c.name for c in self.free_coeffs]
+
+    @property
+    def fixed_coeffs(self) -> List[Coefficient]:
+        """Return list of fixed coefficients."""
+        return [c for c in self.coefficients if not c.free]
+
+    def prior_specs(self) -> Dict[str, object]:
+        return {c.name: c.prior for c in self.free}

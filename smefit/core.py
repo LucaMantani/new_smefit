@@ -6,7 +6,7 @@ Core module of smefit, containing the main data classes for the framework.
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
 import jax.scipy.linalg as la
@@ -137,28 +137,66 @@ class Coefficient:
     prior: Optional[Mapping[str, Any]] = None
     value: Optional[float] = None
     expr: Optional[str] = None
+    vars: Optional[List[str]] = None
 
     def __post_init__(self) -> None:
-
-        # Free coefficient: requires prior, forbids value/expr
         if self.free:
             if self.prior is None:
                 raise ValueError(f"{self.name}: free=True requires a prior.")
             if self.value is not None or self.expr is not None:
                 raise ValueError(f"{self.name}: free=True forbids 'value' and 'expr'.")
+            if self.vars is not None:
+                raise ValueError(f"{self.name}: free=True forbids 'vars'.")
             return
 
-        # Non-free coefficient: forbids prior, requires exactly one of value/expr
         if self.prior is not None:
             raise ValueError(f"{self.name}: free=False forbids 'prior'.")
 
         has_value = self.value is not None
         has_expr = self.expr is not None
-
-        if has_value == has_expr:  # both True or both False
+        if has_value == has_expr:
             raise ValueError(
                 f"{self.name}: free=False requires exactly one of 'value' or 'expr'."
             )
+
+        if has_value and self.vars is not None:
+            raise ValueError(f"{self.name}: constant coefficient forbids 'vars'.")
+
+        if has_expr:
+            if not self.vars:
+                raise ValueError(
+                    f"{self.name}: expr coefficient requires non-empty 'vars'."
+                )
+            if len(set(self.vars)) != len(self.vars):
+                raise ValueError(
+                    f"{self.name}: 'vars' contains duplicates: {self.vars!r}"
+                )
+
+    @cached_property
+    def _expr_fn(self) -> Optional[Callable[..., float]]:
+        """Cached compiled lambda for expr coefficients."""
+        if self.free or self.expr is None:
+            return None
+        assert self.vars is not None
+        code = f"lambda {', '.join(self.vars)}: ({self.expr})"
+        return eval(code, {"__builtins__": {}})
+
+    def constrain(self, *args: float) -> float:
+        """
+        Evaluate this coefficient deterministically.
+
+        - If value is set, returns the constant value (args ignored).
+        - If expr is set, evaluates expr as a lambda with parameters self.vars.
+        """
+        if self.free:
+            raise TypeError(f"{self.name}: free coefficient cannot be constrained.")
+
+        if self.value is not None:
+            return float(self.value)
+
+        fn = self._expr_fn
+
+        return float(fn(*args))
 
 
 class DataGroup:

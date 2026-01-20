@@ -24,3 +24,11 @@ def run_test(coefficients):
     # print(data.exp_covmat)
 
     print(coefficients)
+    for c in coefficients.coefficients:
+        if not c.free:
+            if c.value is not None:
+                print(c.name, "value:", c.value)
+            else:
+                if c.expr is not None:
+                    print(c.name, "expr:", c.expr)
+                    print(c.constrain(2, 3))

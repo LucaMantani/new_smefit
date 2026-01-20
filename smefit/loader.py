@@ -4,12 +4,13 @@ smefit.loader.py
 Loader module of smefit
 """
 
+import json
 import logging
 
 import jax.numpy as jnp
 import yaml
 
-from smefit.core import Dataset
+from smefit.core import Dataset, Theory
 from smefit.utils import ensure_list
 
 log = logging.getLogger(__name__)
@@ -78,4 +79,36 @@ def load_dataset(data_path, dataset_name):
         sys_names=sys_names,
         sys_types=sys_types,
         luminosity=luminosity,
+    )
+
+
+def load_theory(theory_path, dataset_name, order):
+    """Load theory predictions from given path."""
+    theory_file = theory_path / f"{dataset_name}.json"
+    if not theory_file.exists():
+        raise FileNotFoundError(
+            f"Theory predictions for dataset {dataset_name} not found in {theory_path}"
+        )
+
+    log.info("Loading theory predictions for %s at order %s", dataset_name, order)
+
+    with open(theory_file) as file:
+        theory_data = json.load(file)
+
+    sm_pred = jnp.array(theory_data["best_sm"])
+    theory_covmat = jnp.array(theory_data["theory_cov"])
+    scales = jnp.array(theory_data["scales"])
+    eft_pred = theory_data[order]
+
+    # Extract operators, exclude SM key and if "*" is present
+    operators = [key for key in eft_pred.keys() if key != "SM" and "*" not in key]
+
+    return Theory(
+        name=dataset_name,
+        order=order,
+        sm_pred=sm_pred,
+        eft_pred=eft_pred,
+        theory_covmat=theory_covmat,
+        scales=scales,
+        operators=operators,
     )

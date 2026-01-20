@@ -14,11 +14,13 @@ def ensure_list(x):
     return [x]
 
 
-def run_test(data):
-    print(data.cv)
-    print(data.num_data)
-    print(data.lumi)
-    print(data.names)
-    print(data.ndata_list)
+def run_test(theory):
+    # print(data.cv)
+    # print(data.num_data)
+    # print(data.lumi)
+    # print(data.names)
+    # print(data.ndata_list)
 
-    print(data.exp_covmat)
+    # print(data.exp_covmat)
+
+    print(theory)

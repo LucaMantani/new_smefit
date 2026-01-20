@@ -54,6 +54,39 @@ class Dataset:
         return self.syst_err / self.central_values[None, :]
 
 
+@dataclass
+class Theory:
+    """Class representing theory predictions for a dataset in smefit.
+
+    Attributes
+    ----------
+    name : str
+        Name of the dataset.
+    order : str
+        Perturbative order of the EFT theory prediction (e.g., 'LO', 'NLO', 'NNLO').
+    sm_pred: jnp.ndarray
+        Standard Model theory predictions for the dataset.
+    eft_pred: dict
+        EFT contributions to the theory predictions for the dataset.
+    theory_covmat: jnp.ndarray
+        Theory covariance matrix for the dataset.
+    scales: jnp.ndarray
+        Energy scales associated with the EFT predictions.
+        This corresponds to the scale at which the Wilson coefficients are defined,
+        i.e. the scale at which one has to run the rge to use the predictions.
+    operators: list
+        List of EFT operators included in the predictions.
+    """
+
+    name: str
+    order: str
+    sm_pred: jnp.ndarray
+    eft_pred: jnp.ndarray
+    theory_covmat: jnp.ndarray
+    scales: jnp.ndarray
+    operators: List[str]
+
+
 class DataGroup:
     """Class representing a group of datasets in smefit."""
 
@@ -138,3 +171,7 @@ class DataGroup:
             )
 
         return jnp.array(covmat_from_systematics(stat_errors, sys_errors))
+
+
+class TheoryGroup:
+    pass

@@ -9,6 +9,7 @@ from functools import cached_property
 from typing import List
 
 import jax.numpy as jnp
+import jax.scipy.linalg as la
 import pandas as pd
 
 from smefit.data_utils import covmat_from_systematics
@@ -68,8 +69,8 @@ class Theory:
         Standard Model theory predictions for the dataset.
     eft_pred: dict
         EFT contributions to the theory predictions for the dataset.
-    theory_covmat: jnp.ndarray
-        Theory covariance matrix for the dataset.
+    sm_covmat: jnp.ndarray
+        Theory covariance matrix of the SM for the dataset.
     scales: jnp.ndarray
         Energy scales associated with the EFT predictions.
         This corresponds to the scale at which the Wilson coefficients are defined,
@@ -82,7 +83,7 @@ class Theory:
     order: str
     sm_pred: jnp.ndarray
     eft_pred: jnp.ndarray
-    theory_covmat: jnp.ndarray
+    sm_covmat: jnp.ndarray
     scales: jnp.ndarray
     operators: List[str]
 
@@ -92,10 +93,10 @@ class Theory:
         # build linear eft prediction matrix of shape (ndata, n_operators), corresponding to self.operators order
         self.eft_lin_pred = jnp.vstack([self.eft_pred[op] for op in self.operators]).T
         # build quadratic eft prediction tensors of shape (ndata, n_operators, n_operators)
-        n_ops = len(self.operators)
-        n_data = self.sm_pred.shape[0]
+        self.n_ops = len(self.operators)
+        self.n_data = self.sm_pred.shape[0]
 
-        eft_quad_pred = jnp.zeros((n_data, n_ops, n_ops))
+        eft_quad_pred = jnp.zeros((self.n_data, self.n_ops, self.n_ops))
 
         for i, op1 in enumerate(self.operators):
             for j, op2 in enumerate(self.operators):
@@ -129,25 +130,17 @@ class DataGroup:
         # order datasets by name for consistency
         self.datasets.sort(key=lambda ds: ds.name)
         # concatenate central values
-        self.cv = self._concatenate_central_values()
+        self.cv = jnp.concatenate([ds.central_values for ds in self.datasets], axis=0)
         # total number of data points
         self.num_data = sum(ds.num_data for ds in datasets)
         # concatenate luminosities
-        self.lumi = self._concatenate_luminosities()
+        self.lumi = jnp.concatenate([ds.luminosity for ds in self.datasets], axis=0)
         # list of dataset names
         self.names = [ds.name for ds in datasets]
         # list of number of data points per dataset
         self.ndata_list = [ds.num_data for ds in datasets]
         # build full exp covariance matrix
         self.exp_covmat = self._build_exp_covmat()
-
-    def _concatenate_central_values(self) -> jnp.ndarray:
-        """Concatenate central values from all datasets in the group."""
-        return jnp.concatenate([ds.central_values for ds in self.datasets], axis=0)
-
-    def _concatenate_luminosities(self) -> jnp.ndarray:
-        """Concatenate luminosities from all datasets in the group."""
-        return jnp.concatenate([ds.luminosity for ds in self.datasets], axis=0)
 
     def _build_exp_covmat(self) -> jnp.ndarray:
         """Build experimental covariance matrix from all datasets in the group.
@@ -208,4 +201,60 @@ class DataGroup:
 
 
 class TheoryGroup:
-    pass
+    """Class representing a group of theory predictions in smefit."""
+
+    def __init__(self, theories: List[Theory]):
+        self.theories = theories
+        # order theories by name for consistency
+        self.theories.sort(key=lambda th: th.name)
+        # concatenate sm predictions
+        self.sm_pred = jnp.concatenate([th.sm_pred for th in self.theories], axis=0)
+        # Construct block diagonal theory covariance matrix
+        self.sm_covmat = la.block_diag(*[th.sm_covmat for th in self.theories])
+        # get list of all unique operators across theories
+        all_operators = set()
+        for th in self.theories:
+            all_operators.update(th.operators)
+        self.operators = sorted(list(all_operators))
+
+        self.n_ops = len(self.operators)
+        self.n_data = self.sm_pred.shape[0]
+
+        self.eft_lin_pred = self._build_eft_lin_pred()
+        self.eft_quad_pred = self._build_eft_quad_pred()
+
+    def _build_eft_lin_pred(self):
+        # build concatenated linear eft prediction matrix of shape (ndata, n_operators)
+        # if an operator is not present in a theory, its contribution is zero
+        eft_lin_pred = jnp.zeros((self.n_data, self.n_ops))
+        offset = 0
+        for th in self.theories:
+            n = th.n_data
+            for i, op in enumerate(self.operators):
+                if op in th.op_index:
+                    th_op_idx = th.op_index[op]
+                    eft_lin_pred = eft_lin_pred.at[offset : offset + n, i].set(
+                        th.eft_lin_pred[:, th_op_idx]
+                    )
+            offset += n
+        return eft_lin_pred
+
+    def _build_eft_quad_pred(self):
+        # build concatenated quadratic eft prediction tensor of shape (ndata, n_operators, n_operators)
+        # if an operator is not present in a theory, its contribution is zero
+        eft_quad_pred = jnp.zeros((self.n_data, self.n_ops, self.n_ops))
+        offset = 0
+        for th in self.theories:
+            n = th.n_data
+            for i, op1 in enumerate(self.operators):
+                for j, op2 in enumerate(self.operators):
+                    if j < i:
+                        continue  # keep strictly lower triangle zero
+                    if op1 in th.op_index and op2 in th.op_index:
+                        th_op1_idx = th.op_index[op1]
+                        th_op2_idx = th.op_index[op2]
+                        eft_quad_pred = eft_quad_pred.at[offset : offset + n, i, j].set(
+                            th.eft_quad_pred[:, th_op1_idx, th_op2_idx]
+                        )
+            offset += n
+        return eft_quad_pred

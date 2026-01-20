@@ -23,4 +23,6 @@ def run_test(theory):
 
     # print(data.exp_covmat)
 
-    print(theory)
+    print(theory.eft_lin_pred.shape)
+    print(theory.eft_quad_pred.shape)
+    print(theory.sm_covmat.shape)

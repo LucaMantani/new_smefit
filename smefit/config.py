@@ -11,6 +11,7 @@ from reportengine.configparser import Config
 
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.loader import load_dataset, load_theory
+from smefit.model import EFTModel
 
 log = logging.getLogger(__name__)
 
@@ -79,3 +80,7 @@ class smefitConfig(Config):
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
         return CoefficientGroup(coeffs)
+
+    def produce_eft_model(self, theory, coefficients, use_quad=False):
+        """Produce EFT model mapping coefficients to theory predictions."""
+        return EFTModel(theory, coefficients, use_quad)

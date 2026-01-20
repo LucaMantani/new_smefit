@@ -101,7 +101,9 @@ def load_theory(theory_path, dataset_name, order):
     eft_pred = theory_data[order]
 
     # Extract operators, exclude SM key and if "*" is present
-    operators = [key for key in eft_pred.keys() if key != "SM" and "*" not in key]
+    operators = sorted(
+        [key for key in eft_pred.keys() if key != "SM" and "*" not in key]
+    )
 
     return Theory(
         name=dataset_name,

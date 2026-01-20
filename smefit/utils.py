@@ -6,6 +6,9 @@ Utility functions for the smefit framework.
 
 
 def ensure_list(x):
+    """Ensure the input is a list.
+    If the input is not a list, wrap it in a list.
+    """
     if isinstance(x, list):
         return x
     return [x]

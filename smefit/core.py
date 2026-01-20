@@ -101,3 +101,40 @@ class DataGroup:
             pd.DataFrame(ds.syst_err.T, columns=ds.sys_names) for ds in self.datasets
         ]
         return jnp.array(covmat_from_systematics(stat_errors, sys_errors))
+
+    def t0_covmat(self, theory_predictions) -> jnp.ndarray:
+        """Build t0 covariance matrix using theory predictions.
+        This method constructs the t0 covariance matrix by replacing multiplicative
+        systematic uncertainties with values derived from the provided theory predictions.
+
+        Parameters
+        ----------
+        theory_predictions : jnp.ndarray
+            Array of theory predictions corresponding to the concatenated data points.
+        Returns
+        -------
+        covmat : jnp.ndarray
+            Full t0 covariance matrix of shape (num_data, num_data)
+        """
+        stat_errors = [ds.stat_err for ds in self.datasets]
+        sys_errors = []
+
+        offset = 0
+        for ds in self.datasets:
+            n = ds.num_data
+            # we take the theory predictions for this dataset
+            t_ds = theory_predictions[offset : offset + n]
+            offset += n
+
+            sys_types = [t.upper() for t in ds.sys_types]
+            is_add = jnp.array([t == "ADD" for t in sys_types])  # shape (n_sys,)
+
+            mult_abs = ds.syst_err_mult * t_ds[None, :]  # shape (n_sys, n)
+
+            syst_errs = jnp.where(is_add[:, None], ds.syst_err, mult_abs)
+
+            sys_errors.append(
+                pd.DataFrame(jnp.asarray(syst_errs).T, columns=ds.sys_names)
+            )
+
+        return jnp.array(covmat_from_systematics(stat_errors, sys_errors))

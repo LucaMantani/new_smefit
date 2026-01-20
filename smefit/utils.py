@@ -14,7 +14,7 @@ def ensure_list(x):
     return [x]
 
 
-def run_test(theory):
+def run_test(fit_covmat):
     # print(data.cv)
     # print(data.num_data)
     # print(data.lumi)
@@ -23,6 +23,4 @@ def run_test(theory):
 
     # print(data.exp_covmat)
 
-    print(theory.eft_lin_pred.shape)
-    print(theory.eft_quad_pred.shape)
-    print(theory.sm_covmat.shape)
+    print(fit_covmat)

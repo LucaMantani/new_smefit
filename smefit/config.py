@@ -55,3 +55,20 @@ class smefitConfig(Config):
             parsed_theories.append(theory)
 
         return TheoryGroup(parsed_theories)
+
+    def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
+        """Produce the covariance matrix to be used in the fit."""
+        if use_t0:
+            log.info("Using t0 covariance matrix.")
+            # build t0 covmat using theory predictions
+            theory_predictions = theory.sm_pred
+            covmat = data.t0_covmat(theory_predictions)
+        else:
+            log.info("Using experimental covariance matrix.")
+            covmat = data.exp_covmat
+
+        if use_theory_covmat:
+            log.info("Adding theory covariance matrix to data covariance matrix.")
+            covmat += theory.sm_covmat
+
+        return covmat

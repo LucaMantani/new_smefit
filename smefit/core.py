@@ -5,6 +5,7 @@ Core module of smefit, containing the main data classes for the framework.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import List
 
 import jax.numpy as jnp
@@ -46,6 +47,12 @@ class Dataset:
     sys_types: List[str]
     luminosity: jnp.ndarray
 
+    # compute syst_err as percentage of central values
+    @cached_property
+    def syst_err_mult(self) -> jnp.ndarray:
+        """Systematic uncertainties as percentage of central values."""
+        return self.syst_err / self.central_values[None, :]
+
 
 class DataGroup:
     """Class representing a group of datasets in smefit."""
@@ -64,8 +71,8 @@ class DataGroup:
         self.names = [ds.name for ds in datasets]
         # list of number of data points per dataset
         self.ndata_list = [ds.num_data for ds in datasets]
-        # build full covariance matrix
-        self.covmat = self._build_full_covmat()
+        # build full exp covariance matrix
+        self.exp_covmat = self._build_exp_covmat()
 
     def _concatenate_central_values(self) -> jnp.ndarray:
         """Concatenate central values from all datasets in the group."""
@@ -75,8 +82,8 @@ class DataGroup:
         """Concatenate luminosities from all datasets in the group."""
         return jnp.concatenate([ds.luminosity for ds in self.datasets], axis=0)
 
-    def _build_full_covmat(self) -> jnp.ndarray:
-        """Build full covariance matrix from all datasets in the group.
+    def _build_exp_covmat(self) -> jnp.ndarray:
+        """Build experimental covariance matrix from all datasets in the group.
 
         This combines statistical and systematic uncertainties from all datasets,
         accounting for correlations both within and across datasets.

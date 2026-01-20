@@ -4,6 +4,9 @@ smefit.utils.py
 Utility functions for the smefit framework.
 """
 
+import jax
+import jax.numpy as jnp
+
 
 def ensure_list(x):
     """Ensure the input is a list.
@@ -14,21 +17,13 @@ def ensure_list(x):
     return [x]
 
 
-def run_test(coefficients):
-    # print(data.cv)
-    # print(data.num_data)
-    # print(data.lumi)
-    # print(data.names)
-    # print(data.ndata_list)
+def run_test(eft_model):
 
-    # print(data.exp_covmat)
+    print(eft_model.coefficients.free_names)
+    free = jnp.array([5.0, -3.0])
 
-    print(coefficients)
-    for c in coefficients.coefficients:
-        if not c.free:
-            if c.value is not None:
-                print(c.name, "value:", c.value)
-            else:
-                if c.expr is not None:
-                    print(c.name, "expr:", c.expr)
-                    print(c.constrain(2, 3))
+    print([c.name for c in eft_model.operators_to_keep])
+
+    print(eft_model.derive_coeffs(free))
+
+    print(eft_model.forward_map(free))

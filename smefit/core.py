@@ -192,11 +192,11 @@ class Coefficient:
             raise TypeError(f"{self.name}: free coefficient cannot be constrained.")
 
         if self.value is not None:
-            return float(self.value)
+            return self.value
 
         fn = self._expr_fn
 
-        return float(fn(*args))
+        return fn(*args)
 
 
 class DataGroup:
@@ -354,6 +354,7 @@ class CoefficientGroup:
         """Return list of free coefficients."""
         return [c for c in self.coefficients if c.free]
 
+    @property
     def free_names(self) -> List[str]:
         return [c.name for c in self.free_coeffs]
 

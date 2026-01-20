@@ -6,7 +6,7 @@ Core module of smefit, containing the main data classes for the framework.
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import List
+from typing import Any, List, Mapping, Optional
 
 import jax.numpy as jnp
 import jax.scipy.linalg as la
@@ -120,6 +120,45 @@ class Theory:
         self.eft_quad_pred = eft_quad_pred
         # Define operator index mapping
         self.op_index = {op: i for i, op in enumerate(self.operators)}
+
+
+@dataclass
+class Coefficient:
+    """Represent an EFT coefficient.
+
+    Invariants
+    ----------
+    - If free is True: prior must be provided; value and expr must be None.
+    - If free is False: exactly one of (value, expr) must be provided; prior must be None.
+    """
+
+    name: str
+    free: bool = True
+    prior: Optional[Mapping[str, Any]] = None
+    value: Optional[float] = None
+    expr: Optional[str] = None
+
+    def __post_init__(self) -> None:
+
+        # Free coefficient: requires prior, forbids value/expr
+        if self.free:
+            if self.prior is None:
+                raise ValueError(f"{self.name}: free=True requires a prior.")
+            if self.value is not None or self.expr is not None:
+                raise ValueError(f"{self.name}: free=True forbids 'value' and 'expr'.")
+            return
+
+        # Non-free coefficient: forbids prior, requires exactly one of value/expr
+        if self.prior is not None:
+            raise ValueError(f"{self.name}: free=False forbids 'prior'.")
+
+        has_value = self.value is not None
+        has_expr = self.expr is not None
+
+        if has_value == has_expr:  # both True or both False
+            raise ValueError(
+                f"{self.name}: free=False requires exactly one of 'value' or 'expr'."
+            )
 
 
 class DataGroup:

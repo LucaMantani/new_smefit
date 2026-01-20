@@ -20,3 +20,11 @@ def run_test(data):
     print(data.lumi)
     print(data.names)
     print(data.ndata_list)
+
+    print(data.covmat)
+    print(data.covmat.shape)
+
+    # save covmat to file
+    import numpy as np
+
+    np.savetxt("covmat.txt", data.covmat)

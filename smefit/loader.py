@@ -31,7 +31,13 @@ def load_dataset(data_path, dataset_name):
 
     central_values = jnp.atleast_1d(jnp.asarray(dataset["data_central"], dtype=float))
     stat_err = jnp.atleast_1d(jnp.asarray(dataset["statistical_error"], dtype=float))
-    syst_err = jnp.atleast_1d(jnp.asarray(dataset["systematics"], dtype=float))
+    # Load systematics, ensure it's 2D array with shape (n_sys, num_data)
+    # if 1D because it's a single datapoint, reshape accordingly
+    syst_err = jnp.asarray(dataset["systematics"], dtype=float)
+
+    if syst_err.ndim == 1:
+        # interpret as n_sys systematics for one datapoint
+        syst_err = syst_err[:, None]  # (n_sys, 1)
 
     for arr, label in [
         (central_values, "data_central"),

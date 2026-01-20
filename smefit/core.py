@@ -86,6 +86,40 @@ class Theory:
     scales: jnp.ndarray
     operators: List[str]
 
+    def __post_init__(self):
+        # ensure operators are sorted
+        self.operators.sort()
+        # build linear eft prediction matrix of shape (ndata, n_operators), corresponding to self.operators order
+        self.eft_lin_pred = jnp.vstack([self.eft_pred[op] for op in self.operators]).T
+        # build quadratic eft prediction tensors of shape (ndata, n_operators, n_operators)
+        n_ops = len(self.operators)
+        n_data = self.sm_pred.shape[0]
+
+        eft_quad_pred = jnp.zeros((n_data, n_ops, n_ops))
+
+        for i, op1 in enumerate(self.operators):
+            for j, op2 in enumerate(self.operators):
+                if j < i:
+                    continue  # keep strictly lower triangle zero
+
+                # Check for both orderings of the operator product
+                k1 = f"{op1}*{op2}"
+                k2 = f"{op2}*{op1}"
+
+                if k1 in self.eft_pred:
+                    val = self.eft_pred[k1]
+                elif k2 in self.eft_pred:
+                    val = self.eft_pred[k2]
+                else:
+                    continue
+
+                # fill upper-triangular entry (i, j)
+                eft_quad_pred = eft_quad_pred.at[:, i, j].set(val)
+
+        self.eft_quad_pred = eft_quad_pred
+        # Define operator index mapping
+        self.op_index = {op: i for i, op in enumerate(self.operators)}
+
 
 class DataGroup:
     """Class representing a group of datasets in smefit."""

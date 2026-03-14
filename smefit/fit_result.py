@@ -72,7 +72,7 @@ class FitResult:
     def __str__(self) -> str:
         lines = []
         lines.append("=" * 60)
-        lines.append("Analytic Fit Result")
+        lines.append("Fit Result")
         lines.append("=" * 60)
         lines.append(f"  n_data   = {self.num_data}")
         lines.append(f"  n_free   = {self.n_free}")

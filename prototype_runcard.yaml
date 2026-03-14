@@ -1,6 +1,6 @@
 # path to data and theory
-data_path: /Users/Luca/Applications/smefit_database/commondata
-theory_path: /Users/Luca/Applications/smefit_database/theory
+data_path: ./commondata
+theory_path: ./theory
 # Covmat settings
 use_theory_covmat: False
 use_t0: False

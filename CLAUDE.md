@@ -36,12 +36,6 @@ This tool has the objective of building an analysis framework in the SMEFT, impl
 The tool is built on reportengine and its core feature of building a Directed Acyclic Graph (DAG).
 In particular, the fundamental components of the code are nodes of this graph and it is very important that this design choice stays consistent so that extending features and functionalities of each node does not break the code.
 
-### Core data flow
-
-```
-runcard.yaml → smefitConfig → DataGroup + TheoryGroup + CoefficientGroup → EFTModel → chi2
-```
-
 ### Key modules
 
 - **`app.py`**: CLI entry point. `smefitApp` extends `reportengine.app.App`. Adds `-o/--output` and `-f32/--float32` flags.

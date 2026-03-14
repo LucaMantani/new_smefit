@@ -4,8 +4,12 @@ smefit.model.py
 Model module of smefit, where the prediction model is defined.
 """
 
+import logging
+
 import jax
 import jax.numpy as jnp
+
+log = logging.getLogger(__name__)
 
 
 class EFTModel:
@@ -19,6 +23,21 @@ class EFTModel:
         self.operators_to_keep = [
             c for c in self.coefficients.coefficients if c.name in self.theory.operators
         ]
+        vars_used = {
+            var for c in self.coefficients.coefficients if c.vars for var in c.vars
+        }
+        dropped = [
+            c.name
+            for c in self.coefficients.coefficients
+            if c.name not in self.theory.operators and c.name not in vars_used
+        ]
+        if dropped:
+            log.warning(
+                "The following coefficients are not present in any theory dataset "
+                "and are not used to constrain other coefficients.\n"
+                "They will have no effect on predictions: %s",
+                dropped,
+            )
 
         # Indices in theory operator ordering (column/axis ordering)
         theory_index = {op: i for i, op in enumerate(self.theory.operators)}

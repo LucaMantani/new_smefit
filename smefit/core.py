@@ -284,6 +284,8 @@ class TheoryGroup:
         self.theories = theories
         # order theories by name for consistency
         self.theories.sort(key=lambda th: th.name)
+        # list of dataset names
+        self.names = [th.name for th in self.theories]
         # concatenate sm predictions
         self.sm_pred = jnp.concatenate([th.sm_pred for th in self.theories], axis=0)
         # Construct block diagonal theory covariance matrix
@@ -364,4 +366,4 @@ class CoefficientGroup:
         return [c for c in self.coefficients if not c.free]
 
     def prior_specs(self) -> Dict[str, object]:
-        return {c.name: c.prior for c in self.free}
+        return {c.name: c.prior for c in self.free_coeffs}

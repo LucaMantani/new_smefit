@@ -59,6 +59,17 @@ class smefitConfig(Config):
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
+        if data.names != theory.names:
+            raise ValueError(
+                f"DataGroup and TheoryGroup contain different datasets.\n"
+                f"  data:   {data.names}\n"
+                f"  theory: {theory.names}"
+            )
+        if data.num_data != theory.n_data:
+            raise ValueError(
+                f"DataGroup and TheoryGroup have different total number of data points: "
+                f"{data.num_data} vs {theory.n_data}"
+            )
         if use_t0:
             log.info("Using t0 covariance matrix.")
             # build t0 covmat using theory predictions

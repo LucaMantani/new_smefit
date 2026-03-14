@@ -155,8 +155,6 @@ class Coefficient:
 
     def __post_init__(self) -> None:
         if self.free:
-            if self.prior is None:
-                raise ValueError(f"{self.name}: free=True requires a prior.")
             if self.value is not None or self.expr is not None:
                 raise ValueError(f"{self.name}: free=True forbids 'value' and 'expr'.")
             if self.vars is not None:

@@ -100,7 +100,7 @@ def load_theory(theory_path, dataset_name, order):
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]
 
-    # Extract operators, exclude SM key and if "*" is present
+    # Extract operators, exclude SM key and quadratic (containing "*") keys
     operators = sorted(
         [key for key in eft_pred.keys() if key != "SM" and "*" not in key]
     )

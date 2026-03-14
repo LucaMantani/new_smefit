@@ -69,7 +69,7 @@ class EFTModel(BaseModel):
             )
 
         # Slice theory correction matrices down to active coefficients only
-        theory_idx = {op: i for i, op in enumerate(theory.operators)}
+        theory_idx = {c: i for i, c in enumerate(theory.operators)}
         t_indices = [theory_idx[name] for name in active_names]
 
         self.lin_corr = theory.eft_lin_pred[:, t_indices]

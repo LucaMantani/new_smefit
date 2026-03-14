@@ -104,9 +104,9 @@ class Theory:
     def __post_init__(self):
         # ensure operators are sorted
         self.operators.sort()
-        # build linear eft prediction matrix of shape (ndata, n_operators), corresponding to self.operators order
+        # build linear eft prediction matrix of shape (ndata, n_ops), corresponding to self.operators order
         self.eft_lin_pred = jnp.vstack([self.eft_pred[op] for op in self.operators]).T
-        # build quadratic eft prediction tensors of shape (ndata, n_operators, n_operators)
+        # build quadratic eft prediction tensors of shape (ndata, n_ops, n_ops)
         self.n_ops = len(self.operators)
         self.n_data = self.sm_pred.shape[0]
 
@@ -317,7 +317,7 @@ class TheoryGroup:
         self.eft_quad_pred = self._build_eft_quad_pred()
 
     def _build_eft_lin_pred(self):
-        # build concatenated linear eft prediction matrix of shape (ndata, n_operators)
+        # build concatenated linear eft prediction matrix of shape (ndata, n_ops)
         # if an operator is not present in a theory, its contribution is zero
         eft_lin_pred = jnp.zeros((self.n_data, self.n_ops))
         offset = 0
@@ -333,7 +333,7 @@ class TheoryGroup:
         return eft_lin_pred
 
     def _build_eft_quad_pred(self):
-        # build concatenated quadratic eft prediction tensor of shape (ndata, n_operators, n_operators)
+        # build concatenated quadratic eft prediction tensor of shape (ndata, n_ops, n_ops)
         # if an operator is not present in a theory, its contribution is zero
         eft_quad_pred = jnp.zeros((self.n_data, self.n_ops, self.n_ops))
         offset = 0

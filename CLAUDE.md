@@ -33,6 +33,9 @@ SMEFiT is a SMEFT (Standard Model Effective Field Theory) analysis framework bui
 
 This tool has the objective of building an analysis framework in the SMEFT, implementing different analysis features such as Nested Sampling and plotting routines.
 
+The tool is built on reportengine and its core feature of building a Directed Acyclic Graph (DAG).
+In particular, the fundamental components of the code are nodes of this graph and it is very important that this design choice stays consistent so that extending features and functionalities of each node does not break the code.
+
 ### Core data flow
 
 ```

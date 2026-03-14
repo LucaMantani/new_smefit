@@ -96,7 +96,7 @@ def load_theory(theory_path, dataset_name, order):
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
-    sm_covmat = jnp.array(theory_data["theory_cov"])
+    sm_covmat = jnp.array(theory_data["theory_cov_current"])
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]
 

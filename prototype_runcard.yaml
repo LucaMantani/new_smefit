@@ -20,9 +20,9 @@ coefficients:
   OpWB:
     free: True
     prior: {dist: uniform, low: -0.5, high: 0.5}
-  # OpD:
-  #   free: False
-  #   value: 1.0
+  OpD:
+    free: False
+    value: 1.0
   OpBox:
     free: True
     prior: {dist: uniform, low: -1.0, high: 1.0}

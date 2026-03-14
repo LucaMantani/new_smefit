@@ -14,6 +14,20 @@ import pandas as pd
 
 from smefit.data_utils import covmat_from_systematics
 
+# Namespace available in coefficient expressions.
+# All functions map to JAX equivalents so they are fully differentiable.
+_EXPR_NAMESPACE: dict = {
+    "__builtins__": {},
+    "abs": jnp.abs,
+    "sqrt": jnp.sqrt,
+    "exp": jnp.exp,
+    "log": jnp.log,
+    "sin": jnp.sin,
+    "cos": jnp.cos,
+    "tan": jnp.tan,
+    "pi": float(jnp.pi),
+}
+
 
 @dataclass
 class Dataset:
@@ -179,7 +193,7 @@ class Coefficient:
             return None
         assert self.vars is not None
         code = f"lambda {', '.join(self.vars)}: ({self.expr})"
-        return eval(code, {"__builtins__": {}})
+        return eval(code, _EXPR_NAMESPACE)
 
     def constrain(self, *args: float) -> float:
         """

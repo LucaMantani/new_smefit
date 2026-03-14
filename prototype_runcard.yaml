@@ -10,12 +10,13 @@ use_quad: True
 datasets:
   - {name: LEP1_EWPOs_2006, order: LO}
   - {name: LEP_Bhabha_2013, order: LO}
+  - {name: ATLAS_hh_runII_13TeV, order: LO}
 # Coefficients to fit
 coefficients:
   OtG:
     free: False
     vars: [y, OpWB]
-    expr: "y**2 + 0.5*OpWB**2"
+    expr: "sqrt(y**2 + 0.5*OpWB**2)"
   OpWB:
     free: True
     prior: {dist: uniform, low: -0.5, high: 0.5}

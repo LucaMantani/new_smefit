@@ -9,6 +9,7 @@ import pathlib
 
 from reportengine.configparser import Config
 
+from smefit.chi2 import build_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
@@ -90,8 +91,22 @@ class smefitConfig(Config):
         coeffs = []
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
-        return CoefficientGroup(coeffs)
+        group = CoefficientGroup(coeffs)
+        # Validate that all vars in constrained coefficients refer to free coefficients
+        free_names = set(group.free_names)
+        for coeff in group.fixed_coeffs:
+            if coeff.vars:
+                unknown = [v for v in coeff.vars if v not in free_names]
+                if unknown:
+                    raise ValueError(
+                        f"Coefficient '{coeff.name}': vars {unknown} are not free coefficients."
+                    )
+        return group
 
     def produce_eft_model(self, theory, coefficients, use_quad=False):
         """Produce EFT model mapping coefficients to theory predictions."""
         return EFTModel(theory, coefficients, use_quad)
+
+    def produce_chi2(self, eft_model, data, fit_covmat):
+        """Produce the chi2 function for the fit."""
+        return build_chi2(eft_model, data, fit_covmat)

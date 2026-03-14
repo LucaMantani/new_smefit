@@ -22,8 +22,6 @@ def run_test(eft_model, chi2):
     print(eft_model.coefficients.free_names)
     free = jnp.array([5.0, -3.0])
 
-    print([c.name for c in eft_model.operators_to_keep])
-
     print(eft_model.coefficients.resolve(free))
 
     print(eft_model.forward_map(free))

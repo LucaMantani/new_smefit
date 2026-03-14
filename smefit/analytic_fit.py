@@ -9,11 +9,8 @@ import jax.numpy as jnp
 
 from smefit.fit_result import FitResult
 
-_N_SAMPLES = 1000
-_RANDOM_SEED = 42
 
-
-def analytic_fit(eft_model, data, fit_covmat, chi2):
+def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
     """Compute the analytic best-fit point and Gaussian uncertainty for a linear EFT model.
 
     This function is a reportengine provider node: its arguments are resolved by
@@ -30,6 +27,10 @@ def analytic_fit(eft_model, data, fit_covmat, chi2):
         Covariance matrix used in the fit.
     chi2 : callable
         Chi-squared closure built by ``produce_chi2``.
+    n_samples : int, optional
+        Number of Gaussian samples to draw around the best-fit point (default 10000).
+    seed : int, optional
+        Random seed for sample generation (default 42).
 
     Returns
     -------
@@ -66,9 +67,9 @@ def analytic_fit(eft_model, data, fit_covmat, chi2):
     max_loglikelihood = -chi2_val / 2.0
 
     # Draw Gaussian samples around best-fit point
-    key = jax.random.PRNGKey(_RANDOM_SEED)
+    key = jax.random.PRNGKey(seed)
     samples_free = jax.random.multivariate_normal(
-        key, mean=c_best, cov=cov_c, shape=(_N_SAMPLES,)
+        key, mean=c_best, cov=cov_c, shape=(n_samples,)
     )  # (n_samples, n_free)
 
     # Resolve full coefficient vector (free + derived) for each sample

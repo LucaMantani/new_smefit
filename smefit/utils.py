@@ -24,7 +24,7 @@ def run_test(eft_model, chi2):
 
     print([c.name for c in eft_model.operators_to_keep])
 
-    print(eft_model.derive_coeffs(free))
+    print(eft_model.coefficients.resolve(free))
 
     print(eft_model.forward_map(free))
 

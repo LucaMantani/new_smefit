@@ -381,3 +381,30 @@ class CoefficientGroup:
 
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
+
+    def resolve(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
+        """Map free coefficient values to the full set of coefficient values.
+
+        Parameters
+        ----------
+        free_coeffs : jnp.ndarray
+            Values of the free coefficients, ordered by self.free_coeffs.
+
+        Returns
+        -------
+        jnp.ndarray
+            Values for all coefficients, in self.coefficients order.
+        """
+        free_coeff_dict = {
+            fc.name: val for fc, val in zip(self.free_coeffs, free_coeffs)
+        }
+        resolved = []
+        for coeff in self.coefficients:
+            if coeff.free:
+                resolved.append(free_coeff_dict[coeff.name])
+            elif coeff.vars:
+                args = tuple(free_coeff_dict[var] for var in coeff.vars)
+                resolved.append(coeff.constrain(*args))
+            else:
+                resolved.append(coeff.constrain())
+        return jnp.array(resolved)

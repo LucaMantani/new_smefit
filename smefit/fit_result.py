@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import jax.numpy as jnp
+from rich import box
+from rich.console import Console
+from rich.table import Table
 
 
 @dataclass
@@ -69,24 +72,37 @@ class FitResult:
     # Display
     # ------------------------------------------------------------------
 
-    def __str__(self) -> str:
-        lines = []
-        lines.append("=" * 60)
-        lines.append("Fit Result")
-        lines.append("=" * 60)
-        lines.append(f"  n_data   = {self.num_data}")
-        lines.append(f"  n_free   = {self.n_free}")
-        lines.append(f"  ndof     = {self.ndof}")
-        lines.append(f"  chi2     = {self.chi2_val:.4f}")
-        lines.append(f"  chi2/dof = {self.chi2_ndof:.4f}")
-        if self.logz is not None:
-            lines.append(f"  log Z    = {self.logz:.4f}")
-        lines.append("")
-        lines.append(f"  {'Coefficient':<20} {'Best fit':>12} {'Uncertainty':>12}")
-        lines.append("  " + "-" * 46)
+    def print_summary(self) -> None:
+        """Print a coloured summary table using ``rich``."""
+        console = Console()
         unc = self.uncertainties
+
+        # --- header panel ---
+        console.rule("[bold cyan]Fit Result[/bold cyan]")
+        console.print(f"  [bold]n_data[/bold]   = {self.num_data}")
+        console.print(f"  [bold]n_free[/bold]   = {self.n_free}")
+        console.print(f"  [bold]ndof[/bold]     = {self.ndof}")
+        console.print(f"  [bold]chi2[/bold]     = [yellow]{self.chi2_val:.4f}[/yellow]")
+        console.print(
+            f"  [bold]chi2/dof[/bold] = [{'green' if self.chi2_ndof < 2 else 'red'}]"
+            f"{self.chi2_ndof:.4f}[/]"
+        )
+        if self.logz is not None:
+            console.print(f"  [bold]log Z[/bold]    = [cyan]{self.logz:.4f}[/cyan]")
+
+        # --- coefficient table ---
+        table = Table(
+            box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Coefficient", style="cyan", no_wrap=True)
+        table.add_column("Best fit", justify="right")
+        table.add_column("Uncertainty", justify="right")
+        table.add_column("Type", justify="center", style="dim")
+
         for name, val in self.best_fit_point.items():
             u = unc.get(name, float("nan"))
-            lines.append(f"  {name:<20} {val:>12.6f} {u:>12.6f}")
-        lines.append("=" * 60)
-        return "\n".join(lines)
+            kind = "free" if name in self.free_parameters else "derived"
+            table.add_row(name, f"{val:.6f}", f"{u:.6f}", kind)
+
+        console.print(table)
+        console.rule(style="dim")

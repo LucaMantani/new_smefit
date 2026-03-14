@@ -13,4 +13,4 @@ def run_analytic_fit(analytic_fit):
     analytic_fit : FitResult
         Result produced by the ``analytic_fit`` provider node.
     """
-    print(analytic_fit)
+    analytic_fit.print_summary()

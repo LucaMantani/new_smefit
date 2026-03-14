@@ -5,7 +5,7 @@ theory_path: ./theory
 use_theory_covmat: False
 use_t0: False
 # SMEFT Expansion Order
-use_quad: True
+use_quad: False
 # # Datasets to include
 datasets:
   - {name: LEP1_EWPOs_2006, order: LO}
@@ -13,19 +13,22 @@ datasets:
   - {name: ATLAS_hh_runII_13TeV, order: LO}
 # Coefficients to fit
 coefficients:
-  OtG:
-    free: False
-    vars: [y, OpWB]
-    expr: "sqrt(y**2 + 0.5*OpWB**2)"
+  # OtG:
+  #   free: False
+  #   vars: [y, OpWB]
+  #   expr: "sqrt(y**2 + 0.5*OpWB**2)"
   OpWB:
     free: True
     prior: {dist: uniform, low: -0.5, high: 0.5}
-  OpD:
-    free: False
-    value: 1.0
-  y:
+  # OpD:
+  #   free: False
+  #   value: 1.0
+  OpBox:
     free: True
     prior: {dist: uniform, low: -1.0, high: 1.0}
+  # y:
+  #   free: True
+  #   prior: {dist: uniform, low: -1.0, high: 1.0}
 
 actions_:
-- run_test
+- run_analytic_fit

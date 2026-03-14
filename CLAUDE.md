@@ -22,6 +22,13 @@ conda activate new_smefit
 smefit <runcard.yaml>
 ```
 
+## Test new functionalities
+Test functionalities by running the prototype_runcard.yaml in the root of the repository, after
+modifying it to the needs.
+```bash
+smefit prototype_runcard.yaml
+```
+
 **Code formatting/linting**:
 ```bash
 pre-commit run --all-files

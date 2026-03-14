@@ -13,6 +13,8 @@ from smefit.environment import smefitEnvironment
 
 smefit_providers = [
     "smefit.utils",
+    "smefit.analytic_fit",
+    "smefit.actions",
     "reportengine.report",
 ]
 

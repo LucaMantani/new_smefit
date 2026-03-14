@@ -23,7 +23,7 @@ def write_fit_result(fit_result, output_path):
     output_path = pathlib.Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    unc = fit_result.uncertainties
+    unc = fit_result.std
     payload = {
         "free_parameters": fit_result.free_parameters,
         "num_data": fit_result.num_data,
@@ -34,7 +34,7 @@ def write_fit_result(fit_result, output_path):
         "chi2_ndof": fit_result.chi2_ndof,
         "logz": fit_result.logz,
         "best_fit_point": fit_result.best_fit_point,
-        "uncertainties": unc,
+        "std": unc,
         "samples": (
             {name: vals.tolist() for name, vals in fit_result.samples.items()}
             if fit_result.samples is not None

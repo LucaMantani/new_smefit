@@ -62,8 +62,8 @@ class FitResult:
         return self.chi2_val / self.ndof if self.ndof > 0 else float("nan")
 
     @property
-    def uncertainties(self) -> Dict[str, float]:
-        """Standard deviation of samples per coefficient."""
+    def std(self) -> Dict[str, float]:
+        """Standard deviation of posterior samples per coefficient."""
         if self.samples is None:
             return {}
         return {name: float(jnp.std(vals)) for name, vals in self.samples.items()}
@@ -75,7 +75,7 @@ class FitResult:
     def print_summary(self) -> None:
         """Print a coloured summary table using ``rich``."""
         console = Console()
-        unc = self.uncertainties
+        unc = self.std
 
         # --- header panel ---
         console.rule("[bold cyan]Fit Result[/bold cyan]")
@@ -96,7 +96,7 @@ class FitResult:
         )
         table.add_column("Coefficient", style="cyan", no_wrap=True)
         table.add_column("Best fit", justify="right")
-        table.add_column("Uncertainty", justify="right")
+        table.add_column("Std", justify="right")
         table.add_column("Type", justify="center", style="dim")
 
         for name, val in self.best_fit_point.items():

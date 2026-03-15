@@ -37,7 +37,7 @@ external_chi2:
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
-      rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+      # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
       use_projection_L0: True
 
 

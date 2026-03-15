@@ -93,7 +93,7 @@ class smefitConfig(Config):
             stacked_mats.shape,
             sorted(operators_to_keep.keys()),
         )
-        return stacked_mats, operators_to_keep, coeff_list
+        return stacked_mats, operators_to_keep
 
     def produce_theory(self, datasets, theory_path):
         """Produce theory group object."""

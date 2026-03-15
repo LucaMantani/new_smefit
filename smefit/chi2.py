@@ -4,6 +4,7 @@ smefit.chi2.py
 Chi2 loss function for the smefit framework.
 """
 
+import jax
 import jax.numpy as jnp
 
 
@@ -22,6 +23,7 @@ class Chi2:
         self._fn = fn
         self.has_external = has_external
 
+    @jax.jit(static_argnames=("self",))
     def __call__(self, coeffs):
         return self._fn(coeffs)
 

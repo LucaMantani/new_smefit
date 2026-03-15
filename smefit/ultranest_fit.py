@@ -4,6 +4,8 @@ smefit.ultranest_fit
 UltraNest nested-sampling fitting routine, returning a FitResult node.
 """
 
+import logging
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -12,8 +14,10 @@ import ultranest.stepsampler as ustepsampler
 
 from smefit.fit_result import FitResult
 
+log = logging.getLogger(__name__)
 
-def ultranest_fit(prior, chi2, eft_model, data, output_path, ultranest_settings=None):
+
+def ultranest_fit(prior, chi2, eft_model, data, ultranest_settings):
     """Run UltraNest nested sampling and return a FitResult.
 
     Reportengine provider node: arguments resolved by name from the DAG.
@@ -28,15 +32,16 @@ def ultranest_fit(prior, chi2, eft_model, data, output_path, ultranest_settings=
         EFT model (used to resolve derived coefficients from free ones).
     data : DataGroup
         Observed data (for num_data).
-    output_path : pathlib.Path
-        Output directory; ultranest logs written to output_path/ultranest/.
-    ultranest_settings : dict or None
-        Optional kwargs forwarded to sampler.run() (e.g. min_num_live_points).
+    ultranest_settings : dict
+        Settings for the UltraNest sampler.
 
     Returns
     -------
     FitResult
     """
+
+    # set the ultranest seed
+    np.random.seed(ultranest_settings["ultranest_seed"])
 
     if ultranest_settings["ReactiveNS_settings"]["vectorized"]:
         _logl_vmap = jax.jit(jax.vmap(lambda p: -chi2(p) / 2.0))
@@ -60,12 +65,10 @@ def ultranest_fit(prior, chi2, eft_model, data, output_path, ultranest_settings=
         def prior_transform(unit_cube):
             return np.array(_pt_jit(jnp.array(unit_cube)), dtype=np.float64)
 
-    log_dir = str(output_path / "ultranest")
     sampler = ultranest.ReactiveNestedSampler(
         prior.param_names,
         log_likelihood,
         prior_transform,
-        log_dir=log_dir,
         **ultranest_settings["ReactiveNS_settings"],
     )
 
@@ -78,6 +81,11 @@ def ultranest_fit(prior, chi2, eft_model, data, output_path, ultranest_settings=
 
     result = sampler.run(**ultranest_settings["Run_settings"])
     sampler.print_results()
+
+    if ultranest_settings["sampler_plot"]:
+        log.info("Plotting sampler plots")
+        # Store run plots to ultranest_logs folder (within output_path folder)
+        sampler.plot()
 
     # Extract results
     logz = float(result["logz"])

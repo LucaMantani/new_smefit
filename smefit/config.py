@@ -5,9 +5,10 @@ Config module of smefit
 """
 
 import logging
+import os
 import pathlib
 
-from reportengine.configparser import Config
+from reportengine.configparser import Config, ConfigError
 
 from smefit.chi2 import Chi2, build_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
@@ -130,9 +131,94 @@ class smefitConfig(Config):
 
         return Chi2(total_fn, has_external=True)
 
-    def parse_ultranest_settings(self, ultranest_settings):
-        """Pass-through parser for UltraNest run settings."""
-        return dict(ultranest_settings)
+    def parse_ultranest_settings(
+        self,
+        settings,
+        output_path,
+    ):
+        """For a Nested Sampling fit, parses the ultranest_settings namespace from the runcard,
+        and ensures the choice of settings is valid.
+        """
+
+        # Begin by checking that the user-supplied keys are known; warn the user otherwise.
+        known_keys = {
+            "ReactiveNS_settings",
+            "Run_settings",
+            "SliceSampler_settings",
+            "ultranest_seed",
+            "sampler_plot",
+        }
+
+        kdiff = settings.keys() - known_keys
+        for k in kdiff:
+            log.warning(
+                ConfigError(
+                    f"Key '{k}' in ultranest_settings not known.", k, known_keys
+                )
+            )
+
+        # Now construct the ultranest_settings dictionary, checking the parameter combinations are
+        # valid
+        ultranest_settings = {}
+
+        # Set the ultranest seed
+        ultranest_settings["ultranest_seed"] = settings.get("ultranest_seed", 123456)
+
+        # Parse internal settings, if they are not mentioned, set to empty dict
+        ultranest_settings["ReactiveNS_settings"] = settings.get(
+            "ReactiveNS_settings", {}
+        )
+        ultranest_settings["Run_settings"] = settings.get("Run_settings", {})
+        ultranest_settings["SliceSampler_settings"] = settings.get(
+            "SliceSampler_settings", {}
+        )
+
+        # set sampler plot to False by default
+        ultranest_settings["sampler_plot"] = settings.get("sampler_plot", False)
+
+        # Check that the ReactiveNS_settings key was provided, if not set to default
+        if ultranest_settings["ReactiveNS_settings"]:
+            # Set the directory where the ultranest logs will be stored; by default
+            # they are stored in output_path/ultranest_logs
+            ultranest_settings["ReactiveNS_settings"]["log_dir"] = settings[
+                "ReactiveNS_settings"
+            ].get("log_dir", str(output_path / "ultranest_logs"))
+
+            ultranest_settings["ReactiveNS_settings"]["resume"] = settings[
+                "ReactiveNS_settings"
+            ].get("resume", False)
+
+            ultranest_settings["ReactiveNS_settings"]["vectorized"] = settings[
+                "ReactiveNS_settings"
+            ].get("vectorized", False)
+        else:
+            ultranest_settings["ReactiveNS_settings"]["log_dir"] = str(
+                output_path / "ultranest_logs"
+            )
+            ultranest_settings["ReactiveNS_settings"]["resume"] = False
+            ultranest_settings["ReactiveNS_settings"]["vectorized"] = False
+
+        # In the case that the fit is resuming from a previous ultranest fit, the logs
+        # directory must exist
+        if ultranest_settings["ReactiveNS_settings"]["resume"]:
+            if not os.path.exists(ultranest_settings["ReactiveNS_settings"]["log_dir"]):
+                raise FileNotFoundError(
+                    "Could not find previous ultranest fit at "
+                    + str(ultranest_settings["ReactiveNS_settings"]["log_dir"])
+                    + "."
+                )
+
+            log.info(
+                "Resuming ultranest fit from "
+                + str(ultranest_settings["ReactiveNS_settings"]["log_dir"])
+                + "."
+            )
+
+        # If the resume option is false, ultranest expects "overwrite" instead
+        if not ultranest_settings["ReactiveNS_settings"]["resume"]:
+            ultranest_settings["ReactiveNS_settings"]["resume"] = "overwrite"
+
+        return ultranest_settings
 
     def produce_prior(self, coefficients):
         """Produce joint prior over all free coefficients."""

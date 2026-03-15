@@ -5,6 +5,7 @@ UltraNest nested-sampling fitting routine, returning a FitResult node.
 """
 
 import logging
+import time
 
 import jax
 import jax.numpy as jnp
@@ -79,7 +80,10 @@ def ultranest_fit(prior, chi2, eft_model, data, ultranest_settings):
             **ultranest_settings["SliceSampler_settings"],
         )
 
+    t1 = time.time()
     result = sampler.run(**ultranest_settings["Run_settings"])
+    t2 = time.time()
+    log.info(f"UltraNest fit completed in {((t2 - t1) / 60.0):.2f} minutes.")
     sampler.print_results()
 
     if ultranest_settings["sampler_plot"]:

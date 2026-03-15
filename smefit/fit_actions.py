@@ -1,7 +1,7 @@
 """
-smefit.actions.py
+smefit.fit_actions.py
 
-Reportengine actions for smefit.
+Reportengine fit actions for smefit.
 """
 
 from smefit.utils import write_fit_result

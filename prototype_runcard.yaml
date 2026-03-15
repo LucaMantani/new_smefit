@@ -44,4 +44,5 @@ external_chi2:
 
 
 actions_:
-- run_analytic_fit
+# - run_analytic_fit
+- run_test

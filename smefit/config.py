@@ -14,6 +14,7 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
+from smefit.priors import Prior, _build_dist
 
 log = logging.getLogger(__name__)
 
@@ -128,3 +129,14 @@ class smefitConfig(Config):
             return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
 
         return Chi2(total_fn, has_external=True)
+
+    def produce_prior(self, coefficients):
+        """Produce joint prior over all free coefficients."""
+        prior_specs = coefficients.prior_specs()
+        dists = []
+        for name in coefficients.free_names:
+            spec = prior_specs[name]
+            if spec is None:
+                raise ValueError(f"Free coefficient '{name}' has no prior defined.")
+            dists.append(_build_dist(spec))
+        return Prior(dists, coefficients.free_names)

@@ -9,8 +9,9 @@ import pathlib
 
 from reportengine.configparser import Config
 
-from smefit.chi2 import build_chi2
+from smefit.chi2 import Chi2, build_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 
@@ -107,6 +108,23 @@ class smefitConfig(Config):
         """Produce EFT model mapping coefficients to theory predictions."""
         return EFTModel(theory, coefficients, use_quad)
 
-    def produce_chi2(self, eft_model, data, fit_covmat):
-        """Produce the chi2 function for the fit."""
-        return build_chi2(eft_model, data, fit_covmat)
+    def parse_external_chi2(self, external_chi2):
+        """Pass-through parser so reportengine can resolve external_chi2 as a node."""
+        return external_chi2
+
+    def produce_chi2(self, eft_model, data, fit_covmat, external_chi2=None):
+        """Produce the chi2 function for the fit, optionally combining with external chi2s."""
+
+        base_chi2 = build_chi2(eft_model, data, fit_covmat)
+
+        if not external_chi2:
+            return Chi2(base_chi2)
+
+        ext_modules = load_external_chi2(
+            external_chi2, eft_model.coefficients, rge_dict=None
+        )
+
+        def total_fn(coeffs):
+            return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
+
+        return Chi2(total_fn, has_external=True)

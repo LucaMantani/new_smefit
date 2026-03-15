@@ -30,5 +30,18 @@ coefficients:
   #   free: True
   #   prior: {dist: uniform, low: -1.0, high: 1.0}
 
+
+external_chi2:
+  CMS_DYMee_13TeV:
+      path: ./external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      use_quad: True
+      order: NLO_QCD
+      # save_rge_path: "./CMS_DYMee_rge_matrix"
+      rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+      use_projection_L0: True
+
+
+
+
 actions_:
 - run_analytic_fit

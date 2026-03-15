@@ -22,6 +22,7 @@ jax = "*"
 ultranest = "*"
 optax = "*"
 flax = "*"
+wilson="^2.4"
 
 # Mark Sphinx and its extensions optional:
 sphinx = {version="*", optional=true}

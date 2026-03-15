@@ -19,6 +19,13 @@ ultranest_settings:
   # SliceSampler_settings:
   #   nsteps: 106                 # number of accepted steps until the sample is considered independent.
 
+rge:
+  init_scale: 10000.0
+  obs_scale: dynamic  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+  rg_matrix: rge_matrix10000.pkl
 
 # # Datasets to include
 datasets:

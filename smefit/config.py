@@ -16,6 +16,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.priors import Prior, _build_dist
+from smefit.rge import load_rge_matrix
 
 log = logging.getLogger(__name__)
 
@@ -52,14 +53,63 @@ class smefitConfig(Config):
 
         return DataGroup(parsed_datasets)
 
-    def produce_theory(self, datasets, theory_path):
-        """Produce theory group object."""
+    def parse_rge(self, rge):
+        """Parse and validate RGE settings."""
+        known_keys = {
+            "init_scale",
+            "obs_scale",
+            "smeft_accuracy",
+            "yukawa",
+            "adm_QCD",
+            "rg_matrix",
+            "scale_variation",
+        }
+        for k in set(rge.keys()) - known_keys:
+            log.warning("Unknown key '%s' in rge settings.", k)
+        if "init_scale" not in rge:
+            raise ConfigError("rge", rge, "rge block requires 'init_scale'")
+        obs_scale = rge.get("obs_scale", "dynamic")
+        if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
+            raise ConfigError(
+                "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
+            )
+        return rge
+
+    def produce_init_scale(self, rge):
+        """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
+        return float(rge["init_scale"])
+
+    def produce_rge_matrix(self, rge, coefficients, datasets, theory_path):
+        """Produce the stacked RGE matrix for all data points."""
+        coeff_list = sorted(coefficients.names)
+        stacked_mats, operators_to_keep = load_rge_matrix(
+            rge_dict=rge,
+            coeff_list=coeff_list,
+            datasets=datasets,
+            theory_path=str(theory_path),
+        )
+        log.info(
+            "RGE matrix computed: shape %s, obs operators: %s",
+            stacked_mats.shape,
+            sorted(operators_to_keep.keys()),
+        )
+        return stacked_mats, operators_to_keep, coeff_list
+
+    def produce_theory(self, datasets, theory_path, rge_matrix=None):
+        """Produce theory group object, optionally applying RGE transformation."""
         parsed_theories = []
         for ds in datasets:
             theory = load_theory(theory_path, ds["name"], ds["order"])
             parsed_theories.append(theory)
 
-        return TheoryGroup(parsed_theories)
+        theory_group = TheoryGroup(parsed_theories)
+
+        if rge_matrix is not None:
+            stacked_mats, operators_to_keep, init_coeff_list = rge_matrix
+            theory_group.apply_rge(stacked_mats, operators_to_keep, init_coeff_list)
+            log.info("RGE applied to theory group.")
+
+        return theory_group
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
@@ -114,7 +164,7 @@ class smefitConfig(Config):
         """Pass-through parser so reportengine can resolve external_chi2 as a node."""
         return external_chi2
 
-    def produce_chi2(self, eft_model, data, fit_covmat, external_chi2=None):
+    def produce_chi2(self, eft_model, data, fit_covmat, external_chi2=None, rge=None):
         """Produce the chi2 function for the fit, optionally combining with external chi2s."""
 
         base_chi2 = build_chi2(eft_model, data, fit_covmat)
@@ -123,7 +173,7 @@ class smefitConfig(Config):
             return Chi2(base_chi2)
 
         ext_modules = load_external_chi2(
-            external_chi2, eft_model.coefficients, rge_dict=None
+            external_chi2, eft_model.coefficients, rge_dict=rge
         )
 
         def total_fn(coeffs):

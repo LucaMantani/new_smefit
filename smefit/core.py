@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
 import jax.scipy.linalg as la
+import numpy as np
 import pandas as pd
 
 from smefit.data_utils import covmat_from_systematics
@@ -110,7 +111,7 @@ class Theory:
         self.n_ops = len(self.operators)
         self.n_data = self.sm_pred.shape[0]
 
-        eft_quad_pred = jnp.zeros((self.n_data, self.n_ops, self.n_ops))
+        eft_quad_pred = np.zeros((self.n_data, self.n_ops, self.n_ops))
 
         for i, op1 in enumerate(self.operators):
             for j, op2 in enumerate(self.operators):
@@ -122,16 +123,11 @@ class Theory:
                 k2 = f"{op2}*{op1}"
 
                 if k1 in self.eft_pred:
-                    val = self.eft_pred[k1]
+                    eft_quad_pred[:, i, j] = self.eft_pred[k1]
                 elif k2 in self.eft_pred:
-                    val = self.eft_pred[k2]
-                else:
-                    continue
+                    eft_quad_pred[:, i, j] = self.eft_pred[k2]
 
-                # fill upper-triangular entry (i, j)
-                eft_quad_pred = eft_quad_pred.at[:, i, j].set(val)
-
-        self.eft_quad_pred = eft_quad_pred
+        self.eft_quad_pred = jnp.asarray(eft_quad_pred)
         # Define operator index mapping
         self.op_index = {op: i for i, op in enumerate(self.operators)}
 
@@ -317,38 +313,38 @@ class TheoryGroup:
     def _build_eft_lin_pred(self):
         # build concatenated linear eft prediction matrix of shape (ndata, n_ops)
         # if an operator is not present in a theory, its contribution is zero
-        eft_lin_pred = jnp.zeros((self.n_data, self.n_ops))
+        eft_lin_pred = np.zeros((self.n_data, self.n_ops))
         offset = 0
         for th in self.theories:
             n = th.n_data
             for i, op in enumerate(self.operators):
                 if op in th.op_index:
                     th_op_idx = th.op_index[op]
-                    eft_lin_pred = eft_lin_pred.at[offset : offset + n, i].set(
-                        th.eft_lin_pred[:, th_op_idx]
-                    )
+                    eft_lin_pred[offset : offset + n, i] = th.eft_lin_pred[:, th_op_idx]
             offset += n
-        return eft_lin_pred
+        return jnp.asarray(eft_lin_pred)
 
     def _build_eft_quad_pred(self):
         # build concatenated quadratic eft prediction tensor of shape (ndata, n_ops, n_ops)
         # if an operator is not present in a theory, its contribution is zero
-        eft_quad_pred = jnp.zeros((self.n_data, self.n_ops, self.n_ops))
+        eft_quad_pred = np.zeros((self.n_data, self.n_ops, self.n_ops))
         offset = 0
         for th in self.theories:
             n = th.n_data
             for i, op1 in enumerate(self.operators):
+                if op1 not in th.op_index:
+                    continue
                 for j, op2 in enumerate(self.operators):
                     if j < i:
                         continue  # keep strictly lower triangle zero
-                    if op1 in th.op_index and op2 in th.op_index:
+                    if op2 in th.op_index:
                         th_op1_idx = th.op_index[op1]
                         th_op2_idx = th.op_index[op2]
-                        eft_quad_pred = eft_quad_pred.at[offset : offset + n, i, j].set(
-                            th.eft_quad_pred[:, th_op1_idx, th_op2_idx]
-                        )
+                        eft_quad_pred[offset : offset + n, i, j] = th.eft_quad_pred[
+                            :, th_op1_idx, th_op2_idx
+                        ]
             offset += n
-        return eft_quad_pred
+        return jnp.asarray(eft_quad_pred)
 
 
 class CoefficientGroup:

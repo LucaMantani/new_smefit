@@ -19,6 +19,7 @@ h5py = "*"
 
 reportengine = "*"
 jax = "*"
+ultranest = "*"
 optax = "*"
 flax = "*"
 

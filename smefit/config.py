@@ -130,6 +130,10 @@ class smefitConfig(Config):
 
         return Chi2(total_fn, has_external=True)
 
+    def parse_ultranest_settings(self, ultranest_settings):
+        """Pass-through parser for UltraNest run settings."""
+        return dict(ultranest_settings)
+
     def produce_prior(self, coefficients):
         """Produce joint prior over all free coefficients."""
         prior_specs = coefficients.prior_specs()

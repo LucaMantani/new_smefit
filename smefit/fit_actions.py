@@ -7,6 +7,12 @@ Reportengine fit actions for smefit.
 from smefit.utils import write_fit_result
 
 
+def run_ultranest_fit(ultranest_fit, output_path):
+    """Print and save the result of the UltraNest nested-sampling fit."""
+    ultranest_fit.print_summary()
+    write_fit_result(ultranest_fit, output_path)
+
+
 def run_analytic_fit(analytic_fit, output_path):
     """Print and save the result of the analytic fit.
 

@@ -6,6 +6,20 @@ use_theory_covmat: False
 use_t0: False
 # SMEFT Expansion Order
 use_quad: False
+
+# Nested Sampling settings
+ultranest_settings:
+  ReactiveNS_settings:
+    vectorized: False
+    ndraw_max: 500              # Maximum number of points to simultaneously propose.
+  Run_settings:
+    min_num_live_points: 200    # Minimum number of live points throughout the run.
+    min_ess: 50                 # Target number of effective posterior samples.
+    frac_remain: 0.3            # Integrate until this fraction of the integral is left in the remainder.
+  SliceSampler_settings:
+    nsteps: 106                 # number of accepted steps until the sample is considered independent.
+
+
 # # Datasets to include
 datasets:
   - {name: LEP1_EWPOs_2006, order: LO}
@@ -45,4 +59,5 @@ external_chi2:
 
 actions_:
 # - run_analytic_fit
-- run_test
+# - run_test
+- run_ultranest_fit

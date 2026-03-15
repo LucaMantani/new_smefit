@@ -346,64 +346,6 @@ class TheoryGroup:
             offset += n
         return jnp.asarray(eft_quad_pred)
 
-    def apply_rge(self, stacked_mats, operators_to_keep, init_coeff_list):
-        """Apply RGE transformation in-place.
-
-        Parameters
-        ----------
-        stacked_mats : jnp.ndarray, shape (n_rge, n_obs_ops, n_init_ops)
-            RGE matrices. n_rge is 1 (single scale) or n_data (dynamic).
-            Row axis = sorted(operators_to_keep). Column axis = sorted(init_coeff_list).
-        operators_to_keep : dict
-            Obs-level operators (keys give row ordering of stacked_mats).
-        init_coeff_list : list of str
-            Sorted list of init-scale coefficient names (column ordering).
-        """
-        rge_obs_ops = sorted(operators_to_keep.keys())
-        n_obs = len(rge_obs_ops)
-        n_init = len(init_coeff_list)
-
-        R = stacked_mats
-        if R.shape[0] == 1:
-            R = jnp.broadcast_to(R, (self.n_data, n_obs, n_init))
-
-        theory_op_index = {op: i for i, op in enumerate(self.operators)}
-
-        # Align linear predictions to rge_obs_ops row ordering
-        lin_aligned = np.zeros((self.n_data, n_obs))
-        for ri, obs_op in enumerate(rge_obs_ops):
-            if obs_op in theory_op_index:
-                lin_aligned[:, ri] = np.array(
-                    self.eft_lin_pred[:, theory_op_index[obs_op]]
-                )
-
-        new_lin = jnp.einsum("di,dik->dk", jnp.asarray(lin_aligned), R)
-
-        # Align quadratic predictions to rge_obs_ops ordering
-        quad_aligned = np.zeros((self.n_data, n_obs, n_obs))
-        for ri, op1 in enumerate(rge_obs_ops):
-            if op1 not in theory_op_index:
-                continue
-            for ci, op2 in enumerate(rge_obs_ops):
-                if ci < ri or op2 not in theory_op_index:
-                    continue
-                gi, gj = theory_op_index[op1], theory_op_index[op2]
-                if gi > gj:
-                    gi, gj = gj, gi  # ensure upper-triangle access
-                quad_aligned[:, ri, ci] = np.array(self.eft_quad_pred[:, gi, gj])
-
-        new_quad = jnp.einsum("dij,dil,djr->dlr", jnp.asarray(quad_aligned), R, R)
-
-        # Restore upper-triangle convention (zero the strictly lower triangle)
-        i_idx, j_idx = np.tril_indices(n_init, k=-1)
-        new_quad = new_quad.at[:, i_idx, j_idx].set(0.0)
-
-        # Mutate in-place
-        self.operators = list(init_coeff_list)
-        self.n_ops = n_init
-        self.eft_lin_pred = new_lin
-        self.eft_quad_pred = new_quad
-
 
 class CoefficientGroup:
     """Class representing a group of EFT coefficients in smefit."""

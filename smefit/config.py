@@ -95,21 +95,12 @@ class smefitConfig(Config):
         )
         return stacked_mats, operators_to_keep, coeff_list
 
-    def produce_theory(self, datasets, theory_path, rge_matrix=None):
-        """Produce theory group object, optionally applying RGE transformation."""
-        parsed_theories = []
-        for ds in datasets:
-            theory = load_theory(theory_path, ds["name"], ds["order"])
-            parsed_theories.append(theory)
-
-        theory_group = TheoryGroup(parsed_theories)
-
-        if rge_matrix is not None:
-            stacked_mats, operators_to_keep, init_coeff_list = rge_matrix
-            theory_group.apply_rge(stacked_mats, operators_to_keep, init_coeff_list)
-            log.info("RGE applied to theory group.")
-
-        return theory_group
+    def produce_theory(self, datasets, theory_path):
+        """Produce theory group object."""
+        parsed_theories = [
+            load_theory(theory_path, ds["name"], ds["order"]) for ds in datasets
+        ]
+        return TheoryGroup(parsed_theories)
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
@@ -156,9 +147,9 @@ class smefitConfig(Config):
                     )
         return group
 
-    def produce_eft_model(self, theory, coefficients, use_quad=False):
+    def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
         """Produce EFT model mapping coefficients to theory predictions."""
-        return EFTModel(theory, coefficients, use_quad)
+        return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
         """Pass-through parser so reportengine can resolve external_chi2 as a node."""

@@ -1,5 +1,4 @@
 import logging
-import pathlib
 import pickle
 from copy import deepcopy
 from dataclasses import dataclass

@@ -79,7 +79,7 @@ class smefitConfig(Config):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, rge, coefficients, theory):
+    def produce_rge_matrix(self, rge, coefficients, theory, output_path):
         """Produce the stacked RGE matrix for all data points."""
         coeff_list = sorted(coefficients.names)
 
@@ -96,9 +96,7 @@ class smefitConfig(Config):
                 scales = [s * scale_variation for s in scales]
 
         rge_matrix = load_rge_matrix(
-            rge_dict=rge,
-            coeff_list=coeff_list,
-            scales=scales,
+            rge_dict=rge, coeff_list=coeff_list, scales=scales, save_path=output_path
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",

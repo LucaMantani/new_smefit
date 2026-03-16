@@ -18,7 +18,7 @@ from smefit.fit_result import FitResult
 log = logging.getLogger(__name__)
 
 
-def ultranest_fit(prior, chi2, eft_model, data, ultranest_settings):
+def ultranest_fit(prior, chi2, coefficients, ultranest_settings, data=None):
     """Run UltraNest nested sampling and return a FitResult.
 
     Reportengine provider node: arguments resolved by name from the DAG.
@@ -29,12 +29,12 @@ def ultranest_fit(prior, chi2, eft_model, data, ultranest_settings):
         Joint prior over free coefficients (provides prior_transform).
     chi2 : Chi2
         Chi-squared callable built by produce_chi2.
-    eft_model : EFTModel
-        EFT model (used to resolve derived coefficients from free ones).
-    data : DataGroup
-        Observed data (for num_data).
+    coefficients : CoefficientGroup
+        Coefficient group (used to resolve derived coefficients from free ones).
     ultranest_settings : dict
         Settings for the UltraNest sampler.
+    data : DataGroup, optional
+        Observed data (for num_data). None when running without datasets.
 
     Returns
     -------
@@ -98,23 +98,20 @@ def ultranest_fit(prior, chi2, eft_model, data, ultranest_settings):
 
     # Posterior samples: shape (n_samples, n_free)
     posterior_free = jnp.array(result["samples"])
-    all_resolved = jax.vmap(eft_model.coefficients.resolve)(posterior_free)
-    samples = {
-        name: all_resolved[:, i] for i, name in enumerate(eft_model.coefficients.names)
-    }
+    all_resolved = jax.vmap(coefficients.resolve)(posterior_free)
+    samples = {name: all_resolved[:, i] for i, name in enumerate(coefficients.names)}
 
     # Best-fit full coefficient vector (free + derived)
-    best_resolved = eft_model.coefficients.resolve(best_free)
+    best_resolved = coefficients.resolve(best_free)
     best_fit_point = {
-        name: float(best_resolved[i])
-        for i, name in enumerate(eft_model.coefficients.names)
+        name: float(best_resolved[i]) for i, name in enumerate(coefficients.names)
     }
 
     return FitResult(
-        free_parameters=eft_model.coefficients.free_names,
+        free_parameters=coefficients.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_logl,
-        num_data=data.num_data,
+        num_data=data.num_data if data is not None else 0,
         logz=logz,
         samples=samples,
     )

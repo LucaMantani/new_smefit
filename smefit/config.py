@@ -155,20 +155,48 @@ class smefitConfig(Config):
         """Pass-through parser so reportengine can resolve external_chi2 as a node."""
         return external_chi2
 
-    def produce_chi2(self, eft_model, data, fit_covmat, external_chi2=None, rge=None):
-        """Produce the chi2 function for the fit, optionally combining with external chi2s."""
+    def produce_chi2(
+        self,
+        coefficients,
+        datasets=None,
+        eft_model=None,
+        data=None,
+        fit_covmat=None,
+        external_chi2=None,
+        rge=None,
+    ):
+        """Produce the chi2 function, optionally combining with external chi2s.
 
-        base_chi2 = build_chi2(eft_model, data, fit_covmat)
+        When no datasets are provided, base chi2 is skipped and only external
+        contributions are summed.
+        """
+        if not datasets and not external_chi2:
+            raise ConfigError(
+                "chi2",
+                None,
+                "No datasets provided and no external_chi2 configured. "
+                "At least one source of chi2 is required.",
+            )
+
+        if datasets:
+            base_chi2 = build_chi2(eft_model, data, fit_covmat)
+        else:
+            base_chi2 = None
 
         if not external_chi2:
             return Chi2(base_chi2)
 
-        ext_modules = load_external_chi2(
-            external_chi2, eft_model.coefficients, rge_dict=rge
-        )
+        ext_modules = load_external_chi2(external_chi2, coefficients, rge_dict=rge)
 
-        def total_fn(coeffs):
-            return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
+        if base_chi2 is None:
+
+            def total_fn(coeffs):
+                return sum(ext(coeffs) for ext in ext_modules)
+
+        else:
+
+            def total_fn(coeffs):
+                return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
 
         return Chi2(total_fn, has_external=True)
 

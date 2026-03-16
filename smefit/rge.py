@@ -558,8 +558,6 @@ def load_rge_matrix(
         resolved observable scales — one per data point for dynamic mode, or a
         single-element list for a fixed scale.  The caller is responsible for
         constructing this list (e.g. from ``TheoryGroup.scales``).
-    cutoff_scale: float, optional
-        exclude scales above this value
     save_path: str, optional
         path where to save the RGE matrix. If None, the matrix is not saved.
 

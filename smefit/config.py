@@ -79,21 +79,33 @@ class smefitConfig(Config):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, rge, coefficients, datasets, theory_path):
+    def produce_rge_matrix(self, rge, coefficients, theory):
         """Produce the stacked RGE matrix for all data points."""
         coeff_list = sorted(coefficients.names)
-        stacked_mats, operators_to_keep = load_rge_matrix(
+
+        obs_scale = rge.get("obs_scale", "dynamic")
+        if isinstance(obs_scale, (float, int)):
+            scales = [float(obs_scale)]
+        else:
+            # dynamic: use per-data-point scales owned by TheoryGroup
+            scale_variation = rge.get("scale_variation", 1.0)
+            scales = theory.scales.tolist()
+
+            if scale_variation != 1.0:
+                log.info("Applying scale variation of %s.", scale_variation)
+                scales = [s * scale_variation for s in scales]
+
+        rge_matrix = load_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
-            datasets=datasets,
-            theory_path=str(theory_path),
+            scales=scales,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",
-            stacked_mats.shape,
-            sorted(operators_to_keep.keys()),
+            rge_matrix.stacked_mats.shape,
+            rge_matrix.obs_operators,
         )
-        return stacked_mats, operators_to_keep
+        return rge_matrix
 
     def produce_theory(self, datasets, theory_path):
         """Produce theory group object."""

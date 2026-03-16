@@ -52,7 +52,7 @@ class EFTModel(BaseModel):
         self.use_quad = use_quad
 
         if rge_matrix is not None:
-            self._apply_rge(theory, *rge_matrix)
+            self._apply_rge(theory, rge_matrix.stacked_mats, rge_matrix.obs_operators)
         else:
             self._setup_direct(theory)
 
@@ -96,10 +96,10 @@ class EFTModel(BaseModel):
             [coefficients.coeff_index[name] for name in active_names]
         )
 
-    def _apply_rge(self, theory, stacked_mats, operators_to_keep):
+    def _apply_rge(self, theory, stacked_mats, obs_operators):
         """Set up lin/quad corrections by contracting theory tables with RGE matrices."""
         coeff_names = self.coefficients.names  # sorted by CoefficientGroup constructor
-        rge_obs_ops = sorted(operators_to_keep.keys())
+        rge_obs_ops = obs_operators  # already sorted
         n_obs, n_init = len(rge_obs_ops), len(coeff_names)
 
         R = stacked_mats

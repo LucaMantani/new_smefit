@@ -309,6 +309,7 @@ class TheoryGroup:
 
         self.eft_lin_pred = self._build_eft_lin_pred()
         self.eft_quad_pred = self._build_eft_quad_pred()
+        self.scales = jnp.concatenate([th.scales for th in self.theories], axis=0)
 
     def _build_eft_lin_pred(self):
         # build concatenated linear eft prediction matrix of shape (ndata, n_ops)

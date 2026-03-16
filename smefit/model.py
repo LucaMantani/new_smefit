@@ -65,6 +65,14 @@ class EFTModel(BaseModel):
 
         active_names = sorted(theory_params & declared)
 
+        if not active_names:
+            raise ValueError(
+                "None of the declared coefficients match any operator in the theory files.\n"
+                f"  Coefficients declared      : {sorted(declared)}\n"
+                f"  Operators found in datasets: {sorted(theory_params)}\n"
+                "Check that coefficient names in the runcard match operator names in the theory files."
+            )
+
         inactive = [
             n for n in declared if n not in theory_params and n not in vars_used
         ]
@@ -99,6 +107,15 @@ class EFTModel(BaseModel):
             R = jnp.broadcast_to(R, (theory.n_data, n_obs, n_init))
 
         theory_op_index = {op: i for i, op in enumerate(theory.operators)}
+
+        matched_ops = [op for op in rge_obs_ops if op in theory_op_index]
+        if not matched_ops:
+            raise ValueError(
+                "The likelihood does not depend on any of the declared free coefficients.\n"
+                f"  RGE observable-basis operators: {sorted(rge_obs_ops)}\n"
+                f"  Operators found in datasets   : {sorted(theory_op_index.keys())}\n"
+                "Check that the RGE operator names match the operator names in the theory files."
+            )
 
         lin_aligned = np.zeros((theory.n_data, n_obs))
         for ri, obs_op in enumerate(rge_obs_ops):

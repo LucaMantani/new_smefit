@@ -25,7 +25,7 @@ rge:
   smeft_accuracy: integrate  # options: integrate, leadinglog
   yukawa: top  # options: top, full or none
   adm_QCD: false  # if true, the EW couplings are set to zero
-  rg_matrix: rge_matrix10000.pkl
+  # rg_matrix: rge_matrix10000.pkl
 
 # # Datasets to include
 datasets:
@@ -38,28 +38,30 @@ coefficients:
   #   free: False
   #   vars: [y, OpWB]
   #   expr: "sqrt(y**2 + 0.5*OpWB**2)"
-  OpWB:
-    free: True
-    prior: {dist: uniform, low: -0.5, high: 0.5}
-  OpD:
-    free: False
-    value: 1.0
+  # OpWB:
+  #   free: True
+  #   prior: {dist: uniform, low: -0.5, high: 0.5}
+  # OpD:
+  #   free: False
+  #   value: 1.0
   OpBox:
+    free: False
+    # prior: {dist: uniform, low: -1.0, high: 1.0}
+    vars: [y]
+    expr: "100*y"
+  y:
     free: True
     prior: {dist: uniform, low: -1.0, high: 1.0}
-  # y:
-  #   free: True
-  #   prior: {dist: uniform, low: -1.0, high: 1.0}
 
 
-external_chi2:
-  CMS_DYMee_13TeV:
-      path: ./external_chi2/drell_yan/CMS_DYMee_13TeV.py
-      use_quad: True
-      order: NLO_QCD
-      # save_rge_path: "./CMS_DYMee_rge_matrix"
-      # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
-      use_projection_L0: True
+# external_chi2:
+#   CMS_DYMee_13TeV:
+#       path: ./external_chi2/drell_yan/CMS_DYMee_13TeV.py
+#       use_quad: True
+#       order: NLO_QCD
+#       # save_rge_path: "./CMS_DYMee_rge_matrix"
+#       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+#       use_projection_L0: True
 
 
 

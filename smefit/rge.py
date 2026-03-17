@@ -14,6 +14,8 @@ import wilson
 from smefit.constants import gs, mz
 from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
 
+# Numerical threshold for filtering small Wilson coefficient values
+_SMALL_VALUE_THRESHOLD = 1e-14
 ### Patch of a CKM function, so that the CP violating
 ### phase is set to gamma and not computed explicitly
 ### See https://github.com/wilson-eft/wilson/issues/113#issuecomment-2179273979
@@ -236,7 +238,7 @@ class RGE:
                 wc_final_vals = {
                     key: value
                     for key, value in wc_final.dict.items()
-                    if abs(value) > 1e-14
+                    if abs(value) > _SMALL_VALUE_THRESHOLD
                 }
 
                 # check that imaginary values are small
@@ -363,7 +365,11 @@ class RGE:
             wc_final = wc_init.match_run(scale=scale, eft="SMEFT", basis="Warsaw").dict
 
         # remove small values
-        wc_final = {key: value for key, value in wc_final.items() if abs(value) > 1e-10}
+        wc_final = {
+            key: value
+            for key, value in wc_final.items()
+            if abs(value) > _SMALL_VALUE_THRESHOLD
+        }
 
         return self.map_to_smefit(wc_final, scale)
 

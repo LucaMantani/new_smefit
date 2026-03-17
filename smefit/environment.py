@@ -7,6 +7,7 @@ Environment module of smefit
 import logging
 
 import jax
+from jax.extend import backend as jbackend
 from reportengine.environment import Environment
 
 log = logging.getLogger(__name__)
@@ -26,3 +27,5 @@ class smefitEnvironment(Environment):
         else:
             log.info("Using float64 precision")
             jax.config.update("jax_enable_x64", True)
+
+        log.info(f"Running with backend: {jbackend.get_backend().platform}")

@@ -595,10 +595,11 @@ def load_rge_matrix(
     """
     # Sort the coefficient list alphabetically
     coeff_list = sorted(coeff_list)
-    init_scale = rge_dict.get("init_scale", 1e3)
-    smeft_accuracy = rge_dict.get("smeft_accuracy", "integrate")
-    adm_QCD = rge_dict.get("adm_QCD", False)
-    yukawa = rge_dict.get("yukawa", "top")
+    # Cast to plain Python types to avoid pickling ruamel.yaml wrapper types
+    init_scale = float(rge_dict.get("init_scale", 1e3))
+    smeft_accuracy = str(rge_dict.get("smeft_accuracy", "integrate"))
+    adm_QCD = bool(rge_dict.get("adm_QCD", False))
+    yukawa = str(rge_dict.get("yukawa", "top"))
     rge_settings = {
         "init_scale": init_scale,
         "smeft_accuracy": smeft_accuracy,

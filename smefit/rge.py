@@ -515,8 +515,15 @@ def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
     list of pandas.DataFrame
         List of RGE matrices (one per input scale)
     """
-    rgemats = []
-    for scale in scales:
+    # Deduplicate: compute only for unique scales, then map back
+    unique_scales = sorted(set(scales))
+    _logger.info(
+        f"Computing RGE matrices for {len(unique_scales)} unique scales "
+        f"(out of {len(scales)} total data points)."
+    )
+
+    unique_rgemats = {}
+    for scale in unique_scales:
         # Check if the RGE matrix has already been computed
         if scale in rge_cache:
             rgemat_scale = rge_cache[scale]
@@ -548,8 +555,10 @@ def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
             # cache the RGE matrix
             rge_cache[scale] = rgemat_scale
 
-        rgemats.append(rgemat_scale)
-    return rgemats
+        unique_rgemats[scale] = rgemat_scale
+
+    # Map back to original order, using copies to avoid shared references
+    return [unique_rgemats[scale].copy() for scale in scales]
 
 
 def load_rge_matrix(

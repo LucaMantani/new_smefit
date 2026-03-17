@@ -569,7 +569,7 @@ def load_rge_matrix(
     coeff_list = sorted(coeff_list)
     init_scale = rge_dict.get("init_scale", 1e3)
     smeft_accuracy = rge_dict.get("smeft_accuracy", "integrate")
-    adm_QCD = rge_dict.get("adm_QCD", "full")
+    adm_QCD = rge_dict.get("adm_QCD", False)
     yukawa = rge_dict.get("yukawa", "top")
     rge_settings = {
         "init_scale": init_scale,

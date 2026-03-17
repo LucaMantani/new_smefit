@@ -1,5 +1,6 @@
 import logging
 import pickle
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial, wraps
@@ -153,6 +154,27 @@ def evolve_gs(scale):
     )
 
 
+@contextmanager
+def _wilson_params(yukawa, adm_QCD):
+    """Temporarily set wilson SM parameters, restoring originals on exit."""
+    saved = wilson.run.smeft.smpar.p.copy()
+    try:
+        if yukawa == "top":
+            wilson.run.smeft.smpar.p.update(**top_yukawa)
+        elif yukawa == "none":
+            wilson.run.smeft.smpar.p.update(**no_yukawa)
+        elif yukawa == "full":
+            wilson.run.smeft.smpar.p.update(**default_params)
+
+        if adm_QCD:
+            wilson.run.smeft.smpar.p.update(**QCD_only)
+
+        yield
+    finally:
+        wilson.run.smeft.smpar.p.clear()
+        wilson.run.smeft.smpar.p.update(saved)
+
+
 class RGE:
     """
     Class to compute the RGE matrix for the SMEFT Wilson coefficients.
@@ -190,24 +212,13 @@ class RGE:
         self.adm_QCD = adm_QCD
         self.yukawa = yukawa
 
-        # set the anomalous dimension matrix parameters
-        if self.yukawa == "top":
-            wilson.run.smeft.smpar.p.update(**top_yukawa)
-        elif self.yukawa == "none":
-            wilson.run.smeft.smpar.p.update(**no_yukawa)
-        elif self.yukawa == "full":
-            wilson.run.smeft.smpar.p.update(**default_params)
-        else:
+        if yukawa not in ("top", "none", "full"):
             raise ValueError(f"Yukawa parameter not supported: {yukawa}")
 
         _logger.info(f"Using Yukawa parameterization: {yukawa}.")
-
-        if self.adm_QCD:
-            wilson.run.smeft.smpar.p.update(**QCD_only)
-            _logger.info("Using anomalous dimension order: QCD.")
-        else:
-            _logger.info("Using anomalous dimension order: full.")
-
+        _logger.info(
+            f"Using anomalous dimension order: {'QCD' if adm_QCD else 'full'}."
+        )
         _logger.info(
             f"Initializing RGE runner with initial scale {init_scale} GeV and accuracy {accuracy}."
         )
@@ -216,29 +227,31 @@ class RGE:
         """
         Compute the RGE solution at the scale `scale` and return it as a dictionary.
         """
-        # compute the RGE matrix at the scale `scale`
         rge_matrix_dict = {}
-        for wc_name, wc_vals in self.RGEbasis.items():
-            _logger.info(f"Computing RGE for {wc_name} at {scale} GeV.")
-            wc_init = wilson.Wilson(
-                wc_vals, scale=self.init_scale, eft="SMEFT", basis="Warsaw"
-            )
-            wc_init.set_option("smeft_accuracy", self.accuracy)
-
-            wc_final = wc_init.match_run(scale=scale, eft="SMEFT", basis="Warsaw")
-
-            # Remove small values
-            wc_final_vals = {
-                key: value for key, value in wc_final.dict.items() if abs(value) > 1e-14
-            }
-
-            # check that imaginary values are small
-            if any(abs(val.imag) > 1e-10 for val in wc_final_vals.values()):
-                raise ValueError(
-                    f"Imaginary values in Wilson coefficient for operator {wc_name}."
+        with _wilson_params(self.yukawa, self.adm_QCD):
+            for wc_name, wc_vals in self.RGEbasis.items():
+                _logger.info(f"Computing RGE for {wc_name} at {scale} GeV.")
+                wc_init = wilson.Wilson(
+                    wc_vals, scale=self.init_scale, eft="SMEFT", basis="Warsaw"
                 )
+                wc_init.set_option("smeft_accuracy", self.accuracy)
 
-            rge_matrix_dict[wc_name] = self.map_to_smefit(wc_final_vals, scale)
+                wc_final = wc_init.match_run(scale=scale, eft="SMEFT", basis="Warsaw")
+
+                # Remove small values
+                wc_final_vals = {
+                    key: value
+                    for key, value in wc_final.dict.items()
+                    if abs(value) > 1e-14
+                }
+
+                # check that imaginary values are small
+                if any(abs(val.imag) > 1e-10 for val in wc_final_vals.values()):
+                    raise ValueError(
+                        f"Imaginary values in Wilson coefficient for operator {wc_name}."
+                    )
+
+                rge_matrix_dict[wc_name] = self.map_to_smefit(wc_final_vals, scale)
 
         return rge_matrix_dict
 
@@ -343,11 +356,12 @@ class RGE:
                 else:
                     wc_wilson[key] += values[key] * wcs[op]
 
-        wc_init = wilson.Wilson(
-            wc_wilson, scale=self.init_scale, eft="SMEFT", basis="Warsaw"
-        )
-        wc_init.set_option("smeft_accuracy", self.accuracy)
-        wc_final = wc_init.match_run(scale=scale, eft="SMEFT", basis="Warsaw").dict
+        with _wilson_params(self.yukawa, self.adm_QCD):
+            wc_init = wilson.Wilson(
+                wc_wilson, scale=self.init_scale, eft="SMEFT", basis="Warsaw"
+            )
+            wc_init.set_option("smeft_accuracy", self.accuracy)
+            wc_final = wc_init.match_run(scale=scale, eft="SMEFT", basis="Warsaw").dict
 
         # remove small values
         wc_final = {key: value for key, value in wc_final.items() if abs(value) > 1e-10}

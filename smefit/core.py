@@ -390,16 +390,27 @@ class CoefficientGroup:
         jnp.ndarray
             Values for all coefficients, in self.coefficients order.
         """
-        free_coeff_dict = {
-            fc.name: val for fc, val in zip(self.free_coeffs, free_coeffs)
-        }
+        lookup = {fc.name: val for fc, val in zip(self.free_coeffs, free_coeffs)}
+        for coeff in self.fixed_coeffs:
+            if coeff.value is not None:
+                lookup[coeff.name] = coeff.value
         resolved = []
         for coeff in self.coefficients:
             if coeff.free:
-                resolved.append(free_coeff_dict[coeff.name])
+                resolved.append(lookup[coeff.name])
             elif coeff.vars:
-                args = tuple(free_coeff_dict[var] for var in coeff.vars)
+                args = tuple(lookup[var] for var in coeff.vars)
                 resolved.append(coeff.constrain(*args))
             else:
                 resolved.append(coeff.constrain())
         return jnp.array(resolved)
+
+    def single_free(self, target_name: str) -> "CoefficientGroup":
+        """Return a CoefficientGroup where only *target_name* is free."""
+        new_coeffs = []
+        for c in self.coefficients:
+            if c.free and c.name != target_name:
+                new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
+            else:
+                new_coeffs.append(c)
+        return CoefficientGroup(new_coeffs)

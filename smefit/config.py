@@ -9,6 +9,7 @@ import os
 import pathlib
 
 from reportengine.configparser import Config, ConfigError
+from reportengine.namespaces import NSList
 
 from smefit.chi2 import Chi2, build_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
@@ -165,7 +166,7 @@ class smefitConfig(Config):
         """Pass-through parser so reportengine can resolve external_chi2 as a node."""
         return external_chi2
 
-    def produce_chi2(
+    def _build_chi2_impl(
         self,
         coefficients,
         datasets=None,
@@ -175,11 +176,7 @@ class smefitConfig(Config):
         external_chi2=None,
         rge=None,
     ):
-        """Produce the chi2 function, optionally combining with external chi2s.
-
-        When no datasets are provided, base chi2 is skipped and only external
-        contributions are summed.
-        """
+        """Shared chi2 build logic used by both joint and individual producers."""
         if not datasets and not external_chi2:
             raise ConfigError(
                 "chi2",
@@ -209,6 +206,25 @@ class smefitConfig(Config):
                 return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
 
         return Chi2(total_fn, has_external=True)
+
+    def produce_chi2(
+        self,
+        coefficients,
+        datasets=None,
+        eft_model=None,
+        data=None,
+        fit_covmat=None,
+        external_chi2=None,
+        rge=None,
+    ):
+        """Produce the chi2 function, optionally combining with external chi2s.
+
+        When no datasets are provided, base chi2 is skipped and only external
+        contributions are summed.
+        """
+        return self._build_chi2_impl(
+            coefficients, datasets, eft_model, data, fit_covmat, external_chi2, rge
+        )
 
     def parse_ultranest_settings(
         self,
@@ -299,8 +315,12 @@ class smefitConfig(Config):
 
         return ultranest_settings
 
-    def produce_prior(self, coefficients):
-        """Produce joint prior over all free coefficients."""
+    def produce_individual_fit_coefficients(self, coefficients):
+        """Produce an NSList of free coefficient names for individual fits."""
+        return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
+
+    def _build_prior_impl(self, coefficients):
+        """Shared prior build logic used by both joint and individual producers."""
         prior_specs = coefficients.prior_specs()
         dists = []
         for name in coefficients.free_names:
@@ -309,3 +329,46 @@ class smefitConfig(Config):
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
             dists.append(_build_dist(spec))
         return Prior(dists, coefficients.free_names)
+
+    def produce_prior(self, coefficients):
+        """Produce joint prior over all free coefficients."""
+        return self._build_prior_impl(coefficients)
+
+    # ------------------------------------------------------------------
+    # Individual-fit producers — one free coefficient at a time
+    # ------------------------------------------------------------------
+
+    def produce_individual_coefficients(self, coefficients, individual_fit_coefficient):
+        """Produce a single-free-parameter coefficient group for individual fits."""
+        return coefficients.single_free(individual_fit_coefficient)
+
+    def produce_individual_eft_model(
+        self, theory, individual_coefficients, use_quad=False, rge_matrix=None
+    ):
+        """Produce EFT model for a single-free-parameter individual fit."""
+        return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
+
+    def produce_individual_chi2(
+        self,
+        individual_coefficients,
+        datasets=None,
+        individual_eft_model=None,
+        data=None,
+        fit_covmat=None,
+        external_chi2=None,
+        rge=None,
+    ):
+        """Produce chi2 for a single-free-parameter individual fit."""
+        return self._build_chi2_impl(
+            individual_coefficients,
+            datasets,
+            individual_eft_model,
+            data,
+            fit_covmat,
+            external_chi2,
+            rge,
+        )
+
+    def produce_individual_prior(self, individual_coefficients):
+        """Produce prior for a single-free-parameter individual fit."""
+        return self._build_prior_impl(individual_coefficients)

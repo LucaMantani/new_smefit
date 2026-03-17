@@ -4,24 +4,30 @@ smefit.fit_actions.py
 Reportengine fit actions for smefit.
 """
 
-from smefit.utils import write_fit_result
+from smefit.fit_result import FitResultGroup
 
 
 def run_ultranest_fit(ultranest_fit, output_path):
     """Print and save the result of the UltraNest nested-sampling fit."""
     ultranest_fit.print_summary()
-    write_fit_result(ultranest_fit, output_path)
+    ultranest_fit.write(output_path)
 
 
 def run_analytic_fit(analytic_fit, output_path):
-    """Print and save the result of the analytic fit.
-
-    Parameters
-    ----------
-    analytic_fit : FitResult
-        Result produced by the ``analytic_fit`` provider node.
-    output_path : pathlib.Path
-        Path to the output directory for writing results to disk.
-    """
+    """Print and save the result of the analytic fit."""
     analytic_fit.print_summary()
-    write_fit_result(analytic_fit, output_path)
+    analytic_fit.write(output_path)
+
+
+def run_individual_analytic_fits(individual_analytic_fits, output_path):
+    """Print and save individual analytic fit results."""
+    group = FitResultGroup(individual_analytic_fits)
+    group.print_summary()
+    group.write_results(output_path)
+
+
+def run_individual_ultranest_fits(individual_ultranest_fits, output_path):
+    """Print and save individual ultranest fit results."""
+    group = FitResultGroup(individual_ultranest_fits)
+    group.print_summary()
+    group.write_results(output_path)

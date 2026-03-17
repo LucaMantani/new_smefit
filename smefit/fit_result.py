@@ -4,6 +4,8 @@ smefit.fit_result.py
 FitResult dataclass shared across fitting routines.
 """
 
+import json
+import pathlib
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -106,3 +108,78 @@ class FitResult:
 
         console.print(table)
         console.rule(style="dim")
+
+    # ------------------------------------------------------------------
+    # I/O
+    # ------------------------------------------------------------------
+
+    def write(self, output_path) -> None:
+        """Serialise this result to JSON and write it to *output_path*."""
+        output_path = pathlib.Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        unc = self.std
+        payload = {
+            "free_parameters": self.free_parameters,
+            "num_data": self.num_data,
+            "n_free": self.n_free,
+            "ndof": self.ndof,
+            "max_loglikelihood": self.max_loglikelihood,
+            "chi2": self.chi2_val,
+            "chi2_ndof": self.chi2_ndof,
+            "logz": self.logz,
+            "best_fit_point": self.best_fit_point,
+            "std": unc,
+            "samples": (
+                {name: vals.tolist() for name, vals in self.samples.items()}
+                if self.samples is not None
+                else None
+            ),
+        }
+
+        out_file = output_path / "fit_results.json"
+        with out_file.open("w") as f:
+            json.dump(payload, f, indent=2)
+
+
+class FitResultGroup:
+    """A collection of FitResult objects from individual parameter fits."""
+
+    def __init__(self, results: List[FitResult]):
+        self.results = results
+
+    def print_summary(self) -> None:
+        """Print a combined summary table with one row per fit."""
+        console = Console()
+        console.rule("[bold cyan]Individual Parameter Fits[/bold cyan]")
+
+        table = Table(
+            box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Coefficient", style="cyan", no_wrap=True)
+        table.add_column("Best fit", justify="right")
+        table.add_column("Std", justify="right")
+        table.add_column("chi2", justify="right")
+        table.add_column("chi2/dof", justify="right")
+
+        for result in self.results:
+            name = result.free_parameters[0]
+            val = result.best_fit_point.get(name, float("nan"))
+            std = result.std.get(name, float("nan"))
+            table.add_row(
+                name,
+                f"{val:.6f}",
+                f"{std:.6f}",
+                f"{result.chi2_val:.4f}",
+                f"{result.chi2_ndof:.4f}",
+            )
+
+        console.print(table)
+        console.rule(style="dim")
+
+    def write_results(self, output_path) -> None:
+        """Write each FitResult to its own subdirectory."""
+        base = pathlib.Path(output_path) / "individual_fits"
+        for result in self.results:
+            name = result.free_parameters[0]
+            result.write(base / name)

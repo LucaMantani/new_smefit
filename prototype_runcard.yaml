@@ -2,8 +2,8 @@
 data_path: ./commondata
 theory_path: ./theory
 # Covmat settings
-use_theory_covmat: False
-use_t0: False
+use_theory_covmat: True
+use_t0: True
 # SMEFT Expansion Order
 use_quad: False
 
@@ -38,12 +38,12 @@ coefficients:
   #   free: False
   #   vars: [y, OpWB]
   #   expr: "sqrt(y**2 + 0.5*OpWB**2)"
-  # OpWB:
-  #   free: True
-  #   prior: {dist: uniform, low: -0.5, high: 0.5}
-  # OpD:
-  #   free: False
-  #   value: 1.0
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
   OpBox:
     free: False
     # prior: {dist: uniform, low: -1.0, high: 1.0}
@@ -69,4 +69,5 @@ coefficients:
 actions_:
 # - run_analytic_fit
 # - run_test
-- run_ultranest_fit
+- run_individual_ultranest_fits
+# - run_ultranest_fit

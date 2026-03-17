@@ -3,7 +3,7 @@ import pickle
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
-from functools import partial, wraps
+from functools import cached_property, partial, wraps
 
 import ckmutil.ckm
 import jax.numpy as jnp
@@ -275,7 +275,7 @@ class RGE:
 
         return rge_matrix
 
-    @property
+    @cached_property
     def RGEbasis(self):
         """
         Returns the RGE basis translated from smefit to Warsaw.

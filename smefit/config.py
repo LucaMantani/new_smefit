@@ -47,12 +47,16 @@ class smefitConfig(Config):
 
     def produce_data(self, datasets, data_path):
         """Produce data group object."""
+        if hasattr(self, "_cached_data_group"):
+            return self._cached_data_group
+
         parsed_datasets = []
         for ds in datasets:
             dataset = load_dataset(data_path, ds["name"])
             parsed_datasets.append(dataset)
 
-        return DataGroup(parsed_datasets)
+        self._cached_data_group = DataGroup(parsed_datasets)
+        return self._cached_data_group
 
     def parse_rge(self, rge):
         """Parse and validate RGE settings."""
@@ -82,6 +86,9 @@ class smefitConfig(Config):
 
     def produce_rge_matrix(self, rge, coefficients, theory, output_path):
         """Produce the stacked RGE matrix for all data points."""
+        if hasattr(self, "_cached_rge_matrix"):
+            return self._cached_rge_matrix
+
         coeff_list = sorted(coefficients.names)
 
         obs_scale = rge.get("obs_scale", "dynamic")
@@ -104,17 +111,26 @@ class smefitConfig(Config):
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
+        self._cached_rge_matrix = rge_matrix
         return rge_matrix
 
     def produce_theory(self, datasets, theory_path):
         """Produce theory group object."""
+        if hasattr(self, "_cached_theory_group"):
+            return self._cached_theory_group
+
         parsed_theories = [
             load_theory(theory_path, ds["name"], ds["order"]) for ds in datasets
         ]
-        return TheoryGroup(parsed_theories)
+
+        self._cached_theory_group = TheoryGroup(parsed_theories)
+        return self._cached_theory_group
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
+        if hasattr(self, "_cached_fit_covmat"):
+            return self._cached_fit_covmat
+
         if data.names != theory.names:
             raise ValueError(
                 f"DataGroup and TheoryGroup contain different datasets.\n"
@@ -138,6 +154,8 @@ class smefitConfig(Config):
         if use_theory_covmat:
             log.info("Adding theory covariance matrix to data covariance matrix.")
             covmat += theory.sm_covmat
+
+        self._cached_fit_covmat = covmat
 
         return covmat
 

@@ -40,6 +40,10 @@ def ultranest_fit(prior, chi2, coefficients, ultranest_settings, data=None):
     -------
     FitResult
     """
+    log.info(
+        "Running analytic fit for free coefficients: %s",
+        coefficients.free_names,
+    )
 
     # set the ultranest seed
     np.random.seed(ultranest_settings["ultranest_seed"])

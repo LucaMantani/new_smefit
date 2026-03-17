@@ -4,10 +4,14 @@ smefit.analytic_fit.py
 Analytic (linear-theory) fitting routine returning a FitResult node.
 """
 
+import logging
+
 import jax
 import jax.numpy as jnp
 
 from smefit.fit_result import FitResult
+
+log = logging.getLogger(__name__)
 
 
 def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
@@ -48,6 +52,10 @@ def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
             "Set 'use_quad: False' in the runcard."
         )
 
+    log.info(
+        "Running analytic fit for free coefficients: %s",
+        eft_model.coefficients.free_names,
+    )
     n_free = len(eft_model.coefficients.free_names)
     zeros = jnp.zeros(n_free)
 

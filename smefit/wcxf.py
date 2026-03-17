@@ -1,14 +1,5 @@
 # Dictionary translating from the smefit basis to the Warsaw basis in the WCxf
-import numpy as np
-
-# Values at MZ
-alpha_s = 0.118
-mw = 80.387
-mz = 91.1876
-gs = np.sqrt(4 * np.pi * alpha_s)
-sw = np.sqrt(1 - mw**2 / mz**2)
-cw = np.sqrt(1 - sw**2)
-
+from smefit.constants import cw, sw
 
 # This creates a dictionary to go from SMEFiT basis to Warsaw.
 # In particular, for each operator, it tells you which Wilson coefficients

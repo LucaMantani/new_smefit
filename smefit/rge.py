@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import wilson
 
-from smefit.loader import load_theory
+from smefit.constants import gs, mz
 from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
 
 ### Patch of a CKM function, so that the CP violating
@@ -141,17 +141,11 @@ QCD_only = {
     "m_h": 1e-20,
 }
 
-# gs at MZ
-alpha_s = 0.118
-gs = np.sqrt(4 * np.pi * alpha_s)
-
 
 def evolve_gs(scale):
-    # evolve gs from MZ to scale
+    # evolve gs from MZ to scale using 1-loop running with nf=6
     beta0 = 11 - 2 / 3 * 6
-    return gs / np.sqrt(
-        1 + 2 * beta0 * gs**2 / (4 * np.pi) ** 2 * np.log(scale / 91.1876)
-    )
+    return gs / np.sqrt(1 + 2 * beta0 * gs**2 / (4 * np.pi) ** 2 * np.log(scale / mz))
 
 
 @contextmanager

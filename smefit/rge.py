@@ -314,8 +314,13 @@ class RGE:
         Map the Wilson coefficients from the Warsaw basis to the SMEFiT basis.
         """
         wc_dict = {}
+        wc_final_keys = set(wc_final_vals.keys())
         for wc_basis, wc_inv_dict in inverse_wcxf_translate.items():
             wc_warsaw_name = wc_inv_dict["wc"]
+            # Skip operators with no overlap with the evolved WCs
+            if not wc_final_keys.intersection(wc_warsaw_name):
+                continue
+
             if "coeff" not in wc_inv_dict:
                 wc_warsaw_coeff = [1] * len(wc_warsaw_name)
             else:
@@ -328,7 +333,7 @@ class RGE:
 
             value = 0.0
             for wc, coeff in zip(wc_warsaw_name, wc_warsaw_coeff):
-                if wc in wc_final_vals:
+                if wc in wc_final_keys:
                     # 1e6 is to transform from GeV^-2 to TeV^2
                     value += 1e6 * wc_final_vals[wc].real * coeff
             wc_dict[wc_basis] = value

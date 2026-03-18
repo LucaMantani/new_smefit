@@ -105,10 +105,10 @@ datasets:
   - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
 # Coefficients to fit
 coefficients:
-  # OtG:
-  #   free: False
-  #   vars: [y, OpWB]
-  #   expr: "sqrt(y**2 + 0.5*OpWB**2)"
+  OtG:
+    free: False
+    vars: [y, OpWB]
+    expr: "sqrt(y**2 + 0.5*OpWB**2)"
   OpWB:
     free: True
     prior: {dist: uniform, low: -0.5, high: 0.5}
@@ -133,6 +133,9 @@ external_chi2:
       # save_rge_path: "./CMS_DYMee_rge_matrix"
       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
       use_projection_L0: True
+
+  OptimalttFCCee365:
+      path: ./external_chi2/optimal_observables/interface_oos_fccee.py
 
 
 

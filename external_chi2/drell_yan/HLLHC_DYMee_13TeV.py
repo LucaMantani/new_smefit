@@ -48,6 +48,7 @@ class HLLHC_DYMee_13TeV:
 
         self.model = EFTModel(theory_group, coefficients, use_quad)
         self.data_cv = data.cv
+        self.num_data = data.num_data
 
         if use_t0:
             fit_covmat = data.t0_covmat(theory_group.sm_pred)

@@ -3,6 +3,8 @@ import logging
 import pathlib
 import sys
 
+from smefit.chi2 import Chi2
+
 log = logging.getLogger(__name__)
 
 
@@ -55,6 +57,12 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
             coefficients=coefficients, rge_dict=rge_dict, **extra_keys
         )
 
-        ext_chi2_modules.append(chi2_ext.compute_chi2)
+        ext_chi2_modules.append(
+            Chi2(
+                chi2_ext.compute_chi2,
+                param_names=coefficients.free_names,
+                num_data=chi2_ext.num_data,
+            )
+        )
 
     return ext_chi2_modules

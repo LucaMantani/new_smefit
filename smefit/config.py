@@ -228,10 +228,14 @@ class smefitConfig(Config):
             def total_fn(coeffs):
                 return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
 
+        tot_num_data = (data.num_data if data else 0) + sum(
+            ext.num_data for ext in ext_modules
+        )
+
         return Chi2(
             total_fn,
             param_names=coefficients.free_names,
-            num_data=data.num_data,
+            num_data=tot_num_data,
             has_external=True,
         )
 

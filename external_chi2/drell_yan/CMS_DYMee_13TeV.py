@@ -1,3 +1,4 @@
+import logging
 import pathlib
 
 import jax.numpy as jnp
@@ -5,11 +6,15 @@ import jax.numpy as jnp
 from smefit import loader
 from smefit.core import DataGroup, TheoryGroup
 from smefit.model import EFTModel
+from smefit.rge import load_rge_matrix
+
+log = logging.getLogger(__name__)
 
 _HERE = pathlib.Path(__file__).parent
 
 
 class CMS_DYMee_13TeV:
+
     def __init__(
         self,
         coefficients,
@@ -19,6 +24,8 @@ class CMS_DYMee_13TeV:
         use_theory_covmat=False,
         use_t0=False,
         use_projection_L0=False,
+        save_rge_path=None,
+        rg_matrix=None,
     ):
         """
         Initialize the CMS_DYMee_13TeV class.
@@ -28,7 +35,7 @@ class CMS_DYMee_13TeV:
         coefficients : CoefficientGroup
             The Wilson coefficients to be used in the analysis.
         rge_dict : dict, optional
-            Reserved for future RGE support; currently unused.
+            A dictionary containing the RGE information.
         use_quad : bool
             Whether to include quadratic EFT contributions.
         order : str
@@ -39,6 +46,9 @@ class CMS_DYMee_13TeV:
             Whether to use the t0 prescription for multiplicative systematics.
         use_projection_L0 : bool
             Whether to use the L0 projection dataset instead of the default one.
+        save_rge_path : str or pathlib.Path, optional
+            If provided, the path where to save the computed RGE matrix for future reuse.
+        rg_matrix : A pre-computed RGE matrix.
         """
         theory_path = _HERE / "theory"
         if use_projection_L0:
@@ -46,13 +56,44 @@ class CMS_DYMee_13TeV:
         else:
             data_path = _HERE / "commondata"
 
+        if rge_dict is not None:
+            # If a pre-computed rge matrix is provided, add it to the rge_dict
+            # If not, set it to False in case it was defined for the datasets
+            if rg_matrix is not None:
+                rge_dict["rg_matrix"] = rg_matrix
+            else:
+                rge_dict["rg_matrix"] = False
+
+        coeff_list = sorted(coefficients.names)
+
         dataset = loader.load_dataset(data_path, "CMS_DYMee_13TeV")
         theory = loader.load_theory(theory_path, "CMS_DYMee_13TeV", order)
 
         data = DataGroup([dataset])
         theory_group = TheoryGroup([theory])
 
-        self.model = EFTModel(theory_group, coefficients, use_quad)
+        obs_scale = rge_dict.get("obs_scale", "dynamic")
+        if isinstance(obs_scale, (float, int)):
+            scales = [float(obs_scale)]
+        else:
+            # dynamic: use per-data-point scales owned by TheoryGroup
+            scale_variation = rge_dict.get("scale_variation", 1.0)
+            scales = theory_group.scales.tolist()
+
+            if scale_variation != 1.0:
+                log.info("Applying scale variation of %s.", scale_variation)
+                scales = [s * scale_variation for s in scales]
+
+        rge_matrix = load_rge_matrix(
+            rge_dict=rge_dict,
+            coeff_list=coeff_list,
+            scales=scales,
+            save_path=save_rge_path,
+        )
+
+        self.model = EFTModel(
+            theory_group, coefficients, use_quad, rge_matrix=rge_matrix
+        )
         self.data_cv = data.cv
         self.num_data = data.num_data
 

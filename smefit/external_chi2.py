@@ -1,3 +1,4 @@
+import copy
 import importlib
 import logging
 import pathlib
@@ -54,7 +55,7 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
         extra_keys = {key: value for key, value in module.items() if key != "path"}
 
         chi2_ext = my_chi2_class(
-            coefficients=coefficients, rge_dict=rge_dict, **extra_keys
+            coefficients=coefficients, rge_dict=copy.deepcopy(rge_dict), **extra_keys
         )
 
         ext_chi2_modules.append(

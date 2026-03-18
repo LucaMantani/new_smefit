@@ -15,12 +15,16 @@ class Chi2:
     ----------
     fn : callable
         The chi2 function ``fn(coeffs) -> scalar``.
+    param_names : list of str
+        The names of the parameters.
     has_external : bool
         Whether the chi2 includes external contributions.
     """
 
-    def __init__(self, fn, has_external=False):
+    def __init__(self, fn, param_names, has_external=False):
         self._fn = fn
+        self.param_names = param_names
+        self.nparam = len(param_names)
         self.has_external = has_external
 
     @jax.jit(static_argnames=("self",))

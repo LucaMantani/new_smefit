@@ -4,6 +4,8 @@ smefit.utils.py
 Utility functions for the smefit framework.
 """
 
+import time
+
 import jax
 import jax.numpy as jnp
 
@@ -15,6 +17,20 @@ def ensure_list(x):
     if isinstance(x, list):
         return x
     return [x]
+
+
+def chi2_timing(chi2, n_eval=1000):
+    """Time the evaluation of the chi2 function."""
+    coeffs = jnp.zeros(chi2.nparam)
+    # Trigger JIT compilation before timing
+    jax.block_until_ready(chi2(coeffs))
+    # Now evaluate it n_eval times and time it
+    start = time.perf_counter()
+    for _ in range(n_eval):
+        result = chi2(coeffs)
+    jax.block_until_ready(result)
+    end = time.perf_counter()
+    print(f"Chi2 evaluation time: {(end - start) / n_eval:.4e} seconds")
 
 
 def run_prior_test(prior):

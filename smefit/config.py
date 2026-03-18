@@ -174,11 +174,11 @@ class smefitConfig(Config):
 
     def parse_whitening(self, whitening):
         """Parse and validate the optional whitening block."""
-        known_keys = {"sigma", "eps"}
+        known_keys = {"sigma_prior", "eps"}
         for k in set(whitening.keys()) - known_keys:
             log.warning("Unknown key '%s' in whitening settings.", k)
         return {
-            "sigma": float(whitening.get("sigma", 5.0)),
+            "sigma_prior": float(whitening.get("sigma_prior", 5.0)),
             "eps": float(whitening.get("eps", 1e-8)),
         }
 
@@ -386,7 +386,7 @@ class smefitConfig(Config):
     def produce_prior(self, coefficients, whitening=None):
         """Produce joint prior over all free coefficients."""
         if whitening is not None:
-            sigma = whitening["sigma"]
+            sigma = whitening["sigma_prior"]
 
             dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
             return Prior(dists, coefficients.free_names)

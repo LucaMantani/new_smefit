@@ -82,7 +82,7 @@ def load_dataset(data_path, dataset_name):
     )
 
 
-def load_theory(theory_path, dataset_name, order):
+def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
     """Load theory predictions from given path."""
     theory_file = theory_path / f"{dataset_name}.json"
     if not theory_file.exists():
@@ -90,13 +90,18 @@ def load_theory(theory_path, dataset_name, order):
             f"Theory predictions for dataset {dataset_name} not found in {theory_path}"
         )
 
-    log.info("Loading theory predictions for %s at order %s", dataset_name, order)
+    log.info(
+        "Loading theory predictions for %s at order %s, with theory covariance type %s",
+        dataset_name,
+        order,
+        th_cov_type,
+    )
 
     with open(theory_file) as file:
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
-    sm_covmat = jnp.array(theory_data["theory_cov_current"])
+    sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]
 

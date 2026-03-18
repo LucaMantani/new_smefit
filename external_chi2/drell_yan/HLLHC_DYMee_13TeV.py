@@ -66,24 +66,14 @@ class HLLHC_DYMee_13TeV:
         data = DataGroup([dataset])
         theory_group = TheoryGroup([theory])
 
-        obs_scale = rge_dict.get("obs_scale", "dynamic")
-        if isinstance(obs_scale, (float, int)):
-            scales = [float(obs_scale)]
-        else:
-            # dynamic: use per-data-point scales owned by TheoryGroup
-            scale_variation = rge_dict.get("scale_variation", 1.0)
-            scales = theory_group.scales.tolist()
-
-            if scale_variation != 1.0:
-                log.info("Applying scale variation of %s.", scale_variation)
-                scales = [s * scale_variation for s in scales]
-
-        rge_matrix = load_rge_matrix(
-            rge_dict=rge_dict,
-            coeff_list=coeff_list,
-            scales=scales,
-            save_path=save_rge_path,
-        )
+        rge_matrix = None
+        if rge_dict is not None:
+            rge_matrix = load_rge_matrix(
+                rge_dict=rge_dict,
+                coeff_list=coeff_list,
+                theory_group=theory_group,
+                save_path=save_rge_path,
+            )
 
         self.model = EFTModel(
             theory_group, coefficients, use_quad, rge_matrix=rge_matrix

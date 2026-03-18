@@ -566,10 +566,28 @@ def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
     return [unique_rgemats[scale].copy() for scale in scales]
 
 
+def _resolve_scales(rge_dict, theory_group):
+    """
+    Resolve observable scales from an rge_dict and a TheoryGroup.
+
+    Returns a single-element list when ``obs_scale`` is a fixed number, or
+    one entry per data point when it is ``'dynamic'`` (the default).
+    """
+    obs_scale = rge_dict.get("obs_scale", "dynamic")
+    if isinstance(obs_scale, (float, int)):
+        return [float(obs_scale)]
+    scale_variation = rge_dict.get("scale_variation", 1.0)
+    scales = theory_group.scales.tolist()
+    if scale_variation != 1.0:
+        _logger.info("Applying scale variation of %s.", scale_variation)
+        scales = [s * scale_variation for s in scales]
+    return scales
+
+
 def load_rge_matrix(
     rge_dict,
     coeff_list,
-    scales,
+    theory_group,
     save_path=None,
 ):
     """
@@ -581,10 +599,8 @@ def load_rge_matrix(
         dictionary with the RGE input parameter options
     coeff_list: list
         list of Wilson coefficients to be included in the RGE matrix
-    scales: list of float
-        resolved observable scales — one per data point for dynamic mode, or a
-        single-element list for a fixed scale.  The caller is responsible for
-        constructing this list (e.g. from ``TheoryGroup.scales``).
+    theory_group: TheoryGroup
+        theory group providing per-data-point observable scales
     save_path: str, optional
         path where to save the RGE matrix. If None, the matrix is not saved.
 
@@ -595,6 +611,7 @@ def load_rge_matrix(
     """
     # Sort the coefficient list alphabetically
     coeff_list = sorted(coeff_list)
+    scales = _resolve_scales(rge_dict, theory_group)
     # Cast to plain Python types to avoid pickling ruamel.yaml wrapper types
     init_scale = float(rge_dict.get("init_scale", 1e3))
     smeft_accuracy = str(rge_dict.get("smeft_accuracy", "integrate"))

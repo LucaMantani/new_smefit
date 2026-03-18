@@ -91,20 +91,11 @@ class smefitConfig(Config):
 
         coeff_list = sorted(coefficients.names)
 
-        obs_scale = rge.get("obs_scale", "dynamic")
-        if isinstance(obs_scale, (float, int)):
-            scales = [float(obs_scale)]
-        else:
-            # dynamic: use per-data-point scales owned by TheoryGroup
-            scale_variation = rge.get("scale_variation", 1.0)
-            scales = theory.scales.tolist()
-
-            if scale_variation != 1.0:
-                log.info("Applying scale variation of %s.", scale_variation)
-                scales = [s * scale_variation for s in scales]
-
         rge_matrix = load_rge_matrix(
-            rge_dict=rge, coeff_list=coeff_list, scales=scales, save_path=output_path
+            rge_dict=rge,
+            coeff_list=coeff_list,
+            theory_group=theory,
+            save_path=output_path,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",

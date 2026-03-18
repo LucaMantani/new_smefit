@@ -1,0 +1,1115 @@
+# HLLHC 10 TeV QUAD aggressive runcard
+# Datasets: LHC Run I/II data + HL-LHC projections at 14 TeV
+# Expansion: full quadratic EFT (use_quad: True)
+# RGE: initial scale 10 TeV
+# Coefficient format: natural expressions
+#   Each physical coefficient Op is constrained as: Op = bound * Op_nat
+#   where Op_nat is a dimensionless natural variable with uniform prior on [-1, 1]
+
+# path to common data
+data_path: /path/to/smefit_database/commondata_projections_L0
+
+# path to theory tables
+theory_path: /path/to/smefit_database/theory
+
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+
+# SMEFT Expansion Order
+use_quad: True
+
+rge:
+  init_scale: 10000.0
+  obs_scale: dynamic  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+datasets:
+  # LEP electroweak precision data
+  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP_Bhabha_2013, order: LO}
+  - {name: LEP_Brw_2013, order: LO}
+  - {name: LEP_eeWW_182GeV, order: LO}
+  - {name: LEP_eeWW_189GeV, order: LO}
+  - {name: LEP_eeWW_198GeV, order: LO}
+  - {name: LEP_eeWW_206GeV, order: LO}
+  # ATLAS LHC Run I/II data
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+  - {name: ATLAS_CMS_tt_AC_8TeV, order: NLO_QCD}
+  - {name: ATLAS_Zjj_13TeV_dphijj, order: LO}
+  - {name: ATLAS_SSinc_RunII, order: NLO_QCD}
+  - {name: ATLAS_STXS_runII_13TeV, order: NLO_QCD}
+  - {name: ATLAS_WH_Hbb_13TeV, order: NLO_QCD}
+  - {name: ATLAS_WW_13TeV_2016_memu, order: NLO_QCD}
+  - {name: ATLAS_WZ_13TeV_2016_mTWZ, order: NLO_QCD}
+  - {name: ATLAS_WhelF_8TeV, order: NLO_QCD}
+  - {name: ATLAS_Whel_13TeV, order: NLO_QCD}
+  - {name: ATLAS_ZH_Hbb_13TeV, order: NLO_QCD}
+  - {name: ATLAS_ggF_13TeV_2015, order: NLO_QCD}
+  - {name: ATLAS_ggF_ZZ_13TeV, order: NLO_QCD}
+  - {name: ATLAS_hh_runII_13TeV, order: LO}
+  - {name: ATLAS_tW_13TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_tW_8TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_tW_slep_8TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_tZ_13TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_tZ_13TeV_run2_inc, order: NLO_QCD}
+  - {name: ATLAS_t_sch_13TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_t_sch_8TeV, order: NLO_QCD}
+  - {name: ATLAS_t_tch_13TeV_inc, order: NLO_QCD}
+  - {name: ATLAS_t_tch_8TeV_diff_Yt, order: NLO_QCD}
+  - {name: ATLAS_ttW_13TeV, order: NLO_QCD}
+  - {name: ATLAS_ttW_13TeV_2016, order: NLO_QCD}
+  - {name: ATLAS_ttW_8TeV, order: NLO_QCD}
+  - {name: ATLAS_ttZ_13TeV, order: NLO_QCD}
+  - {name: ATLAS_ttZ_13TeV_2016, order: NLO_QCD}
+  - {name: ATLAS_ttZ_13TeV_pTZ, order: NLO_QCD}
+  - {name: ATLAS_ttZ_8TeV, order: NLO_QCD}
+  - {name: ATLAS_tt_13TeV_asy_2022, order: NLO_QCD}
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}
+  - {name: ATLAS_tt_8TeV_dilep_Mtt, order: NLO_QCD}
+  - {name: ATLAS_tt_8TeV_ljets_Mtt, order: NLO_QCD}
+  - {name: ATLAS_tta_8TeV, order: NLO_QCD}
+  - {name: ATLAS_ttbb_13TeV_2016, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_2023, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_run2, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_slep_inc, order: NLO_QCD}
+  # CMS LHC Run I/II data
+  - {name: CMS_H_13TeV_2015_pTH, order: NLO_QCD}
+  - {name: CMS_SSinc_RunII, order: NLO_QCD}
+  - {name: CMS_WZ_13TeV_2016_pTZ, order: NLO_QCD}
+  - {name: CMS_WZ_13TeV_2022_pTZ, order: NLO_QCD}
+  - {name: CMS_WhelF_8TeV, order: NLO_QCD}
+  - {name: CMS_ggF_aa_13TeV, order: NLO_QCD}
+  - {name: CMS_tW_13TeV_inc, order: NLO_QCD}
+  - {name: CMS_tW_13TeV_slep_inc, order: NLO_QCD}
+  - {name: CMS_tW_8TeV_inc, order: NLO_QCD}
+  - {name: CMS_tZ_13TeV_2016_inc, order: NLO_QCD}
+  - {name: CMS_tZ_13TeV_inc, order: NLO_QCD}
+  - {name: CMS_tZ_13TeV_pTt, order: NLO_QCD}
+  - {name: CMS_t_sch_8TeV, order: NLO_QCD}
+  - {name: CMS_t_tch_13TeV_2019_diff_Yt, order: NLO_QCD}
+  - {name: CMS_t_tch_13TeV_inc, order: NLO_QCD}
+  - {name: CMS_t_tch_8TeV_diff_Yt, order: NLO_QCD}
+  - {name: CMS_t_tch_8TeV_inc, order: NLO_QCD}
+  - {name: CMS_tt2D_8TeV_dilep_MttYtt, order: NLO_QCD}
+  - {name: CMS_ttW_13TeV, order: NLO_QCD}
+  - {name: CMS_ttW_8TeV, order: NLO_QCD}
+  - {name: CMS_ttZ_13TeV, order: NLO_QCD}
+  - {name: CMS_ttZ_13TeV_pTZ, order: NLO_QCD}
+  - {name: CMS_ttZ_8TeV, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_Mtt, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_asy, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_dilep_2015_Mtt, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_dilep_2016_Mtt, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_ljets_2015_Mtt, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_ljets_inc, order: NLO_QCD}
+  - {name: CMS_tt_8TeV_ljets_Ytt, order: NLO_QCD}
+  - {name: CMS_tta_8TeV, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_2016, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_dilepton_inc, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_ljets_inc, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_2023, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_run2, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD}
+  # ATLAS HL-LHC projections
+  - {name: ATLAS_Zjj_13TeV_dphijj_proj, order: LO}
+  - {name: ATLAS_SSinc_RunII_proj, order: NLO_QCD}
+  - {name: ATLAS_STXS_runII_13TeV_uncor_proj, order: NLO_QCD}
+  - {name: ATLAS_WH_Hbb_13TeV_proj, order: NLO_QCD}
+  - {name: ATLAS_WW_13TeV_2016_memu_proj, order: NLO_QCD}
+  - {name: ATLAS_WZ_13TeV_2016_mTWZ_proj, order: NLO_QCD}
+  - {name: ATLAS_Whel_13TeV_uncor_proj, order: NLO_QCD}
+  - {name: ATLAS_ZH_Hbb_13TeV_proj, order: NLO_QCD}
+  - {name: ATLAS_ggF_13TeV_2015_proj, order: NLO_QCD}
+  - {name: ATLAS_ggF_ZZ_13TeV_proj, order: NLO_QCD}
+  - {name: ATLAS_tW_13TeV_inc_proj, order: NLO_QCD}
+  - {name: ATLAS_tZ_13TeV_run2_inc_proj, order: NLO_QCD}
+  - {name: ATLAS_t_sch_13TeV_inc_proj, order: NLO_QCD}
+  - {name: ATLAS_t_tch_13TeV_inc_proj, order: NLO_QCD}
+  - {name: ATLAS_ttW_13TeV_2016_proj, order: NLO_QCD}
+  - {name: ATLAS_ttZ_13TeV_pTZ_uncor_proj, order: NLO_QCD}
+  - {name: ATLAS_tt_13TeV_asy_2022_uncor_proj, order: NLO_QCD}
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt_proj, order: NLO_QCD}
+  - {name: ATLAS_ttbb_13TeV_2016_proj, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_2023_proj, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_run2_proj, order: NLO_QCD}
+  - {name: ATLAS_tttt_13TeV_slep_inc_proj, order: NLO_QCD}
+  # CMS HL-LHC projections
+  - {name: CMS_H_13TeV_2015_pTH_proj, order: NLO_QCD}
+  - {name: CMS_SSinc_RunII_proj, order: NLO_QCD}
+  - {name: CMS_WZ_13TeV_2016_pTZ_proj, order: NLO_QCD}
+  - {name: CMS_WZ_13TeV_2022_pTZ_proj, order: NLO_QCD}
+  - {name: CMS_ggF_aa_13TeV_proj, order: NLO_QCD}
+  - {name: CMS_tW_13TeV_inc_proj, order: NLO_QCD}
+  - {name: CMS_tW_13TeV_slep_inc_proj, order: NLO_QCD}
+  - {name: CMS_tZ_13TeV_pTt_uncor_proj, order: NLO_QCD}
+  - {name: CMS_t_tch_13TeV_2019_diff_Yt_proj, order: NLO_QCD}
+  - {name: CMS_ttW_13TeV_proj, order: NLO_QCD}
+  - {name: CMS_ttZ_13TeV_pTZ_proj, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_Mtt_proj, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_asy_proj, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_dilep_2016_Mtt_proj, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_ljets_2016_Mtt_proj, order: NLO_QCD}
+  - {name: CMS_tt_13TeV_ljets_inc_proj, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_2016_proj, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_dilepton_inc_proj, order: NLO_QCD}
+  - {name: CMS_ttbb_13TeV_ljets_inc_proj, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_2023_proj, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_run2_proj, order: NLO_QCD}
+  - {name: CMS_tttt_13TeV_slep_inc_proj, order: NLO_QCD}
+  # HL-LHC specific projections
+  - {name: HLLHC_HH_14TeV, order: LO}
+  - {name: HLLHC_HH_bbaa_14TeV_low_high_mass, order: LO}
+  - {name: HLLHC_HH_bbtautau_14TeV_low_high_mass, order: LO}
+  - {name: HLLHC_tt_13TeV_Mtt, order: NLO_QCD}
+  - {name: HLLHC_tt_13TeV_asy, order: NLO_QCD}
+  - {name: HLLHC_H_14TeV_2025, order: NLO_QCD}
+
+# Coefficients in natural expressions format:
+# Each physical operator Op is constrained via: Op = bound * Op_nat
+# where Op_nat is a dimensionless natural variable with uniform prior on [-1, 1].
+# The bounds encode the aggressive (outer) limits of the coefficient ranges.
+coefficients:
+  Op:
+    free: False
+    vars: [Op_nat]
+    expr: "19.05215051570753 * Op_nat"
+  Op_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpG:
+    free: False
+    vars: [OpG_nat]
+    expr: "0.0342918187947794 * OpG_nat"
+  OpG_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpB:
+    free: False
+    vars: [OpB_nat]
+    expr: "0.3893466318709695 * OpB_nat"
+  OpB_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpW:
+    free: False
+    vars: [OpW_nat]
+    expr: "0.8008972243094277 * OpW_nat"
+  OpW_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpWB:
+    free: False
+    vars: [OpWB_nat]
+    expr: "0.9581290446777659 * OpWB_nat"
+  OpWB_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpBox:
+    free: False
+    vars: [OpBox_nat]
+    expr: "4.344446021507367 * OpBox_nat"
+  OpBox_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpD:
+    free: False
+    vars: [OpD_nat]
+    expr: "11.745064276273867 * OpD_nat"
+  OpD_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OWWW:
+    free: False
+    vars: [OWWW_nat]
+    expr: "1.8087973180617714 * OWWW_nat"
+  OWWW_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OtW:
+    free: False
+    vars: [OtW_nat]
+    expr: "0.3651755287252191 * OtW_nat"
+  OtW_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OtG:
+    free: False
+    vars: [OtG_nat]
+    expr: "0.26015123947820995 * OtG_nat"
+  OtG_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OtZ:
+    free: False
+    vars: [OtZ_nat]
+    expr: "0.7008318311981473 * OtZ_nat"
+  OtZ_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpQM:
+    free: False
+    vars: [OpQM_nat]
+    expr: "57.96498775842198 * OpQM_nat"
+  OpQM_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pQ3:
+    free: False
+    vars: [O3pQ3_nat]
+    expr: "12.942664406462672 * O3pQ3_nat"
+  O3pQ3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opt:
+    free: False
+    vars: [Opt_nat]
+    expr: "84.11659917462747 * Opt_nat"
+  Opt_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpqMi:
+    free: False
+    vars: [OpqMi_nat]
+    expr: "4.00238851813344 * OpqMi_nat"
+  OpqMi_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pq:
+    free: False
+    vars: [O3pq_nat]
+    expr: "0.2522298703928698 * O3pq_nat"
+  O3pq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opui:
+    free: False
+    vars: [Opui_nat]
+    expr: "3.6823526808313636 * Opui_nat"
+  Opui_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opdi:
+    free: False
+    vars: [Opdi_nat]
+    expr: "6.288291506534908 * Opdi_nat"
+  Opdi_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otp:
+    free: False
+    vars: [Otp_nat]
+    expr: "15.177156402166082 * Otp_nat"
+  Otp_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ocp:
+    free: False
+    vars: [Ocp_nat]
+    expr: "8.073816852849385 * Ocp_nat"
+  Ocp_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Obp:
+    free: False
+    vars: [Obp_nat]
+    expr: "0.10437390447035494 * Obp_nat"
+  Obp_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otap:
+    free: False
+    vars: [Otap_nat]
+    expr: "0.06774895460449837 * Otap_nat"
+  Otap_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Omup:
+    free: False
+    vars: [Omup_nat]
+    expr: "363.46532410023633 * Omup_nat"
+  Omup_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQQ1:
+    free: False
+    vars: [OQQ1_nat]
+    expr: "437.0782423347008 * OQQ1_nat"
+  OQQ1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQQ8:
+    free: False
+    vars: [OQQ8_nat]
+    expr: "421.57210931691264 * OQQ8_nat"
+  OQQ8_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQt1:
+    free: False
+    vars: [OQt1_nat]
+    expr: "356.0809966742422 * OQt1_nat"
+  OQt1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQt8:
+    free: False
+    vars: [OQt8_nat]
+    expr: "318.8596641231949 * OQt8_nat"
+  OQt8_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ott1:
+    free: False
+    vars: [Ott1_nat]
+    expr: "178.29693926937827 * Ott1_nat"
+  Ott1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O81qq:
+    free: False
+    vars: [O81qq_nat]
+    expr: "20.78795029889104 * O81qq_nat"
+  O81qq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O11qq:
+    free: False
+    vars: [O11qq_nat]
+    expr: "19.103289821520946 * O11qq_nat"
+  O11qq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O83qq:
+    free: False
+    vars: [O83qq_nat]
+    expr: "8.818627505287093 * O83qq_nat"
+  O83qq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O13qq:
+    free: False
+    vars: [O13qq_nat]
+    expr: "2.6712885998715734 * O13qq_nat"
+  O13qq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O8qt:
+    free: False
+    vars: [O8qt_nat]
+    expr: "16.944583017472702 * O8qt_nat"
+  O8qt_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O1qt:
+    free: False
+    vars: [O1qt_nat]
+    expr: "19.365250635199452 * O1qt_nat"
+  O1qt_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O8ut:
+    free: False
+    vars: [O8ut_nat]
+    expr: "27.438654524892378 * O8ut_nat"
+  O8ut_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O1ut:
+    free: False
+    vars: [O1ut_nat]
+    expr: "24.322305528132468 * O1ut_nat"
+  O1ut_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O8qu:
+    free: False
+    vars: [O8qu_nat]
+    expr: "20.073305051899457 * O8qu_nat"
+  O8qu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O1qu:
+    free: False
+    vars: [O1qu_nat]
+    expr: "22.759719077145924 * O1qu_nat"
+  O1qu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O8dt:
+    free: False
+    vars: [O8dt_nat]
+    expr: "37.851124870698264 * O8dt_nat"
+  O8dt_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O1dt:
+    free: False
+    vars: [O1dt_nat]
+    expr: "51.780058188931754 * O1dt_nat"
+  O1dt_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O8qd:
+    free: False
+    vars: [O8qd_nat]
+    expr: "23.708455165794195 * O8qd_nat"
+  O8qd_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O1qd:
+    free: False
+    vars: [O1qd_nat]
+    expr: "42.07260911706058 * O1qd_nat"
+  O1qd_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl1:
+    free: False
+    vars: [Opl1_nat]
+    expr: "1.5 * Opl1_nat"
+  Opl1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl2:
+    free: False
+    vars: [Opl2_nat]
+    expr: "0.3 * Opl2_nat"
+  Opl2_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl3:
+    free: False
+    vars: [Opl3_nat]
+    expr: "0.3 * Opl3_nat"
+  Opl3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl1:
+    free: False
+    vars: [O3pl1_nat]
+    expr: "0.3 * O3pl1_nat"
+  O3pl1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl2:
+    free: False
+    vars: [O3pl2_nat]
+    expr: "0.3 * O3pl2_nat"
+  O3pl2_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl3:
+    free: False
+    vars: [O3pl3_nat]
+    expr: "0.5 * O3pl3_nat"
+  O3pl3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opmu:
+    free: False
+    vars: [Opmu_nat]
+    expr: "0.5 * Opmu_nat"
+  Opmu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opta:
+    free: False
+    vars: [Opta_nat]
+    expr: "0.5 * Opta_nat"
+  Opta_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ope:
+    free: False
+    vars: [Ope_nat]
+    expr: "10.74020097545086 * Ope_nat"
+  Ope_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1221:
+    free: False
+    vars: [Oll1221_nat]
+    expr: "0.6 * Oll1221_nat"
+  Oll1221_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1331:
+    free: False
+    vars: [Oll1331_nat]
+    expr: "10.0 * Oll1331_nat"
+  Oll1331_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll2332:
+    free: False
+    vars: [Oll2332_nat]
+    expr: "10.0 * Oll2332_nat"
+  Oll2332_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1111:
+    free: False
+    vars: [Oll1111_nat]
+    expr: "0.5 * Oll1111_nat"
+  Oll1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll2222:
+    free: False
+    vars: [Oll2222_nat]
+    expr: "10.0 * Oll2222_nat"
+  Oll2222_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll3333:
+    free: False
+    vars: [Oll3333_nat]
+    expr: "10.0 * Oll3333_nat"
+  Oll3333_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1122:
+    free: False
+    vars: [Oll1122_nat]
+    expr: "10.0 * Oll1122_nat"
+  Oll1122_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1133:
+    free: False
+    vars: [Oll1133_nat]
+    expr: "10.0 * Oll1133_nat"
+  Oll1133_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll2233:
+    free: False
+    vars: [Oll2233_nat]
+    expr: "10.0 * Oll2233_nat"
+  Oll2233_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole1111:
+    free: False
+    vars: [Ole1111_nat]
+    expr: "10.0 * Ole1111_nat"
+  Ole1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole2222:
+    free: False
+    vars: [Ole2222_nat]
+    expr: "10.0 * Ole2222_nat"
+  Ole2222_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole3333:
+    free: False
+    vars: [Ole3333_nat]
+    expr: "10.0 * Ole3333_nat"
+  Ole3333_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole3311:
+    free: False
+    vars: [Ole3311_nat]
+    expr: "10.0 * Ole3311_nat"
+  Ole3311_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole1133:
+    free: False
+    vars: [Ole1133_nat]
+    expr: "10.0 * Ole1133_nat"
+  Ole1133_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole2211:
+    free: False
+    vars: [Ole2211_nat]
+    expr: "10.0 * Ole2211_nat"
+  Ole2211_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole1122:
+    free: False
+    vars: [Ole1122_nat]
+    expr: "10.0 * Ole1122_nat"
+  Ole1122_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole2233:
+    free: False
+    vars: [Ole2233_nat]
+    expr: "10.0 * Ole2233_nat"
+  Ole2233_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole3322:
+    free: False
+    vars: [Ole3322_nat]
+    expr: "10.0 * Ole3322_nat"
+  Ole3322_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee1111:
+    free: False
+    vars: [Oee1111_nat]
+    expr: "10.0 * Oee1111_nat"
+  Oee1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee2222:
+    free: False
+    vars: [Oee2222_nat]
+    expr: "10.0 * Oee2222_nat"
+  Oee2222_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee3333:
+    free: False
+    vars: [Oee3333_nat]
+    expr: "10.0 * Oee3333_nat"
+  Oee3333_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee1133:
+    free: False
+    vars: [Oee1133_nat]
+    expr: "10.0 * Oee1133_nat"
+  Oee1133_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee1122:
+    free: False
+    vars: [Oee1122_nat]
+    expr: "10.0 * Oee1122_nat"
+  Oee1122_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee2233:
+    free: False
+    vars: [Oee2233_nat]
+    expr: "10.0 * Oee2233_nat"
+  Oee2233_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Omuu:
+    free: False
+    vars: [Omuu_nat]
+    expr: "0.07 * Omuu_nat"
+  Omuu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otau:
+    free: False
+    vars: [Otau_nat]
+    expr: "0.07 * Otau_nat"
+  Otau_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oeu:
+    free: False
+    vars: [Oeu_nat]
+    expr: "2.1150830990380998 * Oeu_nat"
+  Oeu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Omud:
+    free: False
+    vars: [Omud_nat]
+    expr: "0.05 * Omud_nat"
+  Omud_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otad:
+    free: False
+    vars: [Otad_nat]
+    expr: "0.05 * Otad_nat"
+  Otad_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oeb:
+    free: False
+    vars: [Oeb_nat]
+    expr: "10.0 * Oeb_nat"
+  Oeb_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Omub:
+    free: False
+    vars: [Omub_nat]
+    expr: "10.0 * Omub_nat"
+  Omub_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otab:
+    free: False
+    vars: [Otab_nat]
+    expr: "10.0 * Otab_nat"
+  Otab_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oed:
+    free: False
+    vars: [Oed_nat]
+    expr: "5.539647814860317 * Oed_nat"
+  Oed_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otl3:
+    free: False
+    vars: [Otl3_nat]
+    expr: "40.0 * Otl3_nat"
+  Otl3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otl2:
+    free: False
+    vars: [Otl2_nat]
+    expr: "40.0 * Otl2_nat"
+  Otl2_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otl1:
+    free: False
+    vars: [Otl1_nat]
+    expr: "40.0 * Otl1_nat"
+  Otl1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otmu:
+    free: False
+    vars: [Otmu_nat]
+    expr: "40.0 * Otmu_nat"
+  Otmu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Otta:
+    free: False
+    vars: [Otta_nat]
+    expr: "40.0 * Otta_nat"
+  Otta_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ote:
+    free: False
+    vars: [Ote_nat]
+    expr: "103.8913042921159 * Ote_nat"
+  Ote_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql33:
+    free: False
+    vars: [Oql33_nat]
+    expr: "0.05 * Oql33_nat"
+  Oql33_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql23:
+    free: False
+    vars: [Oql23_nat]
+    expr: "0.05 * Oql23_nat"
+  Oql23_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql13:
+    free: False
+    vars: [Oql13_nat]
+    expr: "0.05 * Oql13_nat"
+  Oql13_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql3M:
+    free: False
+    vars: [Oql3M_nat]
+    expr: "0.1 * Oql3M_nat"
+  Oql3M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql2M:
+    free: False
+    vars: [Oql2M_nat]
+    expr: "0.1 * Oql2M_nat"
+  Oql2M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oql1M:
+    free: False
+    vars: [Oql1M_nat]
+    expr: "0.1 * Oql1M_nat"
+  Oql1M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl33:
+    free: False
+    vars: [OQl33_nat]
+    expr: "1.0 * OQl33_nat"
+  OQl33_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl23:
+    free: False
+    vars: [OQl23_nat]
+    expr: "1.0 * OQl23_nat"
+  OQl23_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl13:
+    free: False
+    vars: [OQl13_nat]
+    expr: "1.0 * OQl13_nat"
+  OQl13_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl3M:
+    free: False
+    vars: [OQl3M_nat]
+    expr: "2.0 * OQl3M_nat"
+  OQl3M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl2M:
+    free: False
+    vars: [OQl2M_nat]
+    expr: "2.0 * OQl2M_nat"
+  OQl2M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQl1M:
+    free: False
+    vars: [OQl1M_nat]
+    expr: "2.0 * OQl1M_nat"
+  OQl1M_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol3u:
+    free: False
+    vars: [Ol3u_nat]
+    expr: "0.05 * Ol3u_nat"
+  Ol3u_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol2u:
+    free: False
+    vars: [Ol2u_nat]
+    expr: "0.05 * Ol2u_nat"
+  Ol2u_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol1u:
+    free: False
+    vars: [Ol1u_nat]
+    expr: "0.05 * Ol1u_nat"
+  Ol1u_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol3b:
+    free: False
+    vars: [Ol3b_nat]
+    expr: "10.0 * Ol3b_nat"
+  Ol3b_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol2b:
+    free: False
+    vars: [Ol2b_nat]
+    expr: "10.0 * Ol2b_nat"
+  Ol2b_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol1b:
+    free: False
+    vars: [Ol1b_nat]
+    expr: "10.0 * Ol1b_nat"
+  Ol1b_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol3d:
+    free: False
+    vars: [Ol3d_nat]
+    expr: "0.05 * Ol3d_nat"
+  Ol3d_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol2d:
+    free: False
+    vars: [Ol2d_nat]
+    expr: "0.05 * Ol2d_nat"
+  Ol2d_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ol1d:
+    free: False
+    vars: [Ol1d_nat]
+    expr: "0.05 * Ol1d_nat"
+  Ol1d_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oqmu:
+    free: False
+    vars: [Oqmu_nat]
+    expr: "0.03 * Oqmu_nat"
+  Oqmu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oqta:
+    free: False
+    vars: [Oqta_nat]
+    expr: "0.03 * Oqta_nat"
+  Oqta_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oqe:
+    free: False
+    vars: [Oqe_nat]
+    expr: "4.995355395627478 * Oqe_nat"
+  Oqe_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQmu:
+    free: False
+    vars: [OQmu_nat]
+    expr: "1.0 * OQmu_nat"
+  OQmu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQta:
+    free: False
+    vars: [OQta_nat]
+    expr: "1.0 * OQta_nat"
+  OQta_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OQe:
+    free: False
+    vars: [OQe_nat]
+    expr: "104.35902876096327 * OQe_nat"
+  OQe_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+actions_:
+  - run_test

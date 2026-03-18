@@ -1,0 +1,207 @@
+# ESPPU linear test runcard
+# Datasets: LEP precision measurements
+# Expansion: linear EFT (no quadratic terms)
+# Coefficient format: natural expressions
+#   Each physical coefficient Op is constrained as: Op = bound * Op_nat
+#   where Op_nat is a dimensionless natural variable with uniform prior on [-1, 1]
+
+data_path: ./commondata
+theory_path: ./theory
+
+use_theory_covmat: False
+use_t0: False
+use_quad: False
+
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP_Bhabha_2013, order: LO}
+  - {name: LEP_Brw_2013, order: LO}
+  - {name: LEP_eeWW_182GeV, order: LO}
+  - {name: LEP_eeWW_189GeV, order: LO}
+  - {name: LEP_eeWW_198GeV, order: LO}
+  - {name: LEP_eeWW_206GeV, order: LO}
+
+# Coefficients in natural expressions format:
+# Each physical operator Op is constrained via: Op = bound * Op_nat
+# where Op_nat is a dimensionless natural variable with uniform prior on [-1, 1].
+# This parametrisation makes the sampling geometry uniform in the natural variables
+# while encoding the physical bounds through the expression.
+coefficients:
+  O3pQ3:
+    free: False
+    vars: [O3pQ3_nat]
+    expr: "12.942664406462672 * O3pQ3_nat"
+  O3pQ3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl1:
+    free: False
+    vars: [O3pl1_nat]
+    expr: "0.3 * O3pl1_nat"
+  O3pl1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl2:
+    free: False
+    vars: [O3pl2_nat]
+    expr: "0.3 * O3pl2_nat"
+  O3pl2_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pl3:
+    free: False
+    vars: [O3pl3_nat]
+    expr: "0.5 * O3pl3_nat"
+  O3pl3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  O3pq:
+    free: False
+    vars: [O3pq_nat]
+    expr: "0.2522298703928698 * O3pq_nat"
+  O3pq_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oee1111:
+    free: False
+    vars: [Oee1111_nat]
+    expr: "10.0 * Oee1111_nat"
+  Oee1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ole1111:
+    free: False
+    vars: [Ole1111_nat]
+    expr: "10.0 * Ole1111_nat"
+  Ole1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1111:
+    free: False
+    vars: [Oll1111_nat]
+    expr: "0.5 * Oll1111_nat"
+  Oll1111_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Oll1221:
+    free: False
+    vars: [Oll1221_nat]
+    expr: "0.6 * Oll1221_nat"
+  Oll1221_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpD:
+    free: False
+    vars: [OpD_nat]
+    expr: "11.745064276273867 * OpD_nat"
+  OpD_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpQM:
+    free: False
+    vars: [OpQM_nat]
+    expr: "57.96498775842198 * OpQM_nat"
+  OpQM_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpWB:
+    free: False
+    vars: [OpWB_nat]
+    expr: "0.9581290446777659 * OpWB_nat"
+  OpWB_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opdi:
+    free: False
+    vars: [Opdi_nat]
+    expr: "6.288291506534908 * Opdi_nat"
+  Opdi_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Ope:
+    free: False
+    vars: [Ope_nat]
+    expr: "10.74020097545086 * Ope_nat"
+  Ope_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl1:
+    free: False
+    vars: [Opl1_nat]
+    expr: "1.5 * Opl1_nat"
+  Opl1_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl2:
+    free: False
+    vars: [Opl2_nat]
+    expr: "0.3 * Opl2_nat"
+  Opl2_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opl3:
+    free: False
+    vars: [Opl3_nat]
+    expr: "0.3 * Opl3_nat"
+  Opl3_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opmu:
+    free: False
+    vars: [Opmu_nat]
+    expr: "0.5 * Opmu_nat"
+  Opmu_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OpqMi:
+    free: False
+    vars: [OpqMi_nat]
+    expr: "4.00238851813344 * OpqMi_nat"
+  OpqMi_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opta:
+    free: False
+    vars: [Opta_nat]
+    expr: "0.5 * Opta_nat"
+  Opta_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  Opui:
+    free: False
+    vars: [Opui_nat]
+    expr: "3.6823526808313636 * Opui_nat"
+  Opui_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+  OWWW:
+    free: False
+    vars: [OWWW_nat]
+    expr: "1.8087973180617714 * OWWW_nat"
+  OWWW_nat:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+actions_:
+  - run_test

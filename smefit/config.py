@@ -212,7 +212,9 @@ class smefitConfig(Config):
             base_chi2 = None
 
         if not external_chi2:
-            return Chi2(base_chi2, param_names=coefficients.free_names)
+            return Chi2(
+                base_chi2, param_names=coefficients.free_names, num_data=data.num_data
+            )
 
         ext_modules = load_external_chi2(external_chi2, coefficients, rge_dict=rge)
 
@@ -226,7 +228,12 @@ class smefitConfig(Config):
             def total_fn(coeffs):
                 return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
 
-        return Chi2(total_fn, param_names=coefficients.free_names, has_external=True)
+        return Chi2(
+            total_fn,
+            param_names=coefficients.free_names,
+            num_data=data.num_data,
+            has_external=True,
+        )
 
     def produce_chi2(
         self,

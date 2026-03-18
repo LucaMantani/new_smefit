@@ -21,10 +21,11 @@ class Chi2:
         Whether the chi2 includes external contributions.
     """
 
-    def __init__(self, fn, param_names, has_external=False):
+    def __init__(self, fn, param_names, num_data, has_external=False):
         self._fn = fn
         self.param_names = param_names
         self.nparam = len(param_names)
+        self.num_data = num_data
         self.has_external = has_external
 
     @jax.jit(static_argnames=("self",))

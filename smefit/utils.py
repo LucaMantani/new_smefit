@@ -9,6 +9,8 @@ import time
 import jax
 import jax.numpy as jnp
 
+from smefit.fit_result import FitResult
+
 
 def ensure_list(x):
     """Ensure the input is a list.
@@ -33,8 +35,8 @@ def chi2_timing(chi2, n_eval=1000):
     print(f"Chi2 evaluation time: {(end - start) / n_eval:.4e} seconds")
 
 
-def hessian_chi2_SM(chi2):
-    """Compute the Hessian of the chi2 function in zero."""
+def hessian_fit_SM(chi2, output_path):
+    """Compute the Hessian of the chi2 function in zero and perform Hessian fit"""
     coeffs = jnp.zeros(chi2.nparam)
     hess_fn = jax.hessian(chi2)
     hess = 0.5 * hess_fn(coeffs)
@@ -42,15 +44,23 @@ def hessian_chi2_SM(chi2):
     # Invert it to get the covariance matrix
     cov = jnp.linalg.inv(hess)
 
-    # Now take the diagonal part and associate each one to the corresponding parameter name
-    param_names = chi2.param_names
-    std_dict = {name: (jnp.sqrt(cov[i, i])) for i, name in enumerate(param_names)}
+    samples = jax.random.multivariate_normal(
+        jax.random.PRNGKey(0), mean=jnp.zeros(chi2.nparam), cov=cov, shape=(10000,)
+    )
 
-    print("Hessian-based 1-sigma uncertainties at the SM point:")
-    for name, std in std_dict.items():
-        print(f"  {name}: {std:.4e}")
+    fit = FitResult(
+        free_parameters=chi2.param_names,
+        best_fit_point={name: 0.0 for name in chi2.param_names},
+        max_loglikelihood=float(-0.5 * chi2(coeffs)),
+        num_data=chi2.num_data,
+        logz=None,
+        samples={name: samples[:, i] for i, name in enumerate(chi2.param_names)},
+    )
 
-    return std_dict
+    fit.print_summary()
+    fit.write(output_path)
+
+    return fit
 
 
 def run_prior_test(prior):

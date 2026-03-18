@@ -144,9 +144,9 @@ external_chi2:
       path: ./external_chi2/optimal_observables/interface_oos_fccee.py
 
 
-# whitening:
-#   sigma_prior: 5.0
-#   eps: 1e-8
+whitening:
+  sigma_prior: 5.0
+  eps: 1e-8
 
 
 
@@ -154,6 +154,6 @@ actions_:
 # - run_analytic_fit
 # - run_test
 # - run_individual_analytic_fits
-- run_ultranest_fit
-# - run_blackjax_fit
+# - run_ultranest_fit
+- run_blackjax_fit
 # - chi2_timing

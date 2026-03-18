@@ -1,0 +1,536 @@
+# path to data and theory
+# path to common data
+data_path: /Users/luca/Applications/smefit_database/commondata_projections_L0
+
+# path to theory tables, default same as data path
+theory_path: /Users/luca/Applications/smefit_database/theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+rge:
+  init_scale: 5000.0
+  obs_scale: dynamic  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+  rg_matrix: rge_matrix5000.pkl
+
+# # Datasets to include
+datasets:
+  # LEP
+- {name: LEP1_EWPOs_2006, order: LO}   # order: LO
+- {name: LEP_Bhabha_2013, order: LO}   # order: LO
+- {name: LEP_Brw_2013, order: LO}   # order: LO
+- {name: LEP_eeWW_182GeV, order: LO}   # order: LO
+- {name: LEP_eeWW_189GeV, order: LO}   # order: LO
+- {name: LEP_eeWW_198GeV, order: LO}   # order: LO
+- {name: LEP_eeWW_206GeV, order: LO}   # order: LO
+  # ATLAS_CMS
+- {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_CMS_tt_AC_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+  # ATLAS
+- {name: ATLAS_Zjj_13TeV_dphijj, order: LO}   # order: LO
+- {name: ATLAS_SSinc_RunII, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_STXS_runII_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WH_Hbb_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WW_13TeV_2016_memu, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WZ_13TeV_2016_mTWZ, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WhelF_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_Whel_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ZH_Hbb_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ggF_13TeV_2015, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ggF_ZZ_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_hh_runII_13TeV, order: LO}   # order: LO
+- {name: ATLAS_tW_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tW_8TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tW_slep_8TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_tZ_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tZ_13TeV_run2_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_sch_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_sch_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_tch_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_tch_8TeV_diff_Yt, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_ttW_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttW_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttW_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_ttZ_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_ttZ_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttZ_13TeV_pTZ, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttZ_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tt_13TeV_asy_2022, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tt_8TeV_dilep_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tt_8TeV_ljets_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tta_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttbb_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tttt_13TeV_2023, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_tttt_13TeV_run2, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+  # CMS
+- {name: CMS_H_13TeV_2015_pTH, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_SSinc_RunII, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_WZ_13TeV_2016_pTZ, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_WZ_13TeV_2022_pTZ, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_WhelF_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ggF_aa_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tW_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tW_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tW_8TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tZ_13TeV_2016_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tZ_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tZ_13TeV_pTt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_sch_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_tch_13TeV_2019_diff_Yt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_tch_13TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_tch_8TeV_diff_Yt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_tch_8TeV_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt2D_8TeV_dilep_MttYtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttW_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttW_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_ttZ_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttZ_13TeV_pTZ, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttZ_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_13TeV_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_13TeV_asy, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_dilep_2015_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_13TeV_dilep_2016_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_ljets_2015_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_ljets_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_8TeV_ljets_Ytt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tta_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_ttbb_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_dilepton_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_ljets_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tttt_13TeV, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tttt_13TeV_2023, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tttt_13TeV_run2, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+  # HLLHC Projections
+- {name: ATLAS_Zjj_13TeV_dphijj_proj, order: LO}   # order: LO
+- {name: ATLAS_SSinc_RunII_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_STXS_runII_13TeV_uncor_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WH_Hbb_13TeV_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WW_13TeV_2016_memu_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_WZ_13TeV_2016_mTWZ_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_Whel_13TeV_uncor_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ZH_Hbb_13TeV_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ggF_13TeV_2015_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ggF_ZZ_13TeV_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tW_13TeV_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tZ_13TeV_run2_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_sch_13TeV_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_t_tch_13TeV_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttW_13TeV_2016_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttZ_13TeV_pTZ_uncor_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_tt_13TeV_asy_2022_uncor_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tt_13TeV_ljets_2016_Mtt_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_ttbb_13TeV_2016_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tttt_13TeV_2023_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: ATLAS_tttt_13TeV_run2_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: ATLAS_tttt_13TeV_slep_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_H_13TeV_2015_pTH_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_SSinc_RunII_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_WZ_13TeV_2016_pTZ_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_WZ_13TeV_2022_pTZ_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ggF_aa_13TeV_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tW_13TeV_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tW_13TeV_slep_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tZ_13TeV_pTt_uncor_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_t_tch_13TeV_2019_diff_Yt_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttW_13TeV_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttZ_13TeV_pTZ_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_Mtt_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_13TeV_asy_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tt_13TeV_dilep_2016_Mtt_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_ljets_2016_Mtt_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tt_13TeV_ljets_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_2016_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_dilepton_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_ttbb_13TeV_ljets_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tttt_13TeV_2023_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+#- {name: CMS_tttt_13TeV_run2_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: CMS_tttt_13TeV_slep_inc_proj, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: HLLHC_HH_14TeV, order: LO}   # order: LO
+- {name: HLLHC_HH_bbaa_14TeV_low_high_mass, order: LO}   # order: LO
+- {name: HLLHC_HH_bbtautau_14TeV_low_high_mass, order: LO}   # order: LO
+- {name: HLLHC_tt_13TeV_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: HLLHC_tt_13TeV_asy, order: NLO_QCD}   # order: LO, NLO_QCD
+- {name: HLLHC_H_14TeV_2025, order: NLO_QCD}   # order: LO, NLO_QCD
+# Coefficients to fit
+coefficients:
+  Op:
+      free: True
+      prior: {dist: uniform, low: -19.05215051570753, high: 19.05215051570753}
+  OpG:
+      free: True
+      prior: {dist: uniform, low: -0.0342918187947794, high: 0.0342918187947794}
+  OpB:
+      free: True
+      prior: {dist: uniform, low: -0.3893466318709695, high: 0.3893466318709695}
+  OpW:
+      free: True
+      prior: {dist: uniform, low: -0.8008972243094277, high: 0.8008972243094277}
+  OpWB:
+      free: True
+      prior: {dist: uniform, low: -0.9581290446777659, high: 0.9581290446777659}
+  OpBox:
+      free: True
+      prior: {dist: uniform, low: -4.344446021507367, high: 4.344446021507367}
+  OpD:
+      free: True
+      prior: {dist: uniform, low: -11.745064276273867, high: 11.745064276273867}
+  OWWW:
+      free: True
+      prior: {dist: uniform, low: -1.8087973180617714, high: 1.8087973180617714}
+  OtW:
+      free: True
+      prior: {dist: uniform, low: -0.3651755287252191, high: 0.3651755287252191}
+  OtG:
+      free: True
+      prior: {dist: uniform, low: -0.26015123947820995, high: 0.26015123947820995}
+  OtZ:
+      free: True
+      prior: {dist: uniform, low: -0.7008318311981473, high: 0.7008318311981473}
+  OpQM:
+      free: True
+      prior: {dist: uniform, low: -57.96498775842198, high: 57.96498775842198}
+  O3pQ3:
+      free: True
+      prior: {dist: uniform, low: -12.942664406462672, high: 12.942664406462672}
+  Opt:
+      free: True
+      prior: {dist: uniform, low: -84.11659917462747, high: 84.11659917462747}
+  OpqMi:
+      free: True
+      prior: {dist: uniform, low: -4.00238851813344, high: 4.00238851813344}
+  O3pq:
+      free: True
+      prior: {dist: uniform, low: -0.2522298703928698, high: 0.2522298703928698}
+  Opui:
+      free: True
+      prior: {dist: uniform, low: -3.6823526808313636, high: 3.6823526808313636}
+  Opdi:
+      free: True
+      prior: {dist: uniform, low: -6.288291506534908, high: 6.288291506534908}
+  Otp:
+      free: True
+      prior: {dist: uniform, low: -15.177156402166082, high: 15.177156402166082}
+  Ocp:
+      free: True
+      prior: {dist: uniform, low: -8.073816852849385, high: 8.073816852849385}
+  Obp:
+      free: True
+      prior: {dist: uniform, low: -0.10437390447035494, high: 0.10437390447035494}
+  Otap:
+      free: True
+      prior: {dist: uniform, low: -0.06774895460449837, high: 0.06774895460449837}
+  Omup:
+      free: True
+      prior: {dist: uniform, low: -363.46532410023633, high: 363.46532410023633}
+  OQQ1:
+      free: True
+      prior: {dist: uniform, low: -437.0782423347008, high: 437.0782423347008}
+  OQQ8:
+      free: True
+      prior: {dist: uniform, low: -421.57210931691264, high: 421.57210931691264}
+  OQt1:
+      free: True
+      prior: {dist: uniform, low: -356.0809966742422, high: 356.0809966742422}
+  OQt8:
+      free: True
+      prior: {dist: uniform, low: -318.8596641231949, high: 318.8596641231949}
+  Ott1:
+      free: True
+      prior: {dist: uniform, low: -178.29693926937827, high: 178.29693926937827}
+  O81qq:
+      free: True
+      prior: {dist: uniform, low: -20.78795029889104, high: 20.78795029889104}
+  O11qq:
+      free: True
+      prior: {dist: uniform, low: -19.103289821520946, high: 19.103289821520946}
+  O83qq:
+      free: True
+      prior: {dist: uniform, low: -8.818627505287093, high: 8.818627505287093}
+  O13qq:
+      free: True
+      prior: {dist: uniform, low: -2.6712885998715734, high: 2.6712885998715734}
+  O8qt:
+      free: True
+      prior: {dist: uniform, low: -16.944583017472702, high: 16.944583017472702}
+  O1qt:
+      free: True
+      prior: {dist: uniform, low: -19.365250635199452, high: 19.365250635199452}
+  O8ut:
+      free: True
+      prior: {dist: uniform, low: -27.438654524892378, high: 27.438654524892378}
+  O1ut:
+      free: True
+      prior: {dist: uniform, low: -24.322305528132468, high: 24.322305528132468}
+  O8qu:
+      free: True
+      prior: {dist: uniform, low: -20.073305051899457, high: 20.073305051899457}
+  O1qu:
+      free: True
+      prior: {dist: uniform, low: -22.759719077145924, high: 22.759719077145924}
+  O8dt:
+      free: True
+      prior: {dist: uniform, low: -37.851124870698264, high: 37.851124870698264}
+  O1dt:
+      free: True
+      prior: {dist: uniform, low: -51.780058188931754, high: 51.780058188931754}
+  O8qd:
+      free: True
+      prior: {dist: uniform, low: -23.708455165794195, high: 23.708455165794195}
+  O1qd:
+      free: True
+      prior: {dist: uniform, low: -42.07260911706058, high: 42.07260911706058}
+  Opl1:
+      free: True
+      prior: {dist: uniform, low: -1.5, high: 1.5}
+  Opl2:
+      free: True
+      prior: {dist: uniform, low: -0.3, high: 0.3}
+  Opl3:
+      free: True
+      prior: {dist: uniform, low: -0.3, high: 0.3}
+  O3pl1:
+      free: True
+      prior: {dist: uniform, low: -0.3, high: 0.3}
+  O3pl2:
+      free: True
+      prior: {dist: uniform, low: -0.3, high: 0.3}
+  O3pl3:
+      free: True
+      prior: {dist: uniform, low: -0.5, high: 0.5}
+  Opmu:
+      free: True
+      prior: {dist: uniform, low: -0.5, high: 0.5}
+  Opta:
+      free: True
+      prior: {dist: uniform, low: -0.5, high: 0.5}
+  Ope:
+      free: True
+      prior: {dist: uniform, low: -10.74020097545086, high: 10.74020097545086}
+  Oll1221:
+      free: True
+      prior: {dist: uniform, low: -0.6, high: 0.6}
+  Oll1331:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll2332:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll1111:
+      free: True
+      prior: {dist: uniform, low: -0.5, high: 0.5}
+  Oll2222:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll3333:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll1122:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll1133:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oll2233:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole1111:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole2222:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole3333:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole3311:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole1133:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole2211:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole1122:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole2233:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Ole3322:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee1111:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee2222:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee3333:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee1133:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee1122:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Oee2233:
+      free: True
+      prior: {dist: uniform, low: -10.0, high: 10.0}
+  Omuu:
+      free: True
+      prior: {dist: uniform, low: -0.07, high: 0.07}
+  Otau:
+      free: True
+      prior: {dist: uniform, low: -0.07, high: 0.07}
+  Oeu:
+      free: True
+      prior: {dist: uniform, low: -2.1150830990380998, high: 2.1150830990380998}
+  Omud:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Otad:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Oeb:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Omub:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Otab:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Oed:
+      free: True
+      prior: {dist: uniform, low: -5.539647814860317, high: 5.539647814860317}
+  Otl3:
+      free: True
+      prior: {dist: uniform, low: -40, high: 40.0}
+  Otl2:
+      free: True
+      prior: {dist: uniform, low: -40, high: 40.0}
+  Otl1:
+      free: True
+      prior: {dist: uniform, low: -40, high: 40.0}
+  Otmu:
+      free: True
+      prior: {dist: uniform, low: -40, high: 40.0}
+  Otta:
+      free: True
+      prior: {dist: uniform, low: -40, high: 40.0}
+  Ote:
+      free: True
+      prior: {dist: uniform, low: -103.8913042921159, high: 103.8913042921159}
+  Oql33:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Oql23:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Oql13:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Oql3M:
+      free: True
+      prior: {dist: uniform, low: -0.1, high: 0.1}
+  Oql2M:
+      free: True
+      prior: {dist: uniform, low: -0.1, high: 0.1}
+  Oql1M:
+      free: True
+      prior: {dist: uniform, low: -0.1, high: 0.1}
+  OQl33:
+      free: True
+      prior: {dist: uniform, low: -1, high: 1.0}
+  OQl23:
+      free: True
+      prior: {dist: uniform, low: -1, high: 1.0}
+  OQl13:
+      free: True
+      prior: {dist: uniform, low: -1, high: 1.0}
+  OQl3M:
+      free: True
+      prior: {dist: uniform, low: -2, high: 2.0}
+  OQl2M:
+      free: True
+      prior: {dist: uniform, low: -2, high: 2.0}
+  OQl1M:
+      free: True
+      prior: {dist: uniform, low: -2, high: 2.0}
+  Ol3u:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Ol2u:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Ol1u:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Ol3b:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Ol2b:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Ol1b:
+      free: True
+      prior: {dist: uniform, low: -10, high: 10.0}
+  Ol3d:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Ol2d:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Ol1d:
+      free: True
+      prior: {dist: uniform, low: -0.05, high: 0.05}
+  Oqmu:
+      free: True
+      prior: {dist: uniform, low: -0.03, high: 0.03}
+  Oqta:
+      free: True
+      prior: {dist: uniform, low: -0.03, high: 0.03}
+  Oqe:
+      free: True
+      prior: {dist: uniform, low: -4.995355395627478, high: 4.995355395627478}
+  OQmu:
+      free: True
+      prior: {dist: uniform, low: -1, high: 1.0}
+  OQta:
+      free: True
+      prior: {dist: uniform, low: -1, high: 1.0}
+  OQe:
+      free: True
+      prior: {dist: uniform, low: -104.35902876096327, high: 104.35902876096327}
+
+
+# external_chi2:
+#   CMS_DYMee_13TeV:
+#       path: ./external_chi2/drell_yan/CMS_DYMee_13TeV.py
+#       use_quad: True
+#       order: NLO_QCD
+#       # save_rge_path: "./CMS_DYMee_rge_matrix"
+#       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+#       use_projection_L0: True
+
+
+
+
+actions_:
+# - run_analytic_fit
+# - run_test
+# - run_individual_analytic_fits
+# - run_ultranest_fit
+- chi2_timing

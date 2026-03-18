@@ -526,6 +526,7 @@ coefficients:
 #       use_projection_L0: True
 
 
+batch_sample_sizes: [1, 10, 100]
 
 
 actions_:
@@ -533,4 +534,5 @@ actions_:
 # - run_test
 # - run_individual_analytic_fits
 # - run_ultranest_fit
-- chi2_timing
+# - chi2_timing
+- time_chi2_vec

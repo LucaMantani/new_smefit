@@ -101,6 +101,11 @@ def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
+    # check if the requested theory covariance type exists in the data
+    if f"theory_cov_{th_cov_type}" not in theory_data:
+        raise ValueError(
+            f"Theory covariance type {th_cov_type} not found for dataset {dataset_name}"
+        )
     sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]

@@ -70,6 +70,16 @@ class FitResult:
             return {}
         return {name: float(jnp.std(vals)) for name, vals in self.samples.items()}
 
+    @property
+    def bic(self) -> float:
+        """Bayesian Information Criterion."""
+        return float(self.n_free * jnp.log(self.num_data) - 2 * self.max_loglikelihood)
+
+    @property
+    def aic(self) -> float:
+        """Akaike Information Criterion."""
+        return float(2 * self.n_free - 2 * self.max_loglikelihood)
+
     # ------------------------------------------------------------------
     # Display
     # ------------------------------------------------------------------
@@ -130,6 +140,8 @@ class FitResult:
             "logz": self.logz,
             "best_fit_point": self.best_fit_point,
             "std": unc,
+            "bic": self.bic,
+            "aic": self.aic,
             "samples": (
                 {name: vals.tolist() for name, vals in self.samples.items()}
                 if self.samples is not None

@@ -4,6 +4,7 @@ smefit.core.py
 Core module of smefit, containing the main data classes for the framework.
 """
 
+import copy
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Mapping, Optional
@@ -377,6 +378,20 @@ class CoefficientGroup:
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
 
+    def whitened(self, W: "jnp.ndarray") -> "CoefficientGroup":
+        """Return a CoefficientGroup whose resolve un-whitens free coefficients first.
+
+        Parameters
+        ----------
+        W : jnp.ndarray
+            Unwhitening matrix of shape (n_free, n_free). Applied as c = W @ c_w
+            before the standard resolve logic.
+        """
+
+        new = copy.copy(self)
+        new._W = W
+        return new
+
     def resolve(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
         """Map free coefficient values to the full set of coefficient values.
 
@@ -384,12 +399,16 @@ class CoefficientGroup:
         ----------
         free_coeffs : jnp.ndarray
             Values of the free coefficients, ordered by self.free_coeffs.
+            If this CoefficientGroup was created via ``whitened(W)``, the input
+            is treated as whitened coordinates and un-whitened first (c = W @ c_w).
 
         Returns
         -------
         jnp.ndarray
             Values for all coefficients, in self.coefficients order.
         """
+        if getattr(self, "_W", None) is not None:
+            free_coeffs = self._W @ free_coeffs
         lookup = {fc.name: val for fc, val in zip(self.free_coeffs, free_coeffs)}
         for coeff in self.fixed_coeffs:
             if coeff.value is not None:

@@ -74,7 +74,7 @@ def time_chi2_vec(
     # Initialize CSV file with headers
     with open(save_path, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["batch_size", "avg_time_seconds", "relative_time"])
+        writer.writerow(["batch_size", "time_seconds", "relative_time"])
 
     log.info(f"Results will be saved incrementally to {save_path}")
 
@@ -82,13 +82,7 @@ def time_chi2_vec(
     log.info("Generating samples for log likelihood timing...")
     max_size = max(sizes)
 
-    all_samples = []
-    for _ in range(max_size):
-        params = jnp.zeros(chi2.nparam)
-        all_samples.append(params)
-
-    # Stack all samples into one large batch
-    all_samples_batch = jnp.stack(all_samples)
+    all_samples_batch = jnp.zeros((max_size, chi2.nparam))
 
     # Create subsets for each size
     samples_list = []
@@ -99,31 +93,27 @@ def time_chi2_vec(
     log.info("Timing different batch sizes...")
     times = []
     successful_sizes = []
-    n_repeats = 100  # Number of times to repeat for averaging
 
     for i, size in enumerate(sizes):
-        # Warm-up: compile the function by calling it a couple times
+        # Warm-up: compile the function by calling it once and waiting
         log.info("Warming up (JIT compilation)...")
         try:
-            _ = chi2_vec(samples_list[i])
-            _ = chi2_vec(samples_list[i])
-            jax.block_until_ready(_)  # Wait for compilation to finish
+            jax.block_until_ready(chi2_vec(samples_list[i]))
         except Exception as e:
             log.error(f"Warm-up failed: {e}")
             raise
         try:
             log.info(f"Timing batch size: {size}")
             t0 = time.perf_counter()
-            for _ in range(n_repeats):
-                result = chi2_vec(samples_list[i])
-                jax.block_until_ready(result)  # ensure this iteration finished
+            result = chi2_vec(samples_list[i])
+            jax.block_until_ready(result)
             t1 = time.perf_counter()
-            avg_time = (t1 - t0) / n_repeats
+            avg_time = t1 - t0
             times.append(avg_time)
             successful_sizes.append(size)
 
             # Compute relative time (relative to first successful timing)
-            relative_time = avg_time / times[0] if times else 1.0
+            relative_time = avg_time / times[0]
 
             # Append result to CSV immediately
             with open(save_path, "a", newline="") as csvfile:

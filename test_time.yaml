@@ -526,7 +526,7 @@ coefficients:
 #       use_projection_L0: True
 
 
-batch_sample_sizes: [1, 10, 100]
+batch_sample_sizes: [1, 10, 100, 1000, 5000, 10000]
 
 
 actions_:

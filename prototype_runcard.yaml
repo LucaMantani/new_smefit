@@ -15,9 +15,15 @@ ultranest_settings:
   Run_settings:
     min_num_live_points: 200    # Minimum number of live points throughout the run.
     min_ess: 50                 # Target number of effective posterior samples.
-    frac_remain: 0.3            # Integrate until this fraction of the integral is left in the remainder.
+    frac_remain: 0.01            # Integrate until this fraction of the integral is left in the remainder.
   # SliceSampler_settings:
   #   nsteps: 106                 # number of accepted steps until the sample is considered independent.
+
+blackjax_settings:
+  n_live: 500
+  repeats: 3
+  delete_fraction: 0.5
+  log_precision: -2
 
 # rge:
 #   init_scale: 10000.0
@@ -138,9 +144,9 @@ external_chi2:
       path: ./external_chi2/optimal_observables/interface_oos_fccee.py
 
 
-whitening:
-  sigma_prior: 5.0
-  eps: 1e-8
+# whitening:
+#   sigma_prior: 5.0
+#   eps: 1e-8
 
 
 
@@ -149,4 +155,5 @@ actions_:
 # - run_test
 # - run_individual_analytic_fits
 - run_ultranest_fit
+# - run_blackjax_fit
 # - chi2_timing

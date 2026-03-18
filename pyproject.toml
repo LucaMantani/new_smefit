@@ -23,6 +23,10 @@ ultranest = "*"
 optax = "*"
 flax = "*"
 wilson="^2.4"
+blackjax = {git = "https://github.com/handley-lab/blackjax", tag = "v0.1.0-beta"}
+tqdm = "*"
+anesthetic = "^2.10.2"
+ipython = "*"
 
 # Mark Sphinx and its extensions optional:
 sphinx = {version="*", optional=true}

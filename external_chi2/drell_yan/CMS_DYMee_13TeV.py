@@ -56,14 +56,6 @@ class CMS_DYMee_13TeV:
         else:
             data_path = _HERE / "commondata"
 
-        if rge_dict is not None:
-            # If a pre-computed rge matrix is provided, add it to the rge_dict
-            # If not, set it to False in case it was defined for the datasets
-            if rg_matrix is not None:
-                rge_dict["rg_matrix"] = rg_matrix
-            else:
-                rge_dict["rg_matrix"] = False
-
         coeff_list = sorted(coefficients.names)
 
         dataset = loader.load_dataset(data_path, "CMS_DYMee_13TeV")
@@ -74,6 +66,13 @@ class CMS_DYMee_13TeV:
 
         rge_matrix = None
         if rge_dict is not None:
+            # If a pre-computed rge matrix is provided, add it to the rge_dict
+            # If not, set it to False in case it was defined for the datasets
+            if rg_matrix is not None:
+                rge_dict["rg_matrix"] = rg_matrix
+            else:
+                rge_dict["rg_matrix"] = False
+
             rge_matrix = load_rge_matrix(
                 rge_dict=rge_dict,
                 coeff_list=coeff_list,

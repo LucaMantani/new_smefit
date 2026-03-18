@@ -33,6 +33,26 @@ def chi2_timing(chi2, n_eval=1000):
     print(f"Chi2 evaluation time: {(end - start) / n_eval:.4e} seconds")
 
 
+def hessian_chi2_SM(chi2):
+    """Compute the Hessian of the chi2 function in zero."""
+    coeffs = jnp.zeros(chi2.nparam)
+    hess_fn = jax.hessian(chi2)
+    hess = 0.5 * hess_fn(coeffs)
+
+    # Invert it to get the covariance matrix
+    cov = jnp.linalg.inv(hess)
+
+    # Now take the diagonal part and associate each one to the corresponding parameter name
+    param_names = chi2.param_names
+    std_dict = {name: (jnp.sqrt(cov[i, i])) for i, name in enumerate(param_names)}
+
+    print("Hessian-based 1-sigma uncertainties at the SM point:")
+    for name, std in std_dict.items():
+        print(f"  {name}: {std:.4e}")
+
+    return std_dict
+
+
 def run_prior_test(prior):
     n_free = len(prior.param_names)
     print(f"Prior parameters: {prior.param_names}")

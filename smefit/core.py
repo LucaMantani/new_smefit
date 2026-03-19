@@ -112,21 +112,22 @@ class Theory:
         self.n_ops = len(self.operators)
         self.n_data = self.sm_pred.shape[0]
 
+        # Build reverse lookup: map operator pairs to their eft_pred values
+        # normalise key ordering so each pair is looked up only once
+        quad_lookup = {}
+        for key, val in self.eft_pred.items():
+            if "*" not in key:
+                continue
+            a, b = key.split("*")
+            normalised = (a, b) if a <= b else (b, a)
+            quad_lookup[normalised] = val
+
         eft_quad_pred = np.zeros((self.n_data, self.n_ops, self.n_ops))
-
         for i, op1 in enumerate(self.operators):
-            for j, op2 in enumerate(self.operators):
-                if j < i:
-                    continue  # keep strictly lower triangle zero
-
-                # Check for both orderings of the operator product
-                k1 = f"{op1}*{op2}"
-                k2 = f"{op2}*{op1}"
-
-                if k1 in self.eft_pred:
-                    eft_quad_pred[:, i, j] = self.eft_pred[k1]
-                elif k2 in self.eft_pred:
-                    eft_quad_pred[:, i, j] = self.eft_pred[k2]
+            for j in range(i, self.n_ops):
+                pair = (op1, self.operators[j])
+                if pair in quad_lookup:
+                    eft_quad_pred[:, i, j] = quad_lookup[pair]
 
         self.eft_quad_pred = jnp.asarray(eft_quad_pred)
         # Define operator index mapping

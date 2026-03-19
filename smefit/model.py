@@ -137,9 +137,9 @@ class EFTModel(BaseModel):
                     if gi > gj:
                         gi, gj = gj, gi
                     quad_aligned[:, ri, ci] = np.array(theory.eft_quad_pred[:, gi, gj])
-            new_quad = jnp.einsum("dij,dil,djr->dlr", jnp.asarray(quad_aligned), R, R)
-            i_idx, j_idx = np.tril_indices(n_init, k=-1)
-            self.quad_corr = new_quad.at[:, i_idx, j_idx].set(0.0)
+            self.quad_corr = jnp.einsum(
+                "dij,dil,djr->dlr", jnp.asarray(quad_aligned), R, R
+            )
 
         self.active_coeff_indices = jnp.array(
             [self.coefficients.coeff_index[name] for name in coeff_names]

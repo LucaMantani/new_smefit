@@ -106,8 +106,20 @@ class Theory:
     def __post_init__(self):
         # ensure operators are sorted
         self.operators.sort()
-        # build linear eft prediction matrix of shape (ndata, n_ops), corresponding to self.operators order
-        self.eft_lin_pred = jnp.vstack([self.eft_pred[op] for op in self.operators]).T
+        # build linear eft prediction matrix of shape (ndata, n_ops),
+        # corresponding to self.operators order. An operator might be missing
+        # if linear contribution is zero, but be present in the list if
+        # it has a non-zero quadratic contribution.
+        self.eft_lin_pred = jnp.vstack(
+            [
+                (
+                    self.eft_pred[op]
+                    if op in self.eft_pred
+                    else jnp.zeros(self.sm_pred.shape[0])
+                )
+                for op in self.operators
+            ]
+        ).T
         # build quadratic eft prediction tensors of shape (ndata, n_ops, n_ops)
         self.n_ops = len(self.operators)
         self.n_data = self.sm_pred.shape[0]

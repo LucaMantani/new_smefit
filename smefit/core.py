@@ -362,6 +362,10 @@ class CoefficientGroup:
         self.coeff_index = {c.name: i for i, c in enumerate(self.coefficients)}
         # names of the coefficients
         self.names = [c.name for c in self.coefficients]
+        # precompute free/fixed coefficient lists
+        self.free_coeffs = [c for c in self.coefficients if c.free]
+        self.free_names = [c.name for c in self.free_coeffs]
+        self.fixed_coeffs = [c for c in self.coefficients if not c.free]
 
         # Precompute resolution mapping
         self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
@@ -375,20 +379,6 @@ class CoefficientGroup:
             elif not c.free and c.vars:
                 dep_indices = [self.coeff_index[v] for v in c.vars]
                 self._expr_specs.append((i, c.constrain, dep_indices))
-
-    @property
-    def free_coeffs(self) -> List[Coefficient]:
-        """Return list of free coefficients."""
-        return [c for c in self.coefficients if c.free]
-
-    @property
-    def free_names(self) -> List[str]:
-        return [c.name for c in self.free_coeffs]
-
-    @property
-    def fixed_coeffs(self) -> List[Coefficient]:
-        """Return list of fixed coefficients."""
-        return [c for c in self.coefficients if not c.free]
 
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}

@@ -228,6 +228,13 @@ class smefitConfig(Config):
             )
 
         if datasets:
+            if data is None or eft_model is None or fit_covmat is None:
+                raise ValueError(
+                    "Datasets provided but data, eft_model, or fit_covmat is None. "
+                    "These are required to build the base chi2 from datasets. "
+                    "It is possible that an error occurred in producing one of these nodes, "
+                    "so check for errors in their production."
+                )
             base_chi2 = build_chi2(eft_model, data, fit_covmat)
         else:
             base_chi2 = None

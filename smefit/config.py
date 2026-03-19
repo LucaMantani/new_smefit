@@ -383,22 +383,23 @@ class smefitConfig(Config):
 
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""
-        prior_specs = coefficients.prior_specs()
-        dists = []
-        for name in coefficients.free_names:
-            spec = prior_specs[name]
+        specs = coefficients.prior_specs()
+        for name, spec in specs.items():
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
-            dists.append(_build_dist(spec))
-        return Prior(dists, coefficients.free_names)
+        dists = [_build_dist(spec) for spec in specs.values()]
+        return Prior(dists, coefficients.free_names, specs=list(specs.values()))
 
     def produce_prior(self, coefficients, whitening=None):
         """Produce joint prior over all free coefficients."""
         if whitening is not None:
             sigma = whitening["sigma_prior"]
-
+            specs = [
+                {"dist": "uniform", "low": -sigma, "high": sigma}
+                for _ in coefficients.free_names
+            ]
             dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
-            return Prior(dists, coefficients.free_names)
+            return Prior(dists, coefficients.free_names, specs=specs)
         return self._build_prior_impl(coefficients)
 
     # ------------------------------------------------------------------

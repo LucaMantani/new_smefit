@@ -156,4 +156,6 @@ def blackjax_fit(
         num_data=data.num_data if data is not None else 0,
         logz=float(logzs.mean()),
         samples=samples,
+        prior_specs=prior.prior_specs,
+        whitening_active=whitening_matrix is not None,
     )

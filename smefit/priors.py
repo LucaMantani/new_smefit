@@ -20,6 +20,9 @@ class _Distribution(ABC):
     @abstractmethod
     def sample(self, rng_key, shape): ...
 
+    @abstractmethod
+    def __str__(self) -> str: ...  # short human-readable label, e.g. "U[-1, 1]"
+
 
 class _UniformDist(_Distribution):
     def __init__(self, low, high):
@@ -34,6 +37,9 @@ class _UniformDist(_Distribution):
 
     def sample(self, rng_key, shape):
         return jax.random.uniform(rng_key, shape, minval=self.low, maxval=self.high)
+
+    def __str__(self) -> str:
+        return f"U[{self.low}, {self.high}]"
 
 
 class _GaussianDist(_Distribution):
@@ -52,6 +58,9 @@ class _GaussianDist(_Distribution):
 
     def sample(self, rng_key, shape):
         return self.mean + self.std * jax.random.normal(rng_key, shape)
+
+    def __str__(self) -> str:
+        return f"N(mu={self.mean}, sigma={self.std})"
 
 
 _DIST_REGISTRY = {
@@ -80,9 +89,10 @@ class Prior:
     Compatible with both ultranest (prior_transform) and BlackJax (log_prob, sample).
     """
 
-    def __init__(self, dists, param_names):
+    def __init__(self, dists, param_names, specs=None):
         self.dists = list(dists)
         self.param_names = list(param_names)
+        self._specs = list(specs) if specs is not None else [None] * len(self.dists)
 
     @jax.jit(static_argnames=("self",))
     def prior_transform(self, unit_cube):
@@ -100,3 +110,8 @@ class Prior:
         return jnp.stack(
             [d.sample(keys[i], (n_samples,)) for i, d in enumerate(self.dists)], axis=-1
         )
+
+    @property
+    def prior_specs(self) -> dict:
+        """Prior spec dict for each free parameter."""
+        return dict(zip(self.param_names, self._specs))

@@ -7,12 +7,20 @@ FitResult dataclass shared across fitting routines.
 import json
 import pathlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
 from rich import box
 from rich.console import Console
 from rich.table import Table
+
+from smefit.priors import _build_dist
+
+
+def _format_prior(spec: Optional[Mapping]) -> str:
+    if spec is None:
+        return "-"
+    return str(_build_dist(spec))
 
 
 @dataclass
@@ -42,6 +50,8 @@ class FitResult:
     num_data: int
     logz: Optional[float] = None
     samples: Optional[Dict[str, jnp.ndarray]] = None
+    prior_specs: Optional[Dict[str, Mapping]] = None
+    whitening_active: bool = False
 
     # ------------------------------------------------------------------
     # Derived quantities
@@ -110,11 +120,18 @@ class FitResult:
         table.add_column("Best fit", justify="right")
         table.add_column("Std", justify="right")
         table.add_column("Type", justify="center", style="dim")
+        show_prior = bool(self.prior_specs)
+        if show_prior:
+            prior_col = "Prior (whitened)" if self.whitening_active else "Prior"
+            table.add_column(prior_col, justify="left", style="dim")
 
         for name, val in self.best_fit_point.items():
             u = unc.get(name, float("nan"))
             kind = "free" if name in self.free_parameters else "derived"
-            table.add_row(name, f"{val:.6f}", f"{u:.6f}", kind)
+            row = [name, f"{val:.6f}", f"{u:.6f}", kind]
+            if show_prior:
+                row.append(_format_prior(self.prior_specs.get(name)))
+            table.add_row(*row)
 
         console.print(table)
         console.rule(style="dim")
@@ -147,6 +164,8 @@ class FitResult:
                 if self.samples is not None
                 else None
             ),
+            "prior_specs": self.prior_specs,
+            "whitening_active": self.whitening_active,
         }
 
         out_file = output_path / "fit_results.json"

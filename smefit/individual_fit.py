@@ -11,6 +11,7 @@ EFT model, chi2, and prior per namespace — the existing ``analytic_fit`` and
 
 import copy
 import logging
+import pathlib
 
 from reportengine import collect
 
@@ -54,8 +55,8 @@ def individual_ultranest_fit(
     """
     settings = copy.deepcopy(ultranest_settings)
     settings["ReactiveNS_settings"]["log_dir"] = str(
-        __import__("pathlib").Path(settings["ReactiveNS_settings"]["log_dir"]).parent
-        / f"ultranest_logs_{individual_fit_coefficient}"
+        pathlib.Path(settings["ReactiveNS_settings"]["log_dir"])
+        / individual_fit_coefficient
     )
     settings["ReactiveNS_settings"]["resume"] = "overwrite"
 
@@ -69,18 +70,23 @@ def individual_blackjax_fit(
     individual_chi2,
     individual_coefficients,
     blackjax_settings,
+    individual_fit_coefficient,
     data=None,
 ):
     """BlackJAX fit for a single free coefficient.
 
-    Pure pass-through to ``blackjax_fit`` — the DAG has already built an
-    ``individual_chi2`` and ``individual_prior`` scoped to one free parameter.
+    Redirects log_dir to a per-coefficient subdirectory, then delegates
+    to ``blackjax_fit``.
     """
+    settings = copy.deepcopy(blackjax_settings)
+    settings["log_dir"] = str(
+        pathlib.Path(settings["log_dir"]) / individual_fit_coefficient
+    )
     return blackjax_fit(
         individual_prior,
         individual_chi2,
         individual_coefficients,
-        blackjax_settings,
+        settings,
         data,
     )
 

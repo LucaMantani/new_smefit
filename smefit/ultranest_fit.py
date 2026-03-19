@@ -20,7 +20,13 @@ log = logging.getLogger(__name__)
 
 
 def ultranest_fit(
-    prior, chi2, coefficients, ultranest_settings, data=None, whitening_matrix=None
+    prior,
+    chi2,
+    coefficients,
+    ultranest_settings,
+    data=None,
+    whitening_matrix=None,
+    n_samples=10000,
 ):
     """Run UltraNest nested sampling and return a FitResult.
 
@@ -41,6 +47,8 @@ def ultranest_fit(
     whitening_matrix : jnp.ndarray, optional
         Unwhitening matrix W (shape n_free x n_free). When set, the sampler
         works in the whitened space c_w and evaluates chi2(W @ c_w).
+    n_samples : int, optional
+        Number of posterior samples to draw from the full set of UltraNest samples.
 
     Returns
     -------
@@ -113,8 +121,18 @@ def ultranest_fit(
     max_logl = float(result["maximum_likelihood"]["logl"])
     best_free = jnp.array(result["maximum_likelihood"]["point"])
 
-    # Resolve posterior samples and best-fit point
-    posterior_free = jnp.array(result["samples"])
+    # Subsample posterior to n_samples
+    full_samples = jnp.array(result["samples"])
+    n_posterior_samples = n_samples
+    if n_posterior_samples > full_samples.shape[0]:
+        n_posterior_samples = full_samples.shape[0]
+        log.warning(
+            f"The chosen number of posterior samples exceeds the number of posterior "
+            f"samples computed by UltraNest. Setting the number of resampled posterior "
+            f"samples to {n_posterior_samples}"
+        )
+    posterior_free = full_samples[:n_posterior_samples]
+
     samples, best_fit_point = resolve_posterior(
         resolve_coeffs, posterior_free, best_free
     )

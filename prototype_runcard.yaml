@@ -5,7 +5,7 @@ theory_path: ./theory
 use_theory_covmat: True
 use_t0: True
 # SMEFT Expansion Order
-use_quad: False
+use_quad: True
 
 # Nested Sampling settings
 ultranest_settings:
@@ -128,7 +128,7 @@ coefficients:
     expr: "100*y"
   y:
     free: True
-    prior: {dist: uniform, low: -1.0, high: 1.0}
+    prior: {dist: gaussian, mean: 0.0, std: 1.0}
 
 
 external_chi2:

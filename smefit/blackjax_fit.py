@@ -28,7 +28,7 @@ def blackjax_fit(
     chi2,
     coefficients,
     blackjax_settings,
-    data,
+    data=None,
     whitening_matrix=None,
     n_samples=10000,
 ):

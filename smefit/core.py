@@ -312,6 +312,12 @@ class TheoryGroup:
         self.eft_quad_pred = self._build_eft_quad_pred()
         self.scales = jnp.concatenate([th.scales for th in self.theories], axis=0)
 
+    def _operator_mapping(self, th):
+        """Return (global_indices, local_indices) mapping theory operators to group operators."""
+        global_idx = [g for g, op in enumerate(self.operators) if op in th.op_index]
+        local_idx = [th.op_index[op] for op in self.operators if op in th.op_index]
+        return global_idx, local_idx
+
     def _build_eft_lin_pred(self):
         # build concatenated linear eft prediction matrix of shape (ndata, n_ops)
         # if an operator is not present in a theory, its contribution is zero
@@ -319,32 +325,27 @@ class TheoryGroup:
         offset = 0
         for th in self.theories:
             n = th.n_data
-            for i, op in enumerate(self.operators):
-                if op in th.op_index:
-                    th_op_idx = th.op_index[op]
-                    eft_lin_pred[offset : offset + n, i] = th.eft_lin_pred[:, th_op_idx]
+            global_idx, local_idx = self._operator_mapping(th)
+            eft_lin_pred[offset : offset + n][:, global_idx] = np.asarray(
+                th.eft_lin_pred[:, local_idx]
+            )
             offset += n
         return jnp.asarray(eft_lin_pred)
 
     def _build_eft_quad_pred(self):
         # build concatenated quadratic eft prediction tensor of shape (ndata, n_ops, n_ops)
         # if an operator is not present in a theory, its contribution is zero
+        # upper-triangular convention is preserved because both global and local
+        # operator lists are sorted, maintaining relative ordering
         eft_quad_pred = np.zeros((self.n_data, self.n_ops, self.n_ops))
         offset = 0
         for th in self.theories:
             n = th.n_data
-            for i, op1 in enumerate(self.operators):
-                if op1 not in th.op_index:
-                    continue
-                for j, op2 in enumerate(self.operators):
-                    if j < i:
-                        continue  # keep strictly lower triangle zero
-                    if op2 in th.op_index:
-                        th_op1_idx = th.op_index[op1]
-                        th_op2_idx = th.op_index[op2]
-                        eft_quad_pred[offset : offset + n, i, j] = th.eft_quad_pred[
-                            :, th_op1_idx, th_op2_idx
-                        ]
+            global_idx, local_idx = self._operator_mapping(th)
+            rows = np.arange(n)
+            eft_quad_pred[offset : offset + n][np.ix_(rows, global_idx, global_idx)] = (
+                np.asarray(th.eft_quad_pred)[np.ix_(rows, local_idx, local_idx)]
+            )
             offset += n
         return jnp.asarray(eft_quad_pred)
 

@@ -16,6 +16,31 @@ from smefit.fit_result import FitResult
 log = logging.getLogger(__name__)
 
 
+def apply_whitening(chi2, coefficients, whitening_matrix):
+    """Transform chi2 and coefficients into whitened space.
+
+    Returns the transformed chi2 callable and whitened CoefficientGroup.
+    """
+    _chi2 = lambda c_w: chi2(whitening_matrix @ c_w)
+    resolve_coeffs = coefficients.whitened(whitening_matrix)
+    return _chi2, resolve_coeffs
+
+
+def resolve_posterior(resolve_coeffs, posterior_free, best_free):
+    """Resolve posterior samples and best-fit point from free to full coefficient space.
+
+    Returns (samples_dict, best_fit_dict).
+    """
+    all_resolved = jax.vmap(resolve_coeffs.resolve)(posterior_free)
+    samples = {name: all_resolved[:, i] for i, name in enumerate(resolve_coeffs.names)}
+
+    best_resolved = resolve_coeffs.resolve(best_free)
+    best_fit_point = {
+        name: float(best_resolved[i]) for i, name in enumerate(resolve_coeffs.names)
+    }
+    return samples, best_fit_point
+
+
 def ensure_list(x):
     """Ensure the input is a list.
     If the input is not a list, wrap it in a list.

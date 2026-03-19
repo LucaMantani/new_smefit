@@ -14,6 +14,7 @@ import ultranest
 import ultranest.stepsampler as ustepsampler
 
 from smefit.fit_result import FitResult
+from smefit.utils import apply_whitening, resolve_posterior
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +48,7 @@ def ultranest_fit(
     """
     if whitening_matrix is not None:
         log.info("Using whitening matrix in UltraNest fit.")
-        W = whitening_matrix
-        _chi2 = lambda c_w: chi2(W @ c_w)
-        resolve_coeffs = coefficients.whitened(W)
+        _chi2, resolve_coeffs = apply_whitening(chi2, coefficients, whitening_matrix)
     else:
         _chi2 = chi2
         resolve_coeffs = coefficients
@@ -114,16 +113,11 @@ def ultranest_fit(
     max_logl = float(result["maximum_likelihood"]["logl"])
     best_free = jnp.array(result["maximum_likelihood"]["point"])
 
-    # Posterior samples: shape (n_samples, n_free)
+    # Resolve posterior samples and best-fit point
     posterior_free = jnp.array(result["samples"])
-    all_resolved = jax.vmap(resolve_coeffs.resolve)(posterior_free)
-    samples = {name: all_resolved[:, i] for i, name in enumerate(resolve_coeffs.names)}
-
-    # Best-fit full coefficient vector (free + derived)
-    best_resolved = resolve_coeffs.resolve(best_free)
-    best_fit_point = {
-        name: float(best_resolved[i]) for i, name in enumerate(resolve_coeffs.names)
-    }
+    samples, best_fit_point = resolve_posterior(
+        resolve_coeffs, posterior_free, best_free
+    )
 
     return FitResult(
         free_parameters=resolve_coeffs.free_names,

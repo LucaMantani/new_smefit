@@ -18,6 +18,7 @@ from blackjax.ns.utils import ess, finalise, log_weights, sample
 from jax.scipy.special import logsumexp
 
 from smefit.fit_result import FitResult
+from smefit.utils import apply_whitening, resolve_posterior
 
 log = logging.getLogger(__name__)
 
@@ -59,9 +60,7 @@ def blackjax_fit(
     """
     if whitening_matrix is not None:
         log.info("Using whitening matrix in BlackJAX fit.")
-        W = whitening_matrix
-        _chi2 = lambda c_w: chi2(W @ c_w)
-        resolve_coeffs = coefficients.whitened(W)
+        _chi2, resolve_coeffs = apply_whitening(chi2, coefficients, whitening_matrix)
     else:
         _chi2 = chi2
         resolve_coeffs = coefficients
@@ -146,14 +145,9 @@ def blackjax_fit(
     max_logl = float(final_states.loglikelihood[best_free_index])
     best_free = final_states.particles[best_free_index]
 
-    all_resolved = jax.vmap(resolve_coeffs.resolve)(posterior_free)
-    samples = {name: all_resolved[:, i] for i, name in enumerate(resolve_coeffs.names)}
-
-    # Best-fit full coefficient vector (free + derived)
-    best_resolved = resolve_coeffs.resolve(best_free)
-    best_fit_point = {
-        name: float(best_resolved[i]) for i, name in enumerate(resolve_coeffs.names)
-    }
+    samples, best_fit_point = resolve_posterior(
+        resolve_coeffs, posterior_free, best_free
+    )
 
     return FitResult(
         free_parameters=resolve_coeffs.free_names,

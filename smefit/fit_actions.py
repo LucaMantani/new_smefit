@@ -38,3 +38,10 @@ def run_individual_ultranest_fits(individual_ultranest_fits, output_path):
     group = FitResultGroup(individual_ultranest_fits)
     group.print_summary()
     group.write_results(output_path)
+
+
+def run_individual_blackjax_fits(individual_blackjax_fits, output_path):
+    """Print and save individual BlackJAX fit results."""
+    group = FitResultGroup(individual_blackjax_fits)
+    group.print_summary()
+    group.write_results(output_path)

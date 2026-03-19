@@ -15,6 +15,7 @@ import logging
 from reportengine import collect
 
 from smefit.analytic_fit import analytic_fit
+from smefit.blackjax_fit import blackjax_fit
 from smefit.ultranest_fit import ultranest_fit
 
 log = logging.getLogger(__name__)
@@ -63,6 +64,27 @@ def individual_ultranest_fit(
     )
 
 
+def individual_blackjax_fit(
+    individual_prior,
+    individual_chi2,
+    individual_coefficients,
+    blackjax_settings,
+    data=None,
+):
+    """BlackJAX fit for a single free coefficient.
+
+    Pure pass-through to ``blackjax_fit`` — the DAG has already built an
+    ``individual_chi2`` and ``individual_prior`` scoped to one free parameter.
+    """
+    return blackjax_fit(
+        individual_prior,
+        individual_chi2,
+        individual_coefficients,
+        blackjax_settings,
+        data,
+    )
+
+
 # ---------------------------------------------------------------------------
 # collect instances — reportengine auto-discovers these at module level
 # ---------------------------------------------------------------------------
@@ -72,4 +94,7 @@ individual_analytic_fits = collect(
 )
 individual_ultranest_fits = collect(
     "individual_ultranest_fit", ("individual_fit_coefficients",)
+)
+individual_blackjax_fits = collect(
+    "individual_blackjax_fit", ("individual_fit_coefficients",)
 )

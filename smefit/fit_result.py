@@ -187,23 +187,30 @@ class FitResultGroup:
         table = Table(
             box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
         )
+        show_prior = any(r.prior_specs for r in self.results)
         table.add_column("Coefficient", style="cyan", no_wrap=True)
         table.add_column("Best fit", justify="right")
         table.add_column("Std", justify="right")
         table.add_column("chi2", justify="right")
         table.add_column("chi2/dof", justify="right")
+        if show_prior:
+            table.add_column("Prior", justify="left", style="dim")
 
         for result in self.results:
             name = result.free_parameters[0]
             val = result.best_fit_point.get(name, float("nan"))
             std = result.std.get(name, float("nan"))
-            table.add_row(
+            row = [
                 name,
                 f"{val:.6f}",
                 f"{std:.6f}",
                 f"{result.chi2_val:.4f}",
                 f"{result.chi2_ndof:.4f}",
-            )
+            ]
+            if show_prior:
+                spec = result.prior_specs.get(name) if result.prior_specs else None
+                row.append(_format_prior(spec))
+            table.add_row(*row)
 
         console.print(table)
         console.rule(style="dim")

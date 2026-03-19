@@ -361,6 +361,19 @@ class CoefficientGroup:
         # names of the coefficients
         self.names = [c.name for c in self.coefficients]
 
+        # Precompute resolution mapping
+        self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
+        self._fixed_base = []  # (index, value) for fixed coefficients
+        self._expr_specs = (
+            []
+        )  # (index, constrain_fn, [dep_indices]) for expression coefficients
+        for i, c in enumerate(self.coefficients):
+            if not c.free and c.value is not None:
+                self._fixed_base.append((i, c.value))
+            elif not c.free and c.vars:
+                dep_indices = [self.coeff_index[v] for v in c.vars]
+                self._expr_specs.append((i, c.constrain, dep_indices))
+
     @property
     def free_coeffs(self) -> List[Coefficient]:
         """Return list of free coefficients."""
@@ -409,20 +422,17 @@ class CoefficientGroup:
         """
         if getattr(self, "_W", None) is not None:
             free_coeffs = self._W @ free_coeffs
-        lookup = {fc.name: val for fc, val in zip(self.free_coeffs, free_coeffs)}
-        for coeff in self.fixed_coeffs:
-            if coeff.value is not None:
-                lookup[coeff.name] = coeff.value
-        resolved = []
-        for coeff in self.coefficients:
-            if coeff.free:
-                resolved.append(lookup[coeff.name])
-            elif coeff.vars:
-                args = tuple(lookup[var] for var in coeff.vars)
-                resolved.append(coeff.constrain(*args))
-            else:
-                resolved.append(coeff.constrain())
-        return jnp.array(resolved)
+        result = jnp.zeros(len(self.coefficients))
+        # Place free coefficients
+        result = result.at[jnp.array(self._free_indices)].set(free_coeffs)
+        # Place fixed values
+        for idx, val in self._fixed_base:
+            result = result.at[idx].set(val)
+        # Evaluate expression constraints
+        for idx, fn, deps in self._expr_specs:
+            args = tuple(result[d] for d in deps)
+            result = result.at[idx].set(fn(*args))
+        return result
 
     def single_free(self, target_name: str) -> "CoefficientGroup":
         """Return a CoefficientGroup where only *target_name* is free."""

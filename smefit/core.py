@@ -367,6 +367,9 @@ class CoefficientGroup:
         self.free_names = [c.name for c in self.free_coeffs]
         self.fixed_coeffs = [c for c in self.coefficients if not c.free]
 
+        # Whitening matrix (set via whitened())
+        self._W = None
+
         # Precompute resolution mapping
         self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
         self._fixed_base = []  # (index, value) for fixed coefficients
@@ -412,7 +415,7 @@ class CoefficientGroup:
         jnp.ndarray
             Values for all coefficients, in self.coefficients order.
         """
-        if getattr(self, "_W", None) is not None:
+        if self._W is not None:
             free_coeffs = self._W @ free_coeffs
         result = jnp.zeros(len(self.coefficients))
         # Place free coefficients

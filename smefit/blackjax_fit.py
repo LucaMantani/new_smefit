@@ -7,7 +7,6 @@ This module contains the BlackJAX Bayesian fitting routine of Colibri.
 
 import logging
 import os
-import sys
 import time
 
 import anesthetic

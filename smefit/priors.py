@@ -89,10 +89,10 @@ class Prior:
     Compatible with both ultranest (prior_transform) and BlackJax (log_prob, sample).
     """
 
-    def __init__(self, dists, param_names, specs=None):
+    def __init__(self, dists, param_names, specs={}):
         self.dists = list(dists)
         self.param_names = list(param_names)
-        self._specs = list(specs) if specs is not None else [None] * len(self.dists)
+        self.prior_specs = specs
 
     @jax.jit(static_argnames=("self",))
     def prior_transform(self, unit_cube):
@@ -110,8 +110,3 @@ class Prior:
         return jnp.stack(
             [d.sample(keys[i], (n_samples,)) for i, d in enumerate(self.dists)], axis=-1
         )
-
-    @property
-    def prior_specs(self) -> dict:
-        """Prior spec dict for each free parameter."""
-        return dict(zip(self.param_names, self._specs))

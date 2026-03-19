@@ -388,16 +388,14 @@ class smefitConfig(Config):
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
         dists = [_build_dist(spec) for spec in specs.values()]
-        return Prior(dists, coefficients.free_names, specs=list(specs.values()))
+        return Prior(dists, coefficients.free_names, specs=specs)
 
     def produce_prior(self, coefficients, whitening=None):
         """Produce joint prior over all free coefficients."""
         if whitening is not None:
             sigma = whitening["sigma_prior"]
-            specs = [
-                {"dist": "uniform", "low": -sigma, "high": sigma}
-                for _ in coefficients.free_names
-            ]
+            spec = {"dist": "uniform", "low": -sigma, "high": sigma}
+            specs = {name: spec for name in coefficients.free_names}
             dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
             return Prior(dists, coefficients.free_names, specs=specs)
         return self._build_prior_impl(coefficients)

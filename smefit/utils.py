@@ -170,7 +170,7 @@ def time_chi2_vec(
     return successful_sizes, times
 
 
-def build_exact_posterior_prior(self, bayesian_update_path, coefficients):
+def build_exact_posterior_prior(bayesian_update_path, coefficients, datasets):
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 
     Reads fit1's fit_results.json and input/runcard.yaml, rebuilds chi2 for
@@ -197,6 +197,17 @@ def build_exact_posterior_prior(self, bayesian_update_path, coefficients):
     runcard_path = pathlib.Path(bayesian_update_path) / "input" / "runcard.yaml"
     with runcard_path.open() as f:
         prev_rc = yaml.safe_load(f)
+
+    # --- Check for dataset overlap ---
+    if datasets:
+        current_names = {ds["name"] for ds in datasets}
+        prev_names = {ds["name"] for ds in prev_rc["datasets"]}
+        overlap = current_names & prev_names
+        if overlap:
+            raise ConfigError(
+                f"Datasets {sorted(overlap)} appear in both the current fit and the "
+                "previous fit. This would double-count data in the Bayesian update."
+            )
 
     prev_chi2 = smefitAPI.chi2(**prev_rc)
     log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)

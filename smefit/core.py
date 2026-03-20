@@ -113,7 +113,7 @@ class Theory:
         self.eft_lin_pred = jnp.vstack(
             [
                 (
-                    self.eft_pred[op]
+                    jnp.asarray(self.eft_pred[op])
                     if op in self.eft_pred
                     else jnp.zeros(self.sm_pred.shape[0])
                 )

@@ -6,12 +6,22 @@ Utility functions for the smefit framework.
 
 import csv
 import logging
+import pathlib
 import time
 
 import jax
 import jax.numpy as jnp
+import yaml
+from reportengine.configparser import ConfigError
 
+from smefit.api import smefitAPI
 from smefit.fit_result import FitResult
+from smefit.priors import (
+    ExactPosteriorPrior,
+    Prior,
+    _build_dist,
+    _WhitenedToPhysicalPrior,
+)
 
 log = logging.getLogger(__name__)
 
@@ -163,6 +173,64 @@ def time_chi2_vec(
         log.error("No batch sizes were successfully timed")
 
     return successful_sizes, times
+
+
+def build_exact_posterior_prior(self, bayesian_update_path, coefficients):
+    """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
+
+    Reads fit1's fit_results.json and input/runcard.yaml, rebuilds chi2 for
+    fit1's data, and returns an ExactPosteriorPrior whose
+    log_prob = log_prior_1 + log_likelihood_1.
+    """
+    # --- Load previous fit result ---
+    prev = FitResult.from_json(bayesian_update_path)
+
+    if prev.free_parameters != coefficients.free_names:
+        raise ConfigError(
+            f"Free parameters mismatch between previous fit and current runcard.\n"
+            f"  Previous fit : {prev.free_parameters}\n"
+            f"  Current fit  : {coefficients.free_names}\n"
+            f"Both the set and the order of free parameters must match."
+        )
+
+    if prev.samples is None:
+        raise ConfigError(
+            f"Previous fit at {bayesian_update_path} has no posterior samples. "
+        )
+
+    # --- Load previous runcard and rebuild chi2 via the smefit API ---
+    runcard_path = pathlib.Path(bayesian_update_path) / "input" / "runcard.yaml"
+    with runcard_path.open() as f:
+        prev_rc = yaml.safe_load(f)
+
+    prev_chi2 = smefitAPI.chi2(**prev_rc)
+    log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)
+
+    # --- Reconstruct prior_1 in physical space ---
+    if prev.prior_specs is None:
+        raise ConfigError(
+            f"Previous fit at {bayesian_update_path} has no prior_specs saved. "
+        )
+    # Use prev.free_parameters ordering to match sample stacking
+    dists = [_build_dist(prev.prior_specs[name]) for name in prev.free_parameters]
+    prev_prior = Prior(dists, prev.free_parameters, specs=prev.prior_specs)
+    if prev.whitening_active:
+        if prev.whitening_matrix is None:
+            raise ConfigError(
+                f"Previous fit at {bayesian_update_path} used whitening but "
+                "no whitening_matrix was saved."
+            )
+        prior_1 = _WhitenedToPhysicalPrior(prev_prior, prev.whitening_matrix)
+    else:
+        prior_1 = prev_prior
+
+    return ExactPosteriorPrior(
+        base_prior=prior_1,
+        log_likelihood_1=log_likelihood_1,
+        samples_dict=prev.samples,
+        param_names=prev.free_parameters,
+        source_path=str(bayesian_update_path),
+    )
 
 
 def hessian_fit_SM(chi2, output_path):

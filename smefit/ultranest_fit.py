@@ -142,5 +142,6 @@ def ultranest_fit(
         logz=logz,
         samples=samples,
         prior_specs=prior.prior_specs,
+        whitening_matrix=whitening_matrix,
         whitening_active=whitening_matrix is not None,
     )

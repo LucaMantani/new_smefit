@@ -21,7 +21,6 @@ def run_analytic_fit(analytic_fit, output_path):
 
 def run_blackjax_fit(blackjax_fit, output_path):
     """Print and save the result of the BlackJAX nested-sampling fit."""
-
     blackjax_fit.print_summary()
     blackjax_fit.write(output_path)
 

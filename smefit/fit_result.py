@@ -42,6 +42,9 @@ class FitResult:
     samples : dict[str, jnp.ndarray] or None
         Posterior samples for every coefficient,
         shape ``(n_samples,)`` per entry.
+    whitening_matrix : jnp.ndarray or None
+        Unwhitening matrix W (shape n_free x n_free). Saved when whitening is
+        active.
     """
 
     free_parameters: List[str]
@@ -51,6 +54,7 @@ class FitResult:
     logz: Optional[float] = None
     samples: Optional[Dict[str, jnp.ndarray]] = None
     prior_specs: Optional[Dict[str, Mapping]] = None
+    whitening_matrix: Optional[jnp.ndarray] = None
     whitening_active: bool = False
 
     # ------------------------------------------------------------------
@@ -165,12 +169,44 @@ class FitResult:
                 else None
             ),
             "prior_specs": self.prior_specs,
+            "whitening_matrix": (
+                self.whitening_matrix.tolist()
+                if self.whitening_matrix is not None
+                else None
+            ),
             "whitening_active": self.whitening_active,
         }
 
         out_file = output_path / "fit_results.json"
         with out_file.open("w") as f:
             json.dump(payload, f, indent=2)
+
+    @classmethod
+    def from_json(cls, path) -> "FitResult":
+        """Load a FitResult from a directory containing fit_results.json."""
+        p = pathlib.Path(path) / "fit_results.json"
+        with p.open() as f:
+            d = json.load(f)
+        free_parameters = d["free_parameters"]
+        samples = (
+            {name: jnp.array(vals) for name, vals in d["samples"].items()}
+            if d.get("samples")
+            else None
+        )
+        whitening_matrix = (
+            jnp.array(d["whitening_matrix"]) if d.get("whitening_matrix") else None
+        )
+        return cls(
+            free_parameters=free_parameters,
+            best_fit_point=d["best_fit_point"],
+            max_loglikelihood=d["max_loglikelihood"],
+            num_data=d["num_data"],
+            logz=d.get("logz"),
+            samples=samples,
+            prior_specs=d.get("prior_specs"),
+            whitening_matrix=whitening_matrix,
+            whitening_active=d.get("whitening_active", False),
+        )
 
 
 class FitResultGroup:

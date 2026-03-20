@@ -402,7 +402,12 @@ class smefitConfig(Config):
         return Prior(dists, coefficients.free_names, specs=specs)
 
     def produce_prior(
-        self, coefficients, datasets=None, whitening=None, bayesian_update_path=None
+        self,
+        coefficients,
+        datasets=None,
+        external_chi2=None,
+        whitening=None,
+        bayesian_update_path=None,
     ):
         """Produce joint prior over all free coefficients.
 
@@ -416,7 +421,7 @@ class smefitConfig(Config):
                     "ExactPosteriorPrior is defined in physical space and cannot be whitened."
                 )
             return build_exact_posterior_prior(
-                bayesian_update_path, coefficients, datasets
+                bayesian_update_path, coefficients, datasets, external_chi2
             )
 
         if whitening is not None:

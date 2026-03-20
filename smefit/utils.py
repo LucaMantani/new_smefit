@@ -170,7 +170,9 @@ def time_chi2_vec(
     return successful_sizes, times
 
 
-def build_exact_posterior_prior(bayesian_update_path, coefficients, datasets):
+def build_exact_posterior_prior(
+    bayesian_update_path, coefficients, datasets, external_chi2=None
+):
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 
     Reads fit1's fit_results.json and input/runcard.yaml, rebuilds chi2 for
@@ -201,12 +203,24 @@ def build_exact_posterior_prior(bayesian_update_path, coefficients, datasets):
     # --- Check for dataset overlap ---
     if datasets:
         current_names = {ds["name"] for ds in datasets}
-        prev_names = {ds["name"] for ds in prev_rc["datasets"]}
+        prev_names = {ds["name"] for ds in prev_rc.get("datasets", [])}
         overlap = current_names & prev_names
         if overlap:
             raise ConfigError(
                 f"Datasets {sorted(overlap)} appear in both the current fit and the "
                 "previous fit. This would double-count data in the Bayesian update."
+            )
+
+    # --- Check for external_chi2 overlap ---
+    if external_chi2:
+        current_ext = set(external_chi2.keys())
+        prev_ext = set(prev_rc.get("external_chi2", {}).keys())
+        overlap = current_ext & prev_ext
+        if overlap:
+            raise ConfigError(
+                f"External chi2 contributions {sorted(overlap)} appear in both the "
+                "current fit and the previous fit. This would double-count data in "
+                "the Bayesian update."
             )
 
     prev_chi2 = smefitAPI.chi2(**prev_rc)

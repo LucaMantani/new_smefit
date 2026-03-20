@@ -211,7 +211,6 @@ class smefitConfig(Config):
     def _build_chi2_impl(
         self,
         coefficients,
-        datasets=None,
         eft_model=None,
         data=None,
         fit_covmat=None,
@@ -219,18 +218,18 @@ class smefitConfig(Config):
         rge=None,
     ):
         """Shared chi2 build logic used by both joint and individual producers."""
-        if not datasets and not external_chi2:
+        if data is None and not external_chi2:
             raise ConfigError(
                 "chi2",
                 None,
-                "No datasets provided and no external_chi2 configured. "
+                "No data provided and no external_chi2 configured. "
                 "At least one source of chi2 is required.",
             )
 
-        if datasets:
-            if data is None or eft_model is None or fit_covmat is None:
+        if data is not None:
+            if eft_model is None or fit_covmat is None:
                 raise ValueError(
-                    "Datasets provided but data, eft_model, or fit_covmat is None. "
+                    "Data provided but eft_model or fit_covmat is None. "
                     "These are required to build the base chi2 from datasets. "
                     "It is possible that an error occurred in producing one of these nodes, "
                     "so check for errors in their production."
@@ -270,7 +269,6 @@ class smefitConfig(Config):
     def produce_chi2(
         self,
         coefficients,
-        datasets=None,
         eft_model=None,
         data=None,
         fit_covmat=None,
@@ -283,7 +281,7 @@ class smefitConfig(Config):
         contributions are summed.
         """
         return self._build_chi2_impl(
-            coefficients, datasets, eft_model, data, fit_covmat, external_chi2, rge
+            coefficients, eft_model, data, fit_covmat, external_chi2, rge
         )
 
     def parse_ultranest_settings(
@@ -424,7 +422,6 @@ class smefitConfig(Config):
     def produce_individual_chi2(
         self,
         individual_coefficients,
-        datasets=None,
         individual_eft_model=None,
         data=None,
         fit_covmat=None,
@@ -434,7 +431,6 @@ class smefitConfig(Config):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
             individual_coefficients,
-            datasets,
             individual_eft_model,
             data,
             fit_covmat,

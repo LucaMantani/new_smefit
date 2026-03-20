@@ -488,6 +488,14 @@ def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
     return rge_cache
 
 
+def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float | None:
+    """Return the matching key in cache if one exists within relative tolerance, else None."""
+    for key in cache:
+        if abs(key - scale) <= rtol * abs(key):
+            return key
+    return None
+
+
 def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
     """
     Load or compute RGE matrices for the given list of scales.
@@ -530,8 +538,9 @@ def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
     unique_rgemats = {}
     for scale in unique_scales:
         # Check if the RGE matrix has already been computed
-        if scale in rge_cache:
-            rgemat_scale = rge_cache[scale]
+        cached_key = _find_cached_scale(rge_cache, scale)
+        if cached_key is not None:
+            rgemat_scale = rge_cache[cached_key]
             coeff_list_cache = rgemat_scale.columns.tolist()
             # Compute difference in coeff_list
             missing_coeffs = list(set(coeff_list) - set(coeff_list_cache))

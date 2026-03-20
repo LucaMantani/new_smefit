@@ -46,3 +46,7 @@ smefit = "smefit.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: marks tests that call real external samplers or RGE evolution"]
+filterwarnings = [
+    "ignore::DeprecationWarning:importlib",
+]

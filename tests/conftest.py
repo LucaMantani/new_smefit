@@ -138,3 +138,30 @@ def coeff_expr():
 @pytest.fixture
 def coeff_group(coeff_free, coeff_fixed, coeff_expr):
     return CoefficientGroup([coeff_free, coeff_fixed, coeff_expr])
+
+
+# ---------------------------------------------------------------------------
+# Sampler fixtures (minimal chi2 / prior for ultranest / blackjax tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def minimal_chi2():
+    """Trivial Chi2 over a single free parameter for testing sampler wrappers."""
+    from smefit.chi2 import Chi2
+
+    fn = lambda c: jnp.sum(c**2)
+    return Chi2(fn, param_names=["OpA"], num_data=10)
+
+
+@pytest.fixture
+def minimal_prior():
+    """Uniform prior over a single free parameter for testing sampler wrappers."""
+    from smefit.priors import Prior, _UniformDist
+
+    dist = _UniformDist(-1.0, 1.0)
+    return Prior(
+        [dist],
+        ["OpA"],
+        specs={"OpA": {"dist": "uniform", "low": -1.0, "high": 1.0}},
+    )

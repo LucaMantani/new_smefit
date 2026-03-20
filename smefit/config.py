@@ -190,6 +190,7 @@ class smefitConfig(Config):
         (Cholesky). When whitening is disabled (no whitening block in the
         runcard), returns None.
         """
+        print(whitening)
         if whitening is None:
             return None
         eps = whitening["eps"]
@@ -208,17 +209,20 @@ class smefitConfig(Config):
         """Pass-through parser so reportengine can resolve external_chi2 as a node."""
         return external_chi2
 
+    def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
+        """Load and wrap external chi2 modules into Chi2 objects."""
+        return load_external_chi2(external_chi2, coefficients, rge_dict=rge)
+
     def _build_chi2_impl(
         self,
-        coefficients,
         eft_model=None,
         data=None,
         fit_covmat=None,
-        external_chi2=None,
-        rge=None,
+        ext_chi2_func=None,
     ):
         """Shared chi2 build logic used by both joint and individual producers."""
-        if data is None and not external_chi2:
+
+        if data is None and ext_chi2_func is None:
             raise ConfigError(
                 "chi2",
                 None,
@@ -238,51 +242,49 @@ class smefitConfig(Config):
         else:
             base_chi2 = None
 
-        if not external_chi2:
-            return Chi2(
-                base_chi2, param_names=coefficients.free_names, num_data=data.num_data
-            )
+        free_names = (
+            eft_model.coefficients.free_names
+            if eft_model is not None
+            else ext_chi2_func[0].param_names
+        )
 
-        ext_modules = load_external_chi2(external_chi2, coefficients, rge_dict=rge)
+        if ext_chi2_func is None:
+            return Chi2(base_chi2, param_names=free_names, num_data=data.num_data)
 
         if base_chi2 is None:
 
             def total_fn(coeffs):
-                return sum(ext(coeffs) for ext in ext_modules)
+                return sum(ext(coeffs) for ext in ext_chi2_func)
 
         else:
 
             def total_fn(coeffs):
-                return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_modules)
+                return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_chi2_func)
 
         tot_num_data = (data.num_data if data else 0) + sum(
-            ext.num_data for ext in ext_modules
+            ext.num_data for ext in ext_chi2_func
         )
 
         return Chi2(
             total_fn,
-            param_names=coefficients.free_names,
+            param_names=free_names,
             num_data=tot_num_data,
             has_external=True,
         )
 
     def produce_chi2(
         self,
-        coefficients,
         eft_model=None,
         data=None,
         fit_covmat=None,
-        external_chi2=None,
-        rge=None,
+        ext_chi2_func=None,
     ):
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
         contributions are summed.
         """
-        return self._build_chi2_impl(
-            coefficients, eft_model, data, fit_covmat, external_chi2, rge
-        )
+        return self._build_chi2_impl(eft_model, data, fit_covmat, ext_chi2_func)
 
     def parse_ultranest_settings(
         self,
@@ -419,23 +421,25 @@ class smefitConfig(Config):
         """Produce EFT model for a single-free-parameter individual fit."""
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
+    def produce_individual_ext_chi2_func(
+        self, individual_coefficients, external_chi2, rge=None
+    ):
+        """Load and wrap external chi2 modules for a single-free-parameter individual fit."""
+        return load_external_chi2(external_chi2, individual_coefficients, rge_dict=rge)
+
     def produce_individual_chi2(
         self,
-        individual_coefficients,
         individual_eft_model=None,
         data=None,
         fit_covmat=None,
-        external_chi2=None,
-        rge=None,
+        individual_ext_chi2_func=None,
     ):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
-            individual_coefficients,
             individual_eft_model,
             data,
             fit_covmat,
-            external_chi2,
-            rge,
+            individual_ext_chi2_func,
         )
 
     def produce_individual_prior(self, individual_coefficients):

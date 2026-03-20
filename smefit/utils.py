@@ -16,12 +16,7 @@ from reportengine.configparser import ConfigError
 
 from smefit.api import smefitAPI
 from smefit.fit_result import FitResult
-from smefit.priors import (
-    ExactPosteriorPrior,
-    Prior,
-    _build_dist,
-    _WhitenedToPhysicalPrior,
-)
+from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)
 
@@ -206,23 +201,15 @@ def build_exact_posterior_prior(self, bayesian_update_path, coefficients):
     prev_chi2 = smefitAPI.chi2(**prev_rc)
     log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)
 
-    # --- Reconstruct prior_1 in physical space ---
-    if prev.prior_specs is None:
-        raise ConfigError(
-            f"Previous fit at {bayesian_update_path} has no prior_specs saved. "
-        )
-    # Use prev.free_parameters ordering to match sample stacking
-    dists = [_build_dist(prev.prior_specs[name]) for name in prev.free_parameters]
-    prev_prior = Prior(dists, prev.free_parameters, specs=prev.prior_specs)
+    # --- Reconstruct prior_1 in physical space via the API (handles chains recursively) ---
+    prior_1 = smefitAPI.prior(**prev_rc)
     if prev.whitening_active:
         if prev.whitening_matrix is None:
             raise ConfigError(
                 f"Previous fit at {bayesian_update_path} used whitening but "
                 "no whitening_matrix was saved."
             )
-        prior_1 = _WhitenedToPhysicalPrior(prev_prior, prev.whitening_matrix)
-    else:
-        prior_1 = prev_prior
+        prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_matrix)
 
     return ExactPosteriorPrior(
         base_prior=prior_1,

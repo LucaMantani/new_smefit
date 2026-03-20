@@ -382,10 +382,6 @@ class smefitConfig(Config):
 
         return blackjax_settings
 
-    def produce_individual_fit_coefficients(self, coefficients):
-        """Produce an NSList of free coefficient names for individual fits."""
-        return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
-
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""
         specs = coefficients.prior_specs()
@@ -408,6 +404,10 @@ class smefitConfig(Config):
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time
     # ------------------------------------------------------------------
+
+    def produce_individual_fit_coefficients(self, coefficients):
+        """Produce an NSList of free coefficient names for individual fits."""
+        return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
 
     def produce_individual_coefficients(self, coefficients, individual_fit_coefficient):
         """Produce a single-free-parameter coefficient group for individual fits."""

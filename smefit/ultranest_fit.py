@@ -24,7 +24,6 @@ def ultranest_fit(
     chi2,
     coefficients,
     ultranest_settings,
-    data=None,
     whitening_matrix=None,
     n_samples=10000,
 ):
@@ -42,8 +41,6 @@ def ultranest_fit(
         Coefficient group (used to resolve derived coefficients from free ones).
     ultranest_settings : dict
         Settings for the UltraNest sampler.
-    data : DataGroup, optional
-        Observed data (for num_data). None when running without datasets.
     whitening_matrix : jnp.ndarray, optional
         Unwhitening matrix W (shape n_free x n_free). When set, the sampler
         works in the whitened space c_w and evaluates chi2(W @ c_w).
@@ -141,7 +138,7 @@ def ultranest_fit(
         free_parameters=resolve_coeffs.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_logl,
-        num_data=data.num_data if data is not None else 0,
+        num_data=chi2.num_data,
         logz=logz,
         samples=samples,
         prior_specs=prior.prior_specs,

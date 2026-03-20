@@ -182,7 +182,7 @@ class smefitConfig(Config):
             "eps": float(whitening.get("eps", 1e-8)),
         }
 
-    def produce_whitening_matrix(self, chi2, coefficients, whitening=None):
+    def produce_whitening_matrix(self, chi2, whitening=None):
         """Produce the whitening matrix W from the chi2 Hessian at c=0.
 
         Uses the plain chi2 node (already built by produce_chi2) to compute
@@ -193,12 +193,11 @@ class smefitConfig(Config):
         if whitening is None:
             return None
         eps = whitening["eps"]
-        n_free = len(coefficients.free_names)
-        zeros = jnp.zeros(n_free)
-        H = jax.hessian(chi2)(zeros) + eps * jnp.eye(n_free)
+        zeros = jnp.zeros(chi2.nparam)
+        H = jax.hessian(chi2)(zeros) + eps * jnp.eye(chi2.nparam)
         log.info("Hessian whitening: cond(H) = %.3e", float(jnp.linalg.cond(H)))
         L = jnp.linalg.cholesky(H)
-        return jnp.linalg.solve(L.T, jnp.eye(n_free))  # W = L^{-T}
+        return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))  # W = L^{-T}
 
     def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
         """Produce EFT model mapping coefficients to theory predictions."""

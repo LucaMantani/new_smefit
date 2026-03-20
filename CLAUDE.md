@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pip install -e .
 pip install -e ".[docs]"  # with docs dependencies
-pip install -e ".[test]"  # with test dependencies
 ```
 
 ## Activate conda environment

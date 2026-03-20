@@ -27,6 +27,8 @@ blackjax = {git = "https://github.com/handley-lab/blackjax", tag = "v0.1.0-beta"
 tqdm = "*"
 anesthetic = "^2.10.2"
 ipython = "*"
+pytest = "*"
+hypothesis = "*"
 
 # Mark Sphinx and its extensions optional:
 sphinx = {version="*", optional=true}
@@ -37,11 +39,10 @@ sphinx-copybutton = {version="*", optional=true}
 
 
 [tool.poetry.extras]
-test = [
-    "pytest",
-    "hypothesis",
-]
 doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx-copybutton"]
 
 [tool.poetry.scripts]
 smefit = "smefit.app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

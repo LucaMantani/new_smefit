@@ -415,6 +415,9 @@ class smefitConfig(Config):
         that encodes the exact posterior from the previous fit.
         """
         if bayesian_update_path is not None:
+            log.info(
+                f"Producing ExactPosteriorPrior from previous fit at {bayesian_update_path}"
+            )
             if whitening is not None:
                 raise ConfigError(
                     "whitening is not compatible with bayesian_update_path: "

@@ -190,7 +190,6 @@ class smefitConfig(Config):
         (Cholesky). When whitening is disabled (no whitening block in the
         runcard), returns None.
         """
-        print(whitening)
         if whitening is None:
             return None
         eps = whitening["eps"]

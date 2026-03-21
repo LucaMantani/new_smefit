@@ -14,7 +14,6 @@ import jax.numpy as jnp
 import yaml
 from reportengine.configparser import ConfigError
 
-from smefit.api import smefitAPI
 from smefit.fit_result import FitResult
 from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 
@@ -222,6 +221,9 @@ def build_exact_posterior_prior(
                 "current fit and the previous fit. This would double-count data in "
                 "the Bayesian update."
             )
+
+    # Local import to avoid circular dependency
+    from smefit.api import smefitAPI
 
     prev_chi2 = smefitAPI.chi2(**prev_rc)
     log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)

@@ -386,6 +386,8 @@ class smefitConfig(Config):
     def parse_bayesian_update_path(self, bayesian_update_path):
         """Parse and validate the path to a previous fit for Bayesian updating."""
         p = pathlib.Path(bayesian_update_path)
+        if not p.exists():
+            raise ConfigError(f"Directory not found at {bayesian_update_path}")
         if not (p / "fit_results.json").exists():
             raise ConfigError(f"fit_results.json not found at {bayesian_update_path}")
         if not (p / "input" / "runcard.yaml").exists():

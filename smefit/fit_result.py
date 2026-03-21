@@ -20,6 +20,8 @@ from smefit.priors import _build_dist
 def _format_prior(spec: Optional[Mapping]) -> str:
     if spec is None:
         return "-"
+    if spec.get("dist") == "exact_posterior":
+        return f"ExactPosterior"
     return str(_build_dist(spec))
 
 

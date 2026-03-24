@@ -216,8 +216,61 @@ class FitResultGroup:
         console.rule(style="dim")
 
     def write_results(self, output_path) -> None:
-        """Write each FitResult to its own subdirectory."""
+        """Write each FitResult to its own subdirectory and a combined summary."""
         base = pathlib.Path(output_path) / "individual_fits"
         for result in self.results:
             name = result.free_parameters[0]
             result.write(base / name)
+        self.write_summary(output_path)
+
+    def write_summary(self, output_path) -> None:
+        """Write a combined fit_results.json aggregating all individual fits."""
+        output_path = pathlib.Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        free_parameters = [r.free_parameters[0] for r in self.results]
+        num_data = self.results[0].num_data if self.results else 0
+
+        merged_best_fit: Dict[str, float] = {}
+        merged_std: Dict[str, float] = {}
+        merged_samples: Dict[str, list] = {}
+        chi2_per_coeff: Dict[str, float] = {}
+        chi2_ndof_per_coeff: Dict[str, float] = {}
+        logz_per_coeff: Dict[str, Optional[float]] = {}
+        prior_specs: Dict = {}
+
+        for result in self.results:
+            name = result.free_parameters[0]
+            merged_best_fit[name] = result.best_fit_point[name]
+            merged_std[name] = result.std.get(name, float("nan"))
+            chi2_per_coeff[name] = result.chi2_val
+            chi2_ndof_per_coeff[name] = result.chi2_ndof
+            logz_per_coeff[name] = result.logz
+            if result.samples is not None and name in result.samples:
+                vals = result.samples[name]
+                merged_samples[name] = (
+                    vals.tolist() if hasattr(vals, "tolist") else list(vals)
+                )
+            if result.prior_specs:
+                prior_specs.update(result.prior_specs)
+
+        payload = {
+            "free_parameters": free_parameters,
+            "num_data": num_data,
+            "n_free": len(free_parameters),
+            "best_fit_point": merged_best_fit,
+            "std": merged_std,
+            "chi2": chi2_per_coeff,
+            "chi2_ndof": chi2_ndof_per_coeff,
+            "logz": logz_per_coeff,
+            "samples": merged_samples if merged_samples else None,
+            "prior_specs": prior_specs if prior_specs else None,
+            "whitening_active": (
+                self.results[0].whitening_active if self.results else False
+            ),
+            "individual_fit": True,
+        }
+
+        out_file = output_path / "fit_results.json"
+        with out_file.open("w") as f:
+            json.dump(payload, f, indent=2)

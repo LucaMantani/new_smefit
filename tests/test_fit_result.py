@@ -6,7 +6,7 @@ import math
 import jax.numpy as jnp
 import pytest
 
-from smefit.fit_result import FitResult
+from smefit.fit_result import FitResult, FitResultGroup
 
 
 def _make_result(
@@ -125,3 +125,65 @@ def test_write_json_roundtrip(tmp_path):
     assert payload["chi2"] == pytest.approx(6.0)
     assert payload["best_fit_point"]["OpA"] == pytest.approx(1.5)
     assert payload["samples"]["OpA"] == pytest.approx([1.0, 2.0, 3.0])
+
+
+# ---------------------------------------------------------------------------
+# FitResultGroup.write_summary
+# ---------------------------------------------------------------------------
+
+
+def _make_individual_result(
+    name, best_val, samples_vals, max_loglikelihood=-5.0, num_data=10
+):
+    """Build a single-free-parameter FitResult as produced by an individual fit."""
+    return FitResult(
+        free_parameters=[name],
+        best_fit_point={name: best_val},
+        max_loglikelihood=max_loglikelihood,
+        num_data=num_data,
+        samples={name: jnp.array(samples_vals)},
+    )
+
+
+def test_write_summary_no_overwrite(tmp_path):
+    """Each coefficient's best_fit and std must come from its own fit, not be
+    overwritten by later fits."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
+    group = FitResultGroup([r1, r2])
+    group.write_summary(tmp_path)
+
+    with (tmp_path / "fit_results.json").open() as f:
+        payload = json.load(f)
+
+    assert payload["best_fit_point"]["OpA"] == pytest.approx(1.0)
+    assert payload["best_fit_point"]["OpB"] == pytest.approx(2.0)
+    assert payload["std"]["OpA"] == pytest.approx(
+        float(jnp.std(jnp.array([0.8, 1.0, 1.2]))), rel=1e-5
+    )
+    assert payload["std"]["OpB"] == pytest.approx(
+        float(jnp.std(jnp.array([1.8, 2.0, 2.2]))), rel=1e-5
+    )
+    assert payload["samples"]["OpA"] == pytest.approx([0.8, 1.0, 1.2])
+    assert payload["samples"]["OpB"] == pytest.approx([1.8, 2.0, 2.2])
+
+
+def test_write_summary_metadata(tmp_path):
+    """Summary JSON has correct aggregated metadata."""
+    r1 = _make_individual_result(
+        "OpA", best_val=1.0, samples_vals=[1.0], max_loglikelihood=-3.0, num_data=10
+    )
+    r2 = _make_individual_result(
+        "OpB", best_val=2.0, samples_vals=[2.0], max_loglikelihood=-7.0, num_data=10
+    )
+    group = FitResultGroup([r1, r2])
+    group.write_summary(tmp_path)
+
+    with (tmp_path / "fit_results.json").open() as f:
+        payload = json.load(f)
+
+    assert payload["free_parameters"] == ["OpA", "OpB"]
+    assert payload["n_free"] == 2
+    assert payload["num_data"] == 10
+    assert payload["chi2"]["OpA"] == pytest.approx(6.0)
+    assert payload["chi2"]["OpB"] == pytest.approx(14.0)

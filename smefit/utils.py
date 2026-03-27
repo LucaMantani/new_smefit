@@ -165,7 +165,7 @@ def time_chi2_vec(
     return successful_sizes, times
 
 
-def hessian_fit_SM(chi2, output_path):
+def hessian_fit_SM(chi2, output_path, n_samples=10000):
     """Compute the Hessian of the chi2 function in zero and perform Hessian fit"""
     coeffs = jnp.zeros(chi2.nparam)
     hess_fn = jax.hessian(chi2)
@@ -175,7 +175,7 @@ def hessian_fit_SM(chi2, output_path):
     cov = jnp.linalg.inv(hess)
 
     samples = jax.random.multivariate_normal(
-        jax.random.PRNGKey(0), mean=jnp.zeros(chi2.nparam), cov=cov, shape=(10000,)
+        jax.random.PRNGKey(0), mean=jnp.zeros(chi2.nparam), cov=cov, shape=(n_samples,)
     )
 
     fit = FitResult(

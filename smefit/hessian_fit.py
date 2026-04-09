@@ -13,9 +13,9 @@ import logging
 
 import jax
 import jax.numpy as jnp
-import optax
 
 from smefit.fit_result import FitResult
+from smefit.gradient_descent import gd_minimize
 
 log = logging.getLogger(__name__)
 
@@ -58,25 +58,7 @@ def hessian_fit(eft_model, chi2, optimizer, hessian_settings):
         log.info(
             "Hessian fit: running gradient descent (max_steps=%d) from c=0.", n_steps
         )
-        opt_state = optimizer.init(zeros)
-        grad_chi2 = jax.jit(jax.value_and_grad(chi2))
-        c = zeros
-        for step in range(n_steps):
-            val, grads = grad_chi2(c)
-            updates, opt_state = optimizer.update(grads, opt_state)
-            c = optax.apply_updates(c, updates)
-            if float(jnp.linalg.norm(grads)) < tol:
-                log.info(
-                    "Hessian fit: converged at step %d, chi2=%.6f", step, float(val)
-                )
-                break
-        else:
-            log.info(
-                "Hessian fit: reached max steps (%d), chi2=%.6f",
-                n_steps,
-                float(chi2(c)),
-            )
-        c_best = c
+        c_best = gd_minimize(chi2, optimizer, zeros, n_steps=n_steps, tol=tol)
 
     # Hessian of chi2 at the best-fit point.
     # The log-likelihood is -chi2/2, so its Hessian is -(1/2)*d²chi2/dc².

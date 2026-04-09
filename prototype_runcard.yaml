@@ -176,4 +176,4 @@ actions_:
 # - run_ultranest_fit
 # - run_blackjax_fit
 # - chi2_timing
-- run_hessian_fit
+- run_individual_hessian_fits

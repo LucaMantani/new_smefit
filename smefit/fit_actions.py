@@ -32,6 +32,11 @@ def run_hessian_fit(hessian_fit, output_path):
     hessian_fit.write(output_path)
 
 
+# ------------------------------------------------------------------
+# Individual-fit actions
+# ------------------------------------------------------------------
+
+
 def run_individual_analytic_fits(individual_analytic_fits, output_path):
     """Print and save individual analytic fit results."""
     group = FitResultGroup(individual_analytic_fits)
@@ -49,5 +54,12 @@ def run_individual_ultranest_fits(individual_ultranest_fits, output_path):
 def run_individual_blackjax_fits(individual_blackjax_fits, output_path):
     """Print and save individual BlackJAX fit results."""
     group = FitResultGroup(individual_blackjax_fits)
+    group.print_summary()
+    group.write_results(output_path)
+
+
+def run_individual_hessian_fits(individual_hessian_fits, output_path):
+    """Print and save individual Hessian fit results."""
+    group = FitResultGroup(individual_hessian_fits)
     group.print_summary()
     group.write_results(output_path)

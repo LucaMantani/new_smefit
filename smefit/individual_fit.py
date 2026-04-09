@@ -17,6 +17,7 @@ from reportengine import collect
 
 from smefit.analytic_fit import analytic_fit
 from smefit.blackjax_fit import blackjax_fit
+from smefit.hessian_fit import hessian_fit
 from smefit.ultranest_fit import ultranest_fit
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,19 @@ def individual_blackjax_fit(
     )
 
 
+def individual_hessian_fit(
+    individual_eft_model, individual_chi2, optimizer, hessian_settings
+):
+    """Hessian fit for a single free coefficient.
+
+    Pure pass-through to ``hessian_fit`` — the DAG has already built an
+    ``individual_eft_model`` and ``individual_chi2`` scoped to one free parameter.
+    """
+    return hessian_fit(
+        individual_eft_model, individual_chi2, optimizer, hessian_settings
+    )
+
+
 # ---------------------------------------------------------------------------
 # collect instances — reportengine auto-discovers these at module level
 # ---------------------------------------------------------------------------
@@ -100,4 +114,7 @@ individual_ultranest_fits = collect(
 )
 individual_blackjax_fits = collect(
     "individual_blackjax_fit", ("individual_fit_coefficients",)
+)
+individual_hessian_fits = collect(
+    "individual_hessian_fit", ("individual_fit_coefficients",)
 )

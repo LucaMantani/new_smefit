@@ -14,6 +14,7 @@ from smefit.environment import smefitEnvironment
 smefit_providers = [
     "smefit.utils",
     "smefit.analytic_fit",
+    "smefit.hessian_fit",
     "smefit.ultranest_fit",
     "smefit.blackjax_fit",
     "smefit.individual_fit",

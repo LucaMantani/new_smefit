@@ -10,6 +10,7 @@ import pathlib
 
 import jax
 import jax.numpy as jnp
+import optax
 from reportengine.configparser import Config, ConfigError
 from reportengine.namespaces import NSList
 
@@ -381,6 +382,82 @@ class smefitConfig(Config):
         )
 
         return blackjax_settings
+
+    def parse_optimizer_settings(self, settings):
+        """Parse the optimizer_settings block.
+
+        Keys
+        ----
+        optimizer : str, default "adam"
+            Name of any ``optax`` optimizer factory (e.g. "adam", "sgd").
+        optimizer_hyperparams : dict, default {"learning_rate": 1e-2}
+            Keyword arguments forwarded verbatim to the optimizer constructor.
+        clipnorm : float or None, default None
+            If set, gradients are clipped to this global norm before the update.
+        scheduler : dict or None, default None
+            Learning-rate schedule.  Sub-keys:
+              name   – name of any ``optax`` schedule factory
+              params – kwargs forwarded to the schedule factory
+        """
+        known_keys = {"optimizer", "optimizer_hyperparams", "clipnorm", "scheduler"}
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in optimizer_settings.", k)
+        return dict(settings)
+
+    def produce_optimizer(self, optimizer_settings=None):
+        """Build and return an optax optimizer from optimizer_settings.
+
+        When ``optimizer_settings`` is absent from the runcard, falls back to
+        Adam with learning_rate=1e-2.
+        """
+        settings = optimizer_settings or {}
+        opt_name = settings.get("optimizer", "adam")
+        hyperparams = dict(
+            settings.get("optimizer_hyperparams", {"learning_rate": 1e-2})
+        )
+
+        # Inject learning-rate schedule if requested
+        scheduler = settings.get("scheduler")
+        if scheduler is not None:
+            schedule_fn = getattr(optax, scheduler["name"])(**scheduler["params"])
+            hyperparams["learning_rate"] = schedule_fn
+
+        base_opt = getattr(optax, opt_name)(**hyperparams)
+
+        clipnorm = settings.get("clipnorm")
+        if clipnorm is not None:
+            return optax.chain(optax.clip_by_global_norm(float(clipnorm)), base_opt)
+
+        return base_opt
+
+    def parse_hessian_settings(self, settings):
+        """Parse optional settings for the Hessian fit.
+
+        Keys
+        ----
+        sm_solution : bool, default False
+            If True, assume c=0 (SM point) is the minimum and skip
+            optimisation.  If False (default) run gradient descent via the
+            ``optimizer`` node.
+        n_steps : int, default 2000
+            Maximum number of gradient-descent steps.
+        tol : float, default 1e-8
+            Gradient-norm convergence threshold.
+        n_samples : int, default 10000
+            Number of Gaussian posterior samples to draw.
+        seed : int, default 42
+            Random seed for sample generation.
+        """
+        known_keys = {"sm_solution", "n_steps", "tol", "n_samples", "seed"}
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in hessian_settings.", k)
+        return {
+            "sm_solution": bool(settings.get("sm_solution", False)),
+            "n_steps": int(settings.get("n_steps", 2000)),
+            "tol": float(settings.get("tol", 1e-8)),
+            "n_samples": int(settings.get("n_samples", 10000)),
+            "seed": int(settings.get("seed", 42)),
+        }
 
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""

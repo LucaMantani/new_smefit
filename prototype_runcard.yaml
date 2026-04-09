@@ -25,6 +25,25 @@ blackjax_settings:
   delete_fraction: 0.5
   log_precision: -2
 
+optimizer_settings:           # top-level node, reusable by any future fit
+    optimizer: adam
+    # clipnorm: 1.0
+    optimizer_hyperparams:
+      learning_rate: 0.001
+    # scheduler:
+    #   name: linear_schedule
+    #   params:
+    #     init_value: 1.0e-3
+    #     end_value:  1.0e-6
+    #     transition_begin: 3000
+    #     transition_steps: 10000
+
+hessian_settings:
+    sm_solution: false
+    n_steps: 2000
+    tol: 1.0e-8
+    n_samples: 10000
+
 # rge:
 #   init_scale: 10000.0
 #   obs_scale: dynamic  # float or "dynamic"

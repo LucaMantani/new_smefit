@@ -26,6 +26,12 @@ def run_blackjax_fit(blackjax_fit, output_path):
     blackjax_fit.write(output_path)
 
 
+def run_hessian_fit(hessian_fit, output_path):
+    """Print and save the result of the Hessian fit."""
+    hessian_fit.print_summary()
+    hessian_fit.write(output_path)
+
+
 def run_individual_analytic_fits(individual_analytic_fits, output_path):
     """Print and save individual analytic fit results."""
     group = FitResultGroup(individual_analytic_fits)

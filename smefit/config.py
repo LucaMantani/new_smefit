@@ -426,8 +426,20 @@ class smefitConfig(Config):
 
         clipnorm = settings.get("clipnorm")
         if clipnorm is not None:
+            log.info(
+                "Optimizer: %s(%s) with gradient clipping (clipnorm=%.3g)",
+                opt_name,
+                ", ".join(f"{k}={v}" for k, v in hyperparams.items()),
+                clipnorm,
+            )
             return optax.chain(optax.clip_by_global_norm(float(clipnorm)), base_opt)
 
+        log.info(
+            "Optimizer: %s(%s)%s",
+            opt_name,
+            ", ".join(f"{k}={v}" for k, v in hyperparams.items()),
+            f" with {scheduler['name']} scheduler" if scheduler is not None else "",
+        )
         return base_opt
 
     def parse_hessian_settings(self, settings):

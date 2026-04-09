@@ -25,7 +25,7 @@ blackjax_settings:
   delete_fraction: 0.5
   log_precision: -2
 
-optimizer_settings:           # top-level node, reusable by any future fit
+optimizer_settings:
     optimizer: adam
     # clipnorm: 1.0
     optimizer_hyperparams:
@@ -176,4 +176,5 @@ actions_:
 # - run_ultranest_fit
 # - run_blackjax_fit
 # - chi2_timing
+- run_hessian_fit
 - run_individual_hessian_fits

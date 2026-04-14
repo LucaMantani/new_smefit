@@ -298,8 +298,8 @@ class RGE:
             else:
                 # check if value is gs
                 # (this is a special case for OtG)
-                if wcxf_dict["value"] == ["gs"]:
-                    wc_warsaw_value = [evolve_gs(self.init_scale)]
+                if wcxf_dict["value"] == ["-gs"]:
+                    wc_warsaw_value = [-evolve_gs(self.init_scale)]
                 else:
                     wc_warsaw_value = wcxf_dict["value"]
 
@@ -328,8 +328,8 @@ class RGE:
             else:
                 # check if coeff is 1/gs
                 # (this is a special case for OtG)
-                if wc_inv_dict["coeff"] == ["1/gs"]:
-                    wc_warsaw_coeff = [1 / evolve_gs(scale)]
+                if wc_inv_dict["coeff"] == ["-1/gs"]:
+                    wc_warsaw_coeff = [-1 / evolve_gs(scale)]
                 else:
                     wc_warsaw_coeff = wc_inv_dict["coeff"]
 

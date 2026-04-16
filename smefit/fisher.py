@@ -88,3 +88,61 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
             matrices.append((ext_name, F_ext))
 
     return FisherInformationMatrices(coeff_names=coeff_names, matrices=matrices)
+
+
+@dataclass
+class ConstrainingPowerMatrix:
+    """Constraining power of each source on each coefficient.
+
+    Attributes
+    ----------
+    coeff_names : list of str
+        Names of the free coefficients (rows of ``alpha``).
+    source_names : list of str
+        Names of the sources — datasets and external chi2 (columns of ``alpha``).
+    alpha : jnp.ndarray, shape (n_ops, n_sources)
+        ``alpha[i, k]`` is the fraction of the marginal variance of coefficient
+        ``i`` attributable to source ``k``. Rows sum to 1.
+    """
+
+    coeff_names: List[str]
+    source_names: List[str]
+    alpha: jnp.ndarray
+
+
+def constraining_power_matrix(fisher_information_matrices):
+    """Compute the constraining power of each source on each coefficient.
+
+    Given the per-source Fisher matrices F_k, forms the total Fisher matrix
+    F = sum_k F_k and its inverse Sigma = F^{-1}. The constraining power is::
+
+        alpha[i, k] = (Sigma @ F_k @ Sigma)[i, i] / Sigma[i, i]
+
+    so that sum_k alpha[i, k] = 1 for every coefficient i.
+
+    Parameters
+    ----------
+    fisher_information_matrices : FisherInformationMatrices
+
+    Returns
+    -------
+    ConstrainingPowerMatrix
+    """
+    coeff_names = fisher_information_matrices.coeff_names
+    source_names = [name for name, _ in fisher_information_matrices.matrices]
+    fs = [F for _, F in fisher_information_matrices.matrices]
+
+    F_total = sum(fs)
+    Sigma = jnp.linalg.inv(F_total)
+    diag_Sigma = jnp.diag(Sigma)
+
+    alpha = jnp.stack(
+        [jnp.diag(Sigma @ F_k @ Sigma) / diag_Sigma for F_k in fs],
+        axis=1,
+    )
+
+    return ConstrainingPowerMatrix(
+        coeff_names=coeff_names,
+        source_names=source_names,
+        alpha=alpha,
+    )

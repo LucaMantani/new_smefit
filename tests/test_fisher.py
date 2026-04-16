@@ -11,7 +11,12 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
-from smefit.fisher import FisherInformationMatrices, fisher_information_matrices
+from smefit.fisher import (
+    ConstrainingPowerMatrix,
+    FisherInformationMatrices,
+    constraining_power_matrix,
+    fisher_information_matrices,
+)
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -278,3 +283,63 @@ def test_fisher_no_external_chi2():
 
     assert len(result.matrices) == 1
     assert result.matrices[0][0] == "DS_A"
+
+
+# ---------------------------------------------------------------------------
+# ConstrainingPowerMatrix tests
+# ---------------------------------------------------------------------------
+
+
+def _fisher_two_sources():
+    """Helper: two datasets, one free coefficient, identity covmat."""
+    theory_a = _make_theory("DS_A", sm=[0.0, 0.0], lin_op=[2.0, 0.0])
+    theory_b = _make_theory("DS_B", sm=[0.0], lin_op=[1.0])
+    from smefit.core import TheoryGroup
+
+    theory_group = TheoryGroup([theory_a, theory_b])
+    cg = CoefficientGroup([_free("OpA")])
+    model = EFTModel(theory_group, cg, use_quad=False)
+    data = DataGroup([_make_dataset("DS_A", [0.0, 0.0]), _make_dataset("DS_B", [0.0])])
+    fit_covmat = jnp.eye(3)
+    return fisher_information_matrices(model, data, fit_covmat)
+
+
+def test_constraining_power_matrix_type():
+    """Result is a ConstrainingPowerMatrix with correct labels."""
+    fim = _fisher_two_sources()
+    result = constraining_power_matrix(fim)
+
+    assert isinstance(result, ConstrainingPowerMatrix)
+    assert result.coeff_names == ["OpA"]
+    assert result.source_names == ["DS_A", "DS_B"]
+
+
+def test_constraining_power_matrix_shape():
+    """alpha has shape (n_ops, n_sources)."""
+    fim = _fisher_two_sources()
+    result = constraining_power_matrix(fim)
+
+    assert result.alpha.shape == (1, 2)
+
+
+def test_constraining_power_matrix_rows_sum_to_one():
+    """Each row of alpha sums to 1."""
+    fim = _fisher_two_sources()
+    result = constraining_power_matrix(fim)
+
+    assert jnp.allclose(result.alpha.sum(axis=1), jnp.ones(1), atol=1e-5)
+
+
+def test_constraining_power_matrix_known_values():
+    """Hand-computed case with one coefficient.
+
+    DS_A: lin=[2,0] → F_A = 4, DS_B: lin=[1] → F_B = 1
+    F_total = 5, Sigma = 1/5
+    alpha_A = (Sigma @ F_A @ Sigma) / Sigma = F_A / F_total = 4/5
+    alpha_B = F_B / F_total = 1/5
+    """
+    fim = _fisher_two_sources()
+    result = constraining_power_matrix(fim)
+
+    assert jnp.allclose(result.alpha[0, 0], 4.0 / 5.0, atol=1e-5)
+    assert jnp.allclose(result.alpha[0, 1], 1.0 / 5.0, atol=1e-5)

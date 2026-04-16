@@ -11,7 +11,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
-from smefit.fisher import fisher_information_matrices
+from smefit.fisher import FisherInformationMatrices, fisher_information_matrices
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -48,8 +48,23 @@ def _make_theory(name, sm, lin_op, op_name="OpA"):
     )
 
 
+def test_fisher_returns_dataclass():
+    """Return type is FisherInformationMatrices with coeff_names and matrices."""
+    theory = _make_theory("DS_A", sm=[10.0, 20.0], lin_op=[1.0, 2.0])
+    cg = CoefficientGroup([_free("OpA")])
+    model = EFTModel(theory, cg, use_quad=False)
+    data = DataGroup([_make_dataset("DS_A", [10.0, 20.0])])
+    fit_covmat = jnp.eye(2)
+
+    result = fisher_information_matrices(model, data, fit_covmat)
+
+    assert isinstance(result, FisherInformationMatrices)
+    assert result.coeff_names == ["OpA"]
+    assert len(result.matrices) == 1
+
+
 def test_fisher_single_dataset_shape():
-    """Single dataset: one (name, matrix) tuple, matrix shape (n_free, n_free)."""
+    """Single dataset: one (name, matrix) entry, matrix shape (n_free, n_free)."""
     theory = _make_theory("DS_A", sm=[10.0, 20.0, 30.0], lin_op=[1.0, 2.0, 3.0])
     cg = CoefficientGroup([_free("OpA")])
     model = EFTModel(theory, cg, use_quad=False)
@@ -58,14 +73,14 @@ def test_fisher_single_dataset_shape():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    assert len(result) == 1
-    name, F = result[0]
+    assert len(result.matrices) == 1
+    name, F = result.matrices[0]
     assert name == "DS_A"
     assert F.shape == (1, 1)
 
 
 def test_fisher_two_datasets_shape():
-    """Two datasets: two (name, matrix) tuples, each matrix (n_free, n_free)."""
+    """Two datasets: two (name, matrix) entries, each matrix (n_free, n_free)."""
     theory_a = _make_theory("DS_A", sm=[10.0, 20.0], lin_op=[1.0, 2.0])
     theory_b = _make_theory("DS_B", sm=[30.0, 40.0, 50.0], lin_op=[3.0, 4.0, 5.0])
     theory_group = TheoryGroup([theory_a, theory_b])
@@ -82,15 +97,15 @@ def test_fisher_two_datasets_shape():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    assert len(result) == 2
-    assert result[0][0] == "DS_A"
-    assert result[1][0] == "DS_B"
-    assert result[0][1].shape == (1, 1)
-    assert result[1][1].shape == (1, 1)
+    assert len(result.matrices) == 2
+    assert result.matrices[0][0] == "DS_A"
+    assert result.matrices[1][0] == "DS_B"
+    assert result.matrices[0][1].shape == (1, 1)
+    assert result.matrices[1][1].shape == (1, 1)
 
 
 def test_fisher_two_free_coefficients_shape():
-    """Two free coefficients: matrix shape is (2, 2)."""
+    """Two free coefficients: coeff_names has both, matrix shape is (2, 2)."""
     theory = Theory(
         name="DS_A",
         order="LO",
@@ -107,8 +122,9 @@ def test_fisher_two_free_coefficients_shape():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    assert len(result) == 1
-    _, F = result[0]
+    assert result.coeff_names == ["OpA", "OpB"]
+    assert len(result.matrices) == 1
+    _, F = result.matrices[0]
     assert F.shape == (2, 2)
 
 
@@ -126,12 +142,12 @@ def test_fisher_known_value():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    _, F = result[0]
+    _, F = result.matrices[0]
     assert jnp.allclose(F, jnp.array([[1.0]]), atol=1e-5)
 
 
 def test_fisher_ordering_matches_data_names():
-    """Tuples are returned in data.names order (alphabetical)."""
+    """Matrices are returned in data.names order (alphabetical)."""
     theory_b = _make_theory("DS_B", sm=[10.0, 20.0], lin_op=[2.0, 4.0])
     theory_c = _make_theory("DS_C", sm=[30.0], lin_op=[3.0])
     theory_group = TheoryGroup([theory_b, theory_c])
@@ -148,11 +164,11 @@ def test_fisher_ordering_matches_data_names():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    assert [name for name, _ in result] == ["DS_B", "DS_C"]
+    assert [name for name, _ in result.matrices] == ["DS_B", "DS_C"]
     # DS_B: J=[2,4]^T, F = 2^2 + 4^2 = 20
     # DS_C: J=[3]^T,   F = 9
-    assert jnp.allclose(result[0][1], jnp.array([[20.0]]), atol=1e-5)
-    assert jnp.allclose(result[1][1], jnp.array([[9.0]]), atol=1e-5)
+    assert jnp.allclose(result.matrices[0][1], jnp.array([[20.0]]), atol=1e-5)
+    assert jnp.allclose(result.matrices[1][1], jnp.array([[9.0]]), atol=1e-5)
 
 
 def test_fisher_symmetry():
@@ -179,7 +195,7 @@ def test_fisher_symmetry():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    _, F = result[0]
+    _, F = result.matrices[0]
     assert jnp.allclose(F, F.T, atol=1e-5)
 
 
@@ -213,10 +229,10 @@ def test_fisher_with_external_chi2_appended():
 
     result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
 
-    assert len(result) == 2
-    assert result[0][0] == "DS_A"
-    assert result[1][0] == "MyExtChi2"
-    assert result[1][1].shape == (1, 1)
+    assert len(result.matrices) == 2
+    assert result.matrices[0][0] == "DS_A"
+    assert result.matrices[1][0] == "MyExtChi2"
+    assert result.matrices[1][1].shape == (1, 1)
 
 
 def test_fisher_external_chi2_known_value():
@@ -230,7 +246,7 @@ def test_fisher_external_chi2_known_value():
 
     result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
 
-    _, F_ext = result[1]
+    _, F_ext = result.matrices[1]
     assert jnp.allclose(F_ext, jnp.array([[13.0]]), atol=1e-5)
 
 
@@ -247,7 +263,7 @@ def test_fisher_external_chi2_fallback_name():
 
     result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
 
-    assert result[1][0] == "ext_chi2_0"
+    assert result.matrices[1][0] == "ext_chi2_0"
 
 
 def test_fisher_no_external_chi2():
@@ -260,5 +276,5 @@ def test_fisher_no_external_chi2():
 
     result = fisher_information_matrices(model, data, fit_covmat)
 
-    assert len(result) == 1
-    assert result[0][0] == "DS_A"
+    assert len(result.matrices) == 1
+    assert result.matrices[0][0] == "DS_A"

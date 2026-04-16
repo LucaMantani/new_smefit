@@ -19,14 +19,17 @@ class Chi2:
         The names of the parameters.
     has_external : bool
         Whether the chi2 includes external contributions.
+    name : str, optional
+        A name for the chi2, used in logging and diagnostics.
     """
 
-    def __init__(self, fn, param_names, num_data, has_external=False):
+    def __init__(self, fn, param_names, num_data, has_external=False, name=None):
         self._fn = fn
         self.param_names = param_names
         self.nparam = len(param_names)
         self.num_data = num_data
         self.has_external = has_external
+        self.name = name
 
     @jax.jit(static_argnames=("self",))
     def __call__(self, coeffs):

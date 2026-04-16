@@ -12,8 +12,10 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import rc
 
 from smefit.fit_result import FitResult
+from smefit.op_to_latex import coeff_info_latex
 
 log = logging.getLogger(__name__)
 
@@ -246,6 +248,10 @@ def plot_constraining_power_matrix(aggregate_constraining_power_matrix, output_p
         plotting. Ungrouped sources are shown as individual columns.
     """
 
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
     cpm = aggregate_constraining_power_matrix
 
     alpha = np.array(cpm.alpha)
@@ -256,15 +262,16 @@ def plot_constraining_power_matrix(aggregate_constraining_power_matrix, output_p
     fig_h = max(3, n_coeffs * 0.45)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
-    im = ax.imshow(alpha, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
-    plt.colorbar(im, ax=ax, label=r"$\alpha$")
+    im = ax.imshow(alpha, aspect="auto", cmap="Blues", vmin=0, vmax=1)
 
+    ax.xaxis.tick_top()
+    ax.xaxis.set_label_position("top")
     ax.set_xticks(range(n_sources))
-    ax.set_xticklabels(cpm.source_names, rotation=45, ha="right", fontsize=8)
+    ax.set_xticklabels(cpm.source_names, rotation=45, ha="left", fontsize=8)
+
+    coeff_labels = [coeff_info_latex.get(name, name) for name in cpm.coeff_names]
     ax.set_yticks(range(n_coeffs))
-    ax.set_yticklabels(cpm.coeff_names, fontsize=8)
-    ax.set_xlabel("Source")
-    ax.set_ylabel("Coefficient")
+    ax.set_yticklabels(coeff_labels, fontsize=14)
 
     for i in range(n_coeffs):
         for j in range(n_sources):

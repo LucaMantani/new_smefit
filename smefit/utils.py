@@ -10,6 +10,8 @@ import time
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 from smefit.fit_result import FitResult
 
@@ -229,3 +231,51 @@ def run_test(eft_model, chi2):
     # compute gradient
     grad_chi2 = jax.grad(chi2)(free)
     print(grad_chi2)
+
+
+def plot_constraining_power_matrix(aggregate_constraining_power_matrix, output_path):
+    """Plot the constraining power matrix as a heatmap.
+
+    Parameters
+    ----------
+    aggregate_constraining_power_matrix : ConstrainingPowerMatrix
+    output_path : pathlib.Path
+        Directory where ``constraining_power_matrix.pdf`` is written.
+    data_groups : dict[str, list[str]], optional
+        If provided, aggregates source columns into the declared groups before
+        plotting. Ungrouped sources are shown as individual columns.
+    """
+
+    cpm = aggregate_constraining_power_matrix
+
+    alpha = np.array(cpm.alpha)
+    n_coeffs = len(cpm.coeff_names)
+    n_sources = len(cpm.source_names)
+
+    fig_w = max(6, n_sources * 0.7)
+    fig_h = max(3, n_coeffs * 0.45)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+    im = ax.imshow(alpha, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
+    plt.colorbar(im, ax=ax, label=r"$\alpha$")
+
+    ax.set_xticks(range(n_sources))
+    ax.set_xticklabels(cpm.source_names, rotation=45, ha="right", fontsize=8)
+    ax.set_yticks(range(n_coeffs))
+    ax.set_yticklabels(cpm.coeff_names, fontsize=8)
+    ax.set_xlabel("Source")
+    ax.set_ylabel("Coefficient")
+
+    for i in range(n_coeffs):
+        for j in range(n_sources):
+            val = alpha[i, j]
+            color = "white" if val > 0.6 else "black"
+            ax.text(
+                j, i, f"{val:.2f}", ha="center", va="center", fontsize=6, color=color
+            )
+
+    fig.tight_layout()
+    save_path = output_path / "constraining_power_matrix.pdf"
+    fig.savefig(save_path, bbox_inches="tight")
+    plt.close(fig)
+    log.info("Constraining power matrix plot saved to %s", save_path)

@@ -146,3 +146,50 @@ def constraining_power_matrix(fisher_information_matrices):
         source_names=source_names,
         alpha=alpha,
     )
+
+
+def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=None):
+    """Aggregate ConstrainingPowerMatrix columns according to data_groups.
+
+    Parameters
+    ----------
+    constraining_power_matrix : ConstrainingPowerMatrix
+    data_groups : dict[str, list[str]] optional
+        Maps group label to a list of source names to merge. Sources not
+        listed in any group are kept as individual columns.
+
+        If None, no grouping is applied and the original ConstrainingPowerMatrix is returned.
+
+    Returns
+    -------
+    ConstrainingPowerMatrix
+        Aggregated matrix whose columns correspond to the declared groups
+        followed by any ungrouped sources.
+    """
+    if data_groups is None:
+        return constraining_power_matrix
+
+    assigned: set = set()
+    group_names = []
+    group_alphas = []
+    cpm = constraining_power_matrix
+
+    for group_name, members in data_groups.items():
+        indices = [i for i, s in enumerate(cpm.source_names) if s in members]
+        if not indices:
+            log.warning("data_groups: group '%s' matched no sources.", group_name)
+            continue
+        group_alphas.append(cpm.alpha[:, jnp.array(indices)].sum(axis=1))
+        group_names.append(group_name)
+        assigned.update(indices)
+
+    for i, name in enumerate(cpm.source_names):
+        if i not in assigned:
+            group_alphas.append(cpm.alpha[:, i])
+            group_names.append(name)
+
+    return ConstrainingPowerMatrix(
+        coeff_names=cpm.coeff_names,
+        source_names=group_names,
+        alpha=jnp.stack(group_alphas, axis=1),
+    )

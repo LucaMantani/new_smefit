@@ -6,7 +6,7 @@ Fisher information matrices, one per dataset, evaluated at the SM point.
 
 import logging
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 
 import jax
 import jax.numpy as jnp
@@ -23,13 +23,16 @@ class FisherInformationMatrices:
     coeff_names : list of str
         Names of the free coefficients. Row/column i of every matrix
         corresponds to ``coeff_names[i]``.
-    matrices : list of (str, jnp.ndarray)
-        Per-source Fisher matrices. Each element is ``(source_name, F)``
-        where ``F`` has shape ``(n_free, n_free)``.
+    source_names : list of str
+        Names of the sources (datasets and external chi2 components).
+    matrices : list of jnp.ndarray
+        Per-source Fisher matrices, one per entry in ``source_names``.
+        Each array has shape ``(n_free, n_free)``.
     """
 
     coeff_names: List[str]
-    matrices: List[Tuple[str, jnp.ndarray]]
+    source_names: List[str]
+    matrices: List[jnp.ndarray]
 
 
 def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None):
@@ -70,6 +73,7 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
     jac = jax.jacobian(eft_model.forward_map)(c0)  # (n_data, n_free)
     inv_covmat = jnp.linalg.inv(fit_covmat)  # (n_data, n_data)
 
+    source_names = []
     matrices = []
     offset = 0
     for name, n_d in zip(data.names, data.ndata_list):
@@ -77,7 +81,8 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
         inv_cov_d = inv_covmat[offset : offset + n_d, offset : offset + n_d]
         F_d = jac_d.T @ inv_cov_d @ jac_d
         log.debug("  %s: n_d=%d, trace=%.4f", name, n_d, float(jnp.trace(F_d)))
-        matrices.append((name, F_d))
+        source_names.append(name)
+        matrices.append(F_d)
         offset += n_d
 
     if ext_chi2_func is not None:
@@ -85,9 +90,12 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
             ext_name = ext.name if ext.name is not None else f"ext_chi2_{i}"
             F_ext = 0.5 * jax.hessian(ext)(c0)
             log.debug("  %s: trace=%.4f", ext_name, float(jnp.trace(F_ext)))
-            matrices.append((ext_name, F_ext))
+            source_names.append(ext_name)
+            matrices.append(F_ext)
 
-    return FisherInformationMatrices(coeff_names=coeff_names, matrices=matrices)
+    return FisherInformationMatrices(
+        coeff_names=coeff_names, source_names=source_names, matrices=matrices
+    )
 
 
 @dataclass
@@ -129,8 +137,8 @@ def constraining_power_matrix(fisher_information_matrices):
     ConstrainingPowerMatrix
     """
     coeff_names = fisher_information_matrices.coeff_names
-    source_names = [name for name, _ in fisher_information_matrices.matrices]
-    fs = [F for _, F in fisher_information_matrices.matrices]
+    source_names = fisher_information_matrices.source_names
+    fs = fisher_information_matrices.matrices
 
     F_total = sum(fs)
     Sigma = jnp.linalg.inv(F_total)

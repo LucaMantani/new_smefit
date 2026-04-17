@@ -35,6 +35,26 @@ class FisherInformationMatrices:
     matrices: List[jnp.ndarray]
 
 
+@dataclass
+class ConstrainingPowerMatrix:
+    """Constraining power of each source on each coefficient.
+
+    Attributes
+    ----------
+    coeff_names : list of str
+        Names of the free coefficients (rows of ``alpha``).
+    source_names : list of str
+        Names of the sources — datasets and external chi2 (columns of ``alpha``).
+    alpha : jnp.ndarray, shape (n_ops, n_sources)
+        ``alpha[i, k]`` is the fraction of the marginal variance of coefficient
+        ``i`` attributable to source ``k``. Rows sum to 1.
+    """
+
+    coeff_names: List[str]
+    source_names: List[str]
+    alpha: jnp.ndarray
+
+
 def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None):
     """Compute per-dataset Fisher information matrices at the SM point (c=0).
 
@@ -98,26 +118,6 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
     )
 
 
-@dataclass
-class ConstrainingPowerMatrix:
-    """Constraining power of each source on each coefficient.
-
-    Attributes
-    ----------
-    coeff_names : list of str
-        Names of the free coefficients (rows of ``alpha``).
-    source_names : list of str
-        Names of the sources — datasets and external chi2 (columns of ``alpha``).
-    alpha : jnp.ndarray, shape (n_ops, n_sources)
-        ``alpha[i, k]`` is the fraction of the marginal variance of coefficient
-        ``i`` attributable to source ``k``. Rows sum to 1.
-    """
-
-    coeff_names: List[str]
-    source_names: List[str]
-    alpha: jnp.ndarray
-
-
 def constraining_power_matrix(fisher_information_matrices):
     """Compute the constraining power of each source on each coefficient.
 
@@ -156,17 +156,76 @@ def constraining_power_matrix(fisher_information_matrices):
     )
 
 
+def _resolve_groups(source_names, data_groups):
+    """Map source_names to grouped (name, indices) pairs according to data_groups.
+
+    Declared groups come first (in data_groups order), followed by ungrouped
+    sources as individual entries. Groups that match no source are skipped with
+    a warning.
+
+    Parameters
+    ----------
+    source_names : list of str
+    data_groups : dict[str, list[str]]
+
+    Returns
+    -------
+    list of (str, list[int])
+    """
+    assigned: set = set()
+    groups = []
+    for group_name, members in data_groups.items():
+        indices = [i for i, s in enumerate(source_names) if s in members]
+        if not indices:
+            log.warning("data_groups: group '%s' matched no sources.", group_name)
+            continue
+        groups.append((group_name, indices))
+        assigned.update(indices)
+    for i, name in enumerate(source_names):
+        if i not in assigned:
+            groups.append((name, [i]))
+    return groups
+
+
+def aggregate_fisher_information_matrices(
+    fisher_information_matrices, data_groups=None
+):
+    """Aggregate FisherInformationMatrices by summing matrices within each group.
+
+    Parameters
+    ----------
+    fisher_information_matrices : FisherInformationMatrices
+    data_groups : dict[str, list[str]], optional
+        Maps group label to source names to merge. Sources not listed in any
+        group are kept as individual entries. If None, the original object is
+        returned unchanged.
+
+    Returns
+    -------
+    FisherInformationMatrices
+    """
+    if data_groups is None:
+        return fisher_information_matrices
+
+    fim = fisher_information_matrices
+    groups = _resolve_groups(fim.source_names, data_groups)
+    return FisherInformationMatrices(
+        coeff_names=fim.coeff_names,
+        source_names=[name for name, _ in groups],
+        matrices=[sum(fim.matrices[i] for i in indices) for _, indices in groups],
+    )
+
+
 def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=None):
     """Aggregate ConstrainingPowerMatrix columns according to data_groups.
 
     Parameters
     ----------
     constraining_power_matrix : ConstrainingPowerMatrix
-    data_groups : dict[str, list[str]] optional
-        Maps group label to a list of source names to merge. Sources not
-        listed in any group are kept as individual columns.
-
-        If None, no grouping is applied and the original ConstrainingPowerMatrix is returned.
+    data_groups : dict[str, list[str]], optional
+        Maps group label to source names to merge. Sources not listed in any
+        group are kept as individual columns. If None, the original object is
+        returned unchanged.
 
     Returns
     -------
@@ -177,27 +236,13 @@ def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=N
     if data_groups is None:
         return constraining_power_matrix
 
-    assigned: set = set()
-    group_names = []
-    group_alphas = []
     cpm = constraining_power_matrix
-
-    for group_name, members in data_groups.items():
-        indices = [i for i, s in enumerate(cpm.source_names) if s in members]
-        if not indices:
-            log.warning("data_groups: group '%s' matched no sources.", group_name)
-            continue
-        group_alphas.append(cpm.alpha[:, jnp.array(indices)].sum(axis=1))
-        group_names.append(group_name)
-        assigned.update(indices)
-
-    for i, name in enumerate(cpm.source_names):
-        if i not in assigned:
-            group_alphas.append(cpm.alpha[:, i])
-            group_names.append(name)
-
+    groups = _resolve_groups(cpm.source_names, data_groups)
     return ConstrainingPowerMatrix(
         coeff_names=cpm.coeff_names,
-        source_names=group_names,
-        alpha=jnp.stack(group_alphas, axis=1),
+        source_names=[name for name, _ in groups],
+        alpha=jnp.stack(
+            [cpm.alpha[:, jnp.array(indices)].sum(axis=1) for _, indices in groups],
+            axis=1,
+        ),
     )

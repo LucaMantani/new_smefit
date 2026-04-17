@@ -66,8 +66,8 @@ class FisherDiagonals:
     source_names : list of str
         Names of the sources (columns).
     diagonals : jnp.ndarray, shape (n_free, n_sources)
-        ``diagonals[i, k]`` is the ``i``-th diagonal entry of the Fisher matrix
-        for source ``k``.
+        ``diagonals[i, k]`` is the row-normalised diagonal entry for coefficient
+        ``i`` and source ``k``. Rows sum to 1.
     """
 
     coeff_names: List[str]
@@ -268,7 +268,7 @@ def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=N
     )
 
 
-def fisher_diagonals(aggregate_fisher_information_matrices):
+def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
     """Extract diagonals of per-source Fisher matrices.
 
     Parameters
@@ -282,8 +282,10 @@ def fisher_diagonals(aggregate_fisher_information_matrices):
         diagonal of the corresponding per-source Fisher matrix.
     """
     fim = aggregate_fisher_information_matrices
+    raw = jnp.stack([jnp.diag(F) for F in fim.matrices], axis=1)  # (n_free, n_sources)
+    diagonals = raw / raw.sum(axis=1, keepdims=True)
     return FisherDiagonals(
         coeff_names=fim.coeff_names,
         source_names=fim.source_names,
-        diagonals=jnp.stack([jnp.diag(F) for F in fim.matrices], axis=1),
+        diagonals=diagonals,
     )

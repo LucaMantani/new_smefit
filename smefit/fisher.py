@@ -55,6 +55,26 @@ class ConstrainingPowerMatrix:
     alpha: jnp.ndarray
 
 
+@dataclass
+class FisherDiagonals:
+    """Diagonal entries of per-source Fisher matrices.
+
+    Attributes
+    ----------
+    coeff_names : list of str
+        Names of the free coefficients (rows).
+    source_names : list of str
+        Names of the sources (columns).
+    diagonals : jnp.ndarray, shape (n_free, n_sources)
+        ``diagonals[i, k]`` is the ``i``-th diagonal entry of the Fisher matrix
+        for source ``k``.
+    """
+
+    coeff_names: List[str]
+    source_names: List[str]
+    diagonals: jnp.ndarray
+
+
 def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None):
     """Compute per-dataset Fisher information matrices at the SM point (c=0).
 
@@ -245,4 +265,25 @@ def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=N
             [cpm.alpha[:, jnp.array(indices)].sum(axis=1) for _, indices in groups],
             axis=1,
         ),
+    )
+
+
+def fisher_diagonals(aggregate_fisher_information_matrices):
+    """Extract diagonals of per-source Fisher matrices.
+
+    Parameters
+    ----------
+    aggregate_fisher_information_matrices : FisherInformationMatrices
+
+    Returns
+    -------
+    FisherDiagonals
+        Array of shape ``(n_free, n_sources)`` where each column is the
+        diagonal of the corresponding per-source Fisher matrix.
+    """
+    fim = aggregate_fisher_information_matrices
+    return FisherDiagonals(
+        coeff_names=fim.coeff_names,
+        source_names=fim.source_names,
+        diagonals=jnp.stack([jnp.diag(F) for F in fim.matrices], axis=1),
     )

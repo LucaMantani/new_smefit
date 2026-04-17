@@ -258,8 +258,6 @@ def _plot_heatmap(matrix, coeff_names, source_names, save_path, vmin=None, vmax=
     fig_h = max(3, n_coeffs * 0.45)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
-    ax.imshow(matrix, aspect="auto", cmap="Blues", vmin=vmin, vmax=vmax)
-
     ax.xaxis.tick_top()
     ax.xaxis.set_label_position("top")
     ax.set_xticks(range(n_sources))
@@ -269,13 +267,26 @@ def _plot_heatmap(matrix, coeff_names, source_names, save_path, vmin=None, vmax=
     ax.set_yticks(range(n_coeffs))
     ax.set_yticklabels(coeff_labels, fontsize=14)
 
+    cmap = plt.get_cmap("Blues").copy()
+    cmap.set_bad("white")
+    ax.imshow(
+        np.ma.masked_equal(matrix, 0.0), aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax
+    )
+
+    ax.set_xticks(np.arange(-0.5, n_sources, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n_coeffs, 1), minor=True)
+    ax.grid(which="minor", color="gray", linewidth=1)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
     color_threshold = vmax * 0.6
     for i in range(n_coeffs):
         for j in range(n_sources):
             val = matrix[i, j]
+            if val == 0.0:
+                continue
             color = "white" if val > color_threshold else "black"
             ax.text(
-                j, i, f"{val:.1f}", ha="center", va="center", fontsize=6, color=color
+                j, i, f"{val:.1f}", ha="center", va="center", fontsize=10, color=color
             )
 
     fig.tight_layout()

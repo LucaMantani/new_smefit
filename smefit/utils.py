@@ -263,19 +263,19 @@ def _plot_heatmap(matrix, coeff_names, source_names, save_path, vmin=None, vmax=
     ax.xaxis.tick_top()
     ax.xaxis.set_label_position("top")
     ax.set_xticks(range(n_sources))
-    ax.set_xticklabels(source_names, rotation=45, ha="left", fontsize=8)
+    ax.set_xticklabels(source_names, rotation=90, fontsize=14)
 
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeff_names]
     ax.set_yticks(range(n_coeffs))
     ax.set_yticklabels(coeff_labels, fontsize=14)
 
-    color_threshold = (vmax or matrix.max()) * 0.6
+    color_threshold = vmax * 0.6
     for i in range(n_coeffs):
         for j in range(n_sources):
             val = matrix[i, j]
             color = "white" if val > color_threshold else "black"
             ax.text(
-                j, i, f"{val:.2f}", ha="center", va="center", fontsize=6, color=color
+                j, i, f"{val:.1f}", ha="center", va="center", fontsize=6, color=color
             )
 
     fig.tight_layout()
@@ -295,12 +295,12 @@ def plot_constraining_power_matrix(aggregate_constraining_power_matrix, output_p
     """
     cpm = aggregate_constraining_power_matrix
     _plot_heatmap(
-        cpm.alpha,
+        cpm.alpha * 100,
         cpm.coeff_names,
         cpm.source_names,
         output_path / "constraining_power_matrix.pdf",
         vmin=0,
-        vmax=1,
+        vmax=100,
     )
 
 
@@ -315,10 +315,10 @@ def plot_fisher_diagonals(fisher_diagonals_normalised, output_path):
     """
     fd = fisher_diagonals_normalised
     _plot_heatmap(
-        fd.diagonals,
+        fd.diagonals * 100,
         fd.coeff_names,
         fd.source_names,
         output_path / "fisher_diagonals_normalised.pdf",
         vmin=0,
-        vmax=1,
+        vmax=100,
     )

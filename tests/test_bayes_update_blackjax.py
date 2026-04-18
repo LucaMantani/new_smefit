@@ -6,7 +6,7 @@ Run explicitly with:  pytest -m slow tests/test_bayes_update_blackjax.py
 
 Setup
 -----
-  N = 10 correlated parameters.
+  N correlated parameters.
   D1 : chi2_1(θ) = θᵀ Σ1⁻¹ θ  →  posterior N(0, Σ1)
   D2 : chi2_2(θ) = θᵀ Σ2⁻¹ θ  →  posterior N(0, Σ2)
   Full posterior : N(0, Σ_exact),  Σ_exact = (Σ1⁻¹ + Σ2⁻¹)⁻¹

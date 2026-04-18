@@ -388,11 +388,29 @@ class CoefficientGroup:
         self._expr_specs = (
             []
         )  # (index, constrain_fn, [dep_indices]) for expression coefficients
+
+        # Process coefficients in order, so expression constraints can depend
+        # on previously defined coefficients
         for i, c in enumerate(self.coefficients):
+            # If coefficient is fixed with a constant value, add to fixed_base
             if not c.free and c.value is not None:
                 self._fixed_base.append((i, c.value))
+            # If coefficient is fixed with an expression, add to expr_specs
             elif not c.free and c.vars:
-                dep_indices = [self.coeff_index[v] for v in c.vars]
+                all_names = sorted(self.coeff_index.keys())
+                dep_indices = []
+                for v in c.vars:
+                    # Check that var is a defined free coefficient
+                    if v not in self.coeff_index:
+                        raise ValueError(
+                            f"Coefficient '{c.name}': var '{v}' in 'vars' is not defined. "
+                            f"Available coefficients: {all_names}."
+                        )
+                    if not self.coefficients[self.coeff_index[v]].free:
+                        raise ValueError(
+                            f"Coefficient '{c.name}': var '{v}' in 'vars' must be a free coefficient."
+                        )
+                    dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
 
     def prior_specs(self) -> Dict[str, object]:

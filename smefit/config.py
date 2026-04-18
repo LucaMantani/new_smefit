@@ -20,6 +20,7 @@ from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.rge import load_rge_matrix
+from smefit.utils import build_exact_posterior_prior
 
 log = logging.getLogger(__name__)
 
@@ -373,6 +374,17 @@ class smefitConfig(Config):
 
         return blackjax_settings
 
+    def parse_bayesian_update_path(self, bayesian_update_path):
+        """Parse and validate the path to a previous fit for Bayesian updating."""
+        p = pathlib.Path(bayesian_update_path)
+        if not p.exists():
+            raise ConfigError(f"Directory not found at {bayesian_update_path}")
+        if not (p / "fit_results.json").exists():
+            raise ConfigError(f"fit_results.json not found at {bayesian_update_path}")
+        if not (p / "input" / "runcard.yaml").exists():
+            raise ConfigError(f"input/runcard.yaml not found at {bayesian_update_path}")
+        return p
+
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""
         specs = coefficients.prior_specs()
@@ -382,14 +394,39 @@ class smefitConfig(Config):
         dists = [_build_dist(spec) for spec in specs.values()]
         return Prior(dists, coefficients.free_names, specs=specs)
 
-    def produce_prior(self, coefficients, whitening=None):
-        """Produce joint prior over all free coefficients."""
+    def produce_prior(
+        self,
+        coefficients,
+        datasets=None,
+        external_chi2=None,
+        whitening=None,
+        bayesian_update_path=None,
+    ):
+        """Produce joint prior over all free coefficients.
+
+        When ``bayesian_update_path`` is set, returns an ExactPosteriorPrior
+        that encodes the exact posterior from the previous fit.
+        """
+        if bayesian_update_path is not None:
+            log.info(
+                f"Producing ExactPosteriorPrior from previous fit at {bayesian_update_path}"
+            )
+            if whitening is not None:
+                raise ConfigError(
+                    "whitening is not compatible with bayesian_update_path: "
+                    "ExactPosteriorPrior is defined in physical space and cannot be whitened."
+                )
+            return build_exact_posterior_prior(
+                bayesian_update_path, coefficients, datasets, external_chi2
+            )
+
         if whitening is not None:
             sigma = whitening["sigma_prior"]
             spec = {"dist": "uniform", "low": -sigma, "high": sigma}
             specs = {name: spec for name in coefficients.free_names}
             dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
             return Prior(dists, coefficients.free_names, specs=specs)
+
         return self._build_prior_impl(coefficients)
 
     # ------------------------------------------------------------------

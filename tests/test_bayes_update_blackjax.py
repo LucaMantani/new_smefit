@@ -83,7 +83,7 @@ class _CoeffsWhitened:
 
 @pytest.fixture(scope="module")
 def correlated_problem():
-    """15D correlated Gaussian problem built from a fixed random seed."""
+    """correlated Gaussian problem built from a fixed random seed."""
     rng = np.random.default_rng(0)
     n = N_PARAMS
 

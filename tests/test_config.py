@@ -86,7 +86,7 @@ def test_parse_coefficients_invalid_vars_raises(cfg):
         "OpB": {"free": False, "value": 2.0},
         "OpC": {"free": False, "vars": ["OpB"], "expr": "OpB**2"},
     }
-    with pytest.raises(ValueError, match="not free coefficients"):
+    with pytest.raises(ValueError, match="must be a free coefficient"):
         cfg.parse_coefficients(raw)
 
 

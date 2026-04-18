@@ -42,7 +42,7 @@ def test_wcxf_translate_OpBox():
 
 
 def test_wcxf_translate_OWWW():
-    assert wcxf_translate["OWWW"] == {"wc": ["W"]}
+    assert wcxf_translate["OWWW"] == {"wc": ["W"], "value": [-1.0]}
 
 
 def test_wcxf_translate_OtG_has_value():
@@ -96,7 +96,7 @@ def test_inverse_wcxf_translate_OpBox():
 
 
 def test_inverse_wcxf_translate_OWWW():
-    assert inverse_wcxf_translate["OWWW"] == {"wc": ["W"]}
+    assert inverse_wcxf_translate["OWWW"] == {"wc": ["W"], "coeff": [-1.0]}
 
 
 def test_inverse_wcxf_translate_OpD():

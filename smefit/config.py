@@ -162,15 +162,6 @@ class smefitConfig(Config):
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
         group = CoefficientGroup(coeffs)
-        # Validate that all vars in constrained coefficients refer to free coefficients
-        free_names = set(group.free_names)
-        for coeff in group.fixed_coeffs:
-            if coeff.vars:
-                unknown = [v for v in coeff.vars if v not in free_names]
-                if unknown:
-                    raise ValueError(
-                        f"Coefficient '{coeff.name}': vars {unknown} are not free coefficients."
-                    )
         return group
 
     def parse_whitening(self, whitening):

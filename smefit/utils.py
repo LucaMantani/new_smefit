@@ -13,12 +13,12 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import yaml
 from matplotlib import rc
+from reportengine.configparser import ConfigError
 
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
-import yaml
-from reportengine.configparser import ConfigError
 from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)

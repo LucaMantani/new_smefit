@@ -382,15 +382,16 @@ def plot_constraining_power_matrix(aggregate_constraining_power_matrix, output_p
 
     Parameters
     ----------
-    aggregate_constraining_power_matrix : ConstrainingPowerMatrix
+    aggregate_constraining_power_matrix : pd.DataFrame
+        Index = coeff_names, columns = source_names.
     output_path : pathlib.Path
         Directory where ``constraining_power_matrix.pdf`` is written.
     """
     cpm = aggregate_constraining_power_matrix
     _plot_heatmap(
-        cpm.alpha * 100,
-        cpm.coeff_names,
-        cpm.source_names,
+        cpm.values * 100,
+        cpm.index.tolist(),
+        cpm.columns.tolist(),
         output_path / "constraining_power_matrix.pdf",
         vmin=0,
         vmax=100,
@@ -402,15 +403,16 @@ def plot_fisher_diagonals(fisher_diagonals_normalised, output_path):
 
     Parameters
     ----------
-    fisher_diagonals : FisherDiagonals
+    fisher_diagonals_normalised : pd.DataFrame
+        Index = coeff_names, columns = source_names.
     output_path : pathlib.Path
         Directory where ``fisher_diagonals.pdf`` is written.
     """
     fd = fisher_diagonals_normalised
     _plot_heatmap(
-        fd.diagonals * 100,
-        fd.coeff_names,
-        fd.source_names,
+        fd.values * 100,
+        fd.index.tolist(),
+        fd.columns.tolist(),
         output_path / "fisher_diagonals_normalised.pdf",
         vmin=0,
         vmax=100,

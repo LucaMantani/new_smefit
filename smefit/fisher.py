@@ -2,77 +2,21 @@
 smefit.fisher.py
 
 Fisher information matrices, one per dataset, evaluated at the SM point.
+
+All public functions return plain pandas objects:
+  - fisher_information_matrices  → dict[str, pd.DataFrame]  (source → n_free x n_free)
+  - constraining_power_matrix    → pd.DataFrame  (index=coeff, columns=source)
+  - fisher_diagonals_normalised  → pd.DataFrame  (index=coeff, columns=source)
 """
 
 import logging
-from dataclasses import dataclass
-from typing import List
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class FisherInformationMatrices:
-    """Fisher information matrices with coefficient labelling.
-
-    Attributes
-    ----------
-    coeff_names : list of str
-        Names of the free coefficients. Row/column i of every matrix
-        corresponds to ``coeff_names[i]``.
-    source_names : list of str
-        Names of the sources (datasets and external chi2 components).
-    matrices : list of jnp.ndarray
-        Per-source Fisher matrices, one per entry in ``source_names``.
-        Each array has shape ``(n_free, n_free)``.
-    """
-
-    coeff_names: List[str]
-    source_names: List[str]
-    matrices: List[jnp.ndarray]
-
-
-@dataclass
-class ConstrainingPowerMatrix:
-    """Constraining power of each source on each coefficient.
-
-    Attributes
-    ----------
-    coeff_names : list of str
-        Names of the free coefficients (rows of ``alpha``).
-    source_names : list of str
-        Names of the sources — datasets and external chi2 (columns of ``alpha``).
-    alpha : jnp.ndarray, shape (n_ops, n_sources)
-        ``alpha[i, k]`` is the fraction of the marginal variance of coefficient
-        ``i`` attributable to source ``k``. Rows sum to 1.
-    """
-
-    coeff_names: List[str]
-    source_names: List[str]
-    alpha: jnp.ndarray
-
-
-@dataclass
-class FisherDiagonals:
-    """Diagonal entries of per-source Fisher matrices.
-
-    Attributes
-    ----------
-    coeff_names : list of str
-        Names of the free coefficients (rows).
-    source_names : list of str
-        Names of the sources (columns).
-    diagonals : jnp.ndarray, shape (n_free, n_sources)
-        ``diagonals[i, k]`` is the row-normalised diagonal entry for coefficient
-        ``i`` and source ``k``. Rows sum to 1.
-    """
-
-    coeff_names: List[str]
-    source_names: List[str]
-    diagonals: jnp.ndarray
 
 
 def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None):
@@ -94,9 +38,9 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
 
     Returns
     -------
-    FisherInformationMatrices
-        Object carrying ``coeff_names`` and ``matrices`` (one entry per dataset
-        then one per external chi2 component).
+    dict[str, pd.DataFrame]
+        Maps each source name to its Fisher matrix as a DataFrame with
+        coeff_names as both index and columns.
     """
     coeff_names = eft_model.coefficients.free_names
     n_free = len(coeff_names)
@@ -113,29 +57,26 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
     jac = jax.jacobian(eft_model.forward_map)(c0)  # (n_data, n_free)
     inv_covmat = jnp.linalg.inv(fit_covmat)  # (n_data, n_data)
 
-    source_names = []
-    matrices = []
+    result = {}
     offset = 0
     for name, n_d in zip(data.names, data.ndata_list):
         jac_d = jac[offset : offset + n_d, :]
         inv_cov_d = inv_covmat[offset : offset + n_d, offset : offset + n_d]
-        F_d = jac_d.T @ inv_cov_d @ jac_d
-        log.debug("  %s: n_d=%d, trace=%.4f", name, n_d, float(jnp.trace(F_d)))
-        source_names.append(name)
-        matrices.append(F_d)
+        F_d = np.array(jac_d.T @ inv_cov_d @ jac_d)
+        log.debug("  %s: n_d=%d, trace=%.4f", name, n_d, float(np.trace(F_d)))
+        result[name] = pd.DataFrame(F_d, index=coeff_names, columns=coeff_names)
         offset += n_d
 
     if ext_chi2_func is not None:
         for i, ext in enumerate(ext_chi2_func):
             ext_name = ext.name if ext.name is not None else f"ext_chi2_{i}"
-            F_ext = 0.5 * jax.hessian(ext)(c0)
-            log.debug("  %s: trace=%.4f", ext_name, float(jnp.trace(F_ext)))
-            source_names.append(ext_name)
-            matrices.append(F_ext)
+            F_ext = np.array(0.5 * jax.hessian(ext)(c0))
+            log.debug("  %s: trace=%.4f", ext_name, float(np.trace(F_ext)))
+            result[ext_name] = pd.DataFrame(
+                F_ext, index=coeff_names, columns=coeff_names
+            )
 
-    return FisherInformationMatrices(
-        coeff_names=coeff_names, source_names=source_names, matrices=matrices
-    )
+    return result
 
 
 def constraining_power_matrix(fisher_information_matrices):
@@ -150,30 +91,28 @@ def constraining_power_matrix(fisher_information_matrices):
 
     Parameters
     ----------
-    fisher_information_matrices : FisherInformationMatrices
+    fisher_information_matrices : dict[str, pd.DataFrame]
 
     Returns
     -------
-    ConstrainingPowerMatrix
+    pd.DataFrame
+        Index = coeff_names, columns = source_names. Rows sum to 1.
     """
-    coeff_names = fisher_information_matrices.coeff_names
-    source_names = fisher_information_matrices.source_names
-    fs = fisher_information_matrices.matrices
+    fim = fisher_information_matrices
+    coeff_names = next(iter(fim.values())).index.tolist()
+    source_names = list(fim.keys())
+    matrices = [df.values for df in fim.values()]
 
-    F_total = sum(fs)
-    Sigma = jnp.linalg.inv(F_total)
-    diag_Sigma = jnp.diag(Sigma)
+    F_total = sum(matrices)
+    Sigma = np.linalg.inv(F_total)
+    diag_Sigma = np.diag(Sigma)
 
-    alpha = jnp.stack(
-        [jnp.diag(Sigma @ F_k @ Sigma) / diag_Sigma for F_k in fs],
+    alpha = np.stack(
+        [np.diag(Sigma @ F_k @ Sigma) / diag_Sigma for F_k in matrices],
         axis=1,
-    )
+    )  # (n_ops, n_sources)
 
-    return ConstrainingPowerMatrix(
-        coeff_names=coeff_names,
-        source_names=source_names,
-        alpha=alpha,
-    )
+    return pd.DataFrame(alpha, index=coeff_names, columns=source_names)
 
 
 def _resolve_groups(source_names, data_groups):
@@ -210,82 +149,81 @@ def _resolve_groups(source_names, data_groups):
 def aggregate_fisher_information_matrices(
     fisher_information_matrices, data_groups=None
 ):
-    """Aggregate FisherInformationMatrices by summing matrices within each group.
+    """Aggregate Fisher matrices by summing within each group.
 
     Parameters
     ----------
-    fisher_information_matrices : FisherInformationMatrices
+    fisher_information_matrices : dict[str, pd.DataFrame]
     data_groups : dict[str, list[str]], optional
         Maps group label to source names to merge. Sources not listed in any
-        group are kept as individual entries. If None, the original object is
+        group are kept as individual entries. If None, the original dict is
         returned unchanged.
 
     Returns
     -------
-    FisherInformationMatrices
+    dict[str, pd.DataFrame]
     """
     if data_groups is None:
         return fisher_information_matrices
 
     fim = fisher_information_matrices
-    groups = _resolve_groups(fim.source_names, data_groups)
-    return FisherInformationMatrices(
-        coeff_names=fim.coeff_names,
-        source_names=[name for name, _ in groups],
-        matrices=[sum(fim.matrices[i] for i in indices) for _, indices in groups],
-    )
+    source_names = list(fim.keys())
+    groups = _resolve_groups(source_names, data_groups)
+    return {
+        group_name: sum(fim[source_names[i]] for i in indices)
+        for group_name, indices in groups
+    }
 
 
 def aggregate_constraining_power_matrix(constraining_power_matrix, data_groups=None):
-    """Aggregate ConstrainingPowerMatrix columns according to data_groups.
+    """Aggregate constraining power matrix columns according to data_groups.
 
     Parameters
     ----------
-    constraining_power_matrix : ConstrainingPowerMatrix
+    constraining_power_matrix : pd.DataFrame
+        Index = coeff_names, columns = source_names.
     data_groups : dict[str, list[str]], optional
         Maps group label to source names to merge. Sources not listed in any
-        group are kept as individual columns. If None, the original object is
+        group are kept as individual columns. If None, the original DataFrame is
         returned unchanged.
 
     Returns
     -------
-    ConstrainingPowerMatrix
-        Aggregated matrix whose columns correspond to the declared groups
-        followed by any ungrouped sources.
+    pd.DataFrame
+        Aggregated matrix whose columns correspond to declared groups followed
+        by any ungrouped sources.
     """
     if data_groups is None:
         return constraining_power_matrix
 
     cpm = constraining_power_matrix
-    groups = _resolve_groups(cpm.source_names, data_groups)
-    return ConstrainingPowerMatrix(
-        coeff_names=cpm.coeff_names,
-        source_names=[name for name, _ in groups],
-        alpha=jnp.stack(
-            [cpm.alpha[:, jnp.array(indices)].sum(axis=1) for _, indices in groups],
-            axis=1,
-        ),
+    source_names = cpm.columns.tolist()
+    groups = _resolve_groups(source_names, data_groups)
+    return pd.DataFrame(
+        {
+            group_name: cpm.iloc[:, indices].sum(axis=1)
+            for group_name, indices in groups
+        },
+        index=cpm.index,
     )
 
 
 def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
-    """Extract diagonals of per-source Fisher matrices.
+    """Extract row-normalised diagonals of per-source Fisher matrices.
 
     Parameters
     ----------
-    aggregate_fisher_information_matrices : FisherInformationMatrices
+    aggregate_fisher_information_matrices : dict[str, pd.DataFrame]
 
     Returns
     -------
-    FisherDiagonals
-        Array of shape ``(n_free, n_sources)`` where each column is the
-        diagonal of the corresponding per-source Fisher matrix.
+    pd.DataFrame
+        Index = coeff_names, columns = source_names. Rows sum to 1.
     """
     fim = aggregate_fisher_information_matrices
-    raw = jnp.stack([jnp.diag(F) for F in fim.matrices], axis=1)  # (n_free, n_sources)
-    diagonals = raw / raw.sum(axis=1, keepdims=True)
-    return FisherDiagonals(
-        coeff_names=fim.coeff_names,
-        source_names=fim.source_names,
-        diagonals=diagonals,
+    coeff_names = next(iter(fim.values())).index.tolist()
+    raw = pd.DataFrame(
+        {name: np.diag(df.values) for name, df in fim.items()},
+        index=coeff_names,
     )
+    return raw.div(raw.sum(axis=1), axis=0)

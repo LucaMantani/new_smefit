@@ -151,6 +151,7 @@ whitening:
 data_groups:
   LEP: [LEP1_EWPOs_2006, LEP_Bhabha_2013, LEP_Brw_2013, LEP_eeWW_182GeV, LEP_eeWW_189GeV, LEP_eeWW_198GeV, LEP_eeWW_206GeV]
   ATLAS_CMS: [ATLAS_CMS_SSinc_RunI, ATLAS_CMS_tt_AC_8TeV]
+# bayesian_update_path: /path/to/folder/fit_1
 
 actions_:
 # - run_analytic_fit

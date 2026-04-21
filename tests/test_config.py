@@ -80,13 +80,15 @@ def test_parse_coefficients_with_valid_expr(cfg):
 
 
 def test_parse_coefficients_invalid_vars_raises(cfg):
-    """vars must reference a free coefficient; referencing a fixed one should raise."""
+    """vars may not reference another expression coefficient."""
     raw = {
         "OpA": {"free": True, "prior": {"dist": "uniform", "low": -1.0, "high": 1.0}},
-        "OpB": {"free": False, "value": 2.0},
+        "OpB": {"free": False, "vars": ["OpA"], "expr": "OpA**2"},
         "OpC": {"free": False, "vars": ["OpB"], "expr": "OpB**2"},
     }
-    with pytest.raises(ValueError, match="must be a free coefficient"):
+    with pytest.raises(
+        ValueError, match="must be a free coefficient or a fixed coefficient"
+    ):
         cfg.parse_coefficients(raw)
 
 

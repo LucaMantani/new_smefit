@@ -405,6 +405,12 @@ class CoefficientGroup:
                             f"Coefficient '{c.name}': var '{v}' in 'vars' is not defined. "
                             f"Available coefficients: {all_names}."
                         )
+                    dep = self.coefficients[self.coeff_index[v]]
+                    if not dep.free and dep.value is None:
+                        raise ValueError(
+                            f"Coefficient '{c.name}': var '{v}' in 'vars' must be a free "
+                            "coefficient or a fixed coefficient with a constant value."
+                        )
                     dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
 

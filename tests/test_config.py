@@ -10,7 +10,8 @@ from reportengine.configparser import ConfigError
 
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
-from smefit.core import CoefficientGroup, DataGroup, TheoryGroup
+from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.model import EFTModel
 from smefit.priors import Prior
 
 # ---------------------------------------------------------------------------
@@ -261,6 +262,52 @@ def test_build_chi2_combined(cfg):
         )
     assert result.num_data == 12  # 5 + 7
     assert result.has_external
+
+
+# ---------------------------------------------------------------------------
+# produce_datasets_chi2
+# ---------------------------------------------------------------------------
+
+_PRIOR = {"dist": "uniform", "low": -1.0, "high": 1.0}
+
+
+def test_produce_datasets_chi2_returns_list(cfg, dataset_a, theory_a):
+    data = DataGroup([dataset_a])
+    theory = TheoryGroup([theory_a])
+    model = EFTModel(
+        theory,
+        CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)]),
+        use_quad=False,
+    )
+
+    result = cfg.produce_datasets_chi2(
+        eft_model=model, data=data, fit_covmat=jnp.eye(3)
+    )
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], Chi2)
+    assert result[0].name == "DS_A"
+    assert result[0].num_data == 3
+
+
+def test_produce_datasets_chi2_appends_external(cfg, dataset_a, theory_a):
+    data = DataGroup([dataset_a])
+    theory = TheoryGroup([theory_a])
+    model = EFTModel(
+        theory,
+        CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)]),
+        use_quad=False,
+    )
+    ext = Chi2(lambda c: jnp.sum(c**2), ["OpA"], num_data=5, name="EXT")
+
+    result = cfg.produce_datasets_chi2(
+        eft_model=model, data=data, fit_covmat=jnp.eye(3), ext_chi2_func=[ext]
+    )
+
+    assert len(result) == 2
+    assert result[0].name == "DS_A"
+    assert result[1] is ext
 
 
 # ---------------------------------------------------------------------------

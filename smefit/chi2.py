@@ -46,3 +46,31 @@ def build_chi2(eft_model, data, fit_covmat):
         return residuals.T @ inv_covmat @ residuals
 
     return _chi2
+
+
+def build_datasets_chi2(eft_model, data, fit_covmat):
+    """Build a list of per-dataset chi2 functions.
+
+    Datasets use the diagonal block of fit_covmat (cross-dataset
+    correlations are ignored).
+    """
+    chi2_list = []
+
+    if data is not None:
+        start = 0
+        for name, ndata in zip(data.names, data.ndata_list):
+            end = start + ndata
+            cv_slice = data.cv[start:end]
+            inv_covmat = jnp.linalg.inv(fit_covmat[start:end, start:end])
+
+            def _chi2(coeffs, s=start, e=end, cv=cv_slice, inv_c=inv_covmat):
+                predictions = eft_model.forward_map(coeffs)[s:e]
+                residuals = cv - predictions
+                return residuals.T @ inv_c @ residuals
+
+            chi2_list.append(
+                Chi2(_chi2, eft_model.coefficients.free_names, ndata, name=name)
+            )
+            start = end
+
+    return chi2_list

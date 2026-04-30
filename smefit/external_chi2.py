@@ -63,6 +63,7 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
                 chi2_ext.compute_chi2,
                 param_names=coefficients.free_names,
                 num_data=chi2_ext.num_data,
+                name=class_name,
             )
         )
 

@@ -20,6 +20,7 @@ smefit_providers = [
     "smefit.fit_actions",
     "smefit.fisher",
     "smefit.tables",
+    "smefit.figures",
     "reportengine.report",
 ]
 

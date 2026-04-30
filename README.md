@@ -12,3 +12,13 @@ conda install python
 conda install pre-commit
 pip install -e .
 ```
+
+### GPU (CUDA) Support
+
+To enable GPU acceleration, install JAX with CUDA 12 (or 13 if available) support:
+
+```bash
+pip install -U "jax[cuda12]" -f https://storage.googleapis.com/jax-releases/jax_releases.html
+```
+
+> **Note:** This step is optional. If no GPU is available, JAX will fall back to CPU automatically.

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from reportengine.configparser import Config, ConfigError
 from reportengine.namespaces import NSList
 
-from smefit.chi2 import Chi2, build_chi2
+from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
@@ -275,6 +275,26 @@ class smefitConfig(Config):
         contributions are summed.
         """
         return self._build_chi2_impl(eft_model, data, fit_covmat, ext_chi2_func)
+
+    def produce_datasets_chi2(
+        self,
+        eft_model=None,
+        data=None,
+        fit_covmat=None,
+        ext_chi2_func=None,
+    ):
+        """Produce a list of per-dataset chi2 objects.
+
+        Regular datasets each get their own chi2 (diagonal block of fit_covmat).
+        External chi2 contributions are appended as individual entries.
+        """
+
+        chi2_list = build_datasets_chi2(eft_model, data, fit_covmat)
+
+        if ext_chi2_func is not None:
+            chi2_list.extend(ext_chi2_func)
+
+        return chi2_list
 
     def parse_ultranest_settings(
         self,

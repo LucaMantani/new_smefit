@@ -127,9 +127,6 @@ data_groups:
     - LEP_eeWW_206GeV
 
   LHC-diboson:
-    - ATLAS_CMS_SSinc_RunI
-    - ATLAS_SSinc_RunII
-    - CMS_SSinc_RunII
     - ATLAS_Zjj_13TeV_dphijj
     - ATLAS_WW_13TeV_2016_memu
     - ATLAS_WZ_13TeV_2016_mTWZ
@@ -139,6 +136,9 @@ data_groups:
     - CMS_WhelF_8TeV
 
   LHC-Higgs:
+    - ATLAS_CMS_SSinc_RunI
+    - ATLAS_SSinc_RunII
+    - CMS_SSinc_RunII
     - ATLAS_STXS_runII_13TeV
     - ATLAS_WH_Hbb_13TeV
     - ATLAS_ZH_Hbb_13TeV

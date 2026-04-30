@@ -14,22 +14,16 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 
-def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None):
+def fisher_information_matrices(datasets_chi2):
     """Compute per-dataset Fisher information matrices at the SM point (c=0).
 
-    For data-based datasets: F_d = J_d^T @ inv_cov_d @ J_d, where J_d is the
-    Jacobian of forward_map for dataset d and inv_cov_d is the corresponding
-    diagonal block of the inverted fit covariance matrix.
-
-    For external chi2 components (assumed Gaussian): F_ext = 0.5 * H, where H
-    is the Hessian of the external chi2 at c=0.
+    For each source (data-based dataset or external chi2), the Fisher matrix is
+    F = 0.5 * H where H is the Hessian of the chi2 at c=0.
 
     Parameters
     ----------
-    eft_model : EFTModel
-    data : DataGroup
-    fit_covmat : jnp.ndarray, shape (n_data, n_data)
-    ext_chi2_func : list of Chi2, optional
+    datasets_chi2 : list of Chi2
+        Per-dataset chi2 objects (including any external chi2 contributions).
 
     Returns
     -------
@@ -37,39 +31,19 @@ def fisher_information_matrices(eft_model, data, fit_covmat, ext_chi2_func=None)
         Maps each source name to its Fisher matrix as a DataFrame with
         coeff_names as both index and columns.
     """
-    coeff_names = eft_model.coefficients.free_names
+    coeff_names = datasets_chi2[0].param_names
     n_free = len(coeff_names)
-    n_ext = len(ext_chi2_func) if ext_chi2_func is not None else 0
+    c0 = jnp.zeros(n_free)
     log.info(
-        "Computing Fisher information matrices for %d datasets, %d external chi2, "
-        "%d free coefficients.",
-        len(data.names),
-        n_ext,
+        "Computing Fisher information matrices for %d sources, %d free coefficients.",
+        len(datasets_chi2),
         n_free,
     )
 
-    c0 = jnp.zeros(n_free)
-    jac = jax.jacobian(eft_model.forward_map)(c0)  # (n_data, n_free)
-    inv_covmat = jnp.linalg.inv(fit_covmat)  # (n_data, n_data)
-
     result = {}
-    offset = 0
-    for name, n_d in zip(data.names, data.ndata_list):
-        jac_d = jac[offset : offset + n_d, :]
-        inv_cov_d = inv_covmat[offset : offset + n_d, offset : offset + n_d]
-        F_d = np.array(jac_d.T @ inv_cov_d @ jac_d)
-        log.debug("  %s: n_d=%d, trace=%.4f", name, n_d, float(np.trace(F_d)))
-        result[name] = pd.DataFrame(F_d, index=coeff_names, columns=coeff_names)
-        offset += n_d
-
-    if ext_chi2_func is not None:
-        for i, ext in enumerate(ext_chi2_func):
-            ext_name = ext.name if ext.name is not None else f"ext_chi2_{i}"
-            F_ext = np.array(0.5 * jax.hessian(ext)(c0))
-            log.debug("  %s: trace=%.4f", ext_name, float(np.trace(F_ext)))
-            result[ext_name] = pd.DataFrame(
-                F_ext, index=coeff_names, columns=coeff_names
-            )
+    for chi2 in datasets_chi2:
+        F = np.array(0.5 * jax.hessian(chi2)(c0))
+        result[chi2.name] = pd.DataFrame(F, index=coeff_names, columns=coeff_names)
 
     return result
 

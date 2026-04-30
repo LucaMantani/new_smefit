@@ -2,7 +2,7 @@
 
 import jax.numpy as jnp
 
-from smefit.chi2 import Chi2
+from smefit.chi2 import Chi2, build_datasets_chi2
 from smefit.core import (
     Coefficient,
     CoefficientGroup,
@@ -56,7 +56,7 @@ def test_fisher_returns_dict():
     data = DataGroup([_make_dataset("DS_A", [10.0, 20.0])])
     fit_covmat = jnp.eye(2)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert isinstance(result, dict)
     assert list(result.keys()) == ["DS_A"]
@@ -72,7 +72,7 @@ def test_fisher_single_dataset_shape():
     data = DataGroup([_make_dataset("DS_A", [10.0, 20.0, 30.0])])
     fit_covmat = jnp.eye(3)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert list(result.keys()) == ["DS_A"]
     assert result["DS_A"].shape == (1, 1)
@@ -94,7 +94,7 @@ def test_fisher_two_datasets_shape():
     )
     fit_covmat = jnp.eye(5)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert list(result.keys()) == ["DS_A", "DS_B"]
     assert result["DS_A"].shape == (1, 1)
@@ -117,7 +117,7 @@ def test_fisher_two_free_coefficients_shape():
     data = DataGroup([_make_dataset("DS_A", [10.0, 20.0, 30.0])])
     fit_covmat = jnp.eye(3)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert result["DS_A"].index.tolist() == ["OpA", "OpB"]
     assert result["DS_A"].shape == (2, 2)
@@ -135,7 +135,7 @@ def test_fisher_known_value():
     data = DataGroup([_make_dataset("DS_A", [0.0, 0.0])])
     fit_covmat = jnp.eye(2)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert jnp.allclose(jnp.array(result["DS_A"].values), jnp.array([[1.0]]), atol=1e-5)
 
@@ -156,7 +156,7 @@ def test_fisher_ordering_matches_data_names():
     )
     fit_covmat = jnp.eye(3)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert list(result.keys()) == ["DS_B", "DS_C"]
     # DS_B: J=[2,4]^T, F = 2^2 + 4^2 = 20
@@ -189,7 +189,7 @@ def test_fisher_symmetry():
         ]
     )
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     F = jnp.array(result["DS_A"].values)
     assert jnp.allclose(F, F.T, atol=1e-5)
@@ -223,7 +223,8 @@ def test_fisher_with_external_chi2_appended():
     fit_covmat = jnp.eye(1)
     ext = _make_ext_chi2("MyExtChi2", n_free=1, lin=[2.0, 3.0])
 
-    result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
+    datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
+    result = fisher_information_matrices(datasets_chi2)
 
     assert list(result.keys()) == ["DS_A", "MyExtChi2"]
     assert result["MyExtChi2"].shape == (1, 1)
@@ -238,13 +239,14 @@ def test_fisher_external_chi2_known_value():
     fit_covmat = jnp.eye(1)
     ext = _make_ext_chi2("Ext", n_free=1, lin=[2.0, 3.0])  # F = 4 + 9 = 13
 
-    result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
+    datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
+    result = fisher_information_matrices(datasets_chi2)
 
     assert jnp.allclose(jnp.array(result["Ext"].values), jnp.array([[13.0]]), atol=1e-5)
 
 
-def test_fisher_external_chi2_fallback_name():
-    """Chi2 with name=None gets a fallback name 'ext_chi2_0'."""
+def test_fisher_external_chi2_named():
+    """External Chi2 appears in result under its name."""
     theory = _make_theory("DS_A", sm=[0.0], lin_op=[0.0])
     cg = CoefficientGroup([_free("OpA")])
     model = EFTModel(theory, cg, use_quad=False)
@@ -252,11 +254,12 @@ def test_fisher_external_chi2_fallback_name():
     fit_covmat = jnp.eye(1)
 
     fn = lambda c: jnp.sum(c**2)
-    ext = Chi2(fn, param_names=["OpA"], num_data=1, name=None)
+    ext = Chi2(fn, param_names=["OpA"], num_data=1, name="MyPrior")
 
-    result = fisher_information_matrices(model, data, fit_covmat, ext_chi2_func=[ext])
+    datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
+    result = fisher_information_matrices(datasets_chi2)
 
-    assert "ext_chi2_0" in result
+    assert "MyPrior" in result
 
 
 def test_fisher_no_external_chi2():
@@ -267,6 +270,6 @@ def test_fisher_no_external_chi2():
     data = DataGroup([_make_dataset("DS_A", [10.0])])
     fit_covmat = jnp.eye(1)
 
-    result = fisher_information_matrices(model, data, fit_covmat)
+    result = fisher_information_matrices(build_datasets_chi2(model, data, fit_covmat))
 
     assert list(result.keys()) == ["DS_A"]

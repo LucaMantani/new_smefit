@@ -106,24 +106,3 @@ def aggregate_fisher_information_matrices(
         group_name: sum(fim[source_names[i]] for i in indices)
         for group_name, indices in groups
     }
-
-
-def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
-    """Extract row-normalised diagonals of per-source Fisher matrices.
-
-    Parameters
-    ----------
-    aggregate_fisher_information_matrices : dict[str, pd.DataFrame]
-
-    Returns
-    -------
-    pd.DataFrame
-        Index = coeff_names, columns = source_names. Rows sum to 1.
-    """
-    fim = aggregate_fisher_information_matrices
-    coeff_names = next(iter(fim.values())).index.tolist()
-    raw = pd.DataFrame(
-        {name: np.diag(df.values) for name, df in fim.items()},
-        index=coeff_names,
-    )
-    return raw.div(raw.sum(axis=1), axis=0)

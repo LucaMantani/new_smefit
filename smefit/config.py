@@ -10,8 +10,9 @@ import pathlib
 
 import jax
 import jax.numpy as jnp
-from reportengine.configparser import Config, ConfigError
+from reportengine.configparser import ConfigError
 from reportengine.namespaces import NSList
+from reportengine.report import Config
 
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup

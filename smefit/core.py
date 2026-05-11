@@ -400,15 +400,16 @@ class CoefficientGroup:
                 all_names = sorted(self.coeff_index.keys())
                 dep_indices = []
                 for v in c.vars:
-                    # Check that var is a defined free coefficient
                     if v not in self.coeff_index:
                         raise ValueError(
                             f"Coefficient '{c.name}': var '{v}' in 'vars' is not defined. "
                             f"Available coefficients: {all_names}."
                         )
-                    if not self.coefficients[self.coeff_index[v]].free:
+                    dep = self.coefficients[self.coeff_index[v]]
+                    if not dep.free and dep.value is None:
                         raise ValueError(
-                            f"Coefficient '{c.name}': var '{v}' in 'vars' must be a free coefficient."
+                            f"Coefficient '{c.name}': var '{v}' in 'vars' must be a free "
+                            "coefficient or a fixed coefficient with a constant value."
                         )
                     dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
@@ -449,7 +450,7 @@ class CoefficientGroup:
             free_coeffs = self._W @ free_coeffs
         result = jnp.zeros(len(self.coefficients))
         # Place free coefficients
-        result = result.at[jnp.array(self._free_indices)].set(free_coeffs)
+        result = result.at[jnp.array(self._free_indices, dtype=int)].set(free_coeffs)
         # Place fixed values
         for idx, val in self._fixed_base:
             result = result.at[idx].set(val)

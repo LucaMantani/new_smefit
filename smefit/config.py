@@ -19,6 +19,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.priors import Prior, _build_dist, _UniformDist
+from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 
@@ -448,6 +449,39 @@ class smefitConfig(Config):
             return Prior(dists, coefficients.free_names, specs=specs)
 
         return self._build_prior_impl(coefficients)
+
+    def parse_pseudodata_settings(self, pseudodata_settings):
+        """Parse pseudodata projection settings."""
+        known_keys = {"lumi_new", "noise", "seed", "fred_tot", "fred_sys"}
+        for k in set(pseudodata_settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in pseudodata_settings.", k)
+        noise = pseudodata_settings.get("noise", "L0")
+        if noise not in {"L0", "L1"}:
+            raise ConfigError("noise", noise, "noise must be 'L0' or 'L1'")
+        return {
+            "lumi_new": pseudodata_settings.get("lumi_new", None),
+            "noise": noise,
+            "seed": pseudodata_settings.get("seed", None),
+            "fred_tot": float(pseudodata_settings.get("fred_tot", 1.0)),
+            "fred_sys": float(pseudodata_settings.get("fred_sys", 1.0)),
+        }
+
+    def produce_pseudodata(
+        self,
+        data,
+        theory,
+        pseudodata_settings,
+        use_theory_covmat=False,
+        eft_model=None,
+    ):
+        """Produce a pseudodata DataGroup via projections."""
+        return Projection(
+            data=data,
+            theory=theory,
+            pseudodata_settings=pseudodata_settings,
+            use_theory_covmat=use_theory_covmat,
+            eft_model=eft_model,
+        ).build_data_group()
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

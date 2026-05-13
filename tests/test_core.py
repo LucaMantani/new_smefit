@@ -210,3 +210,34 @@ def test_coeff_group_single_free():
     # OpB is now fixed at 0; sorted: OpA (0), OpB (1)
     result = sg.resolve(jnp.array([5.0]))
     assert jnp.allclose(result, jnp.array([5.0, 0.0]))
+
+
+def test_coeff_group_resolve_all_fixed_empty_array():
+    """resolve(jnp.array([])) must not raise a dtype error (empty int index)."""
+    c1 = Coefficient(name="OpA", free=False, value=1.0)
+    c2 = Coefficient(name="OpB", free=False, value=2.0)
+    cg = CoefficientGroup([c1, c2])
+    result = cg.resolve(jnp.array([]))
+    assert float(result[cg.coeff_index["OpA"]]) == pytest.approx(1.0)
+    assert float(result[cg.coeff_index["OpB"]]) == pytest.approx(2.0)
+
+
+def test_coeff_group_expr_var_fixed_value_allowed():
+    """An expression coefficient may reference a fixed-value coefficient."""
+    c_fixed = Coefficient(name="OpWB", free=False, value=0.1)
+    c_expr = Coefficient(name="OpD", free=False, vars=["OpWB"], expr="0.5*OpWB**2")
+    cg = CoefficientGroup([c_fixed, c_expr])
+    result = cg.resolve(jnp.array([]))
+    assert float(result[cg.coeff_index["OpWB"]]) == pytest.approx(0.1)
+    assert float(result[cg.coeff_index["OpD"]]) == pytest.approx(0.5 * 0.1**2)
+
+
+def test_coeff_group_expr_var_referencing_expr_coeff_rejected():
+    """An expression coefficient may NOT reference another expression coefficient."""
+    c_val = Coefficient(name="A", free=False, value=1.0)
+    c_expr1 = Coefficient(name="B", free=False, vars=["A"], expr="2*A")
+    c_expr2 = Coefficient(name="C", free=False, vars=["B"], expr="3*B")
+    with pytest.raises(
+        ValueError, match="must be a free coefficient or a fixed coefficient"
+    ):
+        CoefficientGroup([c_val, c_expr1, c_expr2])

@@ -1,0 +1,37 @@
+# path to data and theory
+data_path: ./commondata
+theory_path: ./theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+# Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP_Bhabha_2013, order: LO}
+    # ATLAS_CMS
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+  - {name: ATLAS_CMS_tt_AC_8TeV, order: NLO_QCD}
+    # ATLAS
+  - {name: ATLAS_Zjj_13TeV_dphijj, order: LO}
+  - {name: ATLAS_SSinc_RunII, order: NLO_QCD}
+
+
+# Coefficients at which to evaluate the EFT hypothesis (all fixed).
+# Omit this block entirely to project at the SM (all coefficients zero).
+coefficients:
+  OpWB: {free: False, value: 0.1}
+  OpD:  {free: False, vars: [OpWB], expr: "0.5*OpWB**2"}
+
+# Pseudodata projection settings
+pseudodata_settings:
+  # lumi_new: 3000        # target luminosity; omit for a closure test
+  noise: L0            # L0: deterministic central values; L1: Gaussian-fluctuated
+  seed: 42             # random seed for L1 noise (ignored for L0)
+  fred_sys: 1.0        # systematic reduction factor
+  fred_tot: 1.0        # total uncertainty reduction factor (used when stat = 0)
+
+actions_:
+  - write_pseudodata

@@ -11,16 +11,28 @@ import jax
 from jax.extend import backend as jbackend
 from reportengine.environment import Environment
 
-try:
-    import pypandoc
-
-    _pandoc_dir = os.path.dirname(pypandoc.get_pandoc_path())
-    if _pandoc_dir not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] = _pandoc_dir + os.pathsep + os.environ.get("PATH", "")
-except Exception:
-    pass
-
 log = logging.getLogger(__name__)
+
+
+def _configure_pandoc_path():
+    """Ensure the pandoc executable directory is available on PATH."""
+    try:
+        import pypandoc
+
+        pandoc_path = pypandoc.get_pandoc_path()
+        pandoc_dir = os.path.dirname(pandoc_path)
+        current_path = os.environ.get("PATH", "")
+        path_entries = current_path.split(os.pathsep) if current_path else []
+
+        if pandoc_dir and pandoc_dir not in path_entries:
+            os.environ["PATH"] = (
+                pandoc_dir if not current_path else pandoc_dir + os.pathsep + current_path
+            )
+    except Exception as exc:
+        log.debug("Unable to configure pandoc PATH: %s", exc)
+
+
+_configure_pandoc_path()
 
 
 class smefitEnvironment(Environment):

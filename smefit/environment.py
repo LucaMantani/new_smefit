@@ -26,7 +26,9 @@ def _configure_pandoc_path():
 
         if pandoc_dir and pandoc_dir not in path_entries:
             os.environ["PATH"] = (
-                pandoc_dir if not current_path else pandoc_dir + os.pathsep + current_path
+                pandoc_dir
+                if not current_path
+                else pandoc_dir + os.pathsep + current_path
             )
     except Exception as exc:
         log.debug("Unable to configure pandoc PATH: %s", exc)

@@ -18,6 +18,7 @@ prompt_toolkit = "*"
 h5py = "*"
 pypandoc = "*"
 pypandoc-binary = "*"
+pre-commit = "*"
 
 reportengine = "*"
 jax = "*"

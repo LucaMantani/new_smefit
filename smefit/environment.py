@@ -5,11 +5,21 @@ Environment module of smefit
 """
 
 import logging
+import os
 
 import jax
 from jax.extend import backend as jbackend
 from reportengine.environment import Environment
 
+try:                                                                                                                                 
+    import pypandoc                                                                                                                  
+                                                                                                                                     
+    _pandoc_dir = os.path.dirname(pypandoc.get_pandoc_path())                                                                        
+    if _pandoc_dir not in os.environ.get("PATH", "").split(os.pathsep):                                                              
+        os.environ["PATH"] = _pandoc_dir + os.pathsep + os.environ.get("PATH", "")                                                   
+except Exception:                                                                                                                    
+    pass                                                                                                                             
++       
 log = logging.getLogger(__name__)
 
 

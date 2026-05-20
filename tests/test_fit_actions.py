@@ -8,8 +8,10 @@ import pytest
 from smefit.fit_actions import (
     run_analytic_fit,
     run_blackjax_fit,
+    run_hessian_fit,
     run_individual_analytic_fits,
     run_individual_blackjax_fits,
+    run_individual_hessian_fits,
     run_individual_ultranest_fits,
     run_ultranest_fit,
 )
@@ -34,6 +36,7 @@ def _make_mock_result(name):
         (run_analytic_fit, "analytic_fit"),
         (run_ultranest_fit, "ultranest_fit"),
         (run_blackjax_fit, "blackjax_fit"),
+        (run_hessian_fit, "hessian_fit"),
     ],
 )
 def test_single_fit_action(action, fixture_name):
@@ -55,6 +58,7 @@ def test_single_fit_action(action, fixture_name):
         run_individual_analytic_fits,
         run_individual_ultranest_fits,
         run_individual_blackjax_fits,
+        run_individual_hessian_fits,
     ],
 )
 def test_individual_fits_action(action, tmp_path):

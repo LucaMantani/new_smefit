@@ -247,34 +247,6 @@ def build_exact_posterior_prior(
     )
 
 
-def hessian_fit_SM(chi2, output_path):
-    """Compute the Hessian of the chi2 function in zero and perform Hessian fit"""
-    coeffs = jnp.zeros(chi2.nparam)
-    hess_fn = jax.hessian(chi2)
-    hess = 0.5 * hess_fn(coeffs)
-
-    # Invert it to get the covariance matrix
-    cov = jnp.linalg.inv(hess)
-
-    samples = jax.random.multivariate_normal(
-        jax.random.PRNGKey(0), mean=jnp.zeros(chi2.nparam), cov=cov, shape=(10000,)
-    )
-
-    fit = FitResult(
-        free_parameters=chi2.param_names,
-        best_fit_point={name: 0.0 for name in chi2.param_names},
-        max_loglikelihood=float(-0.5 * chi2(coeffs)),
-        num_data=chi2.num_data,
-        logz=None,
-        samples={name: samples[:, i] for i, name in enumerate(chi2.param_names)},
-    )
-
-    fit.print_summary()
-    fit.write(output_path)
-
-    return fit
-
-
 def run_prior_test(prior):
     n_free = len(prior.param_names)
     print(f"Prior parameters: {prior.param_names}")

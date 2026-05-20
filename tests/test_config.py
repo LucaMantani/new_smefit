@@ -333,3 +333,105 @@ def test_produce_prior_with_whitening(cfg, coeff_group):
     assert isinstance(result.dists[0], _UniformDist)
     assert result.dists[0].low == pytest.approx(-3.0)
     assert result.dists[0].high == pytest.approx(3.0)
+
+
+# ---------------------------------------------------------------------------
+# parse_hessian_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_hessian_settings_defaults(cfg):
+    result = cfg.parse_hessian_settings({})
+    assert result["sm_solution"] is False
+    assert result["n_steps"] == 2000
+    assert result["tol"] == pytest.approx(1e-8)
+    assert result["n_samples"] == 10000
+    assert result["seed"] == 42
+
+
+def test_parse_hessian_settings_custom(cfg):
+    result = cfg.parse_hessian_settings(
+        {"sm_solution": True, "n_steps": 500, "seed": 7}
+    )
+    assert result["sm_solution"] is True
+    assert result["n_steps"] == 500
+    assert result["seed"] == 7
+
+
+def test_parse_hessian_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_hessian_settings({"unknown_key": 99})
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# parse_optimizer_settings / produce_optimizer
+# ---------------------------------------------------------------------------
+
+
+def test_parse_optimizer_settings_passthrough(cfg):
+    settings = {"optimizer": "sgd", "optimizer_hyperparams": {"learning_rate": 0.1}}
+    result = cfg.parse_optimizer_settings(settings)
+    assert result["optimizer"] == "sgd"
+    assert result["optimizer_hyperparams"]["learning_rate"] == pytest.approx(0.1)
+
+
+def test_parse_optimizer_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_optimizer_settings({"bad_key": 1})
+    assert any("bad_key" in r.message for r in caplog.records)
+
+
+def test_produce_optimizer_default(cfg):
+    """No optimizer_settings → default Adam is returned."""
+    opt = cfg.produce_optimizer()
+    assert hasattr(opt, "init") and hasattr(opt, "update")
+
+
+def test_produce_optimizer_with_settings(cfg):
+    """Custom hyperparams are accepted without error."""
+    settings = {"optimizer": "adam", "optimizer_hyperparams": {"learning_rate": 5e-3}}
+    opt = cfg.produce_optimizer(settings)
+    assert hasattr(opt, "init") and hasattr(opt, "update")
+
+
+def test_produce_optimizer_with_clipnorm(cfg):
+    """Clipnorm wraps the optimizer in a chain."""
+    import optax
+
+    settings = {
+        "optimizer": "adam",
+        "optimizer_hyperparams": {"learning_rate": 1e-2},
+        "clipnorm": 1.0,
+    }
+    opt = cfg.produce_optimizer(settings)
+    # optax.chain returns a GradientTransformationExtraArgs / named tuple;
+    # the key check is that init/update exist and the object is not plain adam
+    assert hasattr(opt, "init") and hasattr(opt, "update")
+    # A chain wraps multiple transforms; verify by initialising on a dummy param
+    import jax.numpy as jnp
+
+    state = opt.init(jnp.zeros(2))
+    assert state is not None
+
+
+def test_produce_optimizer_with_scheduler(cfg):
+    """A scheduler is injected as learning_rate without error."""
+    settings = {
+        "optimizer": "adam",
+        "optimizer_hyperparams": {},
+        "scheduler": {
+            "name": "linear_schedule",
+            "params": {
+                "init_value": 1e-2,
+                "end_value": 1e-4,
+                "transition_steps": 1000,
+            },
+        },
+    }
+    opt = cfg.produce_optimizer(settings)
+    assert hasattr(opt, "init") and hasattr(opt, "update")

@@ -86,6 +86,25 @@ datasets:
   - {name: CMS_tttt_13TeV_2023, order: NLO_QCD, group: LHC-4H}
   - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD, group: LHC-4H}
 
+optimizer_settings:
+    optimizer: adam
+    # clipnorm: 1.0
+    optimizer_hyperparams:
+      learning_rate: 0.001
+    # scheduler:
+    #   name: linear_schedule
+    #   params:
+    #     init_value: 1.0e-3
+    #     end_value:  1.0e-6
+    #     transition_begin: 3000
+    #     transition_steps: 10000
+
+hessian_settings:
+    sm_solution: true
+    n_steps: 2000
+    tol: 1.0e-8
+    n_samples: 10
+
 # Coefficients to fit
 coefficients:
   OtG:

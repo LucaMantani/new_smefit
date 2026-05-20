@@ -142,3 +142,36 @@ def test_individual_analytic_fit_delegates(coeff_group):
         mock_model, mock_data, mock_covmat, mock_chi2, 10000, 42
     )
     assert result is mock_result
+
+
+# ---------------------------------------------------------------------------
+# individual_hessian_fit
+# ---------------------------------------------------------------------------
+
+
+def test_individual_hessian_fit_delegates():
+    mock_model = MagicMock()
+    mock_chi2 = MagicMock()
+    mock_optimizer = MagicMock()
+    mock_settings = {
+        "sm_solution": True,
+        "n_steps": 100,
+        "tol": 1e-8,
+        "n_samples": 50,
+        "seed": 0,
+    }
+    mock_result = MagicMock()
+
+    with patch(
+        "smefit.individual_fit.hessian_fit", return_value=mock_result
+    ) as mock_fn:
+        from smefit.individual_fit import individual_hessian_fit
+
+        result = individual_hessian_fit(
+            mock_model, mock_chi2, mock_optimizer, mock_settings
+        )
+
+    mock_fn.assert_called_once_with(
+        mock_model, mock_chi2, mock_optimizer, mock_settings
+    )
+    assert result is mock_result

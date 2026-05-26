@@ -336,25 +336,47 @@ def test_produce_prior_with_whitening(cfg, coeff_group):
 
 
 # ---------------------------------------------------------------------------
+# parse_gradient_descent_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_gradient_descent_settings_defaults(cfg):
+    result = cfg.parse_gradient_descent_settings({})
+    assert result["sm_solution"] is False
+    assert result["n_steps"] == 2000
+    assert result["tol"] == pytest.approx(1e-8)
+
+
+def test_parse_gradient_descent_settings_custom(cfg):
+    result = cfg.parse_gradient_descent_settings(
+        {"sm_solution": True, "n_steps": 500, "tol": 1e-6}
+    )
+    assert result["sm_solution"] is True
+    assert result["n_steps"] == 500
+    assert result["tol"] == pytest.approx(1e-6)
+
+
+def test_parse_gradient_descent_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_gradient_descent_settings({"unknown_key": 99})
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
 # parse_hessian_settings
 # ---------------------------------------------------------------------------
 
 
 def test_parse_hessian_settings_defaults(cfg):
     result = cfg.parse_hessian_settings({})
-    assert result["sm_solution"] is False
-    assert result["n_steps"] == 2000
-    assert result["tol"] == pytest.approx(1e-8)
     assert result["n_samples"] == 10000
     assert result["seed"] == 42
 
 
 def test_parse_hessian_settings_custom(cfg):
-    result = cfg.parse_hessian_settings(
-        {"sm_solution": True, "n_steps": 500, "seed": 7}
-    )
-    assert result["sm_solution"] is True
-    assert result["n_steps"] == 500
+    result = cfg.parse_hessian_settings({"n_samples": 500, "seed": 7})
+    assert result["n_samples"] == 500
     assert result["seed"] == 7
 
 

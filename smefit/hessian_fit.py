@@ -3,10 +3,10 @@ smefit.hessian_fit.py
 
 Hessian-based fitting routine returning a FitResult node.
 
-The best-fit point is either assumed to be the SM point (c=0) or found
-numerically via gradient descent.  In both cases the posterior is
-approximated as a multivariate Gaussian whose covariance is the inverse
-of the Hessian of the chi2 evaluated at the best-fit point.
+The best-fit point is determined by the ``gd_best_fit`` node (either the SM
+point c=0 or the gradient-descent minimum).  The posterior is then
+approximated as a multivariate Gaussian whose covariance is the inverse of
+the Hessian of the chi2 evaluated at the best-fit point.
 """
 
 import logging
@@ -20,7 +20,38 @@ from smefit.gradient_descent import gd_minimize
 log = logging.getLogger(__name__)
 
 
-def hessian_fit(eft_model, chi2, optimizer, hessian_settings):
+def gd_best_fit(chi2, optimizer, gradient_descent_settings):
+    """Determine the best-fit coefficient vector via gradient descent.
+
+    This function is a reportengine provider node: its return value is
+    available as ``gd_best_fit`` to any downstream node (e.g. ``hessian_fit``).
+
+    Parameters
+    ----------
+    chi2 : Chi2
+        Chi-squared closure built by ``produce_chi2``.
+    optimizer : optax.GradientTransformation
+        Optax optimizer built by ``produce_optimizer``.
+    gradient_descent_settings : dict
+        Settings dict produced by ``parse_gradient_descent_settings``.
+
+    Returns
+    -------
+    jnp.ndarray
+        Best-fit coefficient vector of shape ``(n_free,)``.
+    """
+    sm_solution = gradient_descent_settings.get("sm_solution")
+    zeros = jnp.zeros(chi2.nparam)
+    if sm_solution:
+        log.info("GD best-fit: using SM point (c=0).")
+        return zeros
+    n_steps = gradient_descent_settings.get("n_steps")
+    tol = gradient_descent_settings.get("tol")
+    log.info("GD best-fit: running gradient descent (max_steps=%d) from c=0.", n_steps)
+    return gd_minimize(chi2, optimizer, zeros, n_steps=n_steps, tol=tol)
+
+
+def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
     """Approximate the posterior with a Gaussian around the chi2 minimum.
 
     This function is a reportengine provider node: its arguments are resolved
@@ -33,8 +64,8 @@ def hessian_fit(eft_model, chi2, optimizer, hessian_settings):
         The EFT model used to resolve free → full coefficient space.
     chi2 : Chi2
         Chi-squared closure built by ``produce_chi2``.
-    optimizer : optax.GradientTransformation
-        Optax optimizer built by ``produce_optimizer``.
+    gd_best_fit : jnp.ndarray
+        Best-fit coefficient vector produced by the ``gd_best_fit`` node.
     hessian_settings : dict
         Settings dict produced by ``parse_hessian_settings``.
 
@@ -42,23 +73,10 @@ def hessian_fit(eft_model, chi2, optimizer, hessian_settings):
     -------
     FitResult
     """
-    sm_solution = hessian_settings.get("sm_solution")
-    n_steps = hessian_settings.get("n_steps")
-    tol = hessian_settings.get("tol")
     n_samples = hessian_settings.get("n_samples")
     seed = hessian_settings.get("seed")
 
-    n_free = len(eft_model.coefficients.free_names)
-    zeros = jnp.zeros(n_free)
-
-    if sm_solution:
-        log.info("Hessian fit: using SM point (c=0) as the best-fit point.")
-        c_best = zeros
-    else:
-        log.info(
-            "Hessian fit: running gradient descent (max_steps=%d) from c=0.", n_steps
-        )
-        c_best = gd_minimize(chi2, optimizer, zeros, n_steps=n_steps, tol=tol)
+    c_best = gd_best_fit
 
     # Hessian of chi2 at the best-fit point.
     # The log-likelihood is -chi2/2, so its Hessian is -(1/2)*d²chi2/dc².

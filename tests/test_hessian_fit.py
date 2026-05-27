@@ -1,4 +1,4 @@
-"""Unit tests for smefit.hessian_fit — gd_best_fit and hessian_fit functions."""
+"""Unit tests for smefit.hessian_fit — hessian_fit function."""
 
 import jax.numpy as jnp
 import optax
@@ -13,7 +13,8 @@ from smefit.core import (
     Theory,
 )
 from smefit.fit_result import FitResult
-from smefit.hessian_fit import gd_best_fit, hessian_fit
+from smefit.gradient_descent import gd_best_fit
+from smefit.hessian_fit import hessian_fit
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}

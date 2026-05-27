@@ -17,7 +17,8 @@ from reportengine import collect
 
 from smefit.analytic_fit import analytic_fit
 from smefit.blackjax_fit import blackjax_fit
-from smefit.hessian_fit import gd_best_fit, hessian_fit
+from smefit.gradient_descent import gd_best_fit
+from smefit.hessian_fit import hessian_fit
 from smefit.ultranest_fit import ultranest_fit
 
 log = logging.getLogger(__name__)

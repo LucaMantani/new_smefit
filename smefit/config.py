@@ -484,6 +484,19 @@ class smefitConfig(Config):
             "seed": int(settings.get("seed", 42)),
         }
 
+    def parse_chi2_scan_settings(self, chi2_scan_settings):
+        """Parse optional chi2 scan settings.
+
+        Keys
+        ----
+        n_points : int, default 50
+            Number of scan points per coefficient.
+        """
+        known_keys = {"n_points"}
+        for k in set(chi2_scan_settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in chi2_scan_settings.", k)
+        return {"n_points": int(chi2_scan_settings.get("n_points", 50))}
+
     def parse_bayesian_update_path(self, bayesian_update_path):
         """Parse and validate the path to a previous fit for Bayesian updating."""
         p = pathlib.Path(bayesian_update_path)

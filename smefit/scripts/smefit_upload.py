@@ -57,7 +57,9 @@ def main():
 
     try:
         uploader = Uploader(server=args.server)
-        uploader.upload(args.resource_type, args.resource_name, args.local_path, args.force)
+        uploader.upload(
+            args.resource_type, args.resource_name, args.local_path, args.force
+        )
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

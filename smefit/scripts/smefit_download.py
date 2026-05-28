@@ -58,7 +58,9 @@ def main():
 
     try:
         if args.resource_type == "rge":
-            download_rge(args.resource_name, local_path=args.local_path, server=args.server)
+            download_rge(
+                args.resource_name, local_path=args.local_path, server=args.server
+            )
         else:
             downloader = Downloader(server=args.server)
             downloader.download(args.resource_type, args.resource_name, args.local_path)

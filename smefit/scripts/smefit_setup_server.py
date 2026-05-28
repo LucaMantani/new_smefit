@@ -46,7 +46,9 @@ def _validate(config: dict) -> None:
         raise ValueError("Credentials file must be a YAML mapping.")
     unknown = set(config) - set(_PROFILES)
     if unknown:
-        raise ValueError(f"Unknown profile(s): {', '.join(sorted(unknown))}. Expected: {', '.join(_PROFILES)}")
+        raise ValueError(
+            f"Unknown profile(s): {', '.join(sorted(unknown))}. Expected: {', '.join(_PROFILES)}"
+        )
     if not config:
         raise ValueError("Credentials file contains no profiles.")
     for profile, values in config.items():
@@ -66,7 +68,11 @@ def _prompt_profile(profile: str) -> dict | None:
     hostname = input("  webdav_hostname: ").strip()
     login = input("  webdav_login:    ").strip()
     password = getpass.getpass("  webdav_password: ")
-    return {"webdav_hostname": hostname, "webdav_login": login, "webdav_password": password}
+    return {
+        "webdav_hostname": hostname,
+        "webdav_login": login,
+        "webdav_password": password,
+    }
 
 
 def _write_config(config: dict) -> None:
@@ -97,9 +103,7 @@ def main():
     args = parser.parse_args()
 
     if CONFIG_PATH.exists() and not args.force:
-        log.error(
-            "%s already exists. Use --force to overwrite.", CONFIG_PATH
-        )
+        log.error("%s already exists. Use --force to overwrite.", CONFIG_PATH)
         sys.exit(1)
 
     if args.credentials_yaml is not None:

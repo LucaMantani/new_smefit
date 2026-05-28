@@ -35,7 +35,8 @@ def main():
         help="Name(s) of the resource(s) to delete.",
     )
     parser.add_argument(
-        "-f", "--force",
+        "-f",
+        "--force",
         action="store_true",
         help="Skip confirmation prompt.",
     )

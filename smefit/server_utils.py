@@ -116,7 +116,9 @@ def _get_client(server: str | None, need_write: bool = False):
                 f"Private server credentials not found in {CONFIG_PATH}.\n{hint}"
             )
     else:
-        raise ServerError(f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}")
+        raise ServerError(
+            f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}"
+        )
 
     profile = config[server]
     for key in ("webdav_hostname", "webdav_login", "webdav_password"):
@@ -175,8 +177,7 @@ def list_fits_with_rge(server: str | None = None) -> list[str]:
             client.download_sync(remote_path=remote, local_path=str(archive))
             with tarfile.open(archive, "r:gz") as tar:
                 if any(
-                    pathlib.Path(m.name).name == RGE_FILENAME
-                    for m in tar.getmembers()
+                    pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
                 ):
                     results.append(fit_name)
     return results
@@ -208,7 +209,11 @@ def download_rge(
         client.download_sync(remote_path=remote, local_path=str(archive))
         with tarfile.open(archive, "r:gz") as tar:
             rge_member = next(
-                (m for m in tar.getmembers() if pathlib.Path(m.name).name == RGE_FILENAME),
+                (
+                    m
+                    for m in tar.getmembers()
+                    if pathlib.Path(m.name).name == RGE_FILENAME
+                ),
                 None,
             )
             if rge_member is None:

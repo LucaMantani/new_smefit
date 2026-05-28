@@ -1,0 +1,140 @@
+# SMEFiT Server Commands
+
+Resources are organised into two types: `fit` and `report`.  
+RGE matrices (`rge_matrix.pkl`) live inside fit directories and are not standalone resources.  
+Two servers are available: `public` and `private`.
+
+**Default server selection** — all commands auto-detect the server:
+
+- Private credentials configured → **private server** used by default.
+- No credentials → **public server** (bundled read-only access, no setup needed).
+
+Use `--server public` or `--server private` to override explicitly.
+
+---
+
+## First-time setup (team members only)
+
+External users get read-only access to the public server automatically — no setup needed.
+
+Team members must run the setup once to configure their credentials:
+
+```bash
+# From a privately-shared credentials file (recommended)
+smefit_setup_server my_credentials.yaml
+
+# Or interactively
+smefit_setup_server
+```
+
+The credentials file format (include only the profiles you have access to):
+
+```yaml
+public:
+  webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
+  webdav_login:    <write-token>
+  webdav_password: <password>
+private:
+  webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
+  webdav_login:    <private-token>
+  webdav_password: <password>
+```
+
+Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).  
+Use `--force` to overwrite an existing config.
+
+---
+
+## List resources on the server
+
+```bash
+# List fits or reports (auto-detected server)
+smefit_ls fit
+smefit_ls report
+
+# List which fits contain an rge_matrix.pkl
+# (downloads each archive to inspect — may be slow)
+smefit_ls rge
+
+# Target a specific server
+smefit_ls fit --server public
+smefit_ls fit --server private
+```
+
+## Download
+
+```bash
+# Download a fit or report
+smefit_download fit my_fit
+smefit_download report my_report
+
+# Download to a specific directory
+smefit_download fit my_fit /path/to/output
+
+# Download only the rge_matrix.pkl from a fit
+smefit_download rge my_fit
+smefit_download rge my_fit /path/to/output
+
+# Explicitly target the public server
+smefit_download fit my_fit --server public
+```
+
+---
+
+## View a report
+
+```bash
+# Download (if needed) and open a report in the browser
+view_report my_report
+
+# Save to a specific directory
+view_report my_report /path/to/output
+
+# Download without opening the browser
+view_report my_report --no-browser
+
+# Explicitly target the public server
+view_report my_report --server public
+```
+
+If the report is already present locally it is opened directly without re-downloading.
+
+---
+
+## Rename a resource (team members only)
+
+```bash
+smefit_mv fit old_name new_name
+smefit_mv report old_name new_name --server public
+```
+
+## Delete resources (team members only)
+
+```bash
+# Prompts for confirmation
+smefit_rm fit my_fit
+
+# Delete multiple resources at once
+smefit_rm fit fit_a fit_b fit_c
+
+# Skip confirmation prompt
+smefit_rm fit my_fit -f
+
+smefit_rm report my_report --server public
+```
+
+## Upload (team members only)
+
+```bash
+# Upload a fit (private server by default if configured)
+smefit_upload fit my_fit
+
+# Upload from a specific path
+smefit_upload fit my_fit /path/to/my_fit
+
+# Overwrite if it already exists
+smefit_upload fit my_fit --force
+
+# Upload a report to the public server
+smefit_upload report my_report --server public
+```

@@ -38,8 +38,11 @@ def main():
     parser.add_argument(
         "--server",
         choices=["public", "private"],
-        default="public",
-        help="Server to download the report from (default: public).",
+        default=None,
+        help=(
+            "Server to download the report from. Defaults to private if credentials "
+            "are configured, otherwise the public server (no setup required)."
+        ),
     )
     parser.add_argument(
         "--no-browser",

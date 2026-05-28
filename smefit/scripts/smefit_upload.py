@@ -39,8 +39,11 @@ def main():
     parser.add_argument(
         "--server",
         choices=["public", "private"],
-        default="private",
-        help="Server to upload to (default: private).",
+        default=None,
+        help=(
+            "Server to upload to. Defaults to private if credentials are configured, "
+            "otherwise the public server (requires write credentials)."
+        ),
     )
     parser.add_argument(
         "-f",

@@ -65,18 +65,41 @@ def _load_config() -> dict:
         return yaml.safe_load(f) or {}
 
 
-def _get_client(server: str, need_write: bool = False):
-    """Return an authenticated WebDAV client for the given server profile.
+def _auto_server(config: dict, need_write: bool) -> str:
+    """Pick the best available server automatically.
 
-    For the public server without write access the bundled read-only credentials
-    are used automatically — no config file required.
+    Private is preferred when credentials are configured. For read operations,
+    falls back to the bundled public credentials so external users need no setup.
+    """
+    if "private" in config:
+        return "private"
+    if need_write:
+        if "public" in config:
+            return "public"
+        raise ServerError(
+            f"No server credentials found in {CONFIG_PATH}.\n"
+            "Run 'smefit_setup_server' to configure your credentials."
+        )
+    return "public"
+
+
+def _get_client(server: str | None, need_write: bool = False):
+    """Return an authenticated WebDAV client for *server*.
+
+    When *server* is None the best available server is chosen automatically:
+    private if credentials are configured, otherwise the bundled public
+    read-only credentials (no config file required).
     """
     from webdav3.client import Client
+
+    config = _load_config()
+
+    if server is None:
+        server = _auto_server(config, need_write)
 
     if server == "public" and not need_write:
         return Client(_BUNDLED_PUBLIC_SERVER)
 
-    config = _load_config()
     hint = "Run 'smefit_setup_server' to configure your credentials."
 
     if server == "public":
@@ -122,13 +145,13 @@ def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
 class Uploader:
     """Upload resources to a server. Requires write credentials in the config file."""
 
-    def __init__(self, server: str = "private"):
-        if server not in SERVERS:
+    def __init__(self, server: str | None = None):
+        if server is not None and server not in SERVERS:
             raise ServerError(
                 f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}"
             )
         self._client = _get_client(server, need_write=True)
-        self._server = server
+        self._server = server or "auto"
 
     def _ensure_remote_dir(self, resource_type: str) -> None:
         remote_dir = _REMOTE_DIRS[resource_type]
@@ -192,13 +215,13 @@ class Uploader:
 class Downloader:
     """Download resources from a server. Uses bundled credentials for the public server."""
 
-    def __init__(self, server: str = "public"):
-        if server not in SERVERS:
+    def __init__(self, server: str | None = None):
+        if server is not None and server not in SERVERS:
             raise ServerError(
                 f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}"
             )
         self._client = _get_client(server, need_write=False)
-        self._server = server
+        self._server = server or "auto"
 
     def list_resources(self, resource_type: str) -> list[str]:
         """Return names of available resources of *resource_type* on the server."""

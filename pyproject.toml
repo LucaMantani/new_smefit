@@ -46,7 +46,7 @@ doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx
 smefit = "smefit.app:main"
 smefit_upload = "smefit.scripts.smefit_upload:main"
 smefit_download = "smefit.scripts.smefit_download:main"
-smefit_visualise = "smefit.scripts.smefit_visualise:main"
+view_report = "smefit.scripts.view_report:main"
 smefit_setup_server = "smefit.scripts.smefit_setup_server:main"
 
 [tool.pytest.ini_options]

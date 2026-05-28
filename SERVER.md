@@ -1,7 +1,7 @@
 # SMEFiT Server Commands
 
-Resources are organised into two types: `fit` and `report`.  
-RGE matrices (`rge_matrix.pkl`) live inside fit directories and are not standalone resources.  
+Resources are organised into two types: `fit` and `report`.
+RGE matrices (`rge_matrix.pkl`) live inside fit directories and are not standalone resources.
 Two servers are available: `public` and `private`.
 
 **Default server selection** — all commands auto-detect the server:
@@ -40,7 +40,7 @@ private:
   webdav_password: <password>
 ```
 
-Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).  
+Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).
 Use `--force` to overwrite an existing config.
 
 ---

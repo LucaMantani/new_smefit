@@ -336,6 +336,29 @@ def test_produce_prior_with_whitening(cfg, coeff_group):
 
 
 # ---------------------------------------------------------------------------
+# parse_chi2_scan_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_chi2_scan_settings_defaults(cfg):
+    result = cfg.parse_chi2_scan_settings({})
+    assert result["n_points"] == 50
+
+
+def test_parse_chi2_scan_settings_custom(cfg):
+    result = cfg.parse_chi2_scan_settings({"n_points": 20})
+    assert result["n_points"] == 20
+
+
+def test_parse_chi2_scan_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_chi2_scan_settings({"n_points": 10, "bad_key": "oops"})
+    assert any("bad_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
 # parse_hessian_settings
 # ---------------------------------------------------------------------------
 

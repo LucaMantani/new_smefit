@@ -1,13 +1,10 @@
 """
-Download a resource from the SMEFiT server.
+List resources available on the SMEFiT server.
 
-    smefit_download RESOURCE_TYPE RESOURCE_NAME [LOCAL_PATH]
+    smefit_ls RESOURCE_TYPE [--server public|private]
 
 RESOURCE_TYPE must be one of: fit, report, rge.
-RESOURCE_NAME is the name of the resource on the server.
-LOCAL_PATH is the directory where the resource will be saved (defaults to .).
-
-Use 'smefit_ls RESOURCE_TYPE' to see what is available on the server.
+The server is auto-detected: private if credentials are configured, else public.
 """
 
 import argparse
@@ -29,25 +26,15 @@ def main():
     parser.add_argument(
         "resource_type",
         choices=["fit", "report", "rge"],
-        help="Type of resource to download.",
-    )
-    parser.add_argument(
-        "resource_name",
-        help="Name of the resource to download.",
-    )
-    parser.add_argument(
-        "local_path",
-        nargs="?",
-        default=None,
-        help="Local directory where the resource will be saved. Defaults to ./.",
+        help="Type of resource to list.",
     )
     parser.add_argument(
         "--server",
         choices=["public", "private"],
         default=None,
         help=(
-            "Server to download from. Defaults to private if credentials are configured, "
-            "otherwise the public server (no setup required)."
+            "Server to query. Auto-detects by default: private if credentials "
+            "are configured, otherwise public."
         ),
     )
     args = parser.parse_args()
@@ -56,7 +43,13 @@ def main():
 
     try:
         downloader = Downloader(server=args.server)
-        downloader.download(args.resource_type, args.resource_name, args.local_path)
+        resources = downloader.list_resources(args.resource_type)
+        if resources:
+            print(f"Available {args.resource_type}s on server:")
+            for r in resources:
+                print(f"  {r}")
+        else:
+            print(f"No {args.resource_type}s found on server.")
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

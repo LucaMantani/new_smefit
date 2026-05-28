@@ -26,7 +26,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge"],
+        choices=["fit", "report"],
         help="Type of resource to upload.",
     )
     parser.add_argument("resource_name", help="Name of the resource.")

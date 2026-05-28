@@ -24,7 +24,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge"],
+        choices=["fit", "report"],
         help="Type of resource.",
     )
     parser.add_argument("old_name", help="Current name of the resource on the server.")

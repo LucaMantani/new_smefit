@@ -4,7 +4,9 @@ Download a resource from the SMEFiT server.
     smefit_download RESOURCE_TYPE RESOURCE_NAME [LOCAL_PATH]
 
 RESOURCE_TYPE must be one of: fit, report, rge.
-RESOURCE_NAME is the name of the resource on the server.
+  fit/report  – downloads the full resource directory.
+  rge         – downloads only the rge_matrix.pkl from the named fit.
+
 LOCAL_PATH is the directory where the resource will be saved (defaults to .).
 
 Use 'smefit_ls RESOURCE_TYPE' to see what is available on the server.
@@ -33,7 +35,7 @@ def main():
     )
     parser.add_argument(
         "resource_name",
-        help="Name of the resource to download.",
+        help="Name of the resource (or fit name when resource_type is rge).",
     )
     parser.add_argument(
         "local_path",
@@ -52,11 +54,14 @@ def main():
     )
     args = parser.parse_args()
 
-    from smefit.server_utils import Downloader, ServerError
+    from smefit.server_utils import Downloader, ServerError, download_rge
 
     try:
-        downloader = Downloader(server=args.server)
-        downloader.download(args.resource_type, args.resource_name, args.local_path)
+        if args.resource_type == "rge":
+            download_rge(args.resource_name, local_path=args.local_path, server=args.server)
+        else:
+            downloader = Downloader(server=args.server)
+            downloader.download(args.resource_type, args.resource_name, args.local_path)
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

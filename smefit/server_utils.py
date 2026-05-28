@@ -22,7 +22,10 @@ Run 'smefit_setup_server' to create this file interactively or from a YAML templ
 Resource types and their remote directories:
     fit     -> fits/
     report  -> reports/
-    rge     -> rge/
+
+RGE matrices (rge_matrix.pkl) are stored inside fit directories, not as
+standalone resources. Use list_fits_with_rge() and download_rge() to work
+with them.
 """
 
 import logging
@@ -34,13 +37,13 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-RESOURCE_TYPES = ["fit", "report", "rge"]
+RESOURCE_TYPES = ["fit", "report"]
 SERVERS = ["public", "private"]
+RGE_FILENAME = "rge_matrix.pkl"
 
 _REMOTE_DIRS = {
     "fit": "fits",
     "report": "reports",
-    "rge": "rge",
 }
 
 CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
@@ -124,10 +127,7 @@ def _get_client(server: str | None, need_write: bool = False):
 
 def _remote_path(resource_type: str, resource_name: str) -> str:
     """Return the remote WebDAV path for a given resource."""
-    remote_dir = _REMOTE_DIRS[resource_type]
-    if resource_type == "rge":
-        return f"{remote_dir}/{resource_name}"
-    return f"{remote_dir}/{resource_name}.tar.gz"
+    return f"{_REMOTE_DIRS[resource_type]}/{resource_name}.tar.gz"
 
 
 def _compress(source: pathlib.Path, archive_path: pathlib.Path) -> None:
@@ -140,6 +140,88 @@ def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
     log.info("Extracting to %s ...", dest)
     with tarfile.open(archive_path, "r:gz") as tar:
         tar.extractall(dest)
+
+
+def _list_fit_names(client) -> list[str]:
+    """Return all fit names from the remote fits/ directory."""
+    remote_dir = _REMOTE_DIRS["fit"]
+    if not client.check(remote_dir):
+        return []
+    names = []
+    for e in client.list(remote_dir):
+        e = e.rstrip("/")
+        if e in (remote_dir, ""):
+            continue
+        if e.endswith(".tar.gz"):
+            e = e[: -len(".tar.gz")]
+        names.append(e)
+    return names
+
+
+def list_fits_with_rge(server: str | None = None) -> list[str]:
+    """Return names of fits on the server that contain an rge_matrix.pkl file.
+
+    Each fit tarball is downloaded and inspected; this may be slow for large
+    repositories.
+    """
+    client = _get_client(server, need_write=False)
+    fit_names = _list_fit_names(client)
+    results = []
+    for fit_name in fit_names:
+        remote = _remote_path("fit", fit_name)
+        log.info("Checking %s ...", fit_name)
+        with tempfile.TemporaryDirectory(prefix="smefit_rge_check_") as tmpdir:
+            archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
+            client.download_sync(remote_path=remote, local_path=str(archive))
+            with tarfile.open(archive, "r:gz") as tar:
+                if any(
+                    pathlib.Path(m.name).name == RGE_FILENAME
+                    for m in tar.getmembers()
+                ):
+                    results.append(fit_name)
+    return results
+
+
+def download_rge(
+    fit_name: str,
+    local_path: pathlib.Path | None = None,
+    server: str | None = None,
+) -> pathlib.Path:
+    """Download rge_matrix.pkl from *fit_name* on the server.
+
+    Only the RGE file is extracted from the fit tarball; the rest is discarded.
+    Returns the path to the saved file.
+    """
+    client = _get_client(server, need_write=False)
+    remote = _remote_path("fit", fit_name)
+    if not client.check(remote):
+        raise ServerError(f"Fit '{fit_name}' not found on server.")
+
+    if local_path is None:
+        local_path = pathlib.Path.cwd()
+    local_path = pathlib.Path(local_path)
+    local_path.mkdir(parents=True, exist_ok=True)
+
+    log.info("Downloading fit archive for '%s' ...", fit_name)
+    with tempfile.TemporaryDirectory(prefix="smefit_rge_dl_") as tmpdir:
+        archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
+        client.download_sync(remote_path=remote, local_path=str(archive))
+        with tarfile.open(archive, "r:gz") as tar:
+            rge_member = next(
+                (m for m in tar.getmembers() if pathlib.Path(m.name).name == RGE_FILENAME),
+                None,
+            )
+            if rge_member is None:
+                raise ServerError(
+                    f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file."
+                )
+            f = tar.extractfile(rge_member)
+            dest = local_path / RGE_FILENAME
+            log.info("Extracting %s -> %s ...", RGE_FILENAME, dest)
+            dest.write_bytes(f.read())
+
+    log.info("Download complete: %s", dest)
+    return dest
 
 
 def rename(
@@ -235,19 +317,6 @@ class Uploader:
                 "Use --force to overwrite."
             )
 
-        if resource_type == "rge":
-            self._upload_file(local_path, remote)
-        else:
-            self._upload_archive(local_path, resource_name, remote)
-
-    def _upload_file(self, local_path: pathlib.Path, remote: str) -> None:
-        log.info("Uploading %s -> %s ...", local_path, remote)
-        self._client.upload_sync(remote_path=remote, local_path=str(local_path))
-        log.info("Upload complete.")
-
-    def _upload_archive(
-        self, local_path: pathlib.Path, resource_name: str, remote: str
-    ) -> None:
         with tempfile.TemporaryDirectory(prefix="smefit_upload_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{resource_name}.tar.gz"
             _compress(local_path, archive)
@@ -277,11 +346,10 @@ class Downloader:
         remote_dir = _REMOTE_DIRS[resource_type]
         if not self._client.check(remote_dir):
             return []
-        entries = self._client.list(remote_dir)
         names = []
-        for e in entries:
+        for e in self._client.list(remote_dir):
             e = e.rstrip("/")
-            if e == remote_dir or e == "":
+            if e in (remote_dir, ""):
                 continue
             if e.endswith(".tar.gz"):
                 e = e[: -len(".tar.gz")]
@@ -316,23 +384,6 @@ class Downloader:
                 f"not found on the {self._server} server."
             )
 
-        if resource_type == "rge":
-            return self._download_file(remote, resource_name, local_path)
-        else:
-            return self._download_archive(remote, resource_name, local_path)
-
-    def _download_file(
-        self, remote: str, resource_name: str, local_path: pathlib.Path
-    ) -> pathlib.Path:
-        dest = local_path / resource_name
-        log.info("Downloading %s -> %s ...", remote, dest)
-        self._client.download_sync(remote_path=remote, local_path=str(dest))
-        log.info("Download complete: %s", dest)
-        return dest
-
-    def _download_archive(
-        self, remote: str, resource_name: str, local_path: pathlib.Path
-    ) -> pathlib.Path:
         with tempfile.TemporaryDirectory(prefix="smefit_download_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{resource_name}.tar.gz"
             log.info("Downloading %s ...", remote)

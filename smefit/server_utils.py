@@ -142,6 +142,50 @@ def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
         tar.extractall(dest)
 
 
+def rename(
+    resource_type: str,
+    old_name: str,
+    new_name: str,
+    server: str | None = None,
+) -> None:
+    """Rename a resource on the server."""
+    if resource_type not in RESOURCE_TYPES:
+        raise ServerError(
+            f"Unknown resource type '{resource_type}'. "
+            f"Choose from: {', '.join(RESOURCE_TYPES)}"
+        )
+    client = _get_client(server, need_write=True)
+    old_remote = _remote_path(resource_type, old_name)
+    new_remote = _remote_path(resource_type, new_name)
+    if not client.check(old_remote):
+        raise ServerError(f"Resource '{old_name}' not found on server.")
+    if client.check(new_remote):
+        raise ServerError(
+            f"'{new_name}' already exists on server. Choose a different name."
+        )
+    client.move(remote_path_from=old_remote, remote_path_to=new_remote)
+    log.info("Renamed '%s' -> '%s'.", old_name, new_name)
+
+
+def delete(
+    resource_type: str,
+    resource_name: str,
+    server: str | None = None,
+) -> None:
+    """Delete a resource from the server."""
+    if resource_type not in RESOURCE_TYPES:
+        raise ServerError(
+            f"Unknown resource type '{resource_type}'. "
+            f"Choose from: {', '.join(RESOURCE_TYPES)}"
+        )
+    client = _get_client(server, need_write=True)
+    remote = _remote_path(resource_type, resource_name)
+    if not client.check(remote):
+        raise ServerError(f"Resource '{resource_name}' not found on server.")
+    client.clean(remote)
+    log.info("Deleted '%s'.", resource_name)
+
+
 class Uploader:
     """Upload resources to a server. Requires write credentials in the config file."""
 

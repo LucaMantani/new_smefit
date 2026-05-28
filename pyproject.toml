@@ -45,6 +45,8 @@ doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx
 [tool.poetry.scripts]
 smefit = "smefit.app:main"
 smefit_ls = "smefit.scripts.smefit_ls:main"
+smefit_mv = "smefit.scripts.smefit_mv:main"
+smefit_rm = "smefit.scripts.smefit_rm:main"
 smefit_upload = "smefit.scripts.smefit_upload:main"
 smefit_download = "smefit.scripts.smefit_download:main"
 view_report = "smefit.scripts.view_report:main"

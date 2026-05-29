@@ -71,6 +71,10 @@ smefit_download report my_report
 # Download to a specific directory
 smefit_download fit my_fit /path/to/output
 
+# Download a report and open it in the browser
+smefit_download report my_report --view
+smefit_download report my_report /path/to/output --view --server public
+
 # Download only the rge_matrix.pkl from a fit
 smefit_download rge my_fit
 smefit_download rge my_fit /path/to/output
@@ -79,9 +83,13 @@ smefit_download rge my_fit /path/to/output
 smefit_download fit my_fit --server public
 ```
 
+If `--view` is used and the report is already present locally, it is opened directly without re-downloading.
+
 ---
 
-## View a report
+## View a report (shortcut)
+
+`view_report` is a shortcut for `smefit_download report ... --view`.
 
 ```bash
 # Download (if needed) and open a report in the browser
@@ -90,11 +98,9 @@ view_report my_report
 # Save to a specific directory
 view_report my_report /path/to/output
 
-# Download without opening the browser
-view_report my_report --no-browser
-
-# Explicitly target the public server
+# Explicitly target a server
 view_report my_report --server public
+view_report my_report --server private
 ```
 
 If the report is already present locally it is opened directly without re-downloading.

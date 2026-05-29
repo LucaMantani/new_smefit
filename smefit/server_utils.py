@@ -612,8 +612,12 @@ class Downloader:
             e = e.rstrip("/")
             if e in (remote_dir, ""):
                 continue
-            if resource_type != "misc" and e.endswith(".tar.gz"):
+            if resource_type in _ARCHIVABLE_TYPES:
+                if not e.endswith(".tar.gz"):
+                    continue
                 e = e[: -len(".tar.gz")]
+            elif resource_type == "misc" and e == "registry_misc.json":
+                continue
             names.append(e)
         return names
 

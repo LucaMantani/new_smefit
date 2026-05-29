@@ -329,7 +329,9 @@ class Uploader:
                 f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}"
             )
         config = _load_config()
-        resolved_server = server if server is not None else _auto_server(config, need_write=True)
+        resolved_server = (
+            server if server is not None else _auto_server(config, need_write=True)
+        )
         self._client = _get_client(server, need_write=True)
         self._server = resolved_server
         self._uploader_name = config.get(resolved_server, {}).get("name")

@@ -243,7 +243,10 @@ def _list_resource_names(client, resource_type: str) -> list[str]:
         e = e.rstrip("/")
         if e in (remote_dir, ""):
             continue
-        if resource_type != "misc" and e.endswith(".tar.gz"):
+        if resource_type in _ARCHIVABLE_TYPES:
+            # Only include actual archives; subdirectories (e.g. rge_matrices/) are skipped
+            if not e.endswith(".tar.gz"):
+                continue
             e = e[: -len(".tar.gz")]
         names.append(e)
     return names
@@ -744,40 +747,45 @@ def sync_registry(server: str | None = None) -> dict:
     registry = _empty_registry()
 
     for fit_name in _list_resource_names(client, "fit"):
-        # Fast check: new structure stores rge separately
-        rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{fit_name}.pkl"
-        if client.check(rge_remote):
-            log.info("Checking %s (new structure) ...", fit_name)
-            has_rge = True
-        else:
-            # Fallback: inspect archive for legacy fits
-            log.info("Inspecting archive for %s (legacy) ...", fit_name)
-            with tempfile.TemporaryDirectory(prefix="smefit_sync_") as tmpdir:
-                archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
-                client.download_sync(
-                    remote_path=_remote_path("fit", fit_name), local_path=str(archive)
-                )
-                with tarfile.open(archive, "r:gz") as tar:
-                    has_rge = any(
-                        pathlib.Path(m.name).name == RGE_FILENAME
-                        for m in tar.getmembers()
+        try:
+            rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{fit_name}.pkl"
+            if client.check(rge_remote):
+                log.info("Checking %s (new structure) ...", fit_name)
+                has_rge = True
+            else:
+                log.info("Inspecting archive for %s (legacy) ...", fit_name)
+                with tempfile.TemporaryDirectory(prefix="smefit_sync_") as tmpdir:
+                    archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
+                    client.download_sync(
+                        remote_path=_remote_path("fit", fit_name),
+                        local_path=str(archive),
                     )
-        old = old_registry["fits"].get(fit_name, {})
-        registry["fits"][fit_name] = {
-            "created_at": old.get("created_at", now),
-            "has_rge": has_rge,
-            "rge_path": old.get("rge_path"),
-            "runcard_path": old.get("runcard_path"),
-            "uploaded_by": old.get("uploaded_by"),
-        }
+                    with tarfile.open(archive, "r:gz") as tar:
+                        has_rge = any(
+                            pathlib.Path(m.name).name == RGE_FILENAME
+                            for m in tar.getmembers()
+                        )
+            old = old_registry["fits"].get(fit_name, {})
+            registry["fits"][fit_name] = {
+                "created_at": old.get("created_at", now),
+                "has_rge": has_rge,
+                "rge_path": old.get("rge_path"),
+                "runcard_path": old.get("runcard_path"),
+                "uploaded_by": old.get("uploaded_by"),
+            }
+        except Exception as exc:
+            log.warning("Skipping fit '%s': %s", fit_name, exc)
 
     for report_name in _list_resource_names(client, "report"):
-        log.info("Registering report %s ...", report_name)
-        old = old_registry["reports"].get(report_name, {})
-        registry["reports"][report_name] = {
-            "created_at": old.get("created_at", now),
-            "uploaded_by": old.get("uploaded_by"),
-        }
+        try:
+            log.info("Registering report %s ...", report_name)
+            old = old_registry["reports"].get(report_name, {})
+            registry["reports"][report_name] = {
+                "created_at": old.get("created_at", now),
+                "uploaded_by": old.get("uploaded_by"),
+            }
+        except Exception as exc:
+            log.warning("Skipping report '%s': %s", report_name, exc)
 
     _write_registry(client, registry)
     log.info(

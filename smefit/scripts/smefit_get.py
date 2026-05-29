@@ -31,7 +31,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge"],
+        choices=["fit", "report", "rge", "misc"],
         help="Type of resource to download.",
     )
     parser.add_argument(

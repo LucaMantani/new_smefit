@@ -38,7 +38,8 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-RESOURCE_TYPES = ["fit", "report"]
+RESOURCE_TYPES = ["fit", "report", "misc"]
+_ARCHIVABLE_TYPES = ["fit", "report"]  # resource types stored as tarballs
 REGISTRY_PATH = "registry.json"
 SERVERS = ["public", "private"]
 RGE_FILENAME = "rge_matrix.pkl"
@@ -52,6 +53,7 @@ RUNCARDS_REMOTE_DIR = "fits/runcards"
 _REMOTE_DIRS = {
     "fit": "fits",
     "report": "reports",
+    "misc": "misc",
 }
 
 CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
@@ -137,6 +139,8 @@ def _get_client(server: str | None, need_write: bool = False):
 
 def _remote_path(resource_type: str, resource_name: str) -> str:
     """Return the remote WebDAV path for a given resource."""
+    if resource_type == "misc":
+        return f"misc/{resource_name}"
     return f"{_REMOTE_DIRS[resource_type]}/{resource_name}.tar.gz"
 
 
@@ -166,6 +170,15 @@ def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
     log.info("Extracting to %s ...", dest)
     with tarfile.open(archive_path, "r:gz") as tar:
         tar.extractall(dest)
+
+
+def _ensure_remote_path(client, path: str) -> None:
+    """Create every directory component of *path* on the server if missing."""
+    parts = pathlib.PurePosixPath(path).parts
+    for i in range(1, len(parts) + 1):
+        segment = str(pathlib.PurePosixPath(*parts[:i]))
+        if not client.check(segment):
+            client.mkdir(segment)
 
 
 def _detect_has_rge(local_path: pathlib.Path) -> bool:
@@ -211,7 +224,7 @@ def _list_resource_names(client, resource_type: str) -> list[str]:
         e = e.rstrip("/")
         if e in (remote_dir, ""):
             continue
-        if e.endswith(".tar.gz"):
+        if resource_type != "misc" and e.endswith(".tar.gz"):
             e = e[: -len(".tar.gz")]
         names.append(e)
     return names
@@ -281,11 +294,17 @@ def download_rge(
         client.download_sync(remote_path=archive_remote, local_path=str(archive))
         with tarfile.open(archive, "r:gz") as tar:
             rge_member = next(
-                (m for m in tar.getmembers() if pathlib.Path(m.name).name == RGE_FILENAME),
+                (
+                    m
+                    for m in tar.getmembers()
+                    if pathlib.Path(m.name).name == RGE_FILENAME
+                ),
                 None,
             )
             if rge_member is None:
-                raise ServerError(f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file.")
+                raise ServerError(
+                    f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file."
+                )
             dest.write_bytes(tar.extractfile(rge_member).read())
     log.info("Download complete: %s", dest)
     return dest
@@ -312,20 +331,29 @@ def rename(
         raise ServerError(
             f"'{new_name}' already exists on server. Choose a different name."
         )
+    if resource_type == "misc":
+        _ensure_remote_path(client, str(pathlib.PurePosixPath(new_remote).parent))
     client.move(remote_path_from=old_remote, remote_path_to=new_remote)
     log.info("Renamed '%s' -> '%s'.", old_name, new_name)
     if resource_type == "fit":
         for old_sub, new_sub in [
-            (f"{RGE_MATRICES_REMOTE_DIR}/{old_name}.pkl", f"{RGE_MATRICES_REMOTE_DIR}/{new_name}.pkl"),
-            (f"{RUNCARDS_REMOTE_DIR}/{old_name}.yaml", f"{RUNCARDS_REMOTE_DIR}/{new_name}.yaml"),
+            (
+                f"{RGE_MATRICES_REMOTE_DIR}/{old_name}.pkl",
+                f"{RGE_MATRICES_REMOTE_DIR}/{new_name}.pkl",
+            ),
+            (
+                f"{RUNCARDS_REMOTE_DIR}/{old_name}.yaml",
+                f"{RUNCARDS_REMOTE_DIR}/{new_name}.yaml",
+            ),
         ]:
             if client.check(old_sub):
                 client.move(remote_path_from=old_sub, remote_path_to=new_sub)
-    registry = _read_registry(client)
-    section = registry[f"{resource_type}s"]
-    if old_name in section:
-        section[new_name] = section.pop(old_name)
-        _write_registry(client, registry)
+    if resource_type in _ARCHIVABLE_TYPES:
+        registry = _read_registry(client)
+        section = registry[f"{resource_type}s"]
+        if old_name in section:
+            section[new_name] = section.pop(old_name)
+            _write_registry(client, registry)
 
 
 def delete(
@@ -352,11 +380,12 @@ def delete(
         ]:
             if client.check(sub):
                 client.clean(sub)
-    registry = _read_registry(client)
-    section = registry[f"{resource_type}s"]
-    if resource_name in section:
-        del section[resource_name]
-        _write_registry(client, registry)
+    if resource_type in _ARCHIVABLE_TYPES:
+        registry = _read_registry(client)
+        section = registry[f"{resource_type}s"]
+        if resource_name in section:
+            del section[resource_name]
+            _write_registry(client, registry)
 
 
 class Uploader:
@@ -400,12 +429,35 @@ class Uploader:
         For fits, rge_matrix.pkl and input/runcard.yaml are extracted from the
         archive and stored separately under fits/rge_matrices/ and fits/runcards/.
         They are transparently re-injected on download.
+
+        For misc, *resource_name* is the full path inside misc/ on the server
+        (e.g. 'results/run1/output.pkl'). Intermediate directories are created
+        automatically. *local_path* defaults to the basename of *resource_name*.
         """
         if resource_type not in RESOURCE_TYPES:
             raise ServerError(
                 f"Unknown resource type '{resource_type}'. "
                 f"Choose from: {', '.join(RESOURCE_TYPES)}"
             )
+
+        if resource_type == "misc":
+            if local_path is None:
+                local_path = pathlib.Path(resource_name).name
+            local_path = pathlib.Path(local_path)
+            if not local_path.exists():
+                raise ServerError(f"Local path does not exist: {local_path}")
+            remote = _remote_path("misc", resource_name)
+            if not force and self._client.check(remote):
+                raise ServerError(
+                    f"'misc/{resource_name}' already exists on the {self._server} server. "
+                    "Use --force to overwrite."
+                )
+            _ensure_remote_path(self._client, str(pathlib.PurePosixPath(remote).parent))
+            log.info("Uploading %s -> %s ...", local_path, remote)
+            self._client.upload_sync(remote_path=remote, local_path=str(local_path))
+            log.info("Upload complete.")
+            log.info("To download: smefit_get misc %s", resource_name)
+            return
 
         if local_path is None:
             local_path = pathlib.Path.cwd() / resource_name
@@ -441,7 +493,9 @@ class Uploader:
 
         with tempfile.TemporaryDirectory(prefix="smefit_upload_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{resource_name}.tar.gz"
-            _compress(local_path, archive, arcname=resource_name, strip_paths=strip_paths)
+            _compress(
+                local_path, archive, arcname=resource_name, strip_paths=strip_paths
+            )
             log.info("Uploading %s -> %s ...", archive.name, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(archive))
         log.info("Upload complete.")
@@ -456,7 +510,9 @@ class Uploader:
             self._ensure_dir(RUNCARDS_REMOTE_DIR)
             runcard_remote = f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml"
             log.info("Uploading runcard -> %s ...", runcard_remote)
-            self._client.upload_sync(remote_path=runcard_remote, local_path=str(runcard_local))
+            self._client.upload_sync(
+                remote_path=runcard_remote, local_path=str(runcard_local)
+            )
 
         registry = _read_registry(self._client)
         entry = {
@@ -466,7 +522,9 @@ class Uploader:
         if resource_type == "fit":
             entry["has_rge"] = rge_local is not None
             entry["rge_path"] = str(rge_rel) if rge_rel else None
-            entry["runcard_path"] = str(RUNCARD_RELATIVE_PATH) if runcard_local else None
+            entry["runcard_path"] = (
+                str(RUNCARD_RELATIVE_PATH) if runcard_local else None
+            )
         if message:
             entry["comment"] = message
         registry[f"{resource_type}s"][resource_name] = entry
@@ -507,7 +565,7 @@ class Downloader:
             e = e.rstrip("/")
             if e in (remote_dir, ""):
                 continue
-            if e.endswith(".tar.gz"):
+            if resource_type != "misc" and e.endswith(".tar.gz"):
                 e = e[: -len(".tar.gz")]
             names.append(e)
         return names
@@ -520,6 +578,8 @@ class Downloader:
     ) -> pathlib.Path:
         """Download *resource_name* of *resource_type* to *local_path*.
 
+        For misc, *resource_name* is the full path inside misc/ on the server.
+        The file is saved under its basename in *local_path*.
         Returns the path to the downloaded resource.
         """
         if resource_type not in RESOURCE_TYPES:
@@ -527,6 +587,22 @@ class Downloader:
                 f"Unknown resource type '{resource_type}'. "
                 f"Choose from: {', '.join(RESOURCE_TYPES)}"
             )
+
+        if resource_type == "misc":
+            remote = _remote_path("misc", resource_name)
+            if not self._client.check(remote):
+                raise ServerError(
+                    f"misc/{resource_name} not found on the {self._server} server."
+                )
+            if local_path is None:
+                local_path = pathlib.Path.cwd()
+            local_path = pathlib.Path(local_path)
+            local_path.mkdir(parents=True, exist_ok=True)
+            dest = local_path / pathlib.Path(resource_name).name
+            log.info("Downloading %s ...", remote)
+            self._client.download_sync(remote_path=remote, local_path=str(dest))
+            log.info("Download complete: %s", dest)
+            return dest
 
         if local_path is None:
             local_path = pathlib.Path.cwd()
@@ -574,6 +650,14 @@ class Downloader:
             dest.parent.mkdir(parents=True, exist_ok=True)
             log.info("Downloading runcard ...")
             self._client.download_sync(remote_path=runcard_remote, local_path=str(dest))
+
+
+def mkdir_misc(path: str, server: str | None = None) -> None:
+    """Create a directory (and all parents) under misc/ on the server."""
+    client = _get_client(server, need_write=True)
+    full_path = f"misc/{path.strip('/')}"
+    _ensure_remote_path(client, full_path)
+    log.info("Created misc/%s.", path.strip("/"))
 
 
 def download_and_view_report(
@@ -633,7 +717,8 @@ def sync_registry(server: str | None = None) -> dict:
                 )
                 with tarfile.open(archive, "r:gz") as tar:
                     has_rge = any(
-                        pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
+                        pathlib.Path(m.name).name == RGE_FILENAME
+                        for m in tar.getmembers()
                     )
         old = old_registry["fits"].get(fit_name, {})
         registry["fits"][fit_name] = {

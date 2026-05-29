@@ -61,7 +61,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge", "registry"],
+        choices=["fit", "report", "rge", "registry", "misc"],
         nargs="?",
         default="registry",
         help="Type of resource to list (default: registry).",
@@ -118,6 +118,16 @@ def main():
                         print(f"  {r:<{width}}  (not in registry)")
             else:
                 print("No fits found on server.")
+
+        elif args.resource_type == "misc":
+            downloader = Downloader(server=args.server)
+            resources = downloader.list_resources("misc")
+            if resources:
+                print("Contents of misc/ on server:")
+                for r in resources:
+                    print(f"  {r}")
+            else:
+                print("misc/ is empty or does not exist on server.")
 
         else:
             downloader = Downloader(server=args.server)

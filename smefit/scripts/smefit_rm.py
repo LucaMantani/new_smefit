@@ -25,7 +25,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report"],
+        choices=["fit", "report", "misc"],
         help="Type of resource.",
     )
     parser.add_argument(

@@ -5,8 +5,7 @@ List resources available on the SMEFiT server.
 
 RESOURCE_TYPE must be one of: fit, report, rge, registry.
   fit/report  – lists available resources of that type.
-  rge         – lists fits that contain an rge_matrix.pkl file.
-                Note: this downloads each fit archive to inspect it and may be slow.
+  rge         – lists fits that have an rge_matrix.pkl, read from the registry.
   registry    – displays the full registry with all tracked metadata.
 
 The server is auto-detected: private if credentials are configured, else public.
@@ -65,7 +64,7 @@ def main():
     )
     args = parser.parse_args()
 
-    from smefit.server_utils import Downloader, ServerError, list_fits_with_rge
+    from smefit.server_utils import Downloader, ServerError
 
     try:
         if args.resource_type == "registry":
@@ -79,14 +78,15 @@ def main():
             _print_reports(reports)
 
         elif args.resource_type == "rge":
-            resources = list_fits_with_rge(server=args.server)
-            label = "fits with rge_matrix.pkl"
-            if resources:
-                print(f"Available {label} on server:")
-                for r in resources:
-                    print(f"  {r}")
-            else:
-                print(f"No {label} found on server.")
+            downloader = Downloader(server=args.server)
+            registry = downloader.get_registry()
+            rge_fits = {
+                name: meta
+                for name, meta in registry.get("fits", {}).items()
+                if meta.get("has_rge")
+            }
+            print(f"Fits with rge_matrix.pkl ({len(rge_fits)}):")
+            _print_fits(rge_fits) if rge_fits else print("  (none)")
 
         elif args.resource_type == "fit":
             downloader = Downloader(server=args.server)

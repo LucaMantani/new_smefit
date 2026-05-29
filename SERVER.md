@@ -57,8 +57,7 @@ smefit_ls fit
 # List reports
 smefit_ls report
 
-# List which fits contain an rge_matrix.pkl
-# (downloads each archive to inspect — may be slow)
+# List fits that have an rge_matrix.pkl (reads from registry, fast)
 smefit_ls rge
 
 # Target a specific server

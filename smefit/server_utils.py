@@ -42,6 +42,12 @@ RESOURCE_TYPES = ["fit", "report"]
 REGISTRY_PATH = "registry.json"
 SERVERS = ["public", "private"]
 RGE_FILENAME = "rge_matrix.pkl"
+RUNCARD_FILENAME = "runcard.yaml"
+# Standard relative path of the runcard inside a fit directory
+RUNCARD_RELATIVE_PATH = pathlib.Path("input") / "runcard.yaml"
+# Remote subdirectories for separately-stored fit components
+RGE_MATRICES_REMOTE_DIR = "fits/rge_matrices"
+RUNCARDS_REMOTE_DIR = "fits/runcards"
 
 _REMOTE_DIRS = {
     "fit": "fits",
@@ -135,11 +141,25 @@ def _remote_path(resource_type: str, resource_name: str) -> str:
 
 
 def _compress(
-    source: pathlib.Path, archive_path: pathlib.Path, arcname: str | None = None
+    source: pathlib.Path,
+    archive_path: pathlib.Path,
+    arcname: str | None = None,
+    strip_paths: set | None = None,
 ) -> None:
+    """Compress *source* into *archive_path*, optionally stripping files by relative path."""
     log.info("Compressing %s ...", source)
+    _strip = {pathlib.PurePosixPath(p) for p in (strip_paths or [])}
+
+    def _filter(tarinfo):
+        p = pathlib.PurePosixPath(tarinfo.name)
+        if _strip and len(p.parts) > 1:
+            rel = pathlib.PurePosixPath(*p.parts[1:])
+            if rel in _strip:
+                return None
+        return tarinfo
+
     with tarfile.open(archive_path, "w:gz") as tar:
-        tar.add(source, arcname=arcname or source.name)
+        tar.add(source, arcname=arcname or source.name, filter=_filter)
 
 
 def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
@@ -231,41 +251,42 @@ def download_rge(
 ) -> pathlib.Path:
     """Download rge_matrix.pkl from *fit_name* on the server.
 
-    Only the RGE file is extracted from the fit tarball; the rest is discarded.
+    Tries the dedicated rge_matrices/ directory first (fast). Falls back to
+    extracting from the fit archive for fits uploaded before this structure existed.
     Returns the path to the saved file.
     """
     client = _get_client(server, need_write=False)
-    remote = _remote_path("fit", fit_name)
-    if not client.check(remote):
-        raise ServerError(f"Fit '{fit_name}' not found on server.")
 
     if local_path is None:
         local_path = pathlib.Path.cwd()
     local_path = pathlib.Path(local_path)
     local_path.mkdir(parents=True, exist_ok=True)
+    dest = local_path / RGE_FILENAME
 
-    log.info("Downloading fit archive for '%s' ...", fit_name)
+    # Fast path: dedicated subdir
+    rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{fit_name}.pkl"
+    if client.check(rge_remote):
+        log.info("Downloading rge_matrix for '%s' ...", fit_name)
+        client.download_sync(remote_path=rge_remote, local_path=str(dest))
+        log.info("Download complete: %s", dest)
+        return dest
+
+    # Fallback: extract from fit archive (legacy fits)
+    archive_remote = _remote_path("fit", fit_name)
+    if not client.check(archive_remote):
+        raise ServerError(f"Fit '{fit_name}' not found on server.")
+    log.info("Downloading fit archive for '%s' (legacy) ...", fit_name)
     with tempfile.TemporaryDirectory(prefix="smefit_rge_dl_") as tmpdir:
         archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
-        client.download_sync(remote_path=remote, local_path=str(archive))
+        client.download_sync(remote_path=archive_remote, local_path=str(archive))
         with tarfile.open(archive, "r:gz") as tar:
             rge_member = next(
-                (
-                    m
-                    for m in tar.getmembers()
-                    if pathlib.Path(m.name).name == RGE_FILENAME
-                ),
+                (m for m in tar.getmembers() if pathlib.Path(m.name).name == RGE_FILENAME),
                 None,
             )
             if rge_member is None:
-                raise ServerError(
-                    f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file."
-                )
-            f = tar.extractfile(rge_member)
-            dest = local_path / RGE_FILENAME
-            log.info("Extracting %s -> %s ...", RGE_FILENAME, dest)
-            dest.write_bytes(f.read())
-
+                raise ServerError(f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file.")
+            dest.write_bytes(tar.extractfile(rge_member).read())
     log.info("Download complete: %s", dest)
     return dest
 
@@ -293,6 +314,13 @@ def rename(
         )
     client.move(remote_path_from=old_remote, remote_path_to=new_remote)
     log.info("Renamed '%s' -> '%s'.", old_name, new_name)
+    if resource_type == "fit":
+        for old_sub, new_sub in [
+            (f"{RGE_MATRICES_REMOTE_DIR}/{old_name}.pkl", f"{RGE_MATRICES_REMOTE_DIR}/{new_name}.pkl"),
+            (f"{RUNCARDS_REMOTE_DIR}/{old_name}.yaml", f"{RUNCARDS_REMOTE_DIR}/{new_name}.yaml"),
+        ]:
+            if client.check(old_sub):
+                client.move(remote_path_from=old_sub, remote_path_to=new_sub)
     registry = _read_registry(client)
     section = registry[f"{resource_type}s"]
     if old_name in section:
@@ -317,6 +345,13 @@ def delete(
         raise ServerError(f"Resource '{resource_name}' not found on server.")
     client.clean(remote)
     log.info("Deleted '%s'.", resource_name)
+    if resource_type == "fit":
+        for sub in [
+            f"{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl",
+            f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml",
+        ]:
+            if client.check(sub):
+                client.clean(sub)
     registry = _read_registry(client)
     section = registry[f"{resource_type}s"]
     if resource_name in section:
@@ -345,6 +380,10 @@ class Uploader:
         if not self._client.check(remote_dir):
             self._client.mkdir(remote_dir)
 
+    def _ensure_dir(self, path: str) -> None:
+        if not self._client.check(path):
+            self._client.mkdir(path)
+
     def _check_remote_exists(self, resource_type: str, resource_name: str) -> bool:
         return self._client.check(_remote_path(resource_type, resource_name))
 
@@ -356,7 +395,12 @@ class Uploader:
         force: bool = False,
         message: str | None = None,
     ) -> None:
-        """Upload *resource_name* of *resource_type* from *local_path*."""
+        """Upload *resource_name* of *resource_type* from *local_path*.
+
+        For fits, rge_matrix.pkl and input/runcard.yaml are extracted from the
+        archive and stored separately under fits/rge_matrices/ and fits/runcards/.
+        They are transparently re-injected on download.
+        """
         if resource_type not in RESOURCE_TYPES:
             raise ServerError(
                 f"Unknown resource type '{resource_type}'. "
@@ -379,19 +423,50 @@ class Uploader:
                 "Use --force to overwrite."
             )
 
+        # For fits: locate files to store separately and strip from archive
+        strip_paths = set()
+        rge_local = None
+        rge_rel = None
+        runcard_local = None
+        if resource_type == "fit":
+            rge_found = next(local_path.rglob(RGE_FILENAME), None)
+            if rge_found:
+                rge_local = rge_found
+                rge_rel = rge_found.relative_to(local_path)
+                strip_paths.add(pathlib.PurePosixPath(rge_rel))
+            runcard_candidate = local_path / RUNCARD_RELATIVE_PATH
+            if runcard_candidate.exists():
+                runcard_local = runcard_candidate
+                strip_paths.add(pathlib.PurePosixPath(RUNCARD_RELATIVE_PATH))
+
         with tempfile.TemporaryDirectory(prefix="smefit_upload_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{resource_name}.tar.gz"
-            _compress(local_path, archive, arcname=resource_name)
+            _compress(local_path, archive, arcname=resource_name, strip_paths=strip_paths)
             log.info("Uploading %s -> %s ...", archive.name, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(archive))
         log.info("Upload complete.")
+
+        if rge_local:
+            self._ensure_dir(RGE_MATRICES_REMOTE_DIR)
+            rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl"
+            log.info("Uploading rge_matrix -> %s ...", rge_remote)
+            self._client.upload_sync(remote_path=rge_remote, local_path=str(rge_local))
+
+        if runcard_local:
+            self._ensure_dir(RUNCARDS_REMOTE_DIR)
+            runcard_remote = f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml"
+            log.info("Uploading runcard -> %s ...", runcard_remote)
+            self._client.upload_sync(remote_path=runcard_remote, local_path=str(runcard_local))
+
         registry = _read_registry(self._client)
         entry = {
             "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "uploaded_by": self._uploader_name,
         }
         if resource_type == "fit":
-            entry["has_rge"] = _detect_has_rge(local_path)
+            entry["has_rge"] = rge_local is not None
+            entry["rge_path"] = str(rge_rel) if rge_rel else None
+            entry["runcard_path"] = str(RUNCARD_RELATIVE_PATH) if runcard_local else None
         if message:
             entry["comment"] = message
         registry[f"{resource_type}s"][resource_name] = entry
@@ -470,9 +545,35 @@ class Downloader:
             log.info("Downloading %s ...", remote)
             self._client.download_sync(remote_path=remote, local_path=str(archive))
             _extract(archive, local_path)
+
+        if resource_type == "fit":
+            self._inject_fit_files(resource_name, local_path)
+
         dest = local_path / resource_name
         log.info("Download complete: %s", dest)
         return dest
+
+    def _inject_fit_files(self, fit_name: str, local_path: pathlib.Path) -> None:
+        """Re-inject rge_matrix and runcard into the extracted fit directory."""
+        registry = _read_registry(self._client)
+        fit_meta = registry.get("fits", {}).get(fit_name, {})
+        fit_dir = local_path / fit_name
+
+        rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{fit_name}.pkl"
+        if self._client.check(rge_remote):
+            rge_rel = fit_meta.get("rge_path") or RGE_FILENAME
+            dest = fit_dir / rge_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            log.info("Downloading rge_matrix ...")
+            self._client.download_sync(remote_path=rge_remote, local_path=str(dest))
+
+        runcard_remote = f"{RUNCARDS_REMOTE_DIR}/{fit_name}.yaml"
+        if self._client.check(runcard_remote):
+            runcard_rel = fit_meta.get("runcard_path") or str(RUNCARD_RELATIVE_PATH)
+            dest = fit_dir / runcard_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            log.info("Downloading runcard ...")
+            self._client.download_sync(remote_path=runcard_remote, local_path=str(dest))
 
 
 def download_and_view_report(
@@ -517,20 +618,29 @@ def sync_registry(server: str | None = None) -> dict:
     registry = _empty_registry()
 
     for fit_name in _list_resource_names(client, "fit"):
-        log.info("Inspecting fit %s ...", fit_name)
-        with tempfile.TemporaryDirectory(prefix="smefit_sync_") as tmpdir:
-            archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
-            client.download_sync(
-                remote_path=_remote_path("fit", fit_name), local_path=str(archive)
-            )
-            with tarfile.open(archive, "r:gz") as tar:
-                has_rge = any(
-                    pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
+        # Fast check: new structure stores rge separately
+        rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{fit_name}.pkl"
+        if client.check(rge_remote):
+            log.info("Checking %s (new structure) ...", fit_name)
+            has_rge = True
+        else:
+            # Fallback: inspect archive for legacy fits
+            log.info("Inspecting archive for %s (legacy) ...", fit_name)
+            with tempfile.TemporaryDirectory(prefix="smefit_sync_") as tmpdir:
+                archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
+                client.download_sync(
+                    remote_path=_remote_path("fit", fit_name), local_path=str(archive)
                 )
+                with tarfile.open(archive, "r:gz") as tar:
+                    has_rge = any(
+                        pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
+                    )
         old = old_registry["fits"].get(fit_name, {})
         registry["fits"][fit_name] = {
             "created_at": old.get("created_at", now),
             "has_rge": has_rge,
+            "rge_path": old.get("rge_path"),
+            "runcard_path": old.get("runcard_path"),
             "uploaded_by": old.get("uploaded_by"),
         }
 

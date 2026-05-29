@@ -21,38 +21,87 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 log.addHandler(colors.ColorHandler())
 
+# ---------------------------------------------------------------------------
+# Terminal color helpers (disabled when stdout is not a TTY)
+# ---------------------------------------------------------------------------
+_USE_COLOR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
-def _comment_str(meta: dict) -> str:
-    comment = meta.get("comment")
-    if not comment:
-        return ""
-    return f'  "{comment[:50]}{"..." if len(comment) > 50 else ""}"'
 
+def _c(text, *codes):
+    return ("".join(codes) + str(text) + "\033[0m") if _USE_COLOR else str(text)
+
+
+_BOLD  = "\033[1m"
+_DIM   = "\033[2m"
+_CYAN  = "\033[36m"
+_GREEN = "\033[32m"
+
+
+def _header(title: str) -> str:
+    return _c(title, _BOLD, _CYAN)
+
+
+def _name(s: str) -> str:
+    return _c(s, _BOLD)
+
+
+def _date(s: str) -> str:
+    return _c(s, _DIM)
+
+
+def _rge(val: bool) -> str:
+    return _c("rge=yes", _GREEN) if val else _c("rge=no", _DIM)
+
+
+def _by(uploader: str) -> str:
+    return _c("by=", _DIM) + uploader
+
+
+def _comment(text: str) -> str:
+    truncated = text[:50] + ("..." if len(text) > 50 else "")
+    return _c(f'"{truncated}"', _DIM)
+
+
+# ---------------------------------------------------------------------------
+# Row formatters
+# ---------------------------------------------------------------------------
 
 def _print_fits(fits: dict) -> None:
     if not fits:
-        print("  (none)")
+        print(_c("  (none)", _DIM))
         return
-    width = max(len(name) for name in fits)
+    width = max(len(n) for n in fits)
     for name, meta in sorted(fits.items()):
-        date = meta.get("created_at", "?")[:10]
-        rge = "yes" if meta.get("has_rge") else "no"
-        uploader = meta.get("uploaded_by")
-        suffix = f"  by={uploader}" if uploader else ""
-        print(f"  {name:<{width}}  {date}  rge={rge}{suffix}{_comment_str(meta)}")
+        date = _date(meta.get("created_at", "?")[:10])
+        rge  = _rge(meta.get("has_rge", False))
+        parts = [f"  {_name(name):<{width + 8}}  {date}  {rge}"]
+        if meta.get("uploaded_by"):
+            parts.append(_by(meta["uploaded_by"]))
+        c = meta.get("comment")
+        if c:
+            parts.append(_comment(c))
+        print("  ".join(parts))
 
 
 def _print_reports(reports: dict) -> None:
     if not reports:
-        print("  (none)")
+        print(_c("  (none)", _DIM))
         return
-    width = max(len(name) for name in reports)
+    width = max(len(n) for n in reports)
     for name, meta in sorted(reports.items()):
-        date = meta.get("created_at", "?")[:10]
-        uploader = meta.get("uploaded_by")
-        suffix = f"  by={uploader}" if uploader else ""
-        print(f"  {name:<{width}}  {date}{suffix}{_comment_str(meta)}")
+        date = _date(meta.get("created_at", "?")[:10])
+        parts = [f"  {_name(name):<{width + 8}}  {date}"]
+        if meta.get("uploaded_by"):
+            parts.append(_by(meta["uploaded_by"]))
+        c = meta.get("comment")
+        if c:
+            parts.append(_comment(c))
+        print("  ".join(parts))
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -83,71 +132,75 @@ def main():
         if args.resource_type == "registry":
             downloader = Downloader(server=args.server)
             registry = downloader.get_registry()
-            fits = registry.get("fits", {})
+            fits    = registry.get("fits", {})
             reports = registry.get("reports", {})
-            print(f"Fits ({len(fits)}):")
+            print(_header(f"Fits ({len(fits)})"))
             _print_fits(fits)
-            print(f"\nReports ({len(reports)}):")
+            print()
+            print(_header(f"Reports ({len(reports)})"))
             _print_reports(reports)
 
         elif args.resource_type == "rge":
             downloader = Downloader(server=args.server)
-            registry = downloader.get_registry()
             rge_fits = {
                 name: meta
-                for name, meta in registry.get("fits", {}).items()
+                for name, meta in downloader.get_registry().get("fits", {}).items()
                 if meta.get("has_rge")
             }
-            print(f"Fits with rge_matrix.pkl ({len(rge_fits)}):")
-            _print_fits(rge_fits) if rge_fits else print("  (none)")
+            print(_header(f"Fits with rge_matrix.pkl ({len(rge_fits)})"))
+            _print_fits(rge_fits)
 
         elif args.resource_type == "fit":
             downloader = Downloader(server=args.server)
             resources = downloader.list_resources("fit")
-            registry = downloader.get_registry()
+            registry  = downloader.get_registry()
+            print(_header(f"Fits ({len(resources)})"))
             if resources:
                 width = max(len(r) for r in resources)
-                print("Available fits on server:")
                 for r in resources:
                     meta = registry["fits"].get(r)
                     if meta:
-                        date = meta.get("created_at", "?")[:10]
-                        rge = "yes" if meta.get("has_rge") else "no"
-                        print(f"  {r:<{width}}  {date}  rge={rge}")
+                        date = _date(meta.get("created_at", "?")[:10])
+                        rge  = _rge(meta.get("has_rge", False))
+                        print(f"  {_name(r):<{width + 8}}  {date}  {rge}")
                     else:
-                        print(f"  {r:<{width}}  (not in registry)")
+                        print(f"  {_name(r):<{width + 8}}  {_c('(not in registry)', _DIM)}")
             else:
-                print("No fits found on server.")
+                print(_c("  (none)", _DIM))
 
         elif args.resource_type == "misc":
             downloader = Downloader(server=args.server)
-            entries = downloader.list_resources("misc")
+            entries  = downloader.list_resources("misc")
             misc_reg = downloader.get_misc_registry()
+            print(_header(f"misc/ ({len(entries)} entries)"))
             if entries:
                 width = max(len(e) for e in entries)
-                print("Contents of misc/ on server:")
                 for name in sorted(entries):
                     meta = misc_reg.get(name)
                     if meta:
-                        date = meta.get("uploaded_at", "?")[:10]
-                        uploader = meta.get("uploaded_by")
-                        suffix = f"  by={uploader}" if uploader else ""
-                        print(f"  {name:<{width}}  {date}{suffix}{_comment_str(meta)}")
+                        date = _date(meta.get("uploaded_at", "?")[:10])
+                        parts = [f"  {_name(name):<{width + 8}}  {date}"]
+                        if meta.get("uploaded_by"):
+                            parts.append(_by(meta["uploaded_by"]))
+                        c = meta.get("comment")
+                        if c:
+                            parts.append(_comment(c))
+                        print("  ".join(parts))
                     else:
-                        print(f"  {name:<{width}}  (no metadata)")
+                        print(f"  {_name(name):<{width + 8}}  {_c('(no metadata)', _DIM)}")
             else:
-                print("misc/ is empty or does not exist on server.")
+                print(_c("  (empty)", _DIM))
 
         else:
             downloader = Downloader(server=args.server)
             resources = downloader.list_resources(args.resource_type)
             label = f"{args.resource_type}s"
+            print(_header(f"{label.capitalize()} ({len(resources)})"))
             if resources:
-                print(f"Available {label} on server:")
                 for r in resources:
-                    print(f"  {r}")
+                    print(f"  {_name(r)}")
             else:
-                print(f"No {label} found on server.")
+                print(_c("  (none)", _DIM))
 
     except ServerError as e:
         log.error("%s", e)

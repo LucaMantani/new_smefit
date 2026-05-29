@@ -48,8 +48,10 @@ Use `--force` to overwrite an existing config.
 ## List resources on the server
 
 ```bash
-# List fits or reports (auto-detected server)
+# List fits — shows creation date and RGE status from the registry
 smefit_ls fit
+
+# List reports
 smefit_ls report
 
 # List which fits contain an rge_matrix.pkl
@@ -59,6 +61,13 @@ smefit_ls rge
 # Target a specific server
 smefit_ls fit --server public
 smefit_ls fit --server private
+```
+
+`smefit_ls fit` output example:
+```
+Available fits on server:
+  my_fit_v1    2026-05-20  rge=yes
+  my_fit_v2    2026-05-29  rge=no
 ```
 
 ## Download
@@ -128,6 +137,22 @@ smefit_rm fit my_fit -f
 
 smefit_rm report my_report --server public
 ```
+
+## Sync the fit registry (team members only)
+
+The fit registry (`fits/registry.json`) is updated automatically by `smefit_upload`,
+`smefit_mv`, and `smefit_rm`. If it ever drifts out of sync (e.g. files moved outside
+these tools), rebuild it from scratch:
+
+```bash
+smefit_sync_registry
+```
+
+This downloads and inspects every fit archive to re-detect `has_rge`. Existing
+`created_at` timestamps are preserved where possible; fits not previously in the
+registry receive the current time as a fallback. Requires write credentials.
+
+---
 
 ## Upload (team members only)
 

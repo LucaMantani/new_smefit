@@ -68,11 +68,15 @@ def _prompt_profile(profile: str) -> dict | None:
     hostname = input("  webdav_hostname: ").strip()
     login = input("  webdav_login:    ").strip()
     password = getpass.getpass("  webdav_password: ")
-    return {
+    name = input("  name (shown in registry, optional): ").strip()
+    result = {
         "webdav_hostname": hostname,
         "webdav_login": login,
         "webdav_password": password,
     }
+    if name:
+        result["name"] = name
+    return result
 
 
 def _write_config(config: dict) -> None:

@@ -34,10 +34,12 @@ public:
   webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
   webdav_login:    <write-token>
   webdav_password: <password>
+  name:            Alice  # optional — shown in the registry next to uploaded fits
 private:
   webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
   webdav_login:    <private-token>
   webdav_password: <password>
+  name:            Alice
 ```
 
 Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).
@@ -79,22 +81,22 @@ Reports (0):
 
 ```bash
 # Download a fit or report
-smefit_download fit my_fit
-smefit_download report my_report
+smefit_get fit my_fit
+smefit_get report my_report
 
 # Download to a specific directory
-smefit_download fit my_fit /path/to/output
+smefit_get fit my_fit /path/to/output
 
 # Download a report and open it in the browser
-smefit_download report my_report --view
-smefit_download report my_report /path/to/output --view --server public
+smefit_get report my_report --view
+smefit_get report my_report /path/to/output --view --server public
 
 # Download only the rge_matrix.pkl from a fit
-smefit_download rge my_fit
-smefit_download rge my_fit /path/to/output
+smefit_get rge my_fit
+smefit_get rge my_fit /path/to/output
 
 # Explicitly target the public server
-smefit_download fit my_fit --server public
+smefit_get fit my_fit --server public
 ```
 
 If `--view` is used and the report is already present locally, it is opened directly without re-downloading.
@@ -103,7 +105,7 @@ If `--view` is used and the report is already present locally, it is opened dire
 
 ## View a report (shortcut)
 
-`view_report` is a shortcut for `smefit_download report ... --view`.
+`view_report` is a shortcut for `smefit_get report ... --view`.
 
 ```bash
 # Download (if needed) and open a report in the browser

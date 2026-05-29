@@ -3,7 +3,7 @@ Download and open an SMEFiT report in a browser.
 
     view_report REPORT_NAME [LOCAL_PATH]
 
-Shortcut for: smefit_download report REPORT_NAME [LOCAL_PATH] --view [--server ...]
+Shortcut for: smefit_get report REPORT_NAME [LOCAL_PATH] --view [--server ...]
 
 If the report is already present locally it is opened directly without re-downloading.
 """

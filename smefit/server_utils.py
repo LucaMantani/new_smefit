@@ -24,8 +24,7 @@ Resource types and their remote directories:
     report  -> reports/
 
 RGE matrices (rge_matrix.pkl) are stored inside fit directories, not as
-standalone resources. Use list_fits_with_rge() and download_rge() to work
-with them.
+standalone resources. Use list_fits_with_rge() and download_rge() to work with them.
 """
 
 import datetime
@@ -329,8 +328,11 @@ class Uploader:
             raise ServerError(
                 f"Unknown server '{server}'. Choose from: {', '.join(SERVERS)}"
             )
+        config = _load_config()
+        resolved_server = server if server is not None else _auto_server(config, need_write=True)
         self._client = _get_client(server, need_write=True)
-        self._server = server or "auto"
+        self._server = resolved_server
+        self._uploader_name = config.get(resolved_server, {}).get("name")
 
     def _ensure_remote_dir(self, resource_type: str) -> None:
         remote_dir = _REMOTE_DIRS[resource_type]
@@ -378,10 +380,12 @@ class Uploader:
         log.info("Upload complete.")
         if resource_type == "fit":
             registry = _read_registry(self._client)
-            registry["fits"][resource_name] = {
+            entry = {
                 "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
                 "has_rge": _detect_has_rge(local_path),
+                "uploaded_by": self._uploader_name,
             }
+            registry["fits"][resource_name] = entry
             _write_registry(self._client, registry)
             log.info("Registry updated.")
 

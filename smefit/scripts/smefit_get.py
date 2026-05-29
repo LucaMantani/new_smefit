@@ -1,7 +1,7 @@
 """
 Download a resource from the SMEFiT server.
 
-    smefit_download RESOURCE_TYPE RESOURCE_NAME [LOCAL_PATH]
+    smefit_get RESOURCE_TYPE RESOURCE_NAME [LOCAL_PATH]
 
 RESOURCE_TYPE must be one of: fit, report, rge.
   fit/report  – downloads the full resource directory.

@@ -3,18 +3,14 @@ Download and open an SMEFiT report in a browser.
 
     view_report REPORT_NAME [LOCAL_PATH]
 
-REPORT_NAME is the name of the report on the server.
-LOCAL_PATH is the directory where the report will be saved (defaults to .).
+Shortcut for: smefit_download report REPORT_NAME [LOCAL_PATH] --view [--server ...]
 
-If the report is already present at LOCAL_PATH/REPORT_NAME, it is opened
-directly without re-downloading.
+If the report is already present locally it is opened directly without re-downloading.
 """
 
 import argparse
 import logging
-import pathlib
 import sys
-import webbrowser
 
 from reportengine import colors
 
@@ -44,44 +40,20 @@ def main():
             "are configured, otherwise the public server (no setup required)."
         ),
     )
-    parser.add_argument(
-        "--no-browser",
-        action="store_true",
-        help="Download the report without opening a browser.",
-    )
     args = parser.parse_args()
 
-    if args.local_path is None:
-        local_path = pathlib.Path.cwd()
-    else:
-        local_path = pathlib.Path(args.local_path)
+    from smefit.server_utils import ServerError, download_and_view_report
 
-    report_dir = local_path / args.report_name
-    index = report_dir / "index.html"
-
-    if not report_dir.exists():
-        from smefit.server_utils import Downloader, ServerError
-
-        try:
-            downloader = Downloader(server=args.server)
-            downloader.download("report", args.report_name, local_path)
-        except ServerError as e:
-            log.error("%s", e)
-            sys.exit(1)
-        except KeyboardInterrupt:
-            print("\nInterrupted by user.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        log.info("Report already present at %s, skipping download.", report_dir)
-
-    if not index.exists():
-        log.error("No index.html found in %s.", report_dir)
+    try:
+        download_and_view_report(
+            args.report_name, local_path=args.local_path, server=args.server
+        )
+    except ServerError as e:
+        log.error("%s", e)
         sys.exit(1)
-
-    if not args.no_browser:
-        url = index.resolve().as_uri()
-        log.info("Opening %s in browser.", url)
-        webbrowser.open(url)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

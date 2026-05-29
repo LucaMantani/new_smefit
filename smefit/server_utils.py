@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 RESOURCE_TYPES = ["fit", "report", "misc"]
 _ARCHIVABLE_TYPES = ["fit", "report"]  # resource types stored as tarballs
 REGISTRY_PATH = "registry.json"
+MISC_REGISTRY_PATH = "misc/registry_misc.json"
 SERVERS = ["public", "private"]
 RGE_FILENAME = "rge_matrix.pkl"
 RUNCARD_FILENAME = "runcard.yaml"
@@ -214,6 +215,24 @@ def _write_registry(client, registry: dict) -> None:
         client.upload_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
 
 
+def _read_misc_registry(client) -> dict:
+    """Download and parse misc/registry_misc.json; return {} if absent."""
+    if not client.check(MISC_REGISTRY_PATH):
+        return {}
+    with tempfile.TemporaryDirectory(prefix="smefit_misc_reg_") as tmpdir:
+        tmp = pathlib.Path(tmpdir) / "registry_misc.json"
+        client.download_sync(remote_path=MISC_REGISTRY_PATH, local_path=str(tmp))
+        return json.loads(tmp.read_text())
+
+
+def _write_misc_registry(client, registry: dict) -> None:
+    """Serialize and upload misc/registry_misc.json."""
+    with tempfile.TemporaryDirectory(prefix="smefit_misc_reg_") as tmpdir:
+        tmp = pathlib.Path(tmpdir) / "registry_misc.json"
+        tmp.write_text(json.dumps(registry, indent=2, sort_keys=True))
+        client.upload_sync(remote_path=MISC_REGISTRY_PATH, local_path=str(tmp))
+
+
 def _list_resource_names(client, resource_type: str) -> list[str]:
     """Return all resource names of *resource_type* from the remote directory."""
     remote_dir = _REMOTE_DIRS[resource_type]
@@ -354,6 +373,11 @@ def rename(
         if old_name in section:
             section[new_name] = section.pop(old_name)
             _write_registry(client, registry)
+    elif resource_type == "misc":
+        misc_reg = _read_misc_registry(client)
+        if old_name in misc_reg:
+            misc_reg[new_name] = misc_reg.pop(old_name)
+            _write_misc_registry(client, misc_reg)
 
 
 def delete(
@@ -386,6 +410,11 @@ def delete(
         if resource_name in section:
             del section[resource_name]
             _write_registry(client, registry)
+    elif resource_type == "misc":
+        misc_reg = _read_misc_registry(client)
+        if resource_name in misc_reg:
+            del misc_reg[resource_name]
+            _write_misc_registry(client, misc_reg)
 
 
 class Uploader:
@@ -456,6 +485,15 @@ class Uploader:
             log.info("Uploading %s -> %s ...", local_path, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(local_path))
             log.info("Upload complete.")
+            misc_reg = _read_misc_registry(self._client)
+            entry = {
+                "uploaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                "uploaded_by": self._uploader_name,
+            }
+            if message:
+                entry["comment"] = message
+            misc_reg[resource_name] = entry
+            _write_misc_registry(self._client, misc_reg)
             log.info("To download: smefit_get misc %s", resource_name)
             return
 
@@ -547,8 +585,12 @@ class Downloader:
         self._server = server or "auto"
 
     def get_registry(self) -> dict:
-        """Return the fit registry from the server, or {} if absent."""
+        """Return the fit/report registry from the server, or {} if absent."""
         return _read_registry(self._client)
+
+    def get_misc_registry(self) -> dict:
+        """Return the misc registry from the server, or {} if absent."""
+        return _read_misc_registry(self._client)
 
     def list_resources(self, resource_type: str) -> list[str]:
         """Return names of available resources of *resource_type* on the server."""

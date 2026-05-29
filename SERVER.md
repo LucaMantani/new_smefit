@@ -123,11 +123,41 @@ If the report is already present locally it is opened directly without re-downlo
 
 ---
 
+## misc/ — free-form storage (team members only)
+
+The `misc/` folder has no assumed structure. Files can be stored at any path inside it.
+
+```bash
+# Upload a file to misc/ (remote path can include subdirectories)
+smefit_upload misc output.pkl
+smefit_upload misc results/run1/output.pkl /local/path/output.pkl
+
+# Download a file from misc/
+smefit_get misc results/run1/output.pkl
+smefit_get misc results/run1/output.pkl /local/output/dir/
+
+# List top-level contents of misc/
+smefit_ls misc
+
+# Create a directory structure inside misc/
+smefit_mkdir results/run1
+smefit_mkdir matrices/2026/june
+
+# Rename or delete entries in misc/
+smefit_mv misc old/path new/path
+smefit_rm misc results/run1/output.pkl
+```
+
+`smefit_mkdir` only works in `misc/` — it will error if called on fits or reports.
+
+---
+
 ## Rename a resource (team members only)
 
 ```bash
 smefit_mv fit old_name new_name
 smefit_mv report old_name new_name --server public
+smefit_mv misc old/path new/path
 ```
 
 ## Delete resources (team members only)
@@ -143,6 +173,7 @@ smefit_rm fit fit_a fit_b fit_c
 smefit_rm fit my_fit -f
 
 smefit_rm report my_report --server public
+smefit_rm misc results/run1/output.pkl
 ```
 
 ## Sync the fit registry (team members only)

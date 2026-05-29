@@ -22,6 +22,13 @@ log.setLevel(logging.INFO)
 log.addHandler(colors.ColorHandler())
 
 
+def _comment_str(meta: dict) -> str:
+    comment = meta.get("comment")
+    if not comment:
+        return ""
+    return f'  "{comment[:50]}{"..." if len(comment) > 50 else ""}"'
+
+
 def _print_fits(fits: dict) -> None:
     if not fits:
         print("  (none)")
@@ -32,7 +39,7 @@ def _print_fits(fits: dict) -> None:
         rge = "yes" if meta.get("has_rge") else "no"
         uploader = meta.get("uploaded_by")
         suffix = f"  by={uploader}" if uploader else ""
-        print(f"  {name:<{width}}  {date}  rge={rge}{suffix}")
+        print(f"  {name:<{width}}  {date}  rge={rge}{suffix}{_comment_str(meta)}")
 
 
 def _print_reports(reports: dict) -> None:
@@ -44,7 +51,7 @@ def _print_reports(reports: dict) -> None:
         date = meta.get("created_at", "?")[:10]
         uploader = meta.get("uploaded_by")
         suffix = f"  by={uploader}" if uploader else ""
-        print(f"  {name:<{width}}  {date}{suffix}")
+        print(f"  {name:<{width}}  {date}{suffix}{_comment_str(meta)}")
 
 
 def main():

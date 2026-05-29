@@ -166,7 +166,11 @@ receive the current time as a fallback. Requires write credentials.
 
 ```bash
 # Upload a fit (private server by default if configured)
+# You will be prompted for an optional comment (press Enter to skip)
 smefit_upload fit my_fit
+
+# Pass a comment directly with -m to skip the interactive prompt
+smefit_upload fit my_fit -m "baseline run, no RGE"
 
 # Upload from a specific path
 smefit_upload fit my_fit /path/to/my_fit
@@ -177,3 +181,5 @@ smefit_upload fit my_fit --force
 # Upload a report to the public server
 smefit_upload report my_report --server public
 ```
+
+The comment is stored in the registry and shown in `smefit_ls` output next to the resource name.

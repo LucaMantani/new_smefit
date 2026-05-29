@@ -51,14 +51,27 @@ def main():
         action="store_true",
         help="Overwrite if the resource already exists on the server.",
     )
+    parser.add_argument(
+        "-m",
+        "--message",
+        default=None,
+        help="Comment stored in the registry (prompted interactively if omitted).",
+    )
     args = parser.parse_args()
+
+    message = args.message
+    if message is None:
+        try:
+            message = input("Comment (press Enter to skip): ").strip() or None
+        except EOFError:
+            message = None
 
     from smefit.server_utils import ServerError, Uploader
 
     try:
         uploader = Uploader(server=args.server)
         uploader.upload(
-            args.resource_type, args.resource_name, args.local_path, args.force
+            args.resource_type, args.resource_name, args.local_path, args.force, message
         )
     except ServerError as e:
         log.error("%s", e)

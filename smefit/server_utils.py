@@ -354,6 +354,7 @@ class Uploader:
         resource_name: str,
         local_path: pathlib.Path | None = None,
         force: bool = False,
+        message: str | None = None,
     ) -> None:
         """Upload *resource_name* of *resource_type* from *local_path*."""
         if resource_type not in RESOURCE_TYPES:
@@ -391,6 +392,8 @@ class Uploader:
         }
         if resource_type == "fit":
             entry["has_rge"] = _detect_has_rge(local_path)
+        if message:
+            entry["comment"] = message
         registry[f"{resource_type}s"][resource_name] = entry
         _write_registry(self._client, registry)
         log.info("Registry updated.")

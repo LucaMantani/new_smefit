@@ -49,17 +49,39 @@ def main():
         if args.resource_type == "rge":
             resources = list_fits_with_rge(server=args.server)
             label = "fits with rge_matrix.pkl"
+            if resources:
+                print(f"Available {label} on server:")
+                for r in resources:
+                    print(f"  {r}")
+            else:
+                print(f"No {label} found on server.")
+        elif args.resource_type == "fit":
+            downloader = Downloader(server=args.server)
+            resources = downloader.list_resources("fit")
+            registry = downloader.get_registry()
+            if resources:
+                width = max(len(r) for r in resources)
+                print("Available fits on server:")
+                for r in resources:
+                    meta = registry.get(r)
+                    if meta:
+                        date = meta.get("created_at", "?")[:10]
+                        rge = "yes" if meta.get("has_rge") else "no"
+                        print(f"  {r:<{width}}  {date}  rge={rge}")
+                    else:
+                        print(f"  {r:<{width}}  (not in registry)")
+            else:
+                print("No fits found on server.")
         else:
             downloader = Downloader(server=args.server)
             resources = downloader.list_resources(args.resource_type)
             label = f"{args.resource_type}s"
-
-        if resources:
-            print(f"Available {label} on server:")
-            for r in resources:
-                print(f"  {r}")
-        else:
-            print(f"No {label} found on server.")
+            if resources:
+                print(f"Available {label} on server:")
+                for r in resources:
+                    print(f"  {r}")
+            else:
+                print(f"No {label} found on server.")
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

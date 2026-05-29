@@ -135,7 +135,9 @@ def _remote_path(resource_type: str, resource_name: str) -> str:
     return f"{_REMOTE_DIRS[resource_type]}/{resource_name}.tar.gz"
 
 
-def _compress(source: pathlib.Path, archive_path: pathlib.Path, arcname: str | None = None) -> None:
+def _compress(
+    source: pathlib.Path, archive_path: pathlib.Path, arcname: str | None = None
+) -> None:
     log.info("Compressing %s ...", source)
     with tarfile.open(archive_path, "w:gz") as tar:
         tar.add(source, arcname=arcname or source.name)

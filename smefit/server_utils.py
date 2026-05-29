@@ -398,6 +398,8 @@ class Uploader:
         _write_registry(self._client, registry)
         log.info("Registry updated.")
         log.info("To download: smefit_get %s %s", resource_type, resource_name)
+        if resource_type == "report":
+            log.info("To view locally: view_report %s", resource_name)
 
 
 class Downloader:

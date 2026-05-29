@@ -107,7 +107,10 @@ def _table(title: str, headers: list, plain_rows: list, colored_rows: list) -> N
 
 def _fit_rows(fits: dict):
     has_comment = any(m.get("comment") for m in fits.values())
+    has_project = any(m.get("project") for m in fits.values())
     headers = ["Name", "Date", "RGE", "Uploaded by"]
+    if has_project:
+        headers.append("Project")
     if has_comment:
         headers.append("Comment")
 
@@ -119,6 +122,10 @@ def _fit_rows(fits: dict):
         uploader = meta.get("uploaded_by") or ""
         p = [name, date, rge_str, uploader]
         c = [_bold(name), _dim(date), _rge(rge_val), uploader]
+        if has_project:
+            proj = meta.get("project") or ""
+            p.append(proj)
+            c.append(_green(proj) if proj else "")
         if has_comment:
             cmt = meta.get("comment") or ""
             cmt_plain = f'"{cmt[:50]}{"..." if len(cmt) > 50 else ""}"' if cmt else ""
@@ -131,7 +138,10 @@ def _fit_rows(fits: dict):
 
 def _report_rows(reports: dict):
     has_comment = any(m.get("comment") for m in reports.values())
+    has_project = any(m.get("project") for m in reports.values())
     headers = ["Name", "Date", "Uploaded by"]
+    if has_project:
+        headers.append("Project")
     if has_comment:
         headers.append("Comment")
 
@@ -141,6 +151,10 @@ def _report_rows(reports: dict):
         uploader = meta.get("uploaded_by") or ""
         p = [name, date, uploader]
         c = [_bold(name), _dim(date), uploader]
+        if has_project:
+            proj = meta.get("project") or ""
+            p.append(proj)
+            c.append(_green(proj) if proj else "")
         if has_comment:
             cmt = meta.get("comment") or ""
             cmt_plain = f'"{cmt[:50]}{"..." if len(cmt) > 50 else ""}"' if cmt else ""
@@ -215,8 +229,15 @@ def main():
             registry = downloader.get_registry()
             fits = registry.get("fits", {})
             reports = registry.get("reports", {})
+            projects = sorted(registry.get("projects", []))
             _table(f"Fits ({len(fits)})", *_fit_rows(fits))
             _table(f"Reports ({len(reports)})", *_report_rows(reports))
+            print(f"\n  {_header(f'Projects ({len(projects)})')}")
+            if projects:
+                for p in projects:
+                    print(f"    {_green(p)}")
+            else:
+                print(_dim("  (none)"))
             print()
 
         elif args.resource_type == "rge":

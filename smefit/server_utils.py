@@ -42,7 +42,7 @@ RESOURCE_TYPES = ["fit", "report", "misc"]
 _ARCHIVABLE_TYPES = ["fit", "report"]  # resource types stored as tarballs
 # Required marker files — upload is rejected if none is found anywhere in the directory
 _RESOURCE_MARKERS = {
-    "fit": "fit_result.json",
+    "fit": "fit_results.json",
     "report": "index.html",
 }
 REGISTRY_PATH = "registry.json"
@@ -193,7 +193,7 @@ def _detect_has_rge(local_path: pathlib.Path) -> bool:
 
 
 def _empty_registry() -> dict:
-    return {"fits": {}, "reports": {}}
+    return {"fits": {}, "reports": {}, "projects": []}
 
 
 def _read_registry(client) -> dict:
@@ -208,7 +208,7 @@ def _read_registry(client) -> dict:
         client.download_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
         data = json.loads(tmp.read_text())
     if "fits" not in data and "reports" not in data:
-        return {"fits": data, "reports": {}}
+        return {"fits": data, "reports": {}, "projects": []}
     return {**_empty_registry(), **data}
 
 
@@ -462,6 +462,7 @@ class Uploader:
         local_path: pathlib.Path | None = None,
         force: bool = False,
         message: str | None = None,
+        project: str | None = None,
     ) -> None:
         """Upload *resource_name* of *resource_type* from *local_path*.
 
@@ -502,6 +503,8 @@ class Uploader:
             }
             if message:
                 entry["comment"] = message
+            if project:
+                entry["project"] = project
             misc_reg[resource_name] = entry
             _write_misc_registry(self._client, misc_reg)
             log.info("To download: smefit_get misc %s", resource_name)
@@ -583,6 +586,8 @@ class Uploader:
             )
         if message:
             entry["comment"] = message
+        if project:
+            entry["project"] = project
         registry[f"{resource_type}s"][resource_name] = entry
         _write_registry(self._client, registry)
         log.info("Registry updated.")
@@ -813,3 +818,64 @@ def sync_registry(server: str | None = None) -> dict:
         len(registry["reports"]),
     )
     return registry
+
+
+# ---------------------------------------------------------------------------
+# Project management
+# ---------------------------------------------------------------------------
+
+
+def list_projects(server: str | None = None) -> list:
+    """Return the list of project names from the registry."""
+    client = _get_client(server, need_write=False)
+    registry = _read_registry(client)
+    return sorted(registry.get("projects", []))
+
+
+def add_project(project_name: str, server: str | None = None) -> None:
+    """Add *project_name* to the project list in the registry."""
+    client = _get_client(server, need_write=True)
+    registry = _read_registry(client)
+    projects = registry.setdefault("projects", [])
+    if project_name in projects:
+        raise ServerError(f"Project '{project_name}' already exists.")
+    projects.append(project_name)
+    registry["projects"] = sorted(projects)
+    _write_registry(client, registry)
+    log.info("Added project '%s'.", project_name)
+
+
+def rename_project(old_name: str, new_name: str, server: str | None = None) -> None:
+    """Rename a project in the registry and update all resources that reference it."""
+    client = _get_client(server, need_write=True)
+    registry = _read_registry(client)
+    projects = registry.setdefault("projects", [])
+    if old_name not in projects:
+        raise ServerError(f"Project '{old_name}' not found.")
+    if new_name in projects:
+        raise ServerError(f"Project '{new_name}' already exists.")
+    projects[projects.index(old_name)] = new_name
+    registry["projects"] = sorted(projects)
+    for section in ("fits", "reports"):
+        for meta in registry.get(section, {}).values():
+            if meta.get("project") == old_name:
+                meta["project"] = new_name
+    _write_registry(client, registry)
+    log.info("Renamed project '%s' -> '%s'.", old_name, new_name)
+
+
+def remove_project(project_name: str, server: str | None = None) -> None:
+    """Remove *project_name* from the project list.
+
+    Resources that referenced the removed project retain their metadata but the
+    project label will no longer appear in the valid project list.
+    """
+    client = _get_client(server, need_write=True)
+    registry = _read_registry(client)
+    projects = registry.setdefault("projects", [])
+    if project_name not in projects:
+        raise ServerError(f"Project '{project_name}' not found.")
+    projects.remove(project_name)
+    registry["projects"] = sorted(projects)
+    _write_registry(client, registry)
+    log.info("Removed project '%s'.", project_name)

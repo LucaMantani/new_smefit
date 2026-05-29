@@ -121,17 +121,22 @@ def main():
 
         elif args.resource_type == "misc":
             downloader = Downloader(server=args.server)
+            entries = downloader.list_resources("misc")
             misc_reg = downloader.get_misc_registry()
-            if misc_reg:
-                width = max(len(name) for name in misc_reg)
+            if entries:
+                width = max(len(e) for e in entries)
                 print("Contents of misc/ on server:")
-                for name, meta in sorted(misc_reg.items()):
-                    date = meta.get("uploaded_at", "?")[:10]
-                    uploader = meta.get("uploaded_by")
-                    suffix = f"  by={uploader}" if uploader else ""
-                    print(f"  {name:<{width}}  {date}{suffix}{_comment_str(meta)}")
+                for name in sorted(entries):
+                    meta = misc_reg.get(name)
+                    if meta:
+                        date = meta.get("uploaded_at", "?")[:10]
+                        uploader = meta.get("uploaded_by")
+                        suffix = f"  by={uploader}" if uploader else ""
+                        print(f"  {name:<{width}}  {date}{suffix}{_comment_str(meta)}")
+                    else:
+                        print(f"  {name:<{width}}  (no metadata)")
             else:
-                print("misc/ registry is empty or does not exist on server.")
+                print("misc/ is empty or does not exist on server.")
 
         else:
             downloader = Downloader(server=args.server)

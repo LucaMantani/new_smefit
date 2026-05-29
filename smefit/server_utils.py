@@ -248,6 +248,8 @@ def _list_resource_names(client, resource_type: str) -> list[str]:
             if not e.endswith(".tar.gz"):
                 continue
             e = e[: -len(".tar.gz")]
+        elif resource_type == "misc" and e == "registry_misc.json":
+            continue
         names.append(e)
     return names
 

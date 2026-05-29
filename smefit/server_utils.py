@@ -397,6 +397,7 @@ class Uploader:
         registry[f"{resource_type}s"][resource_name] = entry
         _write_registry(self._client, registry)
         log.info("Registry updated.")
+        log.info("To download: smefit_get %s %s", resource_type, resource_name)
 
 
 class Downloader:

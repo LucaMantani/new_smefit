@@ -397,3 +397,31 @@ class Downloader:
         dest = local_path / resource_name
         log.info("Download complete: %s", dest)
         return dest
+
+
+def download_and_view_report(
+    report_name: str,
+    local_path: pathlib.Path | None = None,
+    server: str | None = None,
+) -> None:
+    """Download *report_name* if not already present, then open index.html in the browser."""
+    import webbrowser
+
+    if local_path is None:
+        local_path = pathlib.Path.cwd()
+    local_path = pathlib.Path(local_path)
+    report_dir = local_path / report_name
+    index = report_dir / "index.html"
+
+    if not report_dir.exists():
+        downloader = Downloader(server=server)
+        downloader.download("report", report_name, local_path)
+    else:
+        log.info("Report already present at %s, skipping download.", report_dir)
+
+    if not index.exists():
+        raise ServerError(f"No index.html found in {report_dir}.")
+
+    url = index.resolve().as_uri()
+    log.info("Opening %s in browser.", url)
+    webbrowser.open(url)

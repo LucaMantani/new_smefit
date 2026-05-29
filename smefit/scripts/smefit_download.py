@@ -9,6 +9,7 @@ RESOURCE_TYPE must be one of: fit, report, rge.
 
 LOCAL_PATH is the directory where the resource will be saved (defaults to .).
 
+Use --view with 'report' to open the report in a browser after downloading.
 Use 'smefit_ls RESOURCE_TYPE' to see what is available on the server.
 """
 
@@ -52,13 +53,30 @@ def main():
             "otherwise the public server (no setup required)."
         ),
     )
+    parser.add_argument(
+        "--view",
+        action="store_true",
+        help="Open the report in a browser after downloading. Only valid for resource_type 'report'.",
+    )
     args = parser.parse_args()
 
-    from smefit.server_utils import Downloader, ServerError, download_rge
+    if args.view and args.resource_type != "report":
+        parser.error("--view is only valid for resource_type 'report'.")
+
+    from smefit.server_utils import (
+        Downloader,
+        ServerError,
+        download_and_view_report,
+        download_rge,
+    )
 
     try:
         if args.resource_type == "rge":
             download_rge(
+                args.resource_name, local_path=args.local_path, server=args.server
+            )
+        elif args.view:
+            download_and_view_report(
                 args.resource_name, local_path=args.local_path, server=args.server
             )
         else:

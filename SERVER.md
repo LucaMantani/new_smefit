@@ -48,6 +48,9 @@ Use `--force` to overwrite an existing config.
 ## List resources on the server
 
 ```bash
+# Display the full registry (fits and reports with all metadata)
+smefit_ls registry
+
 # List fits — shows creation date and RGE status from the registry
 smefit_ls fit
 
@@ -59,15 +62,18 @@ smefit_ls report
 smefit_ls rge
 
 # Target a specific server
-smefit_ls fit --server public
+smefit_ls registry --server public
 smefit_ls fit --server private
 ```
 
-`smefit_ls fit` output example:
+`smefit_ls registry` output example:
 ```
-Available fits on server:
+Fits (2):
   my_fit_v1    2026-05-20  rge=yes
   my_fit_v2    2026-05-29  rge=no
+
+Reports (0):
+  (none)
 ```
 
 ## Download

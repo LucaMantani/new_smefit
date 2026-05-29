@@ -154,14 +154,24 @@ def _detect_has_rge(local_path: pathlib.Path) -> bool:
     return any(local_path.rglob(RGE_FILENAME))
 
 
+def _empty_registry() -> dict:
+    return {"fits": {}, "reports": {}}
+
+
 def _read_registry(client) -> dict:
-    """Download and parse the fit registry; return {} if absent."""
+    """Download and parse the registry; return an empty registry if absent.
+
+    Migrates the old flat format {name: meta} to {"fits": {name: meta}, "reports": {}}.
+    """
     if not client.check(REGISTRY_PATH):
-        return {}
+        return _empty_registry()
     with tempfile.TemporaryDirectory(prefix="smefit_registry_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry.json"
         client.download_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
-        return json.loads(tmp.read_text())
+        data = json.loads(tmp.read_text())
+    if "fits" not in data and "reports" not in data:
+        return {"fits": data, "reports": {}}
+    return {**_empty_registry(), **data}
 
 
 def _write_registry(client, registry: dict) -> None:
@@ -282,8 +292,8 @@ def rename(
     log.info("Renamed '%s' -> '%s'.", old_name, new_name)
     if resource_type == "fit":
         registry = _read_registry(client)
-        if old_name in registry:
-            registry[new_name] = registry.pop(old_name)
+        if old_name in registry["fits"]:
+            registry["fits"][new_name] = registry["fits"].pop(old_name)
             _write_registry(client, registry)
 
 
@@ -306,8 +316,8 @@ def delete(
     log.info("Deleted '%s'.", resource_name)
     if resource_type == "fit":
         registry = _read_registry(client)
-        if resource_name in registry:
-            del registry[resource_name]
+        if resource_name in registry["fits"]:
+            del registry["fits"][resource_name]
             _write_registry(client, registry)
 
 
@@ -368,7 +378,7 @@ class Uploader:
         log.info("Upload complete.")
         if resource_type == "fit":
             registry = _read_registry(self._client)
-            registry[resource_name] = {
+            registry["fits"][resource_name] = {
                 "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
                 "has_rge": _detect_has_rge(local_path),
             }
@@ -489,7 +499,7 @@ def sync_registry(server: str | None = None) -> dict:
     old_registry = _read_registry(client)
     now = datetime.datetime.now().isoformat(timespec="seconds")
 
-    registry = {}
+    registry = _empty_registry()
     for fit_name in fit_names:
         remote = _remote_path("fit", fit_name)
         log.info("Inspecting %s ...", fit_name)
@@ -500,9 +510,9 @@ def sync_registry(server: str | None = None) -> dict:
                 has_rge = any(
                     pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
                 )
-        created_at = old_registry.get(fit_name, {}).get("created_at", now)
-        registry[fit_name] = {"created_at": created_at, "has_rge": has_rge}
+        created_at = old_registry["fits"].get(fit_name, {}).get("created_at", now)
+        registry["fits"][fit_name] = {"created_at": created_at, "has_rge": has_rge}
 
     _write_registry(client, registry)
-    log.info("Registry synced: %d fit(s).", len(registry))
+    log.info("Registry synced: %d fit(s).", len(registry["fits"]))
     return registry

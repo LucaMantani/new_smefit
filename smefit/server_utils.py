@@ -132,10 +132,10 @@ def _remote_path(resource_type: str, resource_name: str) -> str:
     return f"{_REMOTE_DIRS[resource_type]}/{resource_name}.tar.gz"
 
 
-def _compress(source: pathlib.Path, archive_path: pathlib.Path) -> None:
+def _compress(source: pathlib.Path, archive_path: pathlib.Path, arcname: str | None = None) -> None:
     log.info("Compressing %s ...", source)
     with tarfile.open(archive_path, "w:gz") as tar:
-        tar.add(source, arcname=source.name)
+        tar.add(source, arcname=arcname or source.name)
 
 
 def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
@@ -324,7 +324,7 @@ class Uploader:
 
         with tempfile.TemporaryDirectory(prefix="smefit_upload_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{resource_name}.tar.gz"
-            _compress(local_path, archive)
+            _compress(local_path, archive, arcname=resource_name)
             log.info("Uploading %s -> %s ...", archive.name, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(archive))
         log.info("Upload complete.")

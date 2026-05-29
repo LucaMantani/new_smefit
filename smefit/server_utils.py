@@ -40,6 +40,11 @@ log = logging.getLogger(__name__)
 
 RESOURCE_TYPES = ["fit", "report", "misc"]
 _ARCHIVABLE_TYPES = ["fit", "report"]  # resource types stored as tarballs
+# Required marker files — upload is rejected if none is found anywhere in the directory
+_RESOURCE_MARKERS = {
+    "fit": "fit_result.json",
+    "report": "index.html",
+}
 REGISTRY_PATH = "registry.json"
 MISC_REGISTRY_PATH = "misc/registry_misc.json"
 SERVERS = ["public", "private"]
@@ -508,6 +513,14 @@ class Uploader:
 
         if not local_path.exists():
             raise ServerError(f"Local path does not exist: {local_path}")
+
+        if resource_type in _RESOURCE_MARKERS:
+            marker = _RESOURCE_MARKERS[resource_type]
+            if not any(local_path.rglob(marker)):
+                raise ServerError(
+                    f"'{local_path.name}' does not look like a valid {resource_type}: "
+                    f"no {marker} found."
+                )
 
         self._ensure_remote_dir(resource_type)
 

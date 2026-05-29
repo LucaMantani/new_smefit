@@ -181,9 +181,9 @@ def _write_registry(client, registry: dict) -> None:
         client.upload_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
 
 
-def _list_fit_names(client) -> list[str]:
-    """Return all fit names from the remote fits/ directory."""
-    remote_dir = _REMOTE_DIRS["fit"]
+def _list_resource_names(client, resource_type: str) -> list[str]:
+    """Return all resource names of *resource_type* from the remote directory."""
+    remote_dir = _REMOTE_DIRS[resource_type]
     if not client.check(remote_dir):
         return []
     names = []
@@ -195,6 +195,10 @@ def _list_fit_names(client) -> list[str]:
             e = e[: -len(".tar.gz")]
         names.append(e)
     return names
+
+
+def _list_fit_names(client) -> list[str]:
+    return _list_resource_names(client, "fit")
 
 
 def list_fits_with_rge(server: str | None = None) -> list[str]:
@@ -494,31 +498,48 @@ def download_and_view_report(
 
 
 def sync_registry(server: str | None = None) -> dict:
-    """Rebuild the fit registry by inspecting all fit archives on the server.
+    """Rebuild the registry by inspecting all resources on the server.
 
-    Existing 'created_at' values are preserved where known; entries absent from
-    the current registry receive the current timestamp as a fallback.
+    For fits, archives are downloaded to re-detect has_rge.
+    For reports, only names are listed (no archive inspection needed).
+    Existing 'created_at' and 'uploaded_by' values are preserved where known.
     Returns the new registry dict.
     """
     client = _get_client(server, need_write=True)
-    fit_names = _list_fit_names(client)
     old_registry = _read_registry(client)
     now = datetime.datetime.now().isoformat(timespec="seconds")
-
     registry = _empty_registry()
-    for fit_name in fit_names:
-        remote = _remote_path("fit", fit_name)
-        log.info("Inspecting %s ...", fit_name)
+
+    for fit_name in _list_resource_names(client, "fit"):
+        log.info("Inspecting fit %s ...", fit_name)
         with tempfile.TemporaryDirectory(prefix="smefit_sync_") as tmpdir:
             archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
-            client.download_sync(remote_path=remote, local_path=str(archive))
+            client.download_sync(
+                remote_path=_remote_path("fit", fit_name), local_path=str(archive)
+            )
             with tarfile.open(archive, "r:gz") as tar:
                 has_rge = any(
                     pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
                 )
-        created_at = old_registry["fits"].get(fit_name, {}).get("created_at", now)
-        registry["fits"][fit_name] = {"created_at": created_at, "has_rge": has_rge}
+        old = old_registry["fits"].get(fit_name, {})
+        registry["fits"][fit_name] = {
+            "created_at": old.get("created_at", now),
+            "has_rge": has_rge,
+            "uploaded_by": old.get("uploaded_by"),
+        }
+
+    for report_name in _list_resource_names(client, "report"):
+        log.info("Registering report %s ...", report_name)
+        old = old_registry["reports"].get(report_name, {})
+        registry["reports"][report_name] = {
+            "created_at": old.get("created_at", now),
+            "uploaded_by": old.get("uploaded_by"),
+        }
 
     _write_registry(client, registry)
-    log.info("Registry synced: %d fit(s).", len(registry["fits"]))
+    log.info(
+        "Registry synced: %d fit(s), %d report(s).",
+        len(registry["fits"]),
+        len(registry["reports"]),
+    )
     return registry

@@ -155,9 +155,10 @@ these tools), rebuild it from scratch:
 smefit_sync_registry
 ```
 
-This downloads and inspects every fit archive to re-detect `has_rge`. Existing
-`created_at` timestamps are preserved where possible; fits not previously in the
-registry receive the current time as a fallback. Requires write credentials.
+For fits, every archive is downloaded to re-detect `has_rge`. For reports, only
+names are listed (no download needed). Existing `created_at` and `uploaded_by`
+values are preserved where possible; entries not previously in the registry
+receive the current time as a fallback. Requires write credentials.
 
 ---
 

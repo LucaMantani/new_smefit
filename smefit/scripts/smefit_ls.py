@@ -1,9 +1,9 @@
 """
 List resources available on the SMEFiT server.
 
-    smefit_ls RESOURCE_TYPE [--server public|private]
+    smefit_ls [RESOURCE_TYPE] [--server public|private]
 
-RESOURCE_TYPE must be one of: fit, report, rge, registry.
+RESOURCE_TYPE must be one of: fit, report, rge, registry (default: registry).
   fit/report  – lists available resources of that type.
   rge         – lists fits that have an rge_matrix.pkl, read from the registry.
   registry    – displays the full registry with all tracked metadata.
@@ -30,7 +30,9 @@ def _print_fits(fits: dict) -> None:
     for name, meta in sorted(fits.items()):
         date = meta.get("created_at", "?")[:10]
         rge = "yes" if meta.get("has_rge") else "no"
-        print(f"  {name:<{width}}  {date}  rge={rge}")
+        uploader = meta.get("uploaded_by")
+        suffix = f"  by={uploader}" if uploader else ""
+        print(f"  {name:<{width}}  {date}  rge={rge}{suffix}")
 
 
 def _print_reports(reports: dict) -> None:
@@ -51,7 +53,9 @@ def main():
     parser.add_argument(
         "resource_type",
         choices=["fit", "report", "rge", "registry"],
-        help="Type of resource to list.",
+        nargs="?",
+        default="registry",
+        help="Type of resource to list (default: registry).",
     )
     parser.add_argument(
         "--server",

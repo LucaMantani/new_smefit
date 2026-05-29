@@ -289,11 +289,11 @@ def rename(
         )
     client.move(remote_path_from=old_remote, remote_path_to=new_remote)
     log.info("Renamed '%s' -> '%s'.", old_name, new_name)
-    if resource_type == "fit":
-        registry = _read_registry(client)
-        if old_name in registry["fits"]:
-            registry["fits"][new_name] = registry["fits"].pop(old_name)
-            _write_registry(client, registry)
+    registry = _read_registry(client)
+    section = registry[f"{resource_type}s"]
+    if old_name in section:
+        section[new_name] = section.pop(old_name)
+        _write_registry(client, registry)
 
 
 def delete(
@@ -313,11 +313,11 @@ def delete(
         raise ServerError(f"Resource '{resource_name}' not found on server.")
     client.clean(remote)
     log.info("Deleted '%s'.", resource_name)
-    if resource_type == "fit":
-        registry = _read_registry(client)
-        if resource_name in registry["fits"]:
-            del registry["fits"][resource_name]
-            _write_registry(client, registry)
+    registry = _read_registry(client)
+    section = registry[f"{resource_type}s"]
+    if resource_name in section:
+        del section[resource_name]
+        _write_registry(client, registry)
 
 
 class Uploader:
@@ -380,16 +380,16 @@ class Uploader:
             log.info("Uploading %s -> %s ...", archive.name, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(archive))
         log.info("Upload complete.")
+        registry = _read_registry(self._client)
+        entry = {
+            "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "uploaded_by": self._uploader_name,
+        }
         if resource_type == "fit":
-            registry = _read_registry(self._client)
-            entry = {
-                "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
-                "has_rge": _detect_has_rge(local_path),
-                "uploaded_by": self._uploader_name,
-            }
-            registry["fits"][resource_name] = entry
-            _write_registry(self._client, registry)
-            log.info("Registry updated.")
+            entry["has_rge"] = _detect_has_rge(local_path)
+        registry[f"{resource_type}s"][resource_name] = entry
+        _write_registry(self._client, registry)
+        log.info("Registry updated.")
 
 
 class Downloader:

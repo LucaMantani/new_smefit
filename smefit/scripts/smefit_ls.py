@@ -42,7 +42,9 @@ def _print_reports(reports: dict) -> None:
     width = max(len(name) for name in reports)
     for name, meta in sorted(reports.items()):
         date = meta.get("created_at", "?")[:10]
-        print(f"  {name:<{width}}  {date}")
+        uploader = meta.get("uploaded_by")
+        suffix = f"  by={uploader}" if uploader else ""
+        print(f"  {name:<{width}}  {date}{suffix}")
 
 
 def main():

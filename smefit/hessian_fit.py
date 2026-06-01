@@ -48,12 +48,21 @@ def hessian_fit(eft_model, chi2, optimizer, hessian_settings):
     n_samples = hessian_settings.get("n_samples")
     seed = hessian_settings.get("seed")
 
-    n_free = len(eft_model.coefficients.free_names)
-    zeros = jnp.zeros(n_free)
+    free_names = list(eft_model.coefficients.free_names)
+    zeros = jnp.zeros(len(free_names))
 
     if sm_solution:
-        log.info("Hessian fit: using SM point (c=0) as the best-fit point.")
-        c_best = zeros
+        sm_point = hessian_settings.get("sm_point", {})
+        c_best = jnp.array(
+            [float(sm_point.get(name, 0.0)) for name in free_names]
+        )
+        if sm_point:
+            log.info(
+                "Hessian fit: using SM point with overrides %s as the best-fit point.",
+                sm_point,
+            )
+        else:
+            log.info("Hessian fit: using SM point (c=0) as the best-fit point.")
     else:
         log.info(
             "Hessian fit: running gradient descent (max_steps=%d) from c=0.", n_steps

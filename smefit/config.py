@@ -483,6 +483,11 @@ class smefitConfig(Config):
             If True, assume c=0 (SM point) is the minimum and skip
             optimisation.  If False (default) run gradient descent via the
             ``optimizer`` node.
+        sm_point : dict, optional
+            Override individual free-parameter values used as the evaluation
+            point when ``sm_solution: true``.  Parameters not listed default
+            to 0.  Useful when some parameters (e.g. Vud) are physically
+            non-zero at the SM point.
         n_steps : int, default 2000
             Maximum number of gradient-descent steps.
         tol : float, default 1e-8
@@ -492,11 +497,13 @@ class smefitConfig(Config):
         seed : int, default 42
             Random seed for sample generation.
         """
-        known_keys = {"sm_solution", "n_steps", "tol", "n_samples", "seed"}
+        known_keys = {"sm_solution", "sm_point", "n_steps", "tol", "n_samples", "seed"}
         for k in set(settings.keys()) - known_keys:
             log.warning("Unknown key '%s' in hessian_settings.", k)
+        sm_point_raw = settings.get("sm_point", {})
         return {
             "sm_solution": bool(settings.get("sm_solution", False)),
+            "sm_point": {k: float(v) for k, v in sm_point_raw.items()},
             "n_steps": int(settings.get("n_steps", 2000)),
             "tol": float(settings.get("tol", 1e-8)),
             "n_samples": int(settings.get("n_samples", 10000)),

@@ -62,6 +62,10 @@ smefit_ls report
 # List fits that have an rge_matrix.pkl (reads from registry, fast)
 smefit_ls rge
 
+# Show free space on the server
+smefit_ls storage
+smefit_ls storage --server private
+
 # Target a specific server
 smefit_ls registry --server public
 smefit_ls fit --server private

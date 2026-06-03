@@ -881,3 +881,9 @@ def remove_project(project_name: str, server: str | None = None) -> None:
     registry["projects"] = sorted(projects)
     _write_registry(client, registry)
     log.info("Removed project '%s'.", project_name)
+
+
+def get_free_space(server: str | None = None) -> int:
+    """Return the free space on *server* in bytes."""
+    client = _get_client(server, need_write=False)
+    return client.free()

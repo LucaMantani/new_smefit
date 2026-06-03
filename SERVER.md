@@ -68,6 +68,7 @@ smefit_ls fit --server private
 ```
 
 `smefit_ls registry` output example:
+
 ```
 Fits (2):
   my_fit_v1    2026-05-20  rge=yes
@@ -76,6 +77,8 @@ Fits (2):
 Reports (0):
   (none)
 ```
+
+`registry` is the default option, therefore the same ouput will be given by `smefit_ls`.
 
 ## Download
 

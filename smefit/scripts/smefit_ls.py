@@ -203,7 +203,11 @@ def _misc_rows(entries: list, misc_reg: dict):
 def _pick_project(projects: list) -> str | None:
     """Print a numbered project list and return the user's choice, or None."""
     if not projects:
-        print(_dim("  No projects defined. Use 'smefit_manage_project add <name>' to create one."))
+        print(
+            _dim(
+                "  No projects defined. Use 'smefit_manage_project add <name>' to create one."
+            )
+        )
         return None
     print(f"\n  {_header(f'Projects ({len(projects)})')}")
     for i, p in enumerate(projects, 1):
@@ -296,7 +300,9 @@ def main():
         def _filter_reports(reports):
             if project_filter is None:
                 return reports
-            return {k: v for k, v in reports.items() if v.get("project") == project_filter}
+            return {
+                k: v for k, v in reports.items() if v.get("project") == project_filter
+            }
 
         title_suffix = f" [{project_filter}]" if project_filter else ""
 

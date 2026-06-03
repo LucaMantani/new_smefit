@@ -102,7 +102,7 @@ Key design points:
 | `smefit_get` | Download a resource |
 | `smefit_mv` | Rename a resource |
 | `smefit_rm` | Delete a resource |
-| `smefit_project` | Manage the project list (add/rename/remove/list) |
+| `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
 | `smefit_setup_server` | Configure credentials |
 | `smefit_sync_registry` | Rebuild the registry from scratch |
 | `smefit_mkdir` | Create a directory under `misc/` |

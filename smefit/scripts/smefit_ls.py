@@ -203,7 +203,7 @@ def _misc_rows(entries: list, misc_reg: dict):
 def _pick_project(projects: list) -> str | None:
     """Print a numbered project list and return the user's choice, or None."""
     if not projects:
-        print(_dim("  No projects defined. Use 'smefit_project add <name>' to create one."))
+        print(_dim("  No projects defined. Use 'smefit_manage_project add <name>' to create one."))
         return None
     print(f"\n  {_header(f'Projects ({len(projects)})')}")
     for i, p in enumerate(projects, 1):
@@ -236,7 +236,7 @@ def _resolve_project(downloader, requested: str) -> str | None:
         return requested
     print(
         f"  Project '{requested}' does not exist. "
-        "Use 'smefit_project add <name>' to create a new project.",
+        "Use 'smefit_manage_project add <name>' to create a new project.",
         file=sys.stderr,
     )
     return _pick_project(projects)

@@ -4,10 +4,10 @@ Manage the project list on the SMEFiT server.
 Projects are metadata labels that can be attached to fits and reports at upload
 time. They are stored in the registry and never alter the resources themselves.
 
-    smefit_project list
-    smefit_project add    PROJECT_NAME
-    smefit_project rename OLD_NAME NEW_NAME
-    smefit_project remove PROJECT_NAME
+    smefit_manage_project list
+    smefit_manage_project add    PROJECT_NAME
+    smefit_manage_project rename OLD_NAME NEW_NAME
+    smefit_manage_project remove PROJECT_NAME
 """
 
 import argparse

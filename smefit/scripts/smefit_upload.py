@@ -104,7 +104,7 @@ def main():
                 if project not in projects:
                     print(
                         f"Project '{project}' does not exist. "
-                        "Use 'smefit_project add <name>' to create a new project.",
+                        "Use 'smefit_manage_project add <name>' to create a new project.",
                         file=sys.stderr,
                     )
                     project = _prompt_project(projects)

@@ -182,20 +182,20 @@ smefit_rm misc results/run1/output.pkl
 ## Projects (team members only)
 
 Projects are metadata labels that can be attached to fits and reports to group them.
-The list of valid projects is stored in the registry and managed with `smefit_project`.
+The list of valid projects is stored in the registry and managed with `smefit_manage_project`.
 
 ```bash
 # List available projects
-smefit_project list
+smefit_manage_project list
 
 # Add a new project
-smefit_project add linear_fits
+smefit_manage_project add linear_fits
 
 # Rename a project (updates all resources that reference it)
-smefit_project rename linear_fits linear_analyses
+smefit_manage_project rename linear_fits linear_analyses
 
 # Remove a project
-smefit_project remove linear_analyses
+smefit_manage_project remove linear_analyses
 ```
 
 During `smefit_upload`, after the comment prompt, you are shown the project list and

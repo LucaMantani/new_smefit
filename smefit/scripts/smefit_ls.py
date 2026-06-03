@@ -3,12 +3,11 @@ List resources available on the SMEFiT server.
 
     smefit_ls [RESOURCE_TYPE] [--server public|private] [--project NAME]
 
-RESOURCE_TYPE must be one of: fit, report, rge, registry, misc, storage (default: registry).
+RESOURCE_TYPE must be one of: fit, report, rge, registry, misc (default: registry).
   fit/report  – lists available resources of that type.
   rge         – lists fits that have an rge_matrix.pkl, read from the registry.
   registry    – displays the full registry with all tracked metadata.
   misc        – lists contents of misc/ with metadata from registry_misc.json.
-  storage     – shows the free space remaining on the server.
 
 Use --project NAME to restrict the output to resources belonging to that project.
 If the name does not match any known project, an interactive list is shown instead.
@@ -259,7 +258,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge", "registry", "misc", "storage"],
+        choices=["fit", "report", "rge", "registry", "misc"],
         nargs="?",
         default="registry",
         help="Type of resource to list (default: registry).",
@@ -281,7 +280,7 @@ def main():
     )
     args = parser.parse_args()
 
-    from smefit.server_utils import Downloader, ServerError, get_free_space
+    from smefit.server_utils import Downloader, ServerError
 
     try:
         downloader = Downloader(server=args.server)
@@ -358,20 +357,6 @@ def main():
             misc_reg = downloader.get_misc_registry()
             _table(f"misc/ ({len(entries)} entries)", *_misc_rows(entries, misc_reg))
             print()
-
-        elif args.resource_type == "storage":
-            _TOTAL_GB = 1000.0
-            free_bytes = get_free_space(server=args.server)
-            free_gb = free_bytes / (1024**3)
-            used_gb = _TOTAL_GB - free_gb
-            pct = used_gb / _TOTAL_GB
-            bar_width = 30
-            filled = round(pct * bar_width)
-            bar = "█" * filled + "░" * (bar_width - filled)
-            print(f"\n  {_header('Storage')}")
-            print(
-                f"  {bar}  {_bold(f'{used_gb:.1f}')} / {_TOTAL_GB:.0f} GB used  ({_green(f'{free_gb:.1f} GB free')})\n"
-            )
 
     except ServerError as e:
         log.error("%s", e)

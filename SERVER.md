@@ -62,10 +62,6 @@ smefit_ls report
 # List fits that have an rge_matrix.pkl (reads from registry, fast)
 smefit_ls rge
 
-# Show free space on the server
-smefit_ls storage
-smefit_ls storage --server private
-
 # Target a specific server
 smefit_ls registry --server public
 smefit_ls fit --server private
@@ -215,15 +211,33 @@ whenever at least one resource has a project assigned.
 
 ---
 
-## Sync the fit registry (team members only)
+## Server management
+
+`smefit_server` groups setup, storage, and registry-sync into one command.
+
+```bash
+# Configure credentials (from a shared YAML file or interactively)
+smefit_server setup my_credentials.yaml
+smefit_server setup               # interactive
+smefit_server setup --force       # overwrite existing config
+
+# Show used / free space on the server
+smefit_server storage
+smefit_server storage --server private
+
+# Rebuild the registry from scratch (team members only)
+smefit_server sync
+smefit_server sync --server public
+
+# List all available smefit commands with descriptions
+smefit_server tutorial
+```
+
+### Sync details
 
 The fit registry (`fits/registry.json`) is updated automatically by `smefit_upload`,
 `smefit_mv`, and `smefit_rm`. If it ever drifts out of sync (e.g. files moved outside
-these tools), rebuild it from scratch:
-
-```bash
-smefit_sync_registry
-```
+these tools), rebuild it with `smefit_server sync`.
 
 For fits, every archive is downloaded to re-detect `has_rge`. For reports, only
 names are listed (no download needed). Existing `created_at` and `uploaded_by`

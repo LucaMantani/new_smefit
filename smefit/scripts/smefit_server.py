@@ -89,7 +89,11 @@ def _prompt_profile(profile: str) -> dict | None:
     login = input("  webdav_login:    ").strip()
     password = getpass.getpass("  webdav_password: ")
     name = input("  name (shown in registry, optional): ").strip()
-    result = {"webdav_hostname": hostname, "webdav_login": login, "webdav_password": password}
+    result = {
+        "webdav_hostname": hostname,
+        "webdav_login": login,
+        "webdav_password": password,
+    }
     if name:
         result["name"] = name
     return result
@@ -107,17 +111,23 @@ def _write_config(config: dict) -> None:
 # tutorial content
 # ---------------------------------------------------------------------------
 _COMMANDS = [
-    ("smefit",                  "Run a fit from a runcard YAML file."),
-    ("smefit_ls",               "List server resources — fits, reports, registry, rge, misc.\n"
-                                "                        Use --project NAME to filter by project."),
-    ("smefit_upload",           "Upload a fit, report, or misc file to the server."),
-    ("smefit_get",              "Download a fit, report, rge matrix, or misc file."),
-    ("smefit_mv",               "Rename a resource on the server."),
-    ("smefit_rm",               "Delete one or more resources from the server."),
-    ("smefit_mkdir",            "Create a directory under misc/ on the server."),
-    ("smefit_manage_project",   "Manage the project list: add / rename / remove / list."),
-    ("view_report",             "Download (if needed) and open a report in the browser."),
-    ("smefit_server",           "Server management: setup credentials, check storage, sync registry."),
+    ("smefit", "Run a fit from a runcard YAML file."),
+    (
+        "smefit_ls",
+        "List server resources — fits, reports, registry, rge, misc.\n"
+        "                        Use --project NAME to filter by project.",
+    ),
+    ("smefit_upload", "Upload a fit, report, or misc file to the server."),
+    ("smefit_get", "Download a fit, report, rge matrix, or misc file."),
+    ("smefit_mv", "Rename a resource on the server."),
+    ("smefit_rm", "Delete one or more resources from the server."),
+    ("smefit_mkdir", "Create a directory under misc/ on the server."),
+    ("smefit_manage_project", "Manage the project list: add / rename / remove / list."),
+    ("view_report", "Download (if needed) and open a report in the browser."),
+    (
+        "smefit_server",
+        "Server management: setup credentials, check storage, sync registry.",
+    ),
 ]
 
 

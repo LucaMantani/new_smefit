@@ -97,12 +97,20 @@ def main():
     from smefit.server_utils import ServerError, Uploader, list_projects
 
     project = args.project
-    if project is None and args.resource_type in ("fit", "report"):
+    if args.resource_type in ("fit", "report"):
         try:
             projects = list_projects(server=args.server)
-            project = _prompt_project(projects)
+            if project is not None:
+                if project not in projects:
+                    print(
+                        f"Project '{project}' does not exist. "
+                        "Use 'smefit_project add <name>' to create a new project.",
+                        file=sys.stderr,
+                    )
+                    project = _prompt_project(projects)
+            else:
+                project = _prompt_project(projects)
         except ServerError:
-            # If we can't read the registry just skip the project prompt
             pass
         except EOFError:
             pass

@@ -1,13 +1,16 @@
 """
 List resources available on the SMEFiT server.
 
-    smefit_ls [RESOURCE_TYPE] [--server public|private]
+    smefit_ls [RESOURCE_TYPE] [--server public|private] [--project NAME]
 
 RESOURCE_TYPE must be one of: fit, report, rge, registry, misc (default: registry).
   fit/report  – lists available resources of that type.
   rge         – lists fits that have an rge_matrix.pkl, read from the registry.
   registry    – displays the full registry with all tracked metadata.
   misc        – lists contents of misc/ with metadata from registry_misc.json.
+
+Use --project NAME to restrict the output to resources belonging to that project.
+If the name does not match any known project, an interactive list is shown instead.
 
 The server is auto-detected: private if credentials are configured, else public.
 """
@@ -193,6 +196,53 @@ def _misc_rows(entries: list, misc_reg: dict):
 
 
 # ---------------------------------------------------------------------------
+# Interactive project picker
+# ---------------------------------------------------------------------------
+
+
+def _pick_project(projects: list) -> str | None:
+    """Print a numbered project list and return the user's choice, or None."""
+    if not projects:
+        print(_dim("  No projects defined. Use 'smefit_project add <name>' to create one."))
+        return None
+    print(f"\n  {_header(f'Projects ({len(projects)})')}")
+    for i, p in enumerate(projects, 1):
+        print(f"    {i}. {_green(p)}")
+    try:
+        raw = input("\nProject number (press Enter to cancel): ").strip()
+    except EOFError:
+        return None
+    if not raw:
+        return None
+    try:
+        idx = int(raw) - 1
+        if 0 <= idx < len(projects):
+            return projects[idx]
+        print("Invalid number.", file=sys.stderr)
+    except ValueError:
+        print("Invalid input.", file=sys.stderr)
+    return None
+
+
+def _resolve_project(downloader, requested: str) -> str | None:
+    """Validate *requested* against the registry's project list.
+
+    Returns the validated project name, or a user-chosen one if *requested* was
+    not found. Returns None if the user cancels the interactive picker.
+    """
+    registry = downloader.get_registry()
+    projects = sorted(registry.get("projects", []))
+    if requested in projects:
+        return requested
+    print(
+        f"  Project '{requested}' does not exist. "
+        "Use 'smefit_project add <name>' to create a new project.",
+        file=sys.stderr,
+    )
+    return _pick_project(projects)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -218,6 +268,12 @@ def main():
             "are configured, otherwise public."
         ),
     )
+    parser.add_argument(
+        "--project",
+        default=None,
+        metavar="NAME",
+        help="Restrict output to resources belonging to this project.",
+    )
     args = parser.parse_args()
 
     from smefit.server_utils import Downloader, ServerError
@@ -225,55 +281,75 @@ def main():
     try:
         downloader = Downloader(server=args.server)
 
+        # Resolve project filter once — validates the name or offers interactive pick.
+        project_filter = None
+        if args.project is not None:
+            project_filter = _resolve_project(downloader, args.project)
+            if project_filter is None:
+                sys.exit(0)
+
+        def _filter_fits(fits):
+            if project_filter is None:
+                return fits
+            return {k: v for k, v in fits.items() if v.get("project") == project_filter}
+
+        def _filter_reports(reports):
+            if project_filter is None:
+                return reports
+            return {k: v for k, v in reports.items() if v.get("project") == project_filter}
+
+        title_suffix = f" [{project_filter}]" if project_filter else ""
+
         if args.resource_type == "registry":
             registry = downloader.get_registry()
-            fits = registry.get("fits", {})
-            reports = registry.get("reports", {})
-            projects = sorted(registry.get("projects", []))
-            _table(f"Fits ({len(fits)})", *_fit_rows(fits))
-            _table(f"Reports ({len(reports)})", *_report_rows(reports))
-            print(f"\n  {_header(f'Projects ({len(projects)})')}")
-            if projects:
-                for p in projects:
-                    print(f"    {_green(p)}")
-            else:
-                print(_dim("  (none)"))
+            fits = _filter_fits(registry.get("fits", {}))
+            reports = _filter_reports(registry.get("reports", {}))
+            _table(f"Fits ({len(fits)}){title_suffix}", *_fit_rows(fits))
+            _table(f"Reports ({len(reports)}){title_suffix}", *_report_rows(reports))
+            if not project_filter:
+                projects = sorted(registry.get("projects", []))
+                print(f"\n  {_header(f'Projects ({len(projects)})')}")
+                if projects:
+                    for p in projects:
+                        print(f"    {_green(p)}")
+                else:
+                    print(_dim("  (none)"))
             print()
 
         elif args.resource_type == "rge":
-            rge_fits = {
-                name: meta
-                for name, meta in downloader.get_registry().get("fits", {}).items()
-                if meta.get("has_rge")
-            }
-            _table(f"Fits with rge_matrix.pkl ({len(rge_fits)})", *_fit_rows(rge_fits))
+            registry = downloader.get_registry()
+            rge_fits = _filter_fits(
+                {k: v for k, v in registry.get("fits", {}).items() if v.get("has_rge")}
+            )
+            _table(
+                f"Fits with rge_matrix.pkl ({len(rge_fits)}){title_suffix}",
+                *_fit_rows(rge_fits),
+            )
             print()
 
         elif args.resource_type == "fit":
             resources = downloader.list_resources("fit")
             registry = downloader.get_registry()
-            fits = {r: registry["fits"][r] for r in resources if r in registry["fits"]}
-            unlisted = [r for r in resources if r not in registry["fits"]]
-            _table(f"Fits ({len(resources)})", *_fit_rows(fits))
-            for r in unlisted:
-                print(f"  {_bold(r)}  {_dim('(not in registry)')}")
+            fits = _filter_fits(
+                {r: registry["fits"][r] for r in resources if r in registry["fits"]}
+            )
+            _table(f"Fits ({len(fits)}){title_suffix}", *_fit_rows(fits))
+            if not project_filter:
+                for r in resources:
+                    if r not in registry["fits"]:
+                        print(f"  {_bold(r)}  {_dim('(not in registry)')}")
+            print()
+
+        elif args.resource_type == "report":
+            registry = downloader.get_registry()
+            reports = _filter_reports(registry.get("reports", {}))
+            _table(f"Reports ({len(reports)}){title_suffix}", *_report_rows(reports))
             print()
 
         elif args.resource_type == "misc":
             entries = downloader.list_resources("misc")
             misc_reg = downloader.get_misc_registry()
             _table(f"misc/ ({len(entries)} entries)", *_misc_rows(entries, misc_reg))
-            print()
-
-        else:
-            resources = downloader.list_resources(args.resource_type)
-            label = f"{args.resource_type}s".capitalize()
-            _table(
-                f"{label} ({len(resources)})",
-                ["Name"],
-                [[r] for r in sorted(resources)],
-                [[_bold(r)] for r in sorted(resources)],
-            )
             print()
 
     except ServerError as e:

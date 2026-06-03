@@ -474,6 +474,8 @@ class Uploader:
         (e.g. 'results/run1/output.pkl'). Intermediate directories are created
         automatically. *local_path* defaults to the basename of *resource_name*.
         """
+        resource_name = resource_name.rstrip("/\\")
+
         if resource_type not in RESOURCE_TYPES:
             raise ServerError(
                 f"Unknown resource type '{resource_type}'. "

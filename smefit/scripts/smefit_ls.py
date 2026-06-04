@@ -9,6 +9,7 @@ RESOURCE_TYPE must be one of: fit, report, rge, registry, misc, bin (default: re
   registry    – displays the full registry with all tracked metadata.
   misc        – lists contents of misc/ with metadata from registry_misc.json.
   bin         – lists trashed resources with deletion metadata from bin/registry_bin.json.
+                Use --type {fit,report,misc} to filter by resource type.
 
 Use --project NAME to restrict the output to resources belonging to that project.
 If the name does not match any known project, an interactive list is shown instead.
@@ -308,6 +309,14 @@ def main():
         metavar="NAME",
         help="Restrict output to resources belonging to this project.",
     )
+    parser.add_argument(
+        "--type",
+        choices=["fit", "report", "misc"],
+        default=None,
+        dest="bin_type",
+        metavar="TYPE",
+        help="Filter bin output by resource type: fit, report, or misc (only with 'bin').",
+    )
     args = parser.parse_args()
 
     from smefit.server_utils import Downloader, ServerError
@@ -390,7 +399,14 @@ def main():
 
         elif args.resource_type == "bin":
             bin_reg = downloader.get_bin_registry()
-            _table(f"Bin ({len(bin_reg)} entries)", *_bin_rows(bin_reg))
+            if args.bin_type:
+                bin_reg = {
+                    k: v
+                    for k, v in bin_reg.items()
+                    if v.get("resource_type") == args.bin_type
+                }
+            type_suffix = f" [{args.bin_type}]" if args.bin_type else ""
+            _table(f"Bin ({len(bin_reg)} entries){type_suffix}", *_bin_rows(bin_reg))
             print()
 
     except ServerError as e:

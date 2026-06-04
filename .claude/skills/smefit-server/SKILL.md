@@ -121,14 +121,14 @@ Key is `"<resource_type>/<resource_name>"`. `_read_bin_registry` / `_write_bin_r
 ## WebDAV client cheatsheet
 
 ```python
-client.check(path)                        # exists?
-client.list(path)                         # list dir (returns name strings including dir itself)
-client.mkdir(path)                        # create dir
+client.check(path)  # exists?
+client.list(path)  # list dir (returns name strings including dir itself)
+client.mkdir(path)  # create dir
 client.move(remote_path_from, remote_path_to)
-client.clean(path)                        # delete
+client.clean(path)  # delete
 client.upload_sync(remote_path, local_path)
 client.download_sync(remote_path, local_path)
-client.free()                             # free bytes
+client.free()  # free bytes
 ```
 
 Note: `client.list()` returns bare names (not full paths). Entries include the directory itself and may have trailing `/`. Always strip and filter.

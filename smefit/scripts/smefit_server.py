@@ -125,6 +125,7 @@ _COMMANDS = [
         "Move one or more resources to bin/ on the server.\n"
         "Prompts for a deletion comment. Use -f to skip confirmation.",
     ),
+    ("smefit_restore", "Restore a resource from bin/ back to its original location."),
     ("smefit_mkdir", "Create a directory under misc/ on the server."),
     ("smefit_manage_project", "Manage the project list: add / rename / remove / list."),
     ("view_report", "Download (if needed) and open a report in the browser."),

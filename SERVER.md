@@ -194,6 +194,18 @@ View what is currently in the bin:
 
 ```bash
 smefit_ls bin
+smefit_ls bin --type fit
+```
+
+## Restore resources (team members only)
+
+Moves a resource from `bin/` back to its original remote path and reinstates its
+registry entry. Fails if the original location is already occupied.
+
+```bash
+smefit_restore fit my_fit
+smefit_restore report my_report --server public
+smefit_restore misc results/run1/output.pkl
 ```
 
 ## Projects (team members only)

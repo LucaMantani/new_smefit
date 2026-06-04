@@ -527,6 +527,80 @@ def trash(
     _write_bin_registry(client, bin_reg)
 
 
+def restore(
+    resource_type: str,
+    resource_name: str,
+    server: str | None = None,
+) -> None:
+    """Move a resource from bin/ back to its original location.
+
+    Restores the original registry entry and removes the bin registry record.
+    Raises ServerError if the resource is not in the bin or if the original
+    location is already occupied.
+    """
+    if resource_type not in RESOURCE_TYPES:
+        raise ServerError(
+            f"Unknown resource type '{resource_type}'. "
+            f"Choose from: {', '.join(RESOURCE_TYPES)}"
+        )
+    client = _get_client(server, need_write=True)
+
+    key = f"{resource_type}/{resource_name}"
+    bin_reg = _read_bin_registry(client)
+    if key not in bin_reg:
+        raise ServerError(
+            f"'{resource_name}' (type: {resource_type}) is not in the bin."
+        )
+    entry = bin_reg[key]
+
+    remote = _remote_path(resource_type, resource_name)
+    bin_remote = f"{BIN_DIR}/{remote}"
+
+    if not client.check(bin_remote):
+        raise ServerError(
+            f"Binned file not found at '{bin_remote}'. "
+            "The bin registry may be out of sync — run 'smefit_server sync'."
+        )
+    if client.check(remote):
+        raise ServerError(
+            f"'{resource_name}' already exists at its original location. "
+            "Rename or remove it before restoring."
+        )
+
+    _ensure_remote_path(client, str(pathlib.PurePosixPath(remote).parent))
+    client.move(remote_path_from=bin_remote, remote_path_to=remote)
+    log.info("Restored '%s' to %s.", resource_name, remote)
+
+    if resource_type == "fit":
+        for bin_sub, sub in [
+            (
+                f"{BIN_DIR}/{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl",
+                f"{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl",
+            ),
+            (
+                f"{BIN_DIR}/{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml",
+                f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml",
+            ),
+        ]:
+            if client.check(bin_sub):
+                _ensure_remote_path(client, str(pathlib.PurePosixPath(sub).parent))
+                client.move(remote_path_from=bin_sub, remote_path_to=sub)
+
+    original_meta = entry.get("original_meta", {})
+    if resource_type in _ARCHIVABLE_TYPES:
+        registry = _read_registry(client)
+        registry[f"{resource_type}s"][resource_name] = original_meta
+        _write_registry(client, registry)
+    elif resource_type == "misc":
+        misc_reg = _read_misc_registry(client)
+        misc_reg[resource_name] = original_meta
+        _write_misc_registry(client, misc_reg)
+
+    del bin_reg[key]
+    _write_bin_registry(client, bin_reg)
+    log.info("Registry restored.")
+
+
 class Uploader:
     """Upload resources to a server. Requires write credentials in the config file."""
 

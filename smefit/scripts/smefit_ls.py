@@ -3,11 +3,12 @@ List resources available on the SMEFiT server.
 
     smefit_ls [RESOURCE_TYPE] [--server public|private] [--project NAME]
 
-RESOURCE_TYPE must be one of: fit, report, rge, registry, misc (default: registry).
+RESOURCE_TYPE must be one of: fit, report, rge, registry, misc, bin (default: registry).
   fit/report  – lists available resources of that type.
   rge         – lists fits that have an rge_matrix.pkl, read from the registry.
   registry    – displays the full registry with all tracked metadata.
   misc        – lists contents of misc/ with metadata from registry_misc.json.
+  bin         – lists trashed resources with deletion metadata from bin/registry_bin.json.
 
 Use --project NAME to restrict the output to resources belonging to that project.
 If the name does not match any known project, an interactive list is shown instead.
@@ -195,6 +196,35 @@ def _misc_rows(entries: list, misc_reg: dict):
     return headers, plain, colored
 
 
+def _bin_rows(bin_reg: dict):
+    has_comment = any(e.get("comment") for e in bin_reg.values())
+    headers = ["Type", "Name", "Deleted at", "Deleted by"]
+    if has_comment:
+        headers.append("Comment")
+
+    plain, colored = [], []
+    for key, meta in sorted(bin_reg.items()):
+        rtype = meta.get("resource_type", "")
+        rname = meta.get("resource_name", key)
+        date = meta.get("deleted_at", "")[:10]
+        deleter = meta.get("deleted_by") or ""
+        p = [rtype, rname, date if date else "—", deleter if deleter else "—"]
+        c = [
+            _dim(rtype),
+            _bold(rname),
+            _dim(date) if date else _dim("—"),
+            deleter if deleter else _dim("—"),
+        ]
+        if has_comment:
+            cmt = meta.get("comment") or ""
+            cmt_plain = f'"{cmt[:50]}{"..." if len(cmt) > 50 else ""}"' if cmt else ""
+            p.append(cmt_plain)
+            c.append(_cmt(cmt) if cmt else "")
+        plain.append(p)
+        colored.append(c)
+    return headers, plain, colored
+
+
 # ---------------------------------------------------------------------------
 # Interactive project picker
 # ---------------------------------------------------------------------------
@@ -258,7 +288,7 @@ def main():
     )
     parser.add_argument(
         "resource_type",
-        choices=["fit", "report", "rge", "registry", "misc"],
+        choices=["fit", "report", "rge", "registry", "misc", "bin"],
         nargs="?",
         default="registry",
         help="Type of resource to list (default: registry).",
@@ -356,6 +386,11 @@ def main():
             entries = downloader.list_resources("misc")
             misc_reg = downloader.get_misc_registry()
             _table(f"misc/ ({len(entries)} entries)", *_misc_rows(entries, misc_reg))
+            print()
+
+        elif args.resource_type == "bin":
+            bin_reg = downloader.get_bin_registry()
+            _table(f"Bin ({len(bin_reg)} entries)", *_bin_rows(bin_reg))
             print()
 
     except ServerError as e:

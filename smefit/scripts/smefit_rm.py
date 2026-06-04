@@ -1,10 +1,12 @@
 """
-Delete one or more resources from the SMEFiT server.
+Move one or more resources from the SMEFiT server into the remote bin/ folder.
 
     smefit_rm RESOURCE_TYPE NAME [NAME ...]
 
-RESOURCE_TYPE must be one of: fit, report, rge.
-Prompts for confirmation before deleting. Use -f to skip.
+RESOURCE_TYPE must be one of: fit, report, misc.
+Resources are moved to bin/<type>/<name> and removed from the registry.
+The deletion is recorded in bin/registry_bin.json with the date, deleter, and comment.
+Prompts for confirmation before moving. Use -f to skip.
 """
 
 import argparse
@@ -32,13 +34,19 @@ def main():
         "names",
         nargs="+",
         metavar="NAME",
-        help="Name(s) of the resource(s) to delete.",
+        help="Name(s) of the resource(s) to move to bin.",
     )
     parser.add_argument(
         "-f",
         "--force",
         action="store_true",
         help="Skip confirmation prompt.",
+    )
+    parser.add_argument(
+        "-m",
+        "--message",
+        default=None,
+        help="Deletion comment stored in the bin registry (prompted interactively if omitted).",
     )
     parser.add_argument(
         "--server",
@@ -51,18 +59,25 @@ def main():
     )
     args = parser.parse_args()
 
-    from smefit.server_utils import ServerError, delete
+    from smefit.server_utils import ServerError, trash
+
+    message = args.message
+    if message is None:
+        try:
+            message = input("Deletion comment (press Enter to skip): ").strip() or None
+        except EOFError:
+            message = None
 
     if not args.force:
         targets = ", ".join(f"'{n}'" for n in args.names)
-        answer = input(f"Delete {targets} from server? [y/N] ").strip().lower()
+        answer = input(f"Move {targets} to bin on server? [y/N] ").strip().lower()
         if answer != "y":
             print("Aborted.")
             sys.exit(0)
 
     try:
         for name in args.names:
-            delete(args.resource_type, name, server=args.server)
+            trash(args.resource_type, name, server=args.server, message=message)
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

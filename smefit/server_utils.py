@@ -47,6 +47,8 @@ _RESOURCE_MARKERS = {
 }
 REGISTRY_PATH = "registry.json"
 MISC_REGISTRY_PATH = "misc/registry_misc.json"
+BIN_DIR = "bin"
+BIN_REGISTRY_PATH = "bin/registry_bin.json"
 SERVERS = ["public", "private"]
 RGE_FILENAME = "rge_matrix.pkl"
 RUNCARD_FILENAME = "runcard.yaml"
@@ -238,6 +240,25 @@ def _write_misc_registry(client, registry: dict) -> None:
         client.upload_sync(remote_path=MISC_REGISTRY_PATH, local_path=str(tmp))
 
 
+def _read_bin_registry(client) -> dict:
+    """Download and parse bin/registry_bin.json; return {} if absent."""
+    if not client.check(BIN_REGISTRY_PATH):
+        return {}
+    with tempfile.TemporaryDirectory(prefix="smefit_bin_reg_") as tmpdir:
+        tmp = pathlib.Path(tmpdir) / "registry_bin.json"
+        client.download_sync(remote_path=BIN_REGISTRY_PATH, local_path=str(tmp))
+        return json.loads(tmp.read_text())
+
+
+def _write_bin_registry(client, registry: dict) -> None:
+    """Serialize and upload bin/registry_bin.json."""
+    _ensure_remote_path(client, BIN_DIR)
+    with tempfile.TemporaryDirectory(prefix="smefit_bin_reg_") as tmpdir:
+        tmp = pathlib.Path(tmpdir) / "registry_bin.json"
+        tmp.write_text(json.dumps(registry, indent=2, sort_keys=True))
+        client.upload_sync(remote_path=BIN_REGISTRY_PATH, local_path=str(tmp))
+
+
 def _list_resource_names(client, resource_type: str) -> list[str]:
     """Return all resource names of *resource_type* from the remote directory."""
     remote_dir = _REMOTE_DIRS[resource_type]
@@ -425,6 +446,85 @@ def delete(
         if resource_name in misc_reg:
             del misc_reg[resource_name]
             _write_misc_registry(client, misc_reg)
+
+
+def trash(
+    resource_type: str,
+    resource_name: str,
+    server: str | None = None,
+    message: str | None = None,
+) -> None:
+    """Move a resource into bin/ on the server instead of permanently deleting it.
+
+    Records the deletion in bin/registry_bin.json with the timestamp, deleter
+    name, optional comment, and a snapshot of the original registry entry.
+    """
+    if resource_type not in RESOURCE_TYPES:
+        raise ServerError(
+            f"Unknown resource type '{resource_type}'. "
+            f"Choose from: {', '.join(RESOURCE_TYPES)}"
+        )
+    config = _load_config()
+    resolved_server = (
+        server if server is not None else _auto_server(config, need_write=True)
+    )
+    deleter_name = config.get(resolved_server, {}).get("name")
+    client = _get_client(server, need_write=True)
+
+    remote = _remote_path(resource_type, resource_name)
+    if not client.check(remote):
+        raise ServerError(f"Resource '{resource_name}' not found on server.")
+
+    # Snapshot original registry entry before removing it.
+    registry: dict = {}
+    misc_reg: dict = {}
+    original_meta: dict = {}
+    if resource_type in _ARCHIVABLE_TYPES:
+        registry = _read_registry(client)
+        original_meta = registry.get(f"{resource_type}s", {}).get(resource_name, {})
+    elif resource_type == "misc":
+        misc_reg = _read_misc_registry(client)
+        original_meta = misc_reg.get(resource_name, {})
+
+    bin_remote = f"{BIN_DIR}/{remote}"
+    _ensure_remote_path(client, str(pathlib.PurePosixPath(bin_remote).parent))
+    client.move(remote_path_from=remote, remote_path_to=bin_remote)
+    log.info("Moved '%s' to bin.", resource_name)
+
+    if resource_type == "fit":
+        for sub in [
+            f"{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl",
+            f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml",
+        ]:
+            if client.check(sub):
+                bin_sub = f"{BIN_DIR}/{sub}"
+                _ensure_remote_path(client, str(pathlib.PurePosixPath(bin_sub).parent))
+                client.move(remote_path_from=sub, remote_path_to=bin_sub)
+
+    # Remove from main registry.
+    if resource_type in _ARCHIVABLE_TYPES:
+        section = registry.get(f"{resource_type}s", {})
+        if resource_name in section:
+            del section[resource_name]
+            _write_registry(client, registry)
+    elif resource_type == "misc":
+        if resource_name in misc_reg:
+            del misc_reg[resource_name]
+            _write_misc_registry(client, misc_reg)
+
+    # Write bin registry entry.
+    bin_reg = _read_bin_registry(client)
+    entry: dict = {
+        "deleted_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "deleted_by": deleter_name,
+        "resource_type": resource_type,
+        "resource_name": resource_name,
+        "original_meta": original_meta,
+    }
+    if message:
+        entry["comment"] = message
+    bin_reg[f"{resource_type}/{resource_name}"] = entry
+    _write_bin_registry(client, bin_reg)
 
 
 class Uploader:
@@ -616,6 +716,10 @@ class Downloader:
     def get_misc_registry(self) -> dict:
         """Return the misc registry from the server, or {} if absent."""
         return _read_misc_registry(self._client)
+
+    def get_bin_registry(self) -> dict:
+        """Return the bin registry from the server, or {} if absent."""
+        return _read_bin_registry(self._client)
 
     def list_resources(self, resource_type: str) -> list[str]:
         """Return names of available resources of *resource_type* on the server."""

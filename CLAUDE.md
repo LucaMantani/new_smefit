@@ -101,7 +101,7 @@ Key design points:
 | `smefit_upload` | Upload a resource; prompts for comment then project |
 | `smefit_get` | Download a resource |
 | `smefit_mv` | Rename a resource |
-| `smefit_rm` | Delete a resource |
+| `smefit_rm` | Move a resource to `bin/` on the server (soft delete) |
 | `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
 | `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
 | `smefit_mkdir` | Create a directory under `misc/` |

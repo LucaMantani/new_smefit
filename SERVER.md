@@ -62,6 +62,9 @@ smefit_ls report
 # List fits that have an rge_matrix.pkl (reads from registry, fast)
 smefit_ls rge
 
+# List trashed resources with deletion metadata
+smefit_ls bin
+
 # Target a specific server
 smefit_ls registry --server public
 smefit_ls fit --server private
@@ -163,13 +166,21 @@ smefit_mv report old_name new_name --server public
 smefit_mv misc old/path new/path
 ```
 
-## Delete resources (team members only)
+## Remove resources (team members only)
+
+Resources are **not permanently deleted** — they are moved to a `bin/` folder at the root
+of the remote server (mirroring the original path). Associated files (rge matrix, runcard)
+are moved alongside the main archive. The resource is removed from the registry and its
+entry (date, deleter, comment, original metadata) is written to `bin/registry_bin.json`.
 
 ```bash
-# Prompts for confirmation
+# Prompts for a deletion comment, then confirmation
 smefit_rm fit my_fit
 
-# Delete multiple resources at once
+# Provide comment inline to skip the prompt
+smefit_rm fit my_fit -m "superseded by v2"
+
+# Move multiple resources to bin at once (same comment applied to all)
 smefit_rm fit fit_a fit_b fit_c
 
 # Skip confirmation prompt
@@ -177,6 +188,12 @@ smefit_rm fit my_fit -f
 
 smefit_rm report my_report --server public
 smefit_rm misc results/run1/output.pkl
+```
+
+View what is currently in the bin:
+
+```bash
+smefit_ls bin
 ```
 
 ## Projects (team members only)

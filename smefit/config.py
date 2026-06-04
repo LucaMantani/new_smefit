@@ -474,31 +474,42 @@ class smefitConfig(Config):
         )
         return base_opt
 
+    def parse_gradient_descent_settings(self, settings):
+        """Parse optional settings for the gradient-descent best-fit node.
+
+        Keys
+        ----
+        sm_solution : bool, default False
+            If True, skip optimisation and use c=0 (SM point) as the
+            best-fit point.
+        n_steps : int, default 2000
+            Maximum number of gradient-descent steps.
+        tol : float, default 1e-8
+            Gradient-norm convergence threshold.
+        """
+        known_keys = {"sm_solution", "n_steps", "tol"}
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in gradient_descent_settings.", k)
+        return {
+            "sm_solution": bool(settings.get("sm_solution", False)),
+            "n_steps": int(settings.get("n_steps", 2000)),
+            "tol": float(settings.get("tol", 1e-8)),
+        }
+
     def parse_hessian_settings(self, settings):
         """Parse optional settings for the Hessian fit.
 
         Keys
         ----
-        sm_solution : bool, default False
-            If True, assume c=0 (SM point) is the minimum and skip
-            optimisation.  If False (default) run gradient descent via the
-            ``optimizer`` node.
-        n_steps : int, default 2000
-            Maximum number of gradient-descent steps.
-        tol : float, default 1e-8
-            Gradient-norm convergence threshold.
         n_samples : int, default 10000
             Number of Gaussian posterior samples to draw.
         seed : int, default 42
             Random seed for sample generation.
         """
-        known_keys = {"sm_solution", "n_steps", "tol", "n_samples", "seed"}
+        known_keys = {"n_samples", "seed"}
         for k in set(settings.keys()) - known_keys:
             log.warning("Unknown key '%s' in hessian_settings.", k)
         return {
-            "sm_solution": bool(settings.get("sm_solution", False)),
-            "n_steps": int(settings.get("n_steps", 2000)),
-            "tol": float(settings.get("tol", 1e-8)),
             "n_samples": int(settings.get("n_samples", 10000)),
             "seed": int(settings.get("seed", 42)),
         }

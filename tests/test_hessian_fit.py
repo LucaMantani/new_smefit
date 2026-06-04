@@ -1,7 +1,5 @@
 """Unit tests for smefit.hessian_fit — hessian_fit function."""
 
-from unittest.mock import MagicMock
-
 import jax.numpy as jnp
 import optax
 import pytest
@@ -15,24 +13,15 @@ from smefit.core import (
     Theory,
 )
 from smefit.fit_result import FitResult
+from smefit.gradient_descent import gd_best_fit
 from smefit.hessian_fit import hessian_fit
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
-_SETTINGS_SM = {
-    "sm_solution": True,
-    "n_steps": 100,
-    "tol": 1e-8,
-    "n_samples": 50,
-    "seed": 0,
-}
-_SETTINGS_GD = {
-    "sm_solution": False,
-    "n_steps": 5000,
-    "tol": 1e-6,
-    "n_samples": 50,
-    "seed": 0,
-}
+
+_GD_SETTINGS_SM = {"sm_solution": True, "n_steps": 100, "tol": 1e-8}
+_GD_SETTINGS_GD = {"sm_solution": False, "n_steps": 5000, "tol": 1e-6}
+_HESSIAN_SETTINGS = {"n_samples": 50, "seed": 0}
 
 
 def _free(name):
@@ -81,33 +70,78 @@ _OPTIMIZER = optax.adam(1e-2)
 
 
 # ---------------------------------------------------------------------------
-# SM solution (sm_solution=True)
+# gd_best_fit — SM solution (sm_solution=True)
+# ---------------------------------------------------------------------------
+
+
+def test_gd_best_fit_sm_returns_zeros():
+    """SM solution must return the zero vector regardless of the data."""
+    _, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
+    c = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    assert jnp.allclose(c, jnp.zeros(1))
+
+
+def test_gd_best_fit_sm_shape():
+    _, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[0.0, 0.0], lin_op=[1.0, 0.0])
+    c = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    assert c.shape == (1,)
+
+
+# ---------------------------------------------------------------------------
+# gd_best_fit — gradient descent (sm_solution=False)
+# ---------------------------------------------------------------------------
+
+
+def test_gd_best_fit_gd_finds_known_minimum():
+    """Gradient descent should converge to c_best ≈ 2.0.
+
+    Setup: sm=[0,0], lin=[1,0], data=[2,0], covmat=I
+    Analytic minimum: c = 2.0
+    """
+    _, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
+    c = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
+    assert float(c[0]) == pytest.approx(2.0, abs=1e-2)
+
+
+def test_gd_best_fit_gd_lower_chi2_than_sm():
+    """GD best-fit should have lower chi2 than the SM point when data != SM."""
+    _, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
+    c_gd = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
+    c_sm = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    assert float(chi2(c_gd)) < float(chi2(c_sm))
+
+
+# ---------------------------------------------------------------------------
+# hessian_fit — SM solution (sm_solution=True)
 # ---------------------------------------------------------------------------
 
 
 def test_hessian_fit_sm_zero_residual():
     """When data == SM predictions the minimum is at c=0 — SM solution should recover it."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[0.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(0.0, abs=1e-8)
 
 
 def test_hessian_fit_sm_solution_chi2():
     """With data=[0,0] and SM=[0,0], chi2 at c=0 should be 0."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[0.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.chi2_val == pytest.approx(0.0, abs=1e-6)
 
 
 def test_hessian_fit_sm_solution_ignores_true_minimum():
     """With data != SM, the SM solution pins the best-fit to c=0 regardless."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(0.0, abs=1e-8)
 
 
 # ---------------------------------------------------------------------------
-# Gradient descent (sm_solution=False)
+# hessian_fit — gradient descent (sm_solution=False)
 # ---------------------------------------------------------------------------
 
 
@@ -118,21 +152,19 @@ def test_hessian_fit_gd_finds_known_minimum():
     Analytic minimum: c = 2.0
     """
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_GD)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(2.0, abs=1e-2)
 
 
 def test_hessian_fit_gd_lower_chi2_than_sm():
     """Gradient-descent best fit should have lower chi2 than the SM point."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
-    result_gd = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_GD)
-    result_sm = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_gd = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
+    c_sm = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result_gd = hessian_fit(model, chi2, c_gd, _HESSIAN_SETTINGS)
+    result_sm = hessian_fit(model, chi2, c_sm, _HESSIAN_SETTINGS)
     assert result_gd.chi2_val < result_sm.chi2_val
-
-
-# ---------------------------------------------------------------------------
-# Multiple restarts
-# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -142,26 +174,30 @@ def test_hessian_fit_gd_lower_chi2_than_sm():
 
 def test_hessian_fit_returns_fit_result():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert isinstance(result, FitResult)
 
 
 def test_hessian_fit_sample_shape():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.samples is not None
     assert result.samples["OpA"].shape == (50,)
 
 
 def test_hessian_fit_free_parameters():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.free_parameters == ["OpA"]
 
 
 def test_hessian_fit_num_data():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.num_data == 2
 
 
@@ -184,7 +220,8 @@ def test_hessian_fit_resolves_derived_coefficients():
     fit_covmat = jnp.eye(2)
     chi2 = Chi2(build_chi2(model, data, fit_covmat), ["OpA"], num_data=2)
 
-    result = hessian_fit(model, chi2, _OPTIMIZER, _SETTINGS_SM)
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
+    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
 
     assert "OpA" in result.best_fit_point
     assert "OpB" in result.best_fit_point

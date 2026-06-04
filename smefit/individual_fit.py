@@ -17,6 +17,7 @@ from reportengine import collect
 
 from smefit.analytic_fit import analytic_fit
 from smefit.blackjax_fit import blackjax_fit
+from smefit.gradient_descent import gd_best_fit
 from smefit.hessian_fit import hessian_fit
 from smefit.ultranest_fit import ultranest_fit
 
@@ -89,16 +90,26 @@ def individual_blackjax_fit(
     )
 
 
+def individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings):
+    """Best-fit point for a single free coefficient.
+
+    Pure pass-through to ``gd_best_fit`` — the DAG has already built an
+    ``individual_chi2`` scoped to one free parameter.
+    """
+    return gd_best_fit(individual_chi2, optimizer, gradient_descent_settings)
+
+
 def individual_hessian_fit(
-    individual_eft_model, individual_chi2, optimizer, hessian_settings
+    individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
 ):
     """Hessian fit for a single free coefficient.
 
     Pure pass-through to ``hessian_fit`` — the DAG has already built an
-    ``individual_eft_model`` and ``individual_chi2`` scoped to one free parameter.
+    ``individual_eft_model``, ``individual_chi2``, and ``individual_gd_best_fit``
+    scoped to one free parameter.
     """
     return hessian_fit(
-        individual_eft_model, individual_chi2, optimizer, hessian_settings
+        individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
     )
 
 

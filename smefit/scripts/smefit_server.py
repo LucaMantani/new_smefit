@@ -114,13 +114,17 @@ _COMMANDS = [
     ("smefit", "Run a fit from a runcard YAML file."),
     (
         "smefit_ls",
-        "List server resources — fits, reports, registry, rge, misc.\n"
-        "                        Use --project NAME to filter by project.",
+        "List server resources — fit, report, rge, registry, misc, bin.\n"
+        "Use --project NAME to filter by project.",
     ),
     ("smefit_upload", "Upload a fit, report, or misc file to the server."),
     ("smefit_get", "Download a fit, report, rge matrix, or misc file."),
     ("smefit_mv", "Rename a resource on the server."),
-    ("smefit_rm", "Delete one or more resources from the server."),
+    (
+        "smefit_rm",
+        "Move one or more resources to bin/ on the server.\n"
+        "Prompts for a deletion comment. Use -f to skip confirmation.",
+    ),
     ("smefit_mkdir", "Create a directory under misc/ on the server."),
     ("smefit_manage_project", "Manage the project list: add / rename / remove / list."),
     ("view_report", "Download (if needed) and open a report in the browser."),

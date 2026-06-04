@@ -14,21 +14,21 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 
-def fisher_information_matrices(datasets_chi2, hessian_fit):
-    """Compute per-dataset Fisher information matrices at the hessian_fit best-fit point.
+def fisher_information_matrices(datasets_chi2, gd_best_fit):
+    """Compute per-dataset Fisher information matrices at the best-fit point.
 
     For each source (data-based dataset or external chi2), the Fisher matrix is
-    F = 0.5 * H where H is the Hessian of the chi2 evaluated at
-    ``hessian_fit.best_fit_point``.  To evaluate at the SM point (c=0), set
-    ``sm_solution: true`` in the ``hessian_settings`` runcard block.
+    F = 0.5 * H where H is the Hessian of the chi2 evaluated at ``gd_best_fit``.
+    To evaluate at the SM point (c=0), set ``sm_solution: true`` in the
+    ``gradient_descent_settings`` runcard block.
 
     Parameters
     ----------
     datasets_chi2 : list of Chi2
         Per-dataset chi2 objects (including any external chi2 contributions).
-    hessian_fit : FitResult
-        Fit result produced by the ``hessian_fit`` node.  The free-parameter
-        values in ``best_fit_point`` are used as the evaluation point.
+    gd_best_fit : jnp.ndarray
+        Best-fit coefficient vector of shape ``(n_free,)`` produced by the
+        ``gd_best_fit`` node.
 
     Returns
     -------
@@ -37,7 +37,7 @@ def fisher_information_matrices(datasets_chi2, hessian_fit):
         coeff_names as both index and columns.
     """
     coeff_names = datasets_chi2[0].param_names
-    c0 = jnp.array([hessian_fit.best_fit_point[name] for name in coeff_names])
+    c0 = gd_best_fit
     log.info(
         "Computing Fisher information matrices for %d sources, %d free coefficients.",
         len(datasets_chi2),

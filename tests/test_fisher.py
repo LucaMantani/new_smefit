@@ -12,7 +12,6 @@ from smefit.core import (
     TheoryGroup,
 )
 from smefit.fisher import fisher_information_matrices
-from smefit.fit_result import FitResult
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -22,14 +21,9 @@ def _free(name):
     return Coefficient(name=name, free=True, prior=_PRIOR)
 
 
-def _sm_fit_result(param_names):
-    """Return a FitResult whose best_fit_point is zero for all params (SM point)."""
-    return FitResult(
-        free_parameters=list(param_names),
-        best_fit_point={name: 0.0 for name in param_names},
-        max_loglikelihood=0.0,
-        num_data=1,
-    )
+def _sm_point(n):
+    """Return a zero (SM) best-fit vector of length n."""
+    return jnp.zeros(n)
 
 
 def _make_dataset(name, cv):
@@ -68,7 +62,7 @@ def test_fisher_returns_dict():
     fit_covmat = jnp.eye(2)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert isinstance(result, dict)
@@ -86,7 +80,7 @@ def test_fisher_single_dataset_shape():
     fit_covmat = jnp.eye(3)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert list(result.keys()) == ["DS_A"]
@@ -110,7 +104,7 @@ def test_fisher_two_datasets_shape():
     fit_covmat = jnp.eye(5)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert list(result.keys()) == ["DS_A", "DS_B"]
@@ -135,7 +129,7 @@ def test_fisher_two_free_coefficients_shape():
     fit_covmat = jnp.eye(3)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA", "OpB"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(2)
     )
 
     assert result["DS_A"].index.tolist() == ["OpA", "OpB"]
@@ -155,7 +149,7 @@ def test_fisher_known_value():
     fit_covmat = jnp.eye(2)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert jnp.allclose(jnp.array(result["DS_A"].values), jnp.array([[1.0]]), atol=1e-5)
@@ -178,7 +172,7 @@ def test_fisher_ordering_matches_data_names():
     fit_covmat = jnp.eye(3)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert list(result.keys()) == ["DS_B", "DS_C"]
@@ -213,7 +207,7 @@ def test_fisher_symmetry():
     )
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA", "OpB"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(2)
     )
 
     F = jnp.array(result["DS_A"].values)
@@ -249,7 +243,7 @@ def test_fisher_with_external_chi2_appended():
     ext = _make_ext_chi2("MyExtChi2", n_free=1, lin=[2.0, 3.0])
 
     datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
-    result = fisher_information_matrices(datasets_chi2, _sm_fit_result(["OpA"]))
+    result = fisher_information_matrices(datasets_chi2, _sm_point(1))
 
     assert list(result.keys()) == ["DS_A", "MyExtChi2"]
     assert result["MyExtChi2"].shape == (1, 1)
@@ -265,7 +259,7 @@ def test_fisher_external_chi2_known_value():
     ext = _make_ext_chi2("Ext", n_free=1, lin=[2.0, 3.0])  # F = 4 + 9 = 13
 
     datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
-    result = fisher_information_matrices(datasets_chi2, _sm_fit_result(["OpA"]))
+    result = fisher_information_matrices(datasets_chi2, _sm_point(1))
 
     assert jnp.allclose(jnp.array(result["Ext"].values), jnp.array([[13.0]]), atol=1e-5)
 
@@ -282,7 +276,7 @@ def test_fisher_external_chi2_named():
     ext = Chi2(fn, param_names=["OpA"], num_data=1, name="MyPrior")
 
     datasets_chi2 = build_datasets_chi2(model, data, fit_covmat) + [ext]
-    result = fisher_information_matrices(datasets_chi2, _sm_fit_result(["OpA"]))
+    result = fisher_information_matrices(datasets_chi2, _sm_point(1))
 
     assert "MyPrior" in result
 
@@ -296,7 +290,7 @@ def test_fisher_no_external_chi2():
     fit_covmat = jnp.eye(1)
 
     result = fisher_information_matrices(
-        build_datasets_chi2(model, data, fit_covmat), _sm_fit_result(["OpA"])
+        build_datasets_chi2(model, data, fit_covmat), _sm_point(1)
     )
 
     assert list(result.keys()) == ["DS_A"]
@@ -320,8 +314,8 @@ def _make_quadratic_chi2(name):
     return Chi2(fn, param_names=["OpA"], num_data=1, name=name)
 
 
-def test_fisher_uses_hessian_fit_best_fit_point():
-    """Fisher is evaluated at the best-fit point stored in hessian_fit.
+def test_fisher_uses_gd_best_fit_point():
+    """Fisher is evaluated at the point given by gd_best_fit.
 
     chi2(c) = (c[0] + c[0]^2)^2
     Hessian at c=0 → F = 1.0
@@ -329,16 +323,8 @@ def test_fisher_uses_hessian_fit_best_fit_point():
     """
     chi2 = _make_quadratic_chi2("DS_Q")
 
-    result_sm = fisher_information_matrices([chi2], _sm_fit_result(["OpA"]))
-    result_mle = fisher_information_matrices(
-        [chi2],
-        FitResult(
-            free_parameters=["OpA"],
-            best_fit_point={"OpA": 1.0},
-            max_loglikelihood=0.0,
-            num_data=1,
-        ),
-    )
+    result_sm = fisher_information_matrices([chi2], _sm_point(1))
+    result_mle = fisher_information_matrices([chi2], jnp.array([1.0]))
 
     assert jnp.allclose(
         jnp.array(result_sm["DS_Q"].values), jnp.array([[1.0]]), atol=1e-5

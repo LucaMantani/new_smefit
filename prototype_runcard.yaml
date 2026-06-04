@@ -38,10 +38,12 @@ optimizer_settings:
     #     transition_begin: 3000
     #     transition_steps: 10000
 
-hessian_settings:
+gradient_descent_settings:
     sm_solution: false
     n_steps: 2000
     tol: 1.0e-8
+
+hessian_settings:
     n_samples: 10000
 
 # rge:
@@ -177,4 +179,4 @@ actions_:
 # - run_blackjax_fit
 # - chi2_timing
 - run_hessian_fit
-- run_individual_hessian_fits
+# - run_individual_hessian_fits

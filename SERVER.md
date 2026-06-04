@@ -1,6 +1,6 @@
 # SMEFiT Server Commands
 
-Resources are organised into two types: `fit` and `report`.
+Resources are organised into three types: `fit`, `report`, and `misc`.
 RGE matrices (`rge_matrix.pkl`) live inside fit directories and are not standalone resources.
 Two servers are available: `public` and `private`.
 
@@ -21,10 +21,13 @@ Team members must run the setup once to configure their credentials:
 
 ```bash
 # From a privately-shared credentials file (recommended)
-smefit_setup_server my_credentials.yaml
+smefit_server setup my_credentials.yaml
 
 # Or interactively
-smefit_setup_server
+smefit_server setup
+
+# Overwrite an existing config
+smefit_server setup my_credentials.yaml --force
 ```
 
 The credentials file format (include only the profiles you have access to):
@@ -43,17 +46,17 @@ private:
 ```
 
 Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).
-Use `--force` to overwrite an existing config.
 
 ---
 
 ## List resources on the server
 
 ```bash
-# Display the full registry (fits and reports with all metadata)
+# Display the full registry (fits, reports, projects)
+smefit_ls
 smefit_ls registry
 
-# List fits — shows creation date and RGE status from the registry
+# List fits — shows creation date, RGE status, uploader
 smefit_ls fit
 
 # List reports
@@ -62,26 +65,68 @@ smefit_ls report
 # List fits that have an rge_matrix.pkl (reads from registry, fast)
 smefit_ls rge
 
+# List contents of misc/ with metadata
+smefit_ls misc
+
 # List trashed resources with deletion metadata
 smefit_ls bin
+smefit_ls bin --type fit   # filter by resource type: fit, report, or misc
+
+# Filter fits/reports/registry by project label
+smefit_ls fit --project linear_fits
 
 # Target a specific server
 smefit_ls registry --server public
-smefit_ls fit --server private
 ```
 
 `smefit_ls registry` output example:
 
-```
-Fits (2):
-  my_fit_v1    2026-05-20  rge=yes
-  my_fit_v2    2026-05-29  rge=no
+```text
+  Fits (2)
+  ┌─────────────┬────────────┬─────┬─────────────┐
+  │ Name        │ Date       │ RGE │ Uploaded by │
+  ├─────────────┼────────────┼─────┼─────────────┤
+  │ my_fit_v1   │ 2026-05-20 │ yes │ Alice       │
+  │ my_fit_v2   │ 2026-05-29 │ no  │ Bob         │
+  └─────────────┴────────────┴─────┴─────────────┘
 
-Reports (0):
+  Reports (0)
   (none)
+
+  Projects (1)
+    linear_fits
 ```
 
-`registry` is the default option, therefore the same ouput will be given by `smefit_ls`.
+---
+
+## Upload (team members only)
+
+```bash
+# Upload a fit — prompts for an optional comment, then project selection
+smefit_upload fit my_fit
+
+# Pass a comment directly with -m to skip the interactive prompt
+smefit_upload fit my_fit -m "baseline run, no RGE"
+
+# Upload from a specific local path
+smefit_upload fit my_fit /path/to/my_fit
+
+# Overwrite if it already exists on the server
+smefit_upload fit my_fit --force
+
+# Upload a report to the public server
+smefit_upload report my_report --server public
+
+# Upload a file to misc/
+smefit_upload misc output.pkl
+smefit_upload misc results/run1/output.pkl /local/path/output.pkl
+```
+
+The comment is stored in the registry and shown in `smefit_ls` output.
+After the comment prompt, you are shown the project list and can pick one by number
+(press Enter to skip). Use `--project NAME` to assign a project non-interactively.
+
+---
 
 ## Download
 
@@ -101,11 +146,16 @@ smefit_get report my_report /path/to/output --view --server public
 smefit_get rge my_fit
 smefit_get rge my_fit /path/to/output
 
+# Download a file from misc/
+smefit_get misc results/run1/output.pkl
+smefit_get misc results/run1/output.pkl /local/output/dir/
+
 # Explicitly target the public server
 smefit_get fit my_fit --server public
 ```
 
-If `--view` is used and the report is already present locally, it is opened directly without re-downloading.
+If `--view` is used and the report is already present locally, it is opened directly
+without re-downloading.
 
 ---
 
@@ -125,8 +175,6 @@ view_report my_report --server public
 view_report my_report --server private
 ```
 
-If the report is already present locally it is opened directly without re-downloading.
-
 ---
 
 ## misc/ — free-form storage (team members only)
@@ -134,22 +182,11 @@ If the report is already present locally it is opened directly without re-downlo
 The `misc/` folder has no assumed structure. Files can be stored at any path inside it.
 
 ```bash
-# Upload a file to misc/ (remote path can include subdirectories)
-smefit_upload misc output.pkl
-smefit_upload misc results/run1/output.pkl /local/path/output.pkl
-
-# Download a file from misc/
-smefit_get misc results/run1/output.pkl
-smefit_get misc results/run1/output.pkl /local/output/dir/
-
-# List top-level contents of misc/
-smefit_ls misc
-
 # Create a directory structure inside misc/
 smefit_mkdir results/run1
 smefit_mkdir matrices/2026/june
 
-# Rename or delete entries in misc/
+# Rename or remove entries in misc/
 smefit_mv misc old/path new/path
 smefit_rm misc results/run1/output.pkl
 ```
@@ -165,6 +202,8 @@ smefit_mv fit old_name new_name
 smefit_mv report old_name new_name --server public
 smefit_mv misc old/path new/path
 ```
+
+---
 
 ## Remove resources (team members only)
 
@@ -197,6 +236,8 @@ smefit_ls bin
 smefit_ls bin --type fit
 ```
 
+---
+
 ## Restore resources (team members only)
 
 Moves a resource from `bin/` back to its original remote path and reinstates its
@@ -207,6 +248,8 @@ smefit_restore fit my_fit
 smefit_restore report my_report --server public
 smefit_restore misc results/run1/output.pkl
 ```
+
+---
 
 ## Projects (team members only)
 
@@ -242,7 +285,7 @@ whenever at least one resource has a project assigned.
 
 ## Server management
 
-`smefit_server` groups setup, storage, and registry-sync into one command.
+`smefit_server` groups setup, storage, registry-sync, and the command reference into one place.
 
 ```bash
 # Configure credentials (from a shared YAML file or interactively)
@@ -264,35 +307,11 @@ smefit_server tutorial
 
 ### Sync details
 
-The fit registry (`fits/registry.json`) is updated automatically by `smefit_upload`,
-`smefit_mv`, and `smefit_rm`. If it ever drifts out of sync (e.g. files moved outside
-these tools), rebuild it with `smefit_server sync`.
+`registry.json` is updated automatically by `smefit_upload`, `smefit_mv`, and `smefit_rm`.
+If it ever drifts out of sync (e.g. files moved outside these tools), rebuild it with
+`smefit_server sync`.
 
-For fits, every archive is downloaded to re-detect `has_rge`. For reports, only
-names are listed (no download needed). Existing `created_at` and `uploaded_by`
-values are preserved where possible; entries not previously in the registry
-receive the current time as a fallback. Requires write credentials.
-
----
-
-## Upload (team members only)
-
-```bash
-# Upload a fit (private server by default if configured)
-# You will be prompted for an optional comment (press Enter to skip)
-smefit_upload fit my_fit
-
-# Pass a comment directly with -m to skip the interactive prompt
-smefit_upload fit my_fit -m "baseline run, no RGE"
-
-# Upload from a specific path
-smefit_upload fit my_fit /path/to/my_fit
-
-# Overwrite if it already exists
-smefit_upload fit my_fit --force
-
-# Upload a report to the public server
-smefit_upload report my_report --server public
-```
-
-The comment is stored in the registry and shown in `smefit_ls` output next to the resource name.
+For fits, every archive is downloaded to re-detect `has_rge`. For reports, only names are
+listed (no download needed). Existing `created_at` and `uploaded_by` values are preserved
+where possible; entries not previously in the registry receive the current time as a fallback.
+Requires write credentials.

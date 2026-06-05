@@ -688,6 +688,7 @@ class Uploader:
 
         if local_path is None:
             local_path = pathlib.Path.cwd() / resource_name
+            resource_name = pathlib.Path(resource_name).name
         local_path = pathlib.Path(local_path)
 
         if not local_path.exists():

@@ -11,8 +11,9 @@ import pathlib
 import jax
 import jax.numpy as jnp
 import optax
-from reportengine.configparser import Config, ConfigError
+from reportengine.configparser import ConfigError
 from reportengine.namespaces import NSList
+from reportengine.report import Config
 
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
@@ -62,6 +63,17 @@ class smefitConfig(Config):
 
         self._cached_data_group = DataGroup(parsed_datasets)
         return self._cached_data_group
+
+    def produce_data_groups(self, datasets):
+        """Build data_groups from inline group: keys on each dataset entry."""
+        groups: dict = {}
+        for ds in datasets:
+            group = ds.get("group")
+            if group is not None:
+                groups.setdefault(group, []).append(ds["name"])
+        for name, group in getattr(self, "_ext_chi2_groups", {}).items():
+            groups.setdefault(group, []).append(name)
+        return groups if groups else None
 
     def parse_rge(self, rge):
         """Parse and validate RGE settings."""
@@ -198,8 +210,15 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser so reportengine can resolve external_chi2 as a node."""
-        return external_chi2
+        """Pass-through parser. Strips 'group' keys and caches them for produce_data_groups."""
+        self._ext_chi2_groups = {}
+        cleaned = {}
+        for name, cfg in external_chi2.items():
+            group = cfg.get("group")
+            if group is not None:
+                self._ext_chi2_groups[name] = group
+            cleaned[name] = {k: v for k, v in cfg.items() if k != "group"}
+        return cleaned
 
     def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
         """Load and wrap external chi2 modules into Chi2 objects."""

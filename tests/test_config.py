@@ -457,3 +457,106 @@ def test_produce_optimizer_with_scheduler(cfg):
     }
     opt = cfg.produce_optimizer(settings)
     assert hasattr(opt, "init") and hasattr(opt, "update")
+
+
+# ---------------------------------------------------------------------------
+# produce_data_groups
+# ---------------------------------------------------------------------------
+
+
+def test_produce_data_groups_no_group_keys_returns_none(cfg):
+    datasets = [{"name": "DS_A", "order": "LO"}, {"name": "DS_B", "order": "NLO_QCD"}]
+    assert cfg.produce_data_groups(datasets) is None
+
+
+def test_produce_data_groups_all_grouped(cfg):
+    datasets = [
+        {"name": "DS_A", "order": "LO", "group": "G1"},
+        {"name": "DS_B", "order": "LO", "group": "G2"},
+        {"name": "DS_C", "order": "LO", "group": "G1"},
+    ]
+    result = cfg.produce_data_groups(datasets)
+    assert result == {"G1": ["DS_A", "DS_C"], "G2": ["DS_B"]}
+
+
+def test_produce_data_groups_partial_grouping(cfg):
+    """Datasets without a group key are simply omitted from the result."""
+    datasets = [
+        {"name": "DS_A", "order": "LO", "group": "G1"},
+        {"name": "DS_B", "order": "LO"},
+    ]
+    result = cfg.produce_data_groups(datasets)
+    assert result == {"G1": ["DS_A"]}
+
+
+def test_produce_data_groups_preserves_insertion_order(cfg):
+    datasets = [
+        {"name": "DS_C", "order": "LO", "group": "G3"},
+        {"name": "DS_A", "order": "LO", "group": "G1"},
+        {"name": "DS_B", "order": "LO", "group": "G2"},
+    ]
+    result = cfg.produce_data_groups(datasets)
+    assert list(result.keys()) == ["G3", "G1", "G2"]
+
+
+def test_produce_data_groups_merges_ext_chi2_groups(cfg):
+    cfg._ext_chi2_groups = {"EXT_DS": "G2"}
+    datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
+    result = cfg.produce_data_groups(datasets)
+    assert result == {"G1": ["DS_A"], "G2": ["EXT_DS"]}
+
+
+def test_produce_data_groups_no_ext_chi2_attr(cfg):
+    """Works correctly when _ext_chi2_groups was never set (no external_chi2 in runcard)."""
+    datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
+    result = cfg.produce_data_groups(datasets)
+    assert result == {"G1": ["DS_A"]}
+
+
+def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
+    cfg._ext_chi2_groups = {"EXT_DS": "G1"}
+    datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
+    result = cfg.produce_data_groups(datasets)
+    assert result == {"G1": ["DS_A", "EXT_DS"]}
+
+
+# ---------------------------------------------------------------------------
+# parse_external_chi2
+# ---------------------------------------------------------------------------
+
+
+def test_parse_external_chi2_strips_group(cfg):
+    raw = {
+        "MyExt": {"path": "/some/path.py", "group": "G1", "use_quad": True},
+    }
+    result = cfg.parse_external_chi2(raw)
+    assert "group" not in result["MyExt"]
+    assert result["MyExt"]["path"] == "/some/path.py"
+    assert result["MyExt"]["use_quad"] is True
+
+
+def test_parse_external_chi2_caches_groups(cfg):
+    raw = {
+        "ExtA": {"path": "/a.py", "group": "G1"},
+        "ExtB": {"path": "/b.py", "group": "G2"},
+    }
+    cfg.parse_external_chi2(raw)
+    assert cfg._ext_chi2_groups == {"ExtA": "G1", "ExtB": "G2"}
+
+
+def test_parse_external_chi2_no_group_key(cfg):
+    raw = {"MyExt": {"path": "/some/path.py", "use_quad": False}}
+    result = cfg.parse_external_chi2(raw)
+    assert result == {"MyExt": {"path": "/some/path.py", "use_quad": False}}
+    assert cfg._ext_chi2_groups == {}
+
+
+def test_parse_external_chi2_mixed_group_and_no_group(cfg):
+    raw = {
+        "ExtA": {"path": "/a.py", "group": "G1"},
+        "ExtB": {"path": "/b.py"},
+    }
+    result = cfg.parse_external_chi2(raw)
+    assert "group" not in result["ExtA"]
+    assert result["ExtB"] == {"path": "/b.py"}
+    assert cfg._ext_chi2_groups == {"ExtA": "G1"}

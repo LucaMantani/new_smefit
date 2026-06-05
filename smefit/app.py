@@ -20,6 +20,9 @@ smefit_providers = [
     "smefit.blackjax_fit",
     "smefit.individual_fit",
     "smefit.fit_actions",
+    "smefit.fisher",
+    "smefit.tables",
+    "smefit.figures",
     "smefit.utils_actions",
     "reportengine.report",
 ]

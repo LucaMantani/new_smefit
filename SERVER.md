@@ -195,12 +195,23 @@ smefit_rm misc results/run1/output.pkl
 
 ---
 
-## Rename a resource (team members only)
+## Rename / update comment (team members only)
+
+`smefit_mv` can rename a resource, update its comment, or both in one step.
+At least one of `NEW_NAME` or `--comment` must be supplied.
 
 ```bash
+# Rename only
 smefit_mv fit old_name new_name
 smefit_mv report old_name new_name --server public
 smefit_mv misc old/path new/path
+
+# Update comment only (fix a typo, add precision)
+smefit_mv fit my_fit --comment "Combined superallowed and meson decay SM fit"
+smefit_mv fit my_fit -c "Combined superallowed and meson decay SM fit"
+
+# Rename and update comment in one step
+smefit_mv fit old_name new_name --comment "Better description"
 ```
 
 ---

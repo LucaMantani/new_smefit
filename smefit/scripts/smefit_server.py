@@ -119,7 +119,11 @@ _COMMANDS = [
     ),
     ("smefit_upload", "Upload a fit, report, or misc file to the server."),
     ("smefit_get", "Download a fit, report, rge matrix, or misc file."),
-    ("smefit_mv", "Rename a resource on the server."),
+    (
+        "smefit_mv",
+        "Rename a resource and/or update its comment on the server.\n"
+        "NEW_NAME is optional when --comment / -c is given.",
+    ),
     (
         "smefit_rm",
         "Move one or more resources to bin/ on the server.\n"

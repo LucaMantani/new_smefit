@@ -363,51 +363,69 @@ def download_rge(
 def rename(
     resource_type: str,
     old_name: str,
-    new_name: str,
+    new_name: str | None = None,
     server: str | None = None,
+    comment: str | None = None,
 ) -> None:
-    """Rename a resource on the server."""
+    """Rename a resource and/or update its comment on the server."""
     if resource_type not in RESOURCE_TYPES:
         raise ServerError(
             f"Unknown resource type '{resource_type}'. "
             f"Choose from: {', '.join(RESOURCE_TYPES)}"
         )
+    if new_name is None and comment is None:
+        raise ServerError("Provide a new name, a --comment, or both.")
     client = _get_client(server, need_write=True)
-    old_remote = _remote_path(resource_type, old_name)
-    new_remote = _remote_path(resource_type, new_name)
-    if not client.check(old_remote):
-        raise ServerError(f"Resource '{old_name}' not found on server.")
-    if client.check(new_remote):
-        raise ServerError(
-            f"'{new_name}' already exists on server. Choose a different name."
-        )
-    if resource_type == "misc":
-        _ensure_remote_path(client, str(pathlib.PurePosixPath(new_remote).parent))
-    client.move(remote_path_from=old_remote, remote_path_to=new_remote)
-    log.info("Renamed '%s' -> '%s'.", old_name, new_name)
-    if resource_type == "fit":
-        for old_sub, new_sub in [
-            (
-                f"{RGE_MATRICES_REMOTE_DIR}/{old_name}.pkl",
-                f"{RGE_MATRICES_REMOTE_DIR}/{new_name}.pkl",
-            ),
-            (
-                f"{RUNCARDS_REMOTE_DIR}/{old_name}.yaml",
-                f"{RUNCARDS_REMOTE_DIR}/{new_name}.yaml",
-            ),
-        ]:
-            if client.check(old_sub):
-                client.move(remote_path_from=old_sub, remote_path_to=new_sub)
+    if new_name is not None and new_name != old_name:
+        old_remote = _remote_path(resource_type, old_name)
+        new_remote = _remote_path(resource_type, new_name)
+        if not client.check(old_remote):
+            raise ServerError(f"Resource '{old_name}' not found on server.")
+        if client.check(new_remote):
+            raise ServerError(
+                f"'{new_name}' already exists on server. Choose a different name."
+            )
+        if resource_type == "misc":
+            _ensure_remote_path(client, str(pathlib.PurePosixPath(new_remote).parent))
+        client.move(remote_path_from=old_remote, remote_path_to=new_remote)
+        log.info("Renamed '%s' -> '%s'.", old_name, new_name)
+        if resource_type == "fit":
+            for old_sub, new_sub in [
+                (
+                    f"{RGE_MATRICES_REMOTE_DIR}/{old_name}.pkl",
+                    f"{RGE_MATRICES_REMOTE_DIR}/{new_name}.pkl",
+                ),
+                (
+                    f"{RUNCARDS_REMOTE_DIR}/{old_name}.yaml",
+                    f"{RUNCARDS_REMOTE_DIR}/{new_name}.yaml",
+                ),
+            ]:
+                if client.check(old_sub):
+                    client.move(remote_path_from=old_sub, remote_path_to=new_sub)
+    else:
+        new_name = old_name
+        old_remote = _remote_path(resource_type, old_name)
+        if not client.check(old_remote):
+            raise ServerError(f"Resource '{old_name}' not found on server.")
+
     if resource_type in _ARCHIVABLE_TYPES:
         registry = _read_registry(client)
         section = registry[f"{resource_type}s"]
         if old_name in section:
-            section[new_name] = section.pop(old_name)
+            entry = section.pop(old_name)
+            if comment is not None:
+                entry["comment"] = comment
+                log.info("Updated comment for '%s'.", new_name)
+            section[new_name] = entry
             _write_registry(client, registry)
     elif resource_type == "misc":
         misc_reg = _read_misc_registry(client)
         if old_name in misc_reg:
-            misc_reg[new_name] = misc_reg.pop(old_name)
+            entry = misc_reg.pop(old_name)
+            if comment is not None:
+                entry["comment"] = comment
+                log.info("Updated comment for '%s'.", new_name)
+            misc_reg[new_name] = entry
             _write_misc_registry(client, misc_reg)
 
 

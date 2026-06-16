@@ -1,6 +1,6 @@
 # path to data and theory
-data_path: ./commondata
-theory_path: ./theory
+data_path: ../commondata
+theory_path: ../theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True

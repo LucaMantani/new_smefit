@@ -1,6 +1,6 @@
 # path to data and theory
-data_path: /Users/luca/Applications/smefit_database/commondata_projections_L0
-theory_path: /Users/luca/Applications/smefit_database/theory
+data_path: ../commondata
+theory_path: ../theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -100,7 +100,7 @@ optimizer_settings:
     #     transition_steps: 10000
 
 gradient_descent_settings:
-    sm_solution: true
+    sm_solution: false
     n_steps: 2000
     tol: 1.0e-8
 
@@ -128,7 +128,7 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ./external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
       group: LHC-DY
       use_quad: True
       order: NLO_QCD

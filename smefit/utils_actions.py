@@ -63,3 +63,20 @@ def run_chi2_scan(individual_chi2_scans, output_path):
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     log.info("Chi2 scan written to %s", out_path)
+
+
+def run_mass_scan(
+    coefficients, individual_mass_scales, individual_mass_scan_points, output_path
+):
+    """Write mass scan results to mass_scan.json."""
+    mass_name = coefficients.free_names[0]
+    results = {
+        mass_name: {
+            "points": [float(s) for s in individual_mass_scales],
+            "chi2": individual_mass_scan_points,
+        }
+    }
+    out_path = pathlib.Path(output_path) / "mass_scan.json"
+    with open(out_path, "w") as f:
+        json.dump(results, f, indent=2)
+    log.info("Mass scan written to %s", out_path)

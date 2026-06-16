@@ -51,3 +51,13 @@ def individual_chi2_scan(
 individual_chi2_scans = collect(
     "individual_chi2_scan", ("individual_fit_coefficients",)
 )
+
+
+def individual_mass_scan_point(individual_mass_chi2, individual_mass_scale):
+    """Evaluate chi2 at a single mass scan point."""
+    return float(individual_mass_chi2(jnp.array([float(individual_mass_scale)])))
+
+
+individual_mass_scan_points = collect(
+    "individual_mass_scan_point", ("individual_mass_scales",)
+)

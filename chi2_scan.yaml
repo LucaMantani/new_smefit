@@ -7,51 +7,12 @@ use_t0: True
 # SMEFT Expansion Order
 use_quad: True
 
-# Nested Sampling settings
-ultranest_settings:
-  ReactiveNS_settings:
-    vectorized: False
-    ndraw_max: 500              # Maximum number of points to simultaneously propose.
-  Run_settings:
-    min_num_live_points: 200    # Minimum number of live points throughout the run.
-    min_ess: 50                 # Target number of effective posterior samples.
-    frac_remain: 0.01            # Integrate until this fraction of the integral is left in the remainder.
-  # SliceSampler_settings:
-  #   nsteps: 106                 # number of accepted steps until the sample is considered independent.
-
-blackjax_settings:
-  n_live: 500
-  repeats: 3
-  delete_fraction: 0.5
-  log_precision: -2
-
-optimizer_settings:
-    optimizer: adam
-    # clipnorm: 1.0
-    optimizer_hyperparams:
-      learning_rate: 0.001
-    # scheduler:
-    #   name: linear_schedule
-    #   params:
-    #     init_value: 1.0e-3
-    #     end_value:  1.0e-6
-    #     transition_begin: 3000
-    #     transition_steps: 10000
-
-gradient_descent_settings:
-    sm_solution: false
-    n_steps: 2000
-    tol: 1.0e-8
-
-hessian_settings:
-    n_samples: 10000
-
-# rge:
-#   init_scale: 10000.0
-#   obs_scale: dynamic  # float or "dynamic"
-#   smeft_accuracy: integrate  # options: integrate, leadinglog
-#   yukawa: top  # options: top, full or none
-#   adm_QCD: false  # if true, the EW couplings are set to zero
+rge:
+  init_scale: 10000.0
+  obs_scale: 91.0  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
   # rg_matrix: rge_matrix10000.pkl
 
 # # Datasets to include
@@ -164,19 +125,8 @@ external_chi2:
   OptimalttFCCee365:
       path: ./external_chi2/optimal_observables/interface_oos_fccee.py
 
-
-whitening:
-  sigma_prior: 5.0
-  eps: 1e-8
-
-# bayesian_update_path: /path/to/folder/fit_1
+chi2_scan_settings:
+  n_points: 10
 
 actions_:
-# - run_analytic_fit
-# - run_test
-# - run_individual_analytic_fits
-# - run_ultranest_fit
-# - run_blackjax_fit
-# - chi2_timing
-- run_hessian_fit
-# - run_individual_hessian_fits
+- run_chi2_scan

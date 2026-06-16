@@ -10,6 +10,7 @@ conda create -n new_smefit
 conda activate new_smefit
 conda install python
 conda install pre-commit
+conda install pandoc
 pip install -e .
 ```
 

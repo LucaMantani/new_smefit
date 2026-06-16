@@ -21,6 +21,9 @@ smefit_providers = [
     "smefit.individual_fit",
     "smefit.chi2_scan",
     "smefit.fit_actions",
+    "smefit.fisher",
+    "smefit.tables",
+    "smefit.figures",
     "smefit.utils_actions",
     "reportengine.report",
 ]

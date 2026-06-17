@@ -1,0 +1,29 @@
+# path to data and theory
+data_path: ../commondata
+theory_path: ../theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+
+rge:
+  init_scale: 10000.0
+  obs_scale: dynamic  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+# Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+
+# Coefficients to fit
+coefficients:
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+
+actions_:
+- run_analytic_fit

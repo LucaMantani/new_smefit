@@ -1,0 +1,76 @@
+# path to data and theory
+data_path: ../commondata
+theory_path: ../theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+optimizer_settings:
+    optimizer: adam
+    # clipnorm: 1.0
+    optimizer_hyperparams:
+      learning_rate: 0.001
+    # scheduler:
+    #   name: linear_schedule
+    #   params:
+    #     init_value: 1.0e-3
+    #     end_value:  1.0e-6
+    #     transition_begin: 3000
+    #     transition_steps: 10000
+
+gradient_descent_settings:
+    sm_solution: false
+    n_steps: 2000
+    tol: 1.0e-8
+
+hessian_settings:
+    n_samples: 10000
+
+rge:
+  init_scale: 10000.0
+  obs_scale: 91.0  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+# # Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+    # ATLAS_CMS
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+
+# Coefficients to fit
+coefficients:
+  OtG:
+    free: False
+    vars: [y, OpWB]
+    expr: "y**2 + 0.5*OpWB**2"
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpBox:
+    free: False
+    # prior: {dist: uniform, low: -1.0, high: 1.0}
+    vars: [y]
+    expr: "100*y"
+  y:
+    free: True
+    prior: {dist: gaussian, mean: 0.0, std: 1.0}
+
+
+external_chi2:
+  CMS_DYMee_13TeV:
+      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      use_quad: True
+      order: NLO_QCD
+      # save_rge_path: "./CMS_DYMee_rge_matrix"
+      # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+      use_projection_L0: True
+
+actions_:
+- run_hessian_fit

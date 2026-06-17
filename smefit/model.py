@@ -102,6 +102,7 @@ class EFTModel(BaseModel):
         rge_obs_ops = rge_matrix.obs_operators
         n_obs = len(rge_obs_ops)
 
+        # Check that all declared coefficients are present in the RGE initial-basis operators
         init_op_idx = {name: i for i, name in enumerate(rge_matrix.init_operators)}
         missing = [name for name in coeff_names if name not in init_op_idx]
         if missing:
@@ -113,6 +114,7 @@ class EFTModel(BaseModel):
         col_indices = [init_op_idx[name] for name in coeff_names]
         n_init = len(coeff_names)
 
+        # Slice the RGE matrix to only the columns corresponding to the declared coefficients
         R = rge_matrix.stacked_mats[:, :, col_indices]
         if R.shape[0] == 1:
             R = jnp.broadcast_to(R, (theory.n_data, n_obs, n_init))

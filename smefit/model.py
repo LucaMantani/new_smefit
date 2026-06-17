@@ -154,9 +154,9 @@ class EFTModel(BaseModel):
                 "dij,dil,djr->dlr", jnp.asarray(quad_aligned), R, R
             )
 
-        self.active_coeff_indices = jnp.array(
-            [self.coefficients.coeff_index[name] for name in coeff_names]
-        )
+        # Dummy identity permutation for the forward map,
+        # RGE already spans all declared coefficients.
+        self.active_coeff_indices = jnp.arange(len(coeff_names))
 
     @jax.jit(static_argnames=("self",))
     def forward_map(self, coeffs: jnp.ndarray) -> jnp.ndarray:

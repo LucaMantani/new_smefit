@@ -24,12 +24,13 @@ def chi2_scan_table(individual_chi2_scans):
     -------
     pd.DataFrame
         Rows indexed by scan-point number; MultiIndex columns
-        ``(coeff_latex, {"points", "chi2"})``.
+        ``(coeff_latex, {"value", "chi2"})`` where ``value`` holds the scan
+        points (the coefficient values).
     """
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     frames = {
         coeff_info_latex.get(name, name): pd.DataFrame(
-            {"points": data["points"], "chi2": data["chi2"]}
+            {"value": data["points"], "chi2": data["chi2"]}
         )
         for name, data in results.items()
     }
@@ -43,17 +44,16 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
     Returns
     -------
     pd.DataFrame
-        Columns ``points`` (mass scale) and ``chi2``.
+        Columns ``<mass_name>`` (mass scale, the scan points) and ``chi2``.
     """
     mass_name = coefficients.free_names[0]
-    df = pd.DataFrame(
+    latex = coeff_info_latex.get(mass_name, mass_name)
+    return pd.DataFrame(
         {
-            "points": [float(s) for s in individual_mass_scales],
+            latex: [float(s) for s in individual_mass_scales],
             "chi2": [float(c) for c in individual_mass_scan_points],
         }
     )
-    df.columns.name = coeff_info_latex.get(mass_name, mass_name)
-    return df
 
 
 @table

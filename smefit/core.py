@@ -414,19 +414,6 @@ class CoefficientGroup:
                     dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
 
-        # Precompute slim indices: free + expr-constrained with at least one free dep
-        expr_with_free_dep = {
-            self.names[idx]
-            for idx, _fn, dep_indices in self._expr_specs
-            if any(self.coefficients[di].free for di in dep_indices)
-        }
-        self._slim_indices: List[int] = []
-        self._slim_names: List[str] = []
-        for i, c in enumerate(self.coefficients):
-            if c.free or c.name in expr_with_free_dep:
-                self._slim_indices.append(i)
-                self._slim_names.append(c.name)
-
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
 
@@ -473,38 +460,49 @@ class CoefficientGroup:
             result = result.at[idx].set(fn(*args))
         return result
 
-    @property
-    def slim_names(self) -> List[str]:
-        """Names of non-trivially-constant coefficients (free + dependent derived)."""
-        return self._slim_names
-
-    def resolve_slim(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
-        """Like :meth:`resolve` but returns only sample-varying coefficients.
-
-        Skips fixed-to-constant coefficients and expression-constrained ones whose
-        dependencies are all fixed.  The returned entries correspond to
-        ``self.slim_names`` in order.
-
-        Parameters
-        ----------
-        free_coeffs : jnp.ndarray
-            Shape ``(n_free,)``.  Whitened coordinates if this group was created
-            via :meth:`whitened`.
-
-        Returns
-        -------
-        jnp.ndarray
-            Shape ``(n_slim,)`` where ``n_slim = len(self.slim_names)``.
-        """
-        full = self.resolve(free_coeffs)
-        return full[jnp.array(self._slim_indices, dtype=int)]
-
     def single_free(self, target_name: str) -> "CoefficientGroup":
-        """Return a CoefficientGroup where only *target_name* is free."""
+        """Return a CoefficientGroup where only *target_name* is free.
+
+        Non-target free coefficients are dropped (their zero contribution to
+        predictions is omitted), unless they appear as ``vars`` in an
+        expression-constrained coefficient that itself depends on the target
+        (they are kept as ``value=0.0`` so the expression can be evaluated).
+
+        Expression-constrained coefficients are kept only if they directly
+        depend on the target; those that don't evaluate to constants w.r.t.
+        the target and are dropped.
+
+        Fixed-constant coefficients (``value`` only) are always kept — they
+        have real, non-zero contributions to predictions.
+        """
+        coeff_by_name = {c.name: c for c in self.coefficients}
+
+        # Expression-constrained coefficients that directly depend on the target
+        kept_expr_names = {
+            c.name for c in self.coefficients if c.vars and target_name in c.vars
+        }
+
+        # Non-target free coefficients needed as vars by the kept expressions
+        needed_zero_vars = {
+            var
+            for c in self.coefficients
+            if c.name in kept_expr_names and c.vars
+            for var in c.vars
+            if coeff_by_name[var].free and var != target_name
+        }
+
         new_coeffs = []
         for c in self.coefficients:
-            if c.free and c.name != target_name:
-                new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
-            else:
+            if c.name == target_name:
                 new_coeffs.append(c)
+            elif c.free:
+                if c.name in needed_zero_vars:
+                    new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
+                # else: drop — zero contribution to predictions
+            elif c.value is not None:
+                new_coeffs.append(c)  # fixed-constant: keep
+            elif c.vars:
+                if c.name in kept_expr_names:
+                    new_coeffs.append(c)  # depends on target: keep
+                # else: constant w.r.t. target → drop
         return CoefficientGroup(new_coeffs)

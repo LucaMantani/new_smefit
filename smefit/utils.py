@@ -30,19 +30,17 @@ def apply_whitening(chi2, coefficients, whitening_matrix):
     return _chi2, resolve_coeffs
 
 
-def resolve_posterior(coeffs, posterior_free, best_free):
-    """Resolve posterior samples and best-fit point from free to the
-    non-trivially-constant coefficient space.
+def resolve_posterior(resolve_coeffs, posterior_free, best_free):
+    """Resolve posterior samples and best-fit point from free to full coefficient space.
 
     Returns (samples_dict, best_fit_dict).
     """
+    all_resolved = jax.vmap(resolve_coeffs.resolve)(posterior_free)
+    samples = {name: all_resolved[:, i] for i, name in enumerate(resolve_coeffs.names)}
 
-    all_resolved = jax.vmap(coeffs.resolve_slim)(posterior_free)
-    samples = {name: all_resolved[:, i] for i, name in enumerate(coeffs.slim_names)}
-
-    best_resolved = coeffs.resolve_slim(best_free)
+    best_resolved = resolve_coeffs.resolve(best_free)
     best_fit_point = {
-        name: float(best_resolved[i]) for i, name in enumerate(coeffs.slim_names)
+        name: float(best_resolved[i]) for i, name in enumerate(resolve_coeffs.names)
     }
     return samples, best_fit_point
 

@@ -475,20 +475,16 @@ class CoefficientGroup:
         Fixed-constant coefficients (``value`` only) are always kept — they
         have real, non-zero contributions to predictions.
         """
-        coeff_by_name = {c.name: c for c in self.coefficients}
-
-        # Expression-constrained coefficients that directly depend on the target
+        free_set = set(self.free_names)
         kept_expr_names = {
             c.name for c in self.coefficients if c.vars and target_name in c.vars
         }
-
-        # Non-target free coefficients needed as vars by the kept expressions
         needed_zero_vars = {
             var
             for c in self.coefficients
-            if c.name in kept_expr_names and c.vars
+            if c.name in kept_expr_names
             for var in c.vars
-            if coeff_by_name[var].free and var != target_name
+            if var in free_set and var != target_name
         }
 
         new_coeffs = []
@@ -498,11 +494,6 @@ class CoefficientGroup:
             elif c.free:
                 if c.name in needed_zero_vars:
                     new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
-                # else: drop — zero contribution to predictions
-            elif c.value is not None:
-                new_coeffs.append(c)  # fixed-constant: keep
-            elif c.vars:
-                if c.name in kept_expr_names:
-                    new_coeffs.append(c)  # depends on target: keep
-                # else: constant w.r.t. target → drop
+            elif c.value is not None or c.name in kept_expr_names:
+                new_coeffs.append(c)
         return CoefficientGroup(new_coeffs)

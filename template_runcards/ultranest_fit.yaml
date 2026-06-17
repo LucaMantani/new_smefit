@@ -1,0 +1,73 @@
+# path to data and theory
+data_path: ../commondata
+theory_path: ../theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+# Nested Sampling settings
+ultranest_settings:
+  ReactiveNS_settings:
+    vectorized: False
+    ndraw_max: 500              # Maximum number of points to simultaneously propose.
+  Run_settings:
+    min_num_live_points: 200    # Minimum number of live points throughout the run.
+    min_ess: 50                 # Target number of effective posterior samples.
+    frac_remain: 0.01            # Integrate until this fraction of the integral is left in the remainder.
+  # SliceSampler_settings:
+  #   nsteps: 106                 # number of accepted steps until the sample is considered independent.
+
+
+rge:
+  init_scale: 10000.0
+  obs_scale: 91.0  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+# # Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+    # ATLAS_CMS
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+
+# Coefficients to fit
+coefficients:
+  OtG:
+    free: False
+    vars: [y, OpWB]
+    expr: "y**2 + 0.5*OpWB**2"
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpBox:
+    free: False
+    # prior: {dist: uniform, low: -1.0, high: 1.0}
+    vars: [y]
+    expr: "100*y"
+  y:
+    free: True
+    prior: {dist: gaussian, mean: 0.0, std: 1.0}
+
+
+external_chi2:
+  CMS_DYMee_13TeV:
+      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      use_quad: True
+      order: NLO_QCD
+      # save_rge_path: "./CMS_DYMee_rge_matrix"
+      # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+      use_projection_L0: False
+
+
+# whitening:
+#   sigma_prior: 5.0
+#   eps: 1e-8
+
+actions_:
+- run_ultranest_fit

@@ -150,6 +150,9 @@ template_text: |
     Chi2 scan
     ===========
     {@chi2_scan_table@}
+    Chi2 scan plots
+    ===========
+    {@plot_chi2_scan@}
 
 actions_:
   - report(main=True)

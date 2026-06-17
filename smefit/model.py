@@ -52,12 +52,7 @@ class EFTModel(BaseModel):
         self.use_quad = use_quad
 
         if rge_matrix is not None:
-            self._apply_rge(
-                theory,
-                rge_matrix.stacked_mats,
-                rge_matrix.obs_operators,
-                rge_matrix.init_operators,
-            )
+            self._apply_rge(theory, rge_matrix)
         else:
             self._setup_direct(theory)
 
@@ -101,19 +96,24 @@ class EFTModel(BaseModel):
             [coefficients.coeff_index[name] for name in active_names]
         )
 
-    def _apply_rge(self, theory, stacked_mats, obs_operators, init_operators):
+    def _apply_rge(self, theory, rge_matrix):
         """Set up lin/quad corrections by contracting theory tables with RGE matrices."""
-        coeff_names = self.coefficients.names  # sorted by CoefficientGroup constructor
-        rge_obs_ops = obs_operators  # already sorted
+        coeff_names = self.coefficients.names
+        rge_obs_ops = rge_matrix.obs_operators
         n_obs = len(rge_obs_ops)
 
-        # Slice R columns to only the declared coefficients (mirrors _setup_direct intersection)
-        init_op_idx = {name: i for i, name in enumerate(init_operators)}
-        active_init_names = [name for name in coeff_names if name in init_op_idx]
-        col_indices = [init_op_idx[name] for name in active_init_names]
-        n_init = len(active_init_names)
+        init_op_idx = {name: i for i, name in enumerate(rge_matrix.init_operators)}
+        missing = [name for name in coeff_names if name not in init_op_idx]
+        if missing:
+            raise ValueError(
+                f"Coefficients {missing} are declared in the fit but not found in the "
+                "RGE initial-basis operators. Check the RGE configuration covers all "
+                "declared coefficients."
+            )
+        col_indices = [init_op_idx[name] for name in coeff_names]
+        n_init = len(coeff_names)
 
-        R = stacked_mats[:, :, col_indices]
+        R = rge_matrix.stacked_mats[:, :, col_indices]
         if R.shape[0] == 1:
             R = jnp.broadcast_to(R, (theory.n_data, n_obs, n_init))
 
@@ -153,7 +153,7 @@ class EFTModel(BaseModel):
             )
 
         self.active_coeff_indices = jnp.array(
-            [self.coefficients.coeff_index[name] for name in active_init_names]
+            [self.coefficients.coeff_index[name] for name in coeff_names]
         )
 
     @jax.jit(static_argnames=("self",))

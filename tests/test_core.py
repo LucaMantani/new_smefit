@@ -241,3 +241,67 @@ def test_coeff_group_expr_var_referencing_expr_coeff_rejected():
         ValueError, match="must be a free coefficient or a fixed coefficient"
     ):
         CoefficientGroup([c_val, c_expr1, c_expr2])
+
+
+# ---------------------------------------------------------------------------
+# resolve_slim / slim_names
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_slim_free_only():
+    """slim_names == free_names when there are no expression coefficients."""
+    c1 = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c2 = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    cg = CoefficientGroup([c1, c2])
+    assert set(cg.slim_names) == {"OpA", "OpB"}
+    slim = cg.resolve_slim(jnp.array([1.0, 2.0]))
+    assert slim.shape == (2,)
+    # Values must match the free coefficient values (sorted: OpA=1, OpB=2)
+    full = cg.resolve(jnp.array([1.0, 2.0]))
+    for i, name in enumerate(cg.slim_names):
+        assert float(slim[i]) == pytest.approx(float(full[cg.coeff_index[name]]))
+
+
+def test_resolve_slim_skips_fixed():
+    """Fixed-to-constant coefficients must not appear in slim_names."""
+    c_free = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_fixed = Coefficient(name="OpFixed", free=False, value=3.0)
+    cg = CoefficientGroup([c_free, c_fixed])
+    assert "OpA" in cg.slim_names
+    assert "OpFixed" not in cg.slim_names
+    slim = cg.resolve_slim(jnp.array([5.0]))
+    assert slim.shape == (1,)
+    assert float(slim[0]) == pytest.approx(5.0)
+
+
+def test_resolve_slim_includes_dependent_expr():
+    """Expression-constrained coefficients that depend on a free param are included."""
+    c_free = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_expr = Coefficient(name="OpB", free=False, vars=["OpA"], expr="OpA**2")
+    cg = CoefficientGroup([c_free, c_expr])
+    assert "OpA" in cg.slim_names
+    assert "OpB" in cg.slim_names
+    slim = cg.resolve_slim(jnp.array([3.0]))
+    # sorted alphabetically: OpA=3.0, OpB=9.0
+    slim_dict = {name: float(slim[i]) for i, name in enumerate(cg.slim_names)}
+    assert slim_dict["OpA"] == pytest.approx(3.0)
+    assert slim_dict["OpB"] == pytest.approx(9.0)
+
+
+def test_resolve_slim_excludes_independent_expr():
+    """Expression-constrained coefficients with only fixed deps are excluded."""
+    c_fixed = Coefficient(name="OpA", free=False, value=2.0)
+    c_expr = Coefficient(name="OpB", free=False, vars=["OpA"], expr="OpA**2")
+    cg = CoefficientGroup([c_fixed, c_expr])
+    # No free parameters — slim_names should be empty
+    assert cg.slim_names == []
+    slim = cg.resolve_slim(jnp.array([]))
+    assert slim.shape == (0,)

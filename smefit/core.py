@@ -414,6 +414,19 @@ class CoefficientGroup:
                     dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
 
+        # Precompute slim indices: free + expr-constrained with at least one free dep
+        expr_with_free_dep = {
+            self.names[idx]
+            for idx, _fn, dep_indices in self._expr_specs
+            if any(self.coefficients[di].free for di in dep_indices)
+        }
+        self._slim_indices: List[int] = []
+        self._slim_names: List[str] = []
+        for i, c in enumerate(self.coefficients):
+            if c.free or c.name in expr_with_free_dep:
+                self._slim_indices.append(i)
+                self._slim_names.append(c.name)
+
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
 
@@ -459,6 +472,32 @@ class CoefficientGroup:
             args = tuple(result[d] for d in deps)
             result = result.at[idx].set(fn(*args))
         return result
+
+    @property
+    def slim_names(self) -> List[str]:
+        """Names of non-trivially-constant coefficients (free + dependent derived)."""
+        return self._slim_names
+
+    def resolve_slim(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
+        """Like :meth:`resolve` but returns only sample-varying coefficients.
+
+        Skips fixed-to-constant coefficients and expression-constrained ones whose
+        dependencies are all fixed.  The returned entries correspond to
+        ``self.slim_names`` in order.
+
+        Parameters
+        ----------
+        free_coeffs : jnp.ndarray
+            Shape ``(n_free,)``.  Whitened coordinates if this group was created
+            via :meth:`whitened`.
+
+        Returns
+        -------
+        jnp.ndarray
+            Shape ``(n_slim,)`` where ``n_slim = len(self.slim_names)``.
+        """
+        full = self.resolve(free_coeffs)
+        return full[jnp.array(self._slim_indices, dtype=int)]
 
     def single_free(self, target_name: str) -> "CoefficientGroup":
         """Return a CoefficientGroup where only *target_name* is free."""

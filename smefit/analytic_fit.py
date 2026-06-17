@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 
 from smefit.fit_result import FitResult
+from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
@@ -86,20 +87,9 @@ def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
         key, mean=c_best, cov=cov_c, shape=(n_samples,)
     )  # (n_samples, n_free)
 
-    # Resolve full coefficient vector (free + derived) for each sample
-    all_resolved_coeffs = jax.vmap(eft_model.coefficients.resolve)(samples_free)
-
-    samples = {
-        name: all_resolved_coeffs[:, i]
-        for i, name in enumerate(eft_model.coefficients.names)
-    }
-
-    # Best-fit full coefficient vector
-    best_resolved = eft_model.coefficients.resolve(c_best)
-    best_fit_point = {
-        name: float(best_resolved[i])
-        for i, name in enumerate(eft_model.coefficients.names)
-    }
+    samples, best_fit_point = resolve_posterior(
+        eft_model.coefficients, samples_free, c_best
+    )
 
     return FitResult(
         free_parameters=eft_model.coefficients.free_names,

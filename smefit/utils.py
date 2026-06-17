@@ -42,7 +42,7 @@ def resolve_posterior(coeffs, posterior_free, best_free):
 
     best_resolved = coeffs.resolve_slim(best_free)
     best_fit_point = {
-        name: float(best_resolved[i]) for i, name in enumerate(coeffs.names)
+        name: float(best_resolved[i]) for i, name in enumerate(coeffs.slim_names)
     }
     return samples, best_fit_point
 

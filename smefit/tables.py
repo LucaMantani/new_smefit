@@ -12,6 +12,51 @@ from smefit.op_to_latex import coeff_info_latex
 
 
 @table
+def chi2_scan_table(individual_chi2_scans):
+    """Per-coefficient 1D chi2 scan results as a table.
+
+    Parameters
+    ----------
+    individual_chi2_scans : list[dict]
+        Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Rows indexed by scan-point number; MultiIndex columns
+        ``(coeff_latex, {"points", "chi2"})``.
+    """
+    results = {k: v for d in individual_chi2_scans for k, v in d.items()}
+    frames = {
+        coeff_info_latex.get(name, name): pd.DataFrame(
+            {"points": data["points"], "chi2": data["chi2"]}
+        )
+        for name, data in results.items()
+    }
+    return pd.concat(frames, axis=1)
+
+
+@table
+def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points):
+    """Mass scan results as a table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns ``points`` (mass scale) and ``chi2``.
+    """
+    mass_name = coefficients.free_names[0]
+    df = pd.DataFrame(
+        {
+            "points": [float(s) for s in individual_mass_scales],
+            "chi2": [float(c) for c in individual_mass_scan_points],
+        }
+    )
+    df.columns.name = coeff_info_latex.get(mass_name, mass_name)
+    return df
+
+
+@table
 def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
     """Extract row-normalised diagonals of per-source Fisher matrices.
 

@@ -136,6 +136,9 @@ external_chi2:
       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
       use_projection_L0: True
 
+chi2_scan_settings:
+  n_points: 10
+
 
 template_text: |
     Fisher table
@@ -144,6 +147,9 @@ template_text: |
     Fisher heatmap
     ===========
     {@plot_fisher_diagonals_heatmap@}
+    Chi2 scan
+    ===========
+    {@chi2_scan_table@}
 
 actions_:
   - report(main=True)

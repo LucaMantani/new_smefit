@@ -4,7 +4,6 @@ smefit.utils_actions.py
 Reportengine utility actions for smefit.
 """
 
-import json
 import logging
 import pathlib
 import shutil
@@ -54,29 +53,3 @@ def write_pseudodata(pseudodata, theory_path, output_path):
                 th_dir = pathlib.Path(output_path) / "pseudodata_theory"
                 th_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy(src, th_dir / f"{ds.name}.json")
-
-
-def run_chi2_scan(individual_chi2_scans, output_path):
-    """Write per-coefficient 1D chi2 scan results to chi2_scan.json."""
-    results = {k: v for d in individual_chi2_scans for k, v in d.items()}
-    out_path = pathlib.Path(output_path) / "chi2_scan.json"
-    with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
-    log.info("Chi2 scan written to %s", out_path)
-
-
-def run_mass_scan(
-    coefficients, individual_mass_scales, individual_mass_scan_points, output_path
-):
-    """Write mass scan results to mass_scan.json."""
-    mass_name = coefficients.free_names[0]
-    results = {
-        mass_name: {
-            "points": [float(s) for s in individual_mass_scales],
-            "chi2": individual_mass_scan_points,
-        }
-    }
-    out_path = pathlib.Path(output_path) / "mass_scan.json"
-    with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
-    log.info("Mass scan written to %s", out_path)

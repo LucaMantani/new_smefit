@@ -130,4 +130,4 @@ chi2_scan_settings:
   n_points: 10
 
 actions_:
-- run_mass_scan
+- mass_scan_table

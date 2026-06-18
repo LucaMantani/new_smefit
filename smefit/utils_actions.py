@@ -4,14 +4,11 @@ smefit.utils_actions.py
 Reportengine utility actions for smefit.
 """
 
-import logging
 import pathlib
 import shutil
 
 import numpy as np
 import yaml
-
-log = logging.getLogger(__name__)
 
 
 def write_pseudodata(pseudodata, theory_path, output_path):

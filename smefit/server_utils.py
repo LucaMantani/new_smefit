@@ -49,6 +49,7 @@ REGISTRY_PATH = "registry.json"
 MISC_REGISTRY_PATH = "misc/registry_misc.json"
 BIN_DIR = "bin"
 BIN_REGISTRY_PATH = "bin/registry_bin.json"
+BIN_REGISTRY_BACKUPS_DIR = "bin/registry_backups"
 SERVERS = ["public", "private"]
 RGE_FILENAME = "rge_matrix.pkl"
 RUNCARD_FILENAME = "runcard.yaml"
@@ -194,6 +195,12 @@ def _detect_has_rge(local_path: pathlib.Path) -> bool:
     return any(local_path.rglob(RGE_FILENAME))
 
 
+def _registry_backup_path(filename: str) -> str:
+    """Return a unique timestamped path inside bin/registry_backups/ for *filename*."""
+    ts = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+    return f"{BIN_REGISTRY_BACKUPS_DIR}/{filename}.{ts}.bak"
+
+
 def _empty_registry() -> dict:
     return {"fits": {}, "reports": {}, "projects": []}
 
@@ -219,6 +226,15 @@ def _write_registry(client, registry: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="smefit_registry_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry.json"
         tmp.write_text(json.dumps(registry, indent=2, sort_keys=True))
+        # SURFdrive WebDAV rejects PUT-to-overwrite and DELETE on existing files.
+        # Move the old file to bin/registry_backups/ (MOVE works) so the PUT
+        # lands on an empty path. Timestamped name avoids overwriting the backup.
+        if client.check(REGISTRY_PATH):
+            _ensure_remote_path(client, BIN_REGISTRY_BACKUPS_DIR)
+            client.move(
+                remote_path_from=REGISTRY_PATH,
+                remote_path_to=_registry_backup_path("registry.json"),
+            )
         client.upload_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
 
 
@@ -237,6 +253,12 @@ def _write_misc_registry(client, registry: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="smefit_misc_reg_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry_misc.json"
         tmp.write_text(json.dumps(registry, indent=2, sort_keys=True))
+        if client.check(MISC_REGISTRY_PATH):
+            _ensure_remote_path(client, BIN_REGISTRY_BACKUPS_DIR)
+            client.move(
+                remote_path_from=MISC_REGISTRY_PATH,
+                remote_path_to=_registry_backup_path("registry_misc.json"),
+            )
         client.upload_sync(remote_path=MISC_REGISTRY_PATH, local_path=str(tmp))
 
 
@@ -256,6 +278,12 @@ def _write_bin_registry(client, registry: dict) -> None:
     with tempfile.TemporaryDirectory(prefix="smefit_bin_reg_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry_bin.json"
         tmp.write_text(json.dumps(registry, indent=2, sort_keys=True))
+        if client.check(BIN_REGISTRY_PATH):
+            _ensure_remote_path(client, BIN_REGISTRY_BACKUPS_DIR)
+            client.move(
+                remote_path_from=BIN_REGISTRY_PATH,
+                remote_path_to=_registry_backup_path("registry_bin.json"),
+            )
         client.upload_sync(remote_path=BIN_REGISTRY_PATH, local_path=str(tmp))
 
 
@@ -647,6 +675,18 @@ class Uploader:
     def _check_remote_exists(self, resource_type: str, resource_name: str) -> bool:
         return self._client.check(_remote_path(resource_type, resource_name))
 
+    def _move_aside(self, remote: str) -> None:
+        """Move an existing remote file into bin/ before a force re-upload.
+
+        SURFdrive WebDAV rejects PUT-to-overwrite; MOVE is the only way to vacate
+        an existing path. Timestamped name avoids colliding with a previous backup.
+        """
+        if self._client.check(remote):
+            ts = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+            bak = f"{BIN_DIR}/{remote}.{ts}.bak"
+            _ensure_remote_path(self._client, str(pathlib.PurePosixPath(bak).parent))
+            self._client.move(remote_path_from=remote, remote_path_to=bak)
+
     def upload(
         self,
         resource_type: str,
@@ -687,6 +727,8 @@ class Uploader:
                     "Use --force to overwrite."
                 )
             _ensure_remote_path(self._client, str(pathlib.PurePosixPath(remote).parent))
+            if force:
+                self._move_aside(remote)
             log.info("Uploading %s -> %s ...", local_path, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(local_path))
             log.info("Upload complete.")
@@ -750,6 +792,8 @@ class Uploader:
             _compress(
                 local_path, archive, arcname=resource_name, strip_paths=strip_paths
             )
+            if force:
+                self._move_aside(remote)
             log.info("Uploading %s -> %s ...", archive.name, remote)
             self._client.upload_sync(remote_path=remote, local_path=str(archive))
         log.info("Upload complete.")
@@ -757,12 +801,16 @@ class Uploader:
         if rge_local:
             self._ensure_dir(RGE_MATRICES_REMOTE_DIR)
             rge_remote = f"{RGE_MATRICES_REMOTE_DIR}/{resource_name}.pkl"
+            if force:
+                self._move_aside(rge_remote)
             log.info("Uploading rge_matrix -> %s ...", rge_remote)
             self._client.upload_sync(remote_path=rge_remote, local_path=str(rge_local))
 
         if runcard_local:
             self._ensure_dir(RUNCARDS_REMOTE_DIR)
             runcard_remote = f"{RUNCARDS_REMOTE_DIR}/{resource_name}.yaml"
+            if force:
+                self._move_aside(runcard_remote)
             log.info("Uploading runcard -> %s ...", runcard_remote)
             self._client.upload_sync(
                 remote_path=runcard_remote, local_path=str(runcard_local)

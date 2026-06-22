@@ -60,7 +60,9 @@ class smefitConfig(Config):
                     f"{USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
                 )
             theory_path = user_paths["theory_path"]
-            log.info(f"Resolved 'auto' theory_path from {USER_PATHS_CONFIG}: {theory_path}")
+            log.info(
+                f"Resolved 'auto' theory_path from {USER_PATHS_CONFIG}: {theory_path}"
+            )
         theory_path = pathlib.Path(theory_path)
         if not theory_path.exists():
             log.error(f"theory_path {theory_path} does not exist.")

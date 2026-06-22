@@ -44,7 +44,9 @@ def test_parse_data_path_missing(cfg, tmp_path):
 
 
 def test_parse_data_path_auto(cfg, tmp_path):
-    with patch("smefit.config.load_user_paths", return_value={"data_path": str(tmp_path)}):
+    with patch(
+        "smefit.config.load_user_paths", return_value={"data_path": str(tmp_path)}
+    ):
         result = cfg.parse_data_path("auto")
     assert result == tmp_path
 
@@ -67,7 +69,9 @@ def test_parse_theory_path_missing(cfg, tmp_path):
 
 
 def test_parse_theory_path_auto(cfg, tmp_path):
-    with patch("smefit.config.load_user_paths", return_value={"theory_path": str(tmp_path)}):
+    with patch(
+        "smefit.config.load_user_paths", return_value={"theory_path": str(tmp_path)}
+    ):
         result = cfg.parse_theory_path("auto")
     assert result == tmp_path
 

@@ -43,6 +43,18 @@ def test_parse_data_path_missing(cfg, tmp_path):
         cfg.parse_data_path(missing)
 
 
+def test_parse_data_path_auto(cfg, tmp_path):
+    with patch("smefit.config.load_user_paths", return_value={"data_path": str(tmp_path)}):
+        result = cfg.parse_data_path("auto")
+    assert result == tmp_path
+
+
+def test_parse_data_path_auto_no_config(cfg):
+    with patch("smefit.config.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_paths"):
+            cfg.parse_data_path("auto")
+
+
 def test_parse_theory_path_valid(cfg, tmp_path):
     result = cfg.parse_theory_path(str(tmp_path))
     assert result == tmp_path
@@ -52,6 +64,18 @@ def test_parse_theory_path_missing(cfg, tmp_path):
     missing = str(tmp_path / "nonexistent")
     with pytest.raises(ValueError, match="does not exist"):
         cfg.parse_theory_path(missing)
+
+
+def test_parse_theory_path_auto(cfg, tmp_path):
+    with patch("smefit.config.load_user_paths", return_value={"theory_path": str(tmp_path)}):
+        result = cfg.parse_theory_path("auto")
+    assert result == tmp_path
+
+
+def test_parse_theory_path_auto_no_config(cfg):
+    with patch("smefit.config.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_paths"):
+            cfg.parse_theory_path("auto")
 
 
 # ---------------------------------------------------------------------------

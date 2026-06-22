@@ -10,9 +10,13 @@ Expected YAML format:
 
     data_path: /path/to/smefit_database/commondata
     theory_path: /path/to/smefit_database/theory
+    server_download_path: /path/to/download/directory
 
-Once configured, set 'data_path: auto' and 'theory_path: auto' in any
-runcard to use these paths automatically.
+Once configured:
+  - Set 'data_path: auto' and 'theory_path: auto' in any runcard to use
+    those paths automatically.
+  - 'smefit_get' will download resources to server_download_path by default
+    when no local path is specified on the command line.
 """
 
 import argparse
@@ -29,7 +33,7 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 log.addHandler(colors.ColorHandler())
 
-_KEYS = ("data_path", "theory_path")
+_KEYS = ("data_path", "theory_path", "server_download_path")
 
 
 def _validate(config: dict) -> None:

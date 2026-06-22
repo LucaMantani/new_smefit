@@ -63,6 +63,22 @@ def main():
     if args.view and args.resource_type != "report":
         parser.error("--view is only valid for resource_type 'report'.")
 
+    _SUBDIR = {"fit": "fits", "report": "reports", "rge": "fits", "misc": "misc"}
+
+    local_path = args.local_path
+    if local_path is None:
+        from smefit.paths import load_user_paths
+
+        user_paths = load_user_paths()
+        if "server_download_path" in user_paths:
+            import pathlib
+
+            local_path = str(
+                pathlib.Path(user_paths["server_download_path"])
+                / _SUBDIR[args.resource_type]
+            )
+            log.info("Using server_download_path from user config: %s", local_path)
+
     from smefit.server_utils import (
         Downloader,
         ServerError,
@@ -72,16 +88,14 @@ def main():
 
     try:
         if args.resource_type == "rge":
-            download_rge(
-                args.resource_name, local_path=args.local_path, server=args.server
-            )
+            download_rge(args.resource_name, local_path=local_path, server=args.server)
         elif args.view:
             download_and_view_report(
-                args.resource_name, local_path=args.local_path, server=args.server
+                args.resource_name, local_path=local_path, server=args.server
             )
         else:
             downloader = Downloader(server=args.server)
-            downloader.download(args.resource_type, args.resource_name, args.local_path)
+            downloader.download(args.resource_type, args.resource_name, local_path)
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

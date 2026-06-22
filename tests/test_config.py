@@ -47,14 +47,14 @@ def test_parse_data_path_auto(cfg, tmp_path):
     with patch(
         "smefit.config.load_user_paths", return_value={"data_path": str(tmp_path)}
     ):
-        result = cfg.parse_data_path("auto")
+        result = cfg.parse_data_path("default")
     assert result == tmp_path
 
 
 def test_parse_data_path_auto_no_config(cfg):
     with patch("smefit.config.load_user_paths", return_value={}):
         with pytest.raises(ValueError, match="smefit_setup_paths"):
-            cfg.parse_data_path("auto")
+            cfg.parse_data_path("default")
 
 
 def test_parse_theory_path_valid(cfg, tmp_path):
@@ -72,14 +72,14 @@ def test_parse_theory_path_auto(cfg, tmp_path):
     with patch(
         "smefit.config.load_user_paths", return_value={"theory_path": str(tmp_path)}
     ):
-        result = cfg.parse_theory_path("auto")
+        result = cfg.parse_theory_path("default")
     assert result == tmp_path
 
 
 def test_parse_theory_path_auto_no_config(cfg):
     with patch("smefit.config.load_user_paths", return_value={}):
         with pytest.raises(ValueError, match="smefit_setup_paths"):
-            cfg.parse_theory_path("auto")
+            cfg.parse_theory_path("default")
 
 
 # ---------------------------------------------------------------------------

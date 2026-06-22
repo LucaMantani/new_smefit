@@ -42,7 +42,9 @@ class smefitConfig(Config):
                     f"{USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
                 )
             data_path = user_paths["data_path"]
-            log.info(f"Resolved 'default' data_path from {USER_PATHS_CONFIG}: {data_path}")
+            log.info(
+                f"Resolved 'default' data_path from {USER_PATHS_CONFIG}: {data_path}"
+            )
         data_path = pathlib.Path(data_path)
         if not data_path.exists():
             log.error(f"data_path {data_path} does not exist.")

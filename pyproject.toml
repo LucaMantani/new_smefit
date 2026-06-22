@@ -23,6 +23,7 @@ ultranest = "*"
 optax = "*"
 flax = "*"
 wilson="^2.4"
+webdavclient3 = "*"
 blackjax = {git = "https://github.com/handley-lab/blackjax", tag = "v0.1.0-beta"}
 tqdm = "*"
 anesthetic = "^2.10.2"
@@ -43,6 +44,18 @@ doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx
 
 [tool.poetry.scripts]
 smefit = "smefit.app:main"
+smefit_ls = "smefit.scripts.smefit_ls:main"
+smefit_mv = "smefit.scripts.smefit_mv:main"
+smefit_rm = "smefit.scripts.smefit_rm:main"
+smefit_restore = "smefit.scripts.smefit_restore:main"
+smefit_upload = "smefit.scripts.smefit_upload:main"
+smefit_get = "smefit.scripts.smefit_get:main"
+view_report = "smefit.scripts.view_report:main"
+smefit_setup_server = "smefit.scripts.smefit_setup_server:main"
+smefit_sync_registry = "smefit.scripts.smefit_sync_registry:main"
+smefit_mkdir = "smefit.scripts.smefit_mkdir:main"
+smefit_manage_project = "smefit.scripts.smefit_manage_project:main"
+smefit_server = "smefit.scripts.smefit_server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

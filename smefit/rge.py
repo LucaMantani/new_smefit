@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import pickle
 from contextlib import contextmanager
 from copy import deepcopy
@@ -397,6 +398,7 @@ class RGE:
         name: str
             name of the file to save the RGE matrix
         """
+        path = pathlib.Path(path)
         to_dump = {}
         to_dump["rge_settings"] = rge_settings
         # put together the scales and the RGE matrices, having the scale as key for the matrix.

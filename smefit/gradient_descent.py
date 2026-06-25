@@ -78,6 +78,10 @@ def gd_minimize(chi2, optimizer, start, n_steps=2000, tol=1e-8):
                 "Gradient descent: converged at step %d, chi2=%.6f", step, float(val)
             )
             break
+
+        if step % 100 == 0:
+            log.info(f"Epoch {step}, loss: {val:.3f}")
+
     else:
         log.info(
             "Gradient descent: reached max steps (%d), chi2=%.6f",

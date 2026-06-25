@@ -144,6 +144,12 @@ template_text: |
     Fisher heatmap
     ===========
     {@plot_fisher_diagonals_heatmap@}
+    GIM table
+    ===========
+    {@gim_table@}
+    GIM heatmap
+    ===========
+    {@plot_gim_heatmap@}
 
 actions_:
   - report(main=True)

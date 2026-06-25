@@ -47,5 +47,7 @@ def gim_table(aggregate_global_information_matrix):
         Index = coeff_names, columns = source_names. Rows sum to 1.
     """
     gim = aggregate_global_information_matrix
-    gim = gim.values * 100
+    gim = gim * 100
+    # Format the index with LaTeX labels
+    gim.index = [coeff_info_latex.get(name, name) for name in gim.index]
     return gim

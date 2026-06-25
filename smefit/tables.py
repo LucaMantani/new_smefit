@@ -31,3 +31,21 @@ def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
         index=[coeff_info_latex.get(name, name) for name in coeff_names],
     )
     return raw.div(raw.sum(axis=1), axis=0)
+
+
+@table
+def gim_table(aggregate_global_information_matrix):
+    """Returns the aggregated global information matrix in percentage.
+
+    Parameters
+    ----------
+    aggregate_global_information_matrix : pd.DataFrame
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = coeff_names, columns = source_names. Rows sum to 1.
+    """
+    gim = aggregate_global_information_matrix
+    gim = gim.values * 100
+    return gim

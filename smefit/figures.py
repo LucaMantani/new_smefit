@@ -90,3 +90,22 @@ def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
         vmin=0,
         vmax=100,
     )
+
+
+@figure
+def plot_gim_heatmap(aggregate_global_information_matrix):
+    """Plot the global information matrix as a heatmap.
+
+    Parameters
+    ----------
+    aggregate_global_information_matrix : pd.DataFrame
+        Index = coeff_names, columns = source_names.
+    """
+    gim = aggregate_global_information_matrix
+    return _plot_heatmap(
+        gim.values * 100,
+        gim.index.tolist(),
+        gim.columns.tolist(),
+        vmin=0,
+        vmax=100,
+    )

@@ -56,7 +56,6 @@ smefit_sync_registry = "smefit.scripts.server_scripts.smefit_sync_registry:main"
 smefit_mkdir = "smefit.scripts.server_scripts.smefit_mkdir:main"
 smefit_manage_project = "smefit.scripts.server_scripts.smefit_manage_project:main"
 smefit_server = "smefit.scripts.server_scripts.smefit_server:main"
-smefit_setup_paths = "smefit.scripts.smefit_setup_paths:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

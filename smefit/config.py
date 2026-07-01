@@ -221,6 +221,8 @@ class smefitConfig(Config):
             entry = {k: v for k, v in cfg.items() if k != "group"}
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
+            if "rg_matrix" in entry:
+                entry["rg_matrix"] = resolve_path(entry["rg_matrix"])
             cleaned[name] = entry
         return cleaned
 

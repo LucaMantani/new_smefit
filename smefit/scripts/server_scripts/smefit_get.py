@@ -70,14 +70,14 @@ def main():
         from smefit.paths import load_user_paths
 
         user_paths = load_user_paths()
-        if "server_download_path" in user_paths:
+        if "path_to_smefit_results" in user_paths:
             import pathlib
 
             local_path = str(
-                pathlib.Path(user_paths["server_download_path"])
+                pathlib.Path(user_paths["path_to_smefit_results"])
                 / _SUBDIR[args.resource_type]
             )
-            log.info("Using server_download_path from user config: %s", local_path)
+            log.info("Using path_to_smefit_results from user config: %s", local_path)
 
     from smefit.server_utils import (
         Downloader,

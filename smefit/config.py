@@ -20,7 +20,7 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
-from smefit.paths import USER_PATHS_CONFIG, load_user_paths
+from smefit.paths import USER_PATHS_CONFIG, load_user_paths, resolve_path
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
@@ -33,18 +33,8 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path, resolving 'auto' from ~/.config/smefit/paths.yaml."""
-        if data_path == "default":
-            user_paths = load_user_paths()
-            if "data_path" not in user_paths:
-                raise ValueError(
-                    f"data_path is set to 'default' but no 'data_path' entry found in "
-                    f"{USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
-                )
-            data_path = user_paths["data_path"]
-            log.info(
-                f"Resolved 'default' data_path from {USER_PATHS_CONFIG}: {data_path}"
-            )
+        """Parse data path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
         if not data_path.exists():
             log.error(f"data_path {data_path} does not exist.")
@@ -53,18 +43,8 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path, resolving 'auto' from ~/.config/smefit/paths.yaml."""
-        if theory_path == "default":
-            user_paths = load_user_paths()
-            if "theory_path" not in user_paths:
-                raise ValueError(
-                    f"theory_path is set to 'default' but no 'theory_path' entry found in "
-                    f"{USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
-                )
-            theory_path = user_paths["theory_path"]
-            log.info(
-                f"Resolved 'default' theory_path from {USER_PATHS_CONFIG}: {theory_path}"
-            )
+        """Parse theory path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
         if not theory_path.exists():
             log.error(f"theory_path {theory_path} does not exist.")
@@ -231,14 +211,17 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser. Strips 'group' keys and caches them for produce_data_groups."""
+        """Pass-through parser. Strips 'group' keys and resolves prefix-relative paths."""
         self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
             group = cfg.get("group")
             if group is not None:
                 self._ext_chi2_groups[name] = group
-            cleaned[name] = {k: v for k, v in cfg.items() if k != "group"}
+            entry = {k: v for k, v in cfg.items() if k != "group"}
+            if "path" in entry:
+                entry["path"] = resolve_path(entry["path"])
+            cleaned[name] = entry
         return cleaned
 
     def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):

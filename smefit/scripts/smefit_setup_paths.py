@@ -1,5 +1,5 @@
 """
-Configure user-specific data and theory paths for SMEFiT.
+Configure user-specific base directory paths for SMEFiT.
 
     smefit_setup_paths [PATHS_YAML]
 
@@ -8,15 +8,16 @@ If PATHS_YAML is provided, its contents are validated and written to
 
 Expected YAML format:
 
-    data_path: /path/to/smefit_database/commondata
-    theory_path: /path/to/smefit_database/theory
-    server_download_path: /path/to/download/directory
+    path_to_smefit_database: /path/to/smefit_database
+    path_to_new_smefit: /path/to/new_smefit
+    path_to_smefit_results: /path/to/smefit_results
 
-Once configured:
-  - Set 'data_path: auto' and 'theory_path: auto' in any runcard to use
-    those paths automatically.
-  - 'smefit_get' will download resources to server_download_path by default
-    when no local path is specified on the command line.
+Once configured, use short prefix-relative paths in any runcard:
+    data_path: smefit_database/commondata
+    theory_path: smefit_database/theory
+    path: new_smefit/external_chi2/drell_yan/MyModule.py
+
+'smefit_get' will also download resources to path_to_smefit_results by default.
 """
 
 import argparse
@@ -33,7 +34,7 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 log.addHandler(colors.ColorHandler())
 
-_KEYS = ("data_path", "theory_path", "server_download_path")
+_KEYS = ("path_to_smefit_database", "path_to_new_smefit", "path_to_smefit_results")
 
 
 def _validate(config: dict) -> None:

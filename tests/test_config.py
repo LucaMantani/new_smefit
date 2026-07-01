@@ -43,18 +43,20 @@ def test_parse_data_path_missing(cfg, tmp_path):
         cfg.parse_data_path(missing)
 
 
-def test_parse_data_path_auto(cfg, tmp_path):
+def test_parse_data_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "commondata").mkdir()
     with patch(
-        "smefit.config.load_user_paths", return_value={"data_path": str(tmp_path)}
+        "smefit.paths.load_user_paths",
+        return_value={"path_to_smefit_database": str(tmp_path)},
     ):
-        result = cfg.parse_data_path("default")
-    assert result == tmp_path
+        result = cfg.parse_data_path("smefit_database/commondata")
+    assert result == tmp_path / "commondata"
 
 
-def test_parse_data_path_auto_no_config(cfg):
-    with patch("smefit.config.load_user_paths", return_value={}):
+def test_parse_data_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
         with pytest.raises(ValueError, match="smefit_setup_paths"):
-            cfg.parse_data_path("default")
+            cfg.parse_data_path("smefit_database/commondata")
 
 
 def test_parse_theory_path_valid(cfg, tmp_path):
@@ -68,18 +70,20 @@ def test_parse_theory_path_missing(cfg, tmp_path):
         cfg.parse_theory_path(missing)
 
 
-def test_parse_theory_path_auto(cfg, tmp_path):
+def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "theory").mkdir()
     with patch(
-        "smefit.config.load_user_paths", return_value={"theory_path": str(tmp_path)}
+        "smefit.paths.load_user_paths",
+        return_value={"path_to_smefit_database": str(tmp_path)},
     ):
-        result = cfg.parse_theory_path("default")
-    assert result == tmp_path
+        result = cfg.parse_theory_path("smefit_database/theory")
+    assert result == tmp_path / "theory"
 
 
-def test_parse_theory_path_auto_no_config(cfg):
-    with patch("smefit.config.load_user_paths", return_value={}):
+def test_parse_theory_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
         with pytest.raises(ValueError, match="smefit_setup_paths"):
-            cfg.parse_theory_path("default")
+            cfg.parse_theory_path("smefit_database/theory")
 
 
 # ---------------------------------------------------------------------------
@@ -588,3 +592,13 @@ def test_parse_external_chi2_mixed_group_and_no_group(cfg):
     assert "group" not in result["ExtA"]
     assert result["ExtB"] == {"path": "/b.py"}
     assert cfg._ext_chi2_groups == {"ExtA": "G1"}
+
+
+def test_parse_external_chi2_resolves_prefix_path(cfg):
+    raw = {"MyExt": {"path": "new_smefit/external_chi2/foo.py"}}
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"path_to_new_smefit": "/home/user/new_smefit"},
+    ):
+        result = cfg.parse_external_chi2(raw)
+    assert result["MyExt"]["path"] == "/home/user/new_smefit/external_chi2/foo.py"

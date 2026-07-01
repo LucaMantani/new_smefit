@@ -46,6 +46,7 @@ _RESOURCE_MARKERS = {
     "report": "index.html",
 }
 REGISTRY_PATH = "registry.json"
+LOCAL_RESULTS_REGISTRY = "registry.json"
 MISC_REGISTRY_PATH = "misc/registry_misc.json"
 BIN_DIR = "bin"
 BIN_REGISTRY_PATH = "bin/registry_bin.json"
@@ -236,6 +237,22 @@ def _write_registry(client, registry: dict) -> None:
                 remote_path_to=_registry_backup_path("registry.json"),
             )
         client.upload_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
+
+
+def _read_local_registry(local_results_dir: pathlib.Path) -> dict:
+    """Read the local registry from *local_results_dir*/registry.json."""
+    path = local_results_dir / LOCAL_RESULTS_REGISTRY
+    if not path.exists():
+        return _empty_registry()
+    data = json.loads(path.read_text())
+    return {**_empty_registry(), **data}
+
+
+def _write_local_registry(local_results_dir: pathlib.Path, registry: dict) -> None:
+    """Write the local registry to *local_results_dir*/registry.json."""
+    local_results_dir.mkdir(parents=True, exist_ok=True)
+    path = local_results_dir / LOCAL_RESULTS_REGISTRY
+    path.write_text(json.dumps(registry, indent=2, sort_keys=True))
 
 
 def _read_misc_registry(client) -> dict:
@@ -885,6 +902,28 @@ class Downloader:
                 continue
             names.append(e)
         return names
+
+    def update_local_registry(
+        self,
+        resource_type: str,
+        resource_name: str,
+        local_results_dir: pathlib.Path,
+    ) -> None:
+        """Mirror the server registry entry for *resource_name* into the local registry.
+
+        Only operates on archivable types (fit, report); silently skips others.
+        """
+        if resource_type not in _ARCHIVABLE_TYPES:
+            return
+        registry = _read_registry(self._client)
+        meta = registry.get(f"{resource_type}s", {}).get(resource_name, {})
+        local_reg = _read_local_registry(local_results_dir)
+        local_reg.setdefault(f"{resource_type}s", {})[resource_name] = meta
+        _write_local_registry(local_results_dir, local_reg)
+        log.info(
+            "Local registry updated: %s",
+            local_results_dir / LOCAL_RESULTS_REGISTRY,
+        )
 
     def download(
         self,

@@ -65,19 +65,20 @@ def main():
 
     _SUBDIR = {"fit": "fits", "report": "reports", "rge": "fits", "misc": "misc"}
 
+    import pathlib
+
     local_path = args.local_path
+    local_results_dir = None
     if local_path is None:
         from smefit.paths import load_user_paths
 
         user_paths = load_user_paths()
         if "path_to_smefit" in user_paths:
-            import pathlib
-
-            local_path = str(
+            local_results_dir = (
                 pathlib.Path(user_paths["path_to_smefit"].rstrip("/"))
                 / "smefit_results"
-                / _SUBDIR[args.resource_type]
             )
+            local_path = str(local_results_dir / _SUBDIR[args.resource_type])
             log.info("Using path_to_smefit from user config: %s", local_path)
 
     from smefit.server_utils import (
@@ -97,6 +98,13 @@ def main():
         else:
             downloader = Downloader(server=args.server)
             downloader.download(args.resource_type, args.resource_name, local_path)
+            if local_results_dir is not None and args.resource_type in (
+                "fit",
+                "report",
+            ):
+                downloader.update_local_registry(
+                    args.resource_type, args.resource_name, local_results_dir
+                )
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

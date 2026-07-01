@@ -44,13 +44,13 @@ def test_parse_data_path_missing(cfg, tmp_path):
 
 
 def test_parse_data_path_prefix_resolved(cfg, tmp_path):
-    (tmp_path / "commondata").mkdir()
+    (tmp_path / "smefit_database" / "commondata").mkdir(parents=True)
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_database": str(tmp_path)},
+        return_value={"path_to_smefit": str(tmp_path)},
     ):
         result = cfg.parse_data_path("smefit_database/commondata")
-    assert result == tmp_path / "commondata"
+    assert result == tmp_path / "smefit_database" / "commondata"
 
 
 def test_parse_data_path_prefix_missing_key(cfg):
@@ -71,13 +71,13 @@ def test_parse_theory_path_missing(cfg, tmp_path):
 
 
 def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
-    (tmp_path / "theory").mkdir()
+    (tmp_path / "smefit_database" / "theory").mkdir(parents=True)
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_database": str(tmp_path)},
+        return_value={"path_to_smefit": str(tmp_path)},
     ):
         result = cfg.parse_theory_path("smefit_database/theory")
-    assert result == tmp_path / "theory"
+    assert result == tmp_path / "smefit_database" / "theory"
 
 
 def test_parse_theory_path_prefix_missing_key(cfg):
@@ -598,7 +598,9 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     raw = {"MyExt": {"path": "new_smefit/external_chi2/foo.py"}}
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_new_smefit": "/home/user/new_smefit"},
+        return_value={"path_to_smefit": "/home/user/smefit"},
     ):
         result = cfg.parse_external_chi2(raw)
-    assert result["MyExt"]["path"] == "/home/user/new_smefit/external_chi2/foo.py"
+    assert (
+        result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
+    )

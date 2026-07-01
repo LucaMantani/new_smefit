@@ -6,43 +6,34 @@ import pytest
 
 from smefit.paths import resolve_path
 
+_SMEFIT = "/Users/alice/smefit"
+_USER_PATHS = {"path_to_smefit": _SMEFIT}
+
 
 def test_resolve_smefit_database_prefix():
-    with patch(
-        "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_database": "/data/smefit_database"},
-    ):
+    with patch("smefit.paths.load_user_paths", return_value=_USER_PATHS):
         assert (
             resolve_path("smefit_database/commondata")
-            == "/data/smefit_database/commondata"
+            == f"{_SMEFIT}/smefit_database/commondata"
         )
 
 
 def test_resolve_new_smefit_prefix():
-    with patch(
-        "smefit.paths.load_user_paths",
-        return_value={"path_to_new_smefit": "/home/user/new_smefit"},
-    ):
+    with patch("smefit.paths.load_user_paths", return_value=_USER_PATHS):
         assert (
             resolve_path("new_smefit/external_chi2/foo.py")
-            == "/home/user/new_smefit/external_chi2/foo.py"
+            == f"{_SMEFIT}/new_smefit/external_chi2/foo.py"
         )
 
 
 def test_resolve_smefit_results_prefix():
-    with patch(
-        "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_results": "/data/results"},
-    ):
-        assert resolve_path("smefit_results/myfit") == "/data/results/myfit"
+    with patch("smefit.paths.load_user_paths", return_value=_USER_PATHS):
+        assert resolve_path("smefit_results/myfit") == f"{_SMEFIT}/smefit_results/myfit"
 
 
 def test_resolve_prefix_only_no_slash():
-    with patch(
-        "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_database": "/data/smefit_database"},
-    ):
-        assert resolve_path("smefit_database") == "/data/smefit_database"
+    with patch("smefit.paths.load_user_paths", return_value=_USER_PATHS):
+        assert resolve_path("smefit_database") == f"{_SMEFIT}/smefit_database"
 
 
 def test_resolve_missing_key_raises():
@@ -61,10 +52,9 @@ def test_resolve_unknown_prefix_unchanged():
 
 def test_resolve_trailing_slash_stripped_from_base():
     with patch(
-        "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit_database": "/data/smefit_database/"},
+        "smefit.paths.load_user_paths", return_value={"path_to_smefit": f"{_SMEFIT}/"}
     ):
         assert (
             resolve_path("smefit_database/commondata")
-            == "/data/smefit_database/commondata"
+            == f"{_SMEFIT}/smefit_database/commondata"
         )

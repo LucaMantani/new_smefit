@@ -2,9 +2,7 @@
 
 Paths are stored in ~/.config/smefit/paths.yaml:
 
-    path_to_smefit_database: /path/to/smefit_database
-    path_to_new_smefit: /path/to/new_smefit
-    path_to_smefit_results: /path/to/smefit_results
+    path_to_smefit: /path/to/smefit/  # parent directory of new_smefit, smefit_database, smefit_results
 
 Run 'smefit_setup_paths' to create or update this file.
 
@@ -20,11 +18,8 @@ import yaml
 
 USER_PATHS_CONFIG = pathlib.Path.home() / ".config" / "smefit" / "paths.yaml"
 
-_PREFIX_TO_KEY = {
-    "smefit_database": "path_to_smefit_database",
-    "new_smefit": "path_to_new_smefit",
-    "smefit_results": "path_to_smefit_results",
-}
+_SMEFIT_PATH_KEY = "path_to_smefit"
+_KNOWN_PREFIXES = ("smefit_database", "new_smefit", "smefit_results")
 
 
 def load_user_paths() -> dict:
@@ -42,17 +37,27 @@ def write_user_paths(paths: dict) -> None:
     USER_PATHS_CONFIG.chmod(0o600)
 
 
+def _ensure_smefit_paths() -> None:
+    """Create smefit_results/ next to the repo and seed path_to_smefit on first use."""
+    smefit_parent = pathlib.Path(__file__).parents[2]
+    (smefit_parent / "smefit_results").mkdir(exist_ok=True)
+    existing = dict(load_user_paths())
+    if _SMEFIT_PATH_KEY not in existing:
+        existing[_SMEFIT_PATH_KEY] = str(smefit_parent)
+        write_user_paths(existing)
+
+
 def resolve_path(path_str: str) -> str:
-    """If path_str starts with a known prefix, prepend the cached base dir."""
-    for prefix, key in _PREFIX_TO_KEY.items():
+    """If path_str starts with a known prefix, prepend path_to_smefit from the cache."""
+    for prefix in _KNOWN_PREFIXES:
         if path_str == prefix or path_str.startswith(prefix + "/"):
+            _ensure_smefit_paths()
             user_paths = load_user_paths()
-            if key not in user_paths:
+            if _SMEFIT_PATH_KEY not in user_paths:
                 raise ValueError(
-                    f"Path '{path_str}' starts with '{prefix}' but '{key}' is not set "
-                    f"in {USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
+                    f"Path '{path_str}' starts with '{prefix}' but '{_SMEFIT_PATH_KEY}' "
+                    f"is not set in {USER_PATHS_CONFIG}. Run 'smefit_setup_paths' to configure it."
                 )
-            base = user_paths[key].rstrip("/")
-            suffix = path_str[len(prefix) :]
-            return base + suffix
+            base = user_paths[_SMEFIT_PATH_KEY].rstrip("/")
+            return f"{base}/{path_str}"
     return path_str

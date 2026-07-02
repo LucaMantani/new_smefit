@@ -104,3 +104,15 @@ external_chi2:
 ```
 
 In both cases the `smefit_results/` prefix is resolved automatically against the path configured in `.config/paths.yaml`.
+
+### Automatic fit download
+
+If the fit is not found locally, smefit will attempt to download the full fit archive from the server automatically before failing.
+
+The local `registry.json` is updated after a successful download, exactly as if you had run `smefit_get` manually.
+
+If the download also fails (fit not on server, no network, wrong name), a clear error is raised:
+
+```
+FileNotFoundError: '<path>' does not exist locally and could not be downloaded from the server: Fit '<name>' not found on server.
+```

@@ -104,8 +104,9 @@ def main():
     with open(USER_PATHS_CONFIG, "a") as f:
         f.write(
             "\n"
-            "# You can add any number of custom path aliases below.\n"
-            "# Use the key name as a prefix in runcards, just like the standard paths.\n"
+            "# You can add custom path aliases below, but prefer the three standard\n"
+            "# keys above whenever possible — extra keys make runcards harder to share,\n"
+            "# since collaborators need the same key defined in their own paths.yaml.\n"
             "# Example:\n"
             "#   my_extra_database: /path/to/my_extra_database\n"
             "# Then in a runcard:\n"
@@ -116,7 +117,7 @@ def main():
     print(
         f"\nSetup complete. You can add custom path aliases by editing:\n"
         f"  {USER_PATHS_CONFIG}\n"
-        f"\nAny key you add can be used as a prefix in runcards:\n"
-        f"  my_extra_database: /path/to/my_extra_database\n"
-        f"  -> data_path: my_extra_database/commondata"
+        f"\nNote: prefer the three standard keys whenever possible — extra aliases\n"
+        f"make runcards harder to share, as collaborators need the same key\n"
+        f"defined in their own paths.yaml."
     )

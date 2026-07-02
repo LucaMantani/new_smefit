@@ -1171,3 +1171,57 @@ def get_free_space(server: str | None = None) -> int:
     """Return the free space on *server* in bytes."""
     client = _get_client(server, need_write=False)
     return client.free()
+
+
+# ---------------------------------------------------------------------------
+# Local project management
+# ---------------------------------------------------------------------------
+
+
+def list_local_projects(local_results_dir: pathlib.Path) -> list:
+    """Return the sorted project list from the local registry."""
+    return sorted(_read_local_registry(local_results_dir).get("projects", []))
+
+
+def add_local_project(project_name: str, local_results_dir: pathlib.Path) -> None:
+    """Add *project_name* to the local registry's project list."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if project_name in projects:
+        raise ServerError(f"Project '{project_name}' already exists.")
+    projects.append(project_name)
+    reg["projects"] = sorted(projects)
+    _write_local_registry(local_results_dir, reg)
+    log.info("Added project '%s'.", project_name)
+
+
+def rename_local_project(
+    old_name: str, new_name: str, local_results_dir: pathlib.Path
+) -> None:
+    """Rename a project in the local registry and update all resources that reference it."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if old_name not in projects:
+        raise ServerError(f"Project '{old_name}' not found.")
+    if new_name in projects:
+        raise ServerError(f"Project '{new_name}' already exists.")
+    projects[projects.index(old_name)] = new_name
+    reg["projects"] = sorted(projects)
+    for section in ("fits", "reports"):
+        for meta in reg.get(section, {}).values():
+            if meta.get("project") == old_name:
+                meta["project"] = new_name
+    _write_local_registry(local_results_dir, reg)
+    log.info("Renamed project '%s' -> '%s'.", old_name, new_name)
+
+
+def remove_local_project(project_name: str, local_results_dir: pathlib.Path) -> None:
+    """Remove *project_name* from the local registry's project list."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if project_name not in projects:
+        raise ServerError(f"Project '{project_name}' not found.")
+    projects.remove(project_name)
+    reg["projects"] = sorted(projects)
+    _write_local_registry(local_results_dir, reg)
+    log.info("Removed project '%s'.", project_name)

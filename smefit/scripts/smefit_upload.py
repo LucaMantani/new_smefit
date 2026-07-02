@@ -86,7 +86,7 @@ def _local_upload(args, message: str | None) -> None:
     local_results_dir = get_local_results_dir()
     if local_results_dir is None:
         log.error(
-            "smefit_results is not configured. Run 'smefit_setup_paths' to set it up."
+            "smefit_results is not configured. Run 'smefit_setup_local' to set it up."
         )
         sys.exit(1)
 

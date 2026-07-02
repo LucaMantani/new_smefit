@@ -7,7 +7,7 @@ Paths are stored in <new_smefit>/.config/paths.yaml with one key per directory:
     smefit_results:  /path/to/smefit_results
 
 The file is auto-created on first use, assuming the three directories are
-siblings of each other. Edit it directly or run 'smefit_setup_paths' to update.
+siblings of each other. Edit it directly or run 'smefit_setup_local' to update.
 
 In runcards, use the key name as a prefix for relative paths:
     data_path:  smefit_database/commondata

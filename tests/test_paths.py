@@ -7,7 +7,11 @@ import pytest
 from smefit.paths import resolve_path
 
 _SMEFIT = "/Users/alice/smefit"
-_USER_PATHS = {"path_to_smefit": _SMEFIT}
+_USER_PATHS = {
+    "new_smefit": f"{_SMEFIT}/new_smefit",
+    "smefit_database": f"{_SMEFIT}/smefit_database",
+    "smefit_results": f"{_SMEFIT}/smefit_results",
+}
 
 
 def test_resolve_smefit_database_prefix():
@@ -38,7 +42,7 @@ def test_resolve_prefix_only_no_slash():
 
 def test_resolve_missing_key_raises():
     with patch("smefit.paths.load_user_paths", return_value={}):
-        with pytest.raises(ValueError, match="smefit_setup_paths"):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
             resolve_path("smefit_database/commondata")
 
 
@@ -52,7 +56,8 @@ def test_resolve_unknown_prefix_unchanged():
 
 def test_resolve_trailing_slash_stripped_from_base():
     with patch(
-        "smefit.paths.load_user_paths", return_value={"path_to_smefit": f"{_SMEFIT}/"}
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_database": f"{_SMEFIT}/smefit_database/"},
     ):
         assert (
             resolve_path("smefit_database/commondata")

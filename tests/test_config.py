@@ -47,7 +47,7 @@ def test_parse_data_path_prefix_resolved(cfg, tmp_path):
     (tmp_path / "smefit_database" / "commondata").mkdir(parents=True)
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit": str(tmp_path)},
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
     ):
         result = cfg.parse_data_path("smefit_database/commondata")
     assert result == tmp_path / "smefit_database" / "commondata"
@@ -55,7 +55,7 @@ def test_parse_data_path_prefix_resolved(cfg, tmp_path):
 
 def test_parse_data_path_prefix_missing_key(cfg):
     with patch("smefit.paths.load_user_paths", return_value={}):
-        with pytest.raises(ValueError, match="smefit_setup_paths"):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
             cfg.parse_data_path("smefit_database/commondata")
 
 
@@ -74,7 +74,7 @@ def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
     (tmp_path / "smefit_database" / "theory").mkdir(parents=True)
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit": str(tmp_path)},
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
     ):
         result = cfg.parse_theory_path("smefit_database/theory")
     assert result == tmp_path / "smefit_database" / "theory"
@@ -82,7 +82,7 @@ def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
 
 def test_parse_theory_path_prefix_missing_key(cfg):
     with patch("smefit.paths.load_user_paths", return_value={}):
-        with pytest.raises(ValueError, match="smefit_setup_paths"):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
             cfg.parse_theory_path("smefit_database/theory")
 
 
@@ -598,7 +598,7 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     raw = {"MyExt": {"path": "new_smefit/external_chi2/foo.py"}}
     with patch(
         "smefit.paths.load_user_paths",
-        return_value={"path_to_smefit": "/home/user/smefit"},
+        return_value={"new_smefit": "/home/user/smefit/new_smefit"},
     ):
         result = cfg.parse_external_chi2(raw)
     assert (

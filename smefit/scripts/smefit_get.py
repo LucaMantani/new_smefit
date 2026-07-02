@@ -91,6 +91,10 @@ def main():
             download_and_view_report(
                 args.resource_name, local_path=local_path, server=args.server
             )
+            if local_results_dir is not None:
+                Downloader(server=args.server).update_local_registry(
+                    "report", args.resource_name, local_results_dir
+                )
         else:
             downloader = Downloader(server=args.server)
             downloader.download(args.resource_type, args.resource_name, local_path)

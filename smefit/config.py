@@ -20,7 +20,12 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
-from smefit.paths import USER_PATHS_CONFIG, load_user_paths, resolve_path
+from smefit.paths import (
+    USER_PATHS_CONFIG,
+    fetch_fit_if_missing,
+    load_user_paths,
+    resolve_path,
+)
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
@@ -223,6 +228,7 @@ class smefitConfig(Config):
                 entry["path"] = resolve_path(entry["path"])
             if "rg_matrix" in entry:
                 entry["rg_matrix"] = resolve_path(entry["rg_matrix"])
+                fetch_fit_if_missing(pathlib.Path(entry["rg_matrix"]))
             cleaned[name] = entry
         return cleaned
 

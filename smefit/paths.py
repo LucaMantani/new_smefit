@@ -81,6 +81,54 @@ def get_local_results_dir() -> pathlib.Path | None:
     )
 
 
+def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
+    """If *resolved_path* is missing and lives under smefit_results/fits/<name>/,
+    attempt to download it from the server before raising.
+
+    For rge_matrix.pkl only the RGE file is fetched (fast path). For any other
+    file the full fit archive is downloaded.
+    """
+    if resolved_path.exists():
+        return
+
+    user_paths = load_user_paths()
+    results_str = user_paths.get("smefit_results")
+    if not results_str:
+        return
+
+    fits_dir = pathlib.Path(results_str) / "fits"
+    try:
+        rel = resolved_path.relative_to(fits_dir)
+    except ValueError:
+        return  # not under smefit_results/fits/ — let the caller raise naturally
+
+    fit_name = rel.parts[0]
+    fit_dir = fits_dir / fit_name
+
+    import logging
+
+    log = logging.getLogger(__name__)
+    log.info(
+        "Fit '%s' not found locally — attempting to download from server ...",
+        fit_name,
+    )
+
+    from smefit.server_utils import Downloader, ServerError, download_rge
+
+    try:
+        if resolved_path.name == "rge_matrix.pkl":
+            download_rge(fit_name, local_path=fit_dir)
+        else:
+            downloader = Downloader()
+            downloader.download("fit", fit_name, fits_dir)
+            downloader.update_local_registry("fit", fit_name, pathlib.Path(results_str))
+    except ServerError as e:
+        raise FileNotFoundError(
+            f"'{resolved_path}' does not exist locally and could not be "
+            f"downloaded from the server: {e}"
+        ) from e
+
+
 def resolve_path(path_str: str) -> str:
     """Resolve a prefix-relative path using the user paths config.
 

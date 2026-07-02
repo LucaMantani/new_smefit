@@ -287,17 +287,15 @@ def _main_local(args) -> None:
     import pathlib
     import sys
 
-    from smefit.paths import load_user_paths
+    from smefit.paths import get_local_results_dir
     from smefit.server_utils import _read_local_registry
 
-    user_paths = load_user_paths()
-    if "path_to_smefit" not in user_paths:
+    local_results_dir = get_local_results_dir()
+    if local_results_dir is None:
         log.error(
-            "path_to_smefit is not configured. Run 'smefit_setup_paths' to set it up."
+            "smefit_results is not configured. Run 'smefit_setup_paths' to set it up."
         )
         sys.exit(1)
-
-    local_results_dir = pathlib.Path(user_paths["path_to_smefit"]) / "smefit_results"
     registry = _read_local_registry(local_results_dir)
 
     resource_type = args.resource_type
@@ -337,6 +335,14 @@ def _main_local(args) -> None:
             _table(
                 f"Local reports ({len(reports)}){title_suffix}", *_report_rows(reports)
             )
+            if not project_filter:
+                projects = sorted(registry.get("projects", []))
+                print(f"\n  {_header(f'Local projects ({len(projects)})')}")
+                if projects:
+                    for p in projects:
+                        print(f"    {_green(p)}")
+                else:
+                    print(_dim("  (none)"))
     else:
         log.error("--local does not support resource type '%s'.", resource_type)
         sys.exit(1)

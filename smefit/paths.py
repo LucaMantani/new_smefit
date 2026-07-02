@@ -107,14 +107,11 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
         fit_name,
     )
 
-    from smefit.server_utils import Downloader, ServerError, download_rge
+    from smefit.server_utils import Downloader, ServerError
 
     try:
         downloader = Downloader()
-        if resolved_path.name == "rge_matrix.pkl":
-            download_rge(fit_name, local_path=fit_dir)
-        else:
-            downloader.download("fit", fit_name, fits_dir)
+        downloader.download("fit", fit_name, fits_dir)
         downloader.update_local_registry("fit", fit_name, pathlib.Path(results_str))
     except ServerError as e:
         raise FileNotFoundError(

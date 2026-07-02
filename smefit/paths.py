@@ -76,11 +76,8 @@ def get_local_results_dir() -> pathlib.Path | None:
 
 
 def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
-    """If *resolved_path* is missing and lives under smefit_results/fits/<name>/,
+    """If *resolved_path* is missing and lives under smefit_results/{fits,reports}/<name>/,
     attempt to download it from the server before raising.
-
-    For rge_matrix.pkl only the RGE file is fetched (fast path). For any other
-    file the full fit archive is downloaded.
     """
     if resolved_path.exists():
         return
@@ -90,29 +87,39 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
     if not results_str:
         return
 
-    fits_dir = pathlib.Path(results_str) / "fits"
-    try:
-        rel = resolved_path.relative_to(fits_dir)
-    except ValueError:
-        return  # not under smefit_results/fits/ — let the caller raise naturally
+    results_dir = pathlib.Path(results_str)
+    resource_type = None
+    for candidate in ("fits", "reports"):
+        try:
+            rel = resolved_path.relative_to(results_dir / candidate)
+            resource_type = candidate.rstrip(
+                "s"
+            )  # "fits" -> "fit", "reports" -> "report"
+            break
+        except ValueError:
+            continue
 
-    fit_name = rel.parts[0]
-    fit_dir = fits_dir / fit_name
+    if resource_type is None or not rel.parts:
+        return  # not under a known smefit_results subdir — let the caller raise naturally
+
+    resource_name = rel.parts[0]
+    subdir = results_dir / f"{resource_type}s"
 
     import logging
 
     log = logging.getLogger(__name__)
     log.info(
-        "Fit '%s' not found locally — attempting to download from server ...",
-        fit_name,
+        "%s '%s' not found locally — attempting to download from server ...",
+        resource_type.capitalize(),
+        resource_name,
     )
 
     from smefit.server_utils import Downloader, ServerError
 
     try:
         downloader = Downloader()
-        downloader.download("fit", fit_name, fits_dir)
-        downloader.update_local_registry("fit", fit_name, pathlib.Path(results_str))
+        downloader.download(resource_type, resource_name, subdir)
+        downloader.update_local_registry(resource_type, resource_name, results_dir)
     except ServerError as e:
         raise FileNotFoundError(
             f"'{resolved_path}' does not exist locally and could not be "

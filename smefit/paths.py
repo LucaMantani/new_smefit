@@ -66,13 +66,7 @@ def _ensure_smefit_paths() -> None:
 
 
 def get_local_results_dir() -> pathlib.Path | None:
-    """Return the configured smefit_results directory, seeding defaults on first use.
-
-    Always calls _ensure_smefit_paths so that the first invocation of any
-    server script auto-creates .config/paths.yaml with the three standard
-    keys derived from the package location.
-    """
-    _ensure_smefit_paths()
+    """Return the configured smefit_results directory, or None if not set."""
     user_paths = load_user_paths()
     return (
         pathlib.Path(user_paths["smefit_results"])
@@ -132,11 +126,11 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
 def resolve_path(path_str: str) -> str:
     """Resolve a prefix-relative path using the user paths config.
 
-    Any key in paths.yaml is a valid prefix. Standard prefixes
-    (new_smefit, smefit_database, smefit_results) are auto-seeded on first
-    use. User-defined aliases (e.g. lhc_database) are resolved as-is.
+    Any key in paths.yaml is a valid prefix. User-defined aliases
+    (e.g. lhc_database) are resolved the same way as the standard prefixes.
 
     Paths that do not start with any known prefix are returned unchanged.
+    Run 'smefit_setup_local' to create paths.yaml if it does not exist yet.
     """
     user_paths = load_user_paths()
 
@@ -146,19 +140,13 @@ def resolve_path(path_str: str) -> str:
             rest = path_str[len(key) :]
             return user_paths[key].rstrip("/") + rest
 
-    # Standard prefix matched but key not yet in config — auto-seed and retry
+    # Standard prefix matched but not in config — paths.yaml is missing or incomplete
     for prefix in _STANDARD_PREFIXES:
         if path_str == prefix or path_str.startswith(prefix + "/"):
-            _ensure_smefit_paths()
-            user_paths = load_user_paths()
-            base = user_paths.get(prefix)
-            if base is None:
-                raise ValueError(
-                    f"Path '{path_str}' starts with '{prefix}' but '{prefix}' "
-                    f"is not set in {USER_PATHS_CONFIG}. "
-                    "Run 'smefit_setup_paths' to configure it."
-                )
-            rest = path_str[len(prefix) :]
-            return base.rstrip("/") + rest
+            raise ValueError(
+                f"Path '{path_str}' starts with '{prefix}' but '{prefix}' "
+                f"is not set in {USER_PATHS_CONFIG}. "
+                "Run 'smefit_setup_local' to configure it."
+            )
 
     return path_str

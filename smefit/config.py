@@ -101,6 +101,9 @@ class smefitConfig(Config):
             raise ConfigError(
                 "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
             )
+        if "rg_matrix" in rge:
+            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
+            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
         return rge
 
     def produce_init_scale(self, rge):

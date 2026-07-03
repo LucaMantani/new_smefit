@@ -77,6 +77,17 @@ def test_chi2_callable():
     assert float(result) == pytest.approx(9.0)
 
 
+def test_chi2_baseline_default_zeros():
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=5)
+    assert jnp.allclose(chi2.baseline, jnp.zeros(2))
+
+
+def test_chi2_baseline_explicit():
+    baseline = jnp.array([0.7, -0.3])
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=5, baseline=baseline)
+    assert jnp.allclose(chi2.baseline, baseline)
+
+
 # ---------------------------------------------------------------------------
 # build_datasets_chi2
 # ---------------------------------------------------------------------------

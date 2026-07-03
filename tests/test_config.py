@@ -248,6 +248,42 @@ def test_build_chi2_ext_only(cfg):
     assert result.has_external
 
 
+def test_build_chi2_baseline_from_coefficients(cfg):
+    """baseline flows from the coefficients node into the Chi2 (base-only path)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [
+            Coefficient(name="OpA", free=True, prior=prior, baseline_value=0.7),
+            Coefficient(name="OpB", free=True, prior=prior, baseline_value=-0.3),
+        ]
+    )
+    mock_eft = MagicMock()
+    mock_eft.coefficients.free_names = ["OpA", "OpB"]
+    mock_data = MagicMock()
+    mock_data.num_data = 5
+
+    with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
+        result = cfg._build_chi2_impl(
+            eft_model=mock_eft,
+            data=mock_data,
+            fit_covmat=jnp.eye(3),
+            coefficients=coefficients,
+        )
+    assert jnp.allclose(result.baseline, jnp.array([0.7, -0.3]))
+
+
+def test_build_chi2_ext_only_baseline_from_coefficients(cfg):
+    """External-chi2-only fits still honor baseline_value (no eft_model)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [Coefficient(name="OpA", free=True, prior=prior, baseline_value=1.5)]
+    )
+    ext = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA"], num_data=7)
+    result = cfg._build_chi2_impl(ext_chi2_func=[ext], coefficients=coefficients)
+    assert result.has_external
+    assert jnp.allclose(result.baseline, jnp.array([1.5]))
+
+
 def test_build_chi2_combined(cfg):
     mock_eft = MagicMock()
     mock_eft.coefficients.free_names = ["OpA"]

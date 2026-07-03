@@ -52,7 +52,7 @@ class EFTModel(BaseModel):
         self.use_quad = use_quad
 
         if rge_matrix is not None:
-            self._apply_rge(theory, rge_matrix.stacked_mats, rge_matrix.obs_operators)
+            self._apply_rge(theory, rge_matrix)
         else:
             self._setup_direct(theory)
 
@@ -96,13 +96,26 @@ class EFTModel(BaseModel):
             [coefficients.coeff_index[name] for name in active_names]
         )
 
-    def _apply_rge(self, theory, stacked_mats, obs_operators):
+    def _apply_rge(self, theory, rge_matrix):
         """Set up lin/quad corrections by contracting theory tables with RGE matrices."""
-        coeff_names = self.coefficients.names  # sorted by CoefficientGroup constructor
-        rge_obs_ops = obs_operators  # already sorted
-        n_obs, n_init = len(rge_obs_ops), len(coeff_names)
+        coeff_names = self.coefficients.names
+        rge_obs_ops = rge_matrix.obs_operators
+        n_obs = len(rge_obs_ops)
 
-        R = stacked_mats
+        # Check that all declared coefficients are present in the RGE initial-basis operators
+        init_op_idx = {name: i for i, name in enumerate(rge_matrix.init_operators)}
+        missing = [name for name in coeff_names if name not in init_op_idx]
+        if missing:
+            raise ValueError(
+                f"Coefficients {missing} are declared in the fit but not found in the "
+                "RGE initial-basis operators. Check the RGE configuration covers all "
+                "declared coefficients."
+            )
+        col_indices = [init_op_idx[name] for name in coeff_names]
+        n_init = len(coeff_names)
+
+        # Slice the RGE matrix to only the columns corresponding to the declared coefficients
+        R = rge_matrix.stacked_mats[:, :, col_indices]
         if R.shape[0] == 1:
             R = jnp.broadcast_to(R, (theory.n_data, n_obs, n_init))
 
@@ -141,9 +154,9 @@ class EFTModel(BaseModel):
                 "dij,dil,djr->dlr", jnp.asarray(quad_aligned), R, R
             )
 
-        self.active_coeff_indices = jnp.array(
-            [self.coefficients.coeff_index[name] for name in coeff_names]
-        )
+        # Dummy identity permutation for the forward map,
+        # RGE already spans all declared coefficients.
+        self.active_coeff_indices = jnp.arange(len(coeff_names))
 
     @jax.jit(static_argnames=("self",))
     def forward_map(self, coeffs: jnp.ndarray) -> jnp.ndarray:

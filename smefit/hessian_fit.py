@@ -15,6 +15,7 @@ import jax
 import jax.numpy as jnp
 
 from smefit.fit_result import FitResult
+from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
@@ -62,17 +63,9 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
         key, mean=c_best, cov=cov, shape=(n_samples,)
     )
 
-    # Resolve full coefficient vector (free + derived) for each sample
-    all_resolved = jax.vmap(eft_model.coefficients.resolve)(samples_free)
-    samples = {
-        name: all_resolved[:, i] for i, name in enumerate(eft_model.coefficients.names)
-    }
-
-    best_resolved = eft_model.coefficients.resolve(c_best)
-    best_fit_point = {
-        name: float(best_resolved[i])
-        for i, name in enumerate(eft_model.coefficients.names)
-    }
+    samples, best_fit_point = resolve_posterior(
+        eft_model.coefficients, samples_free, c_best
+    )
 
     return FitResult(
         free_parameters=eft_model.coefficients.free_names,

@@ -207,9 +207,49 @@ def test_coeff_group_single_free():
     cg = CoefficientGroup([c1, c2])
     sg = cg.single_free("OpA")
     assert sg.free_names == ["OpA"]
-    # OpB is now fixed at 0; sorted: OpA (0), OpB (1)
+    # OpB is dropped (non-target free, no expressions need it)
+    assert "OpB" not in sg.names
     result = sg.resolve(jnp.array([5.0]))
-    assert jnp.allclose(result, jnp.array([5.0, 0.0]))
+    assert jnp.allclose(result, jnp.array([5.0]))
+
+
+def test_single_free_drops_independent_expr():
+    """Expression-constrained not depending on target is dropped along with its vars."""
+    c_a = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_b = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_expr = Coefficient(name="OpC", free=False, vars=["OpB"], expr="2*OpB")
+    cg = CoefficientGroup([c_a, c_b, c_expr])
+    sg = cg.single_free("OpA")
+    assert "OpA" in sg.names
+    assert "OpB" not in sg.names  # dropped — not needed by any kept expression
+    assert "OpC" not in sg.names  # dropped — doesn't depend on target
+
+
+def test_single_free_keeps_dependent_expr_and_its_vars():
+    """Expression-constrained depending on target is kept; its non-target free vars → 0."""
+    c_a = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_b = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_expr = Coefficient(name="OpC", free=False, vars=["OpA", "OpB"], expr="OpA+OpB")
+    cg = CoefficientGroup([c_a, c_b, c_expr])
+    sg = cg.single_free("OpA")
+    assert sg.free_names == ["OpA"]
+    assert "OpB" in sg.names and not sg.coefficients[sg.coeff_index["OpB"]].free
+    assert float(sg.coefficients[sg.coeff_index["OpB"]].value) == pytest.approx(0.0)
+    assert "OpC" in sg.names
+    # Resolve: OpA=3 → OpC = 3 + 0 = 3
+    result = sg.resolve(jnp.array([3.0]))
+    slim_dict = {name: float(result[i]) for i, name in enumerate(sg.names)}
+    assert slim_dict["OpA"] == pytest.approx(3.0)
+    assert slim_dict["OpB"] == pytest.approx(0.0)
+    assert slim_dict["OpC"] == pytest.approx(3.0)
 
 
 def test_coeff_group_resolve_all_fixed_empty_array():

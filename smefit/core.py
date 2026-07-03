@@ -461,11 +461,43 @@ class CoefficientGroup:
         return result
 
     def single_free(self, target_name: str) -> "CoefficientGroup":
-        """Return a CoefficientGroup where only *target_name* is free."""
+        """Return a CoefficientGroup where only *target_name* is free.
+
+        Non-target free coefficients are dropped (their zero contribution to
+        predictions is omitted), unless they appear as ``vars`` in an
+        expression-constrained coefficient that itself depends on the target,
+        in which case they are set to ``value=0.0`` so the expression can be
+        evaluated. For example, if we want to perform individual fits of c1 and c2
+        and we have a constrained c3 = c1 + c2, then we set c2 = 0 when we fit c1
+        alone so that c3 = c1.
+
+        Expression-constrained coefficients are kept only if they directly
+        depend on the target; those that don't evaluate to constants w.r.t.
+        the target are dropped.
+
+        Fixed-constant coefficients (``value`` only) are always kept — they
+        have real, non-zero contributions to predictions.
+        """
+
+        free_set = set(self.free_names)
+        kept_expr_names = {
+            c.name for c in self.coefficients if c.vars and target_name in c.vars
+        }
+        needed_zero_vars = {
+            var
+            for c in self.coefficients
+            if c.name in kept_expr_names
+            for var in c.vars
+            if var in free_set and var != target_name
+        }
+
         new_coeffs = []
         for c in self.coefficients:
-            if c.free and c.name != target_name:
-                new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
-            else:
+            if c.name == target_name:
+                new_coeffs.append(c)
+            elif c.free:
+                if c.name in needed_zero_vars:
+                    new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
+            elif c.value is not None or c.name in kept_expr_names:
                 new_coeffs.append(c)
         return CoefficientGroup(new_coeffs)

@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working in this repository.
 
+## Skills
+
+User-facing help (runcard authoring, dataset discovery, running/interpreting fits)
+lives in the skills under `.claude/skills/` — see `.claude/skills/README.md`.
+Files marked AUTO-GENERATED there are produced by
+`python scripts/generate_skill_reference.py`; regenerate and commit them whenever
+user-facing surface changes (runcard keys, actions, priors, template_runcards/).
+CI (`.github/workflows/skills.yml`) fails if they are stale.
+
 ## Commands
 
 **Install**:

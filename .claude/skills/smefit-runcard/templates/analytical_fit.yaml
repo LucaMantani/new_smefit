@@ -1,7 +1,10 @@
+# AUTO-COPIED from template_runcards/analytical_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+
 # path to data and theory: point these into a clone of
 # https://github.com/LHCfitNikhef/smefit_database (<clone>/commondata, <clone>/theory)
-data_path: ../commondata
-theory_path: ../theory
+data_path: /path/to/smefit_database/commondata  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
+theory_path: /path/to/smefit_database/theory  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
 # Covmat settings
 use_theory_covmat: True
 use_t0: True

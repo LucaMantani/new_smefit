@@ -1,0 +1,37 @@
+name: Skill reference freshness
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "smefit/**"
+      - "template_runcards/**"
+      - ".claude/skills/**"
+      - "scripts/generate_skill_reference.py"
+      - ".github/workflows/skills.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "smefit/**"
+      - "template_runcards/**"
+      - ".claude/skills/**"
+      - "scripts/generate_skill_reference.py"
+      - ".github/workflows/skills.yml"
+
+jobs:
+  check-skill-references:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Check generated skill references are up to date
+        run: python scripts/generate_skill_reference.py --check

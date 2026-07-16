@@ -1,18 +1,36 @@
+# AUTO-COPIED from template_runcards/hessian_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+
 # path to data and theory: point these into a clone of
 # https://github.com/LHCfitNikhef/smefit_database (<clone>/commondata, <clone>/theory)
-data_path: ../commondata
-theory_path: ../theory
+data_path: /path/to/smefit_database/commondata  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
+theory_path: /path/to/smefit_database/theory  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
 # SMEFT Expansion Order
 use_quad: True
 
-blackjax_settings:
-  n_live: 500
-  repeats: 3
-  delete_fraction: 0.5
-  log_precision: -2
+optimizer_settings:
+    optimizer: adam
+    # clipnorm: 1.0
+    optimizer_hyperparams:
+      learning_rate: 0.001
+    # scheduler:
+    #   name: linear_schedule
+    #   params:
+    #     init_value: 1.0e-3
+    #     end_value:  1.0e-6
+    #     transition_begin: 3000
+    #     transition_steps: 10000
+
+gradient_descent_settings:
+    sm_solution: false
+    n_steps: 2000
+    tol: 1.0e-8
+
+hessian_settings:
+    n_samples: 10000
 
 rge:
   init_scale: 10000.0
@@ -51,17 +69,12 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: /path/to/smefit_database/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
-      use_projection_L0: False
-
-
-# whitening:
-#   sigma_prior: 5.0
-#   eps: 1e-8
+      use_projection_L0: True
 
 actions_:
-- chi2_timing
+- run_hessian_fit

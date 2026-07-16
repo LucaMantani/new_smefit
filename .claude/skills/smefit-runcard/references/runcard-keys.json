@@ -1,0 +1,229 @@
+{
+  "dataset_entry_keys": [
+    "name",
+    "order",
+    "theory_cov",
+    "group"
+  ],
+  "derived_keys": [
+    "chi2",
+    "data",
+    "data_groups",
+    "datasets_chi2",
+    "eft_model",
+    "ext_chi2_func",
+    "fit_covmat",
+    "individual_chi2",
+    "individual_coefficients",
+    "individual_eft_model",
+    "individual_ext_chi2_func",
+    "individual_fit_coefficients",
+    "individual_prior",
+    "init_scale",
+    "optimizer",
+    "prior",
+    "pseudodata",
+    "rge_matrix",
+    "theory",
+    "whitening_matrix"
+  ],
+  "prior_dists": {
+    "gaussian": [
+      "mean",
+      "std"
+    ],
+    "normal": [
+      "mean",
+      "std"
+    ],
+    "uniform": [
+      "low",
+      "high"
+    ]
+  },
+  "raw_keys": {
+    "datasets": {
+      "default": null,
+      "used_by": [
+        "data",
+        "data_groups",
+        "prior",
+        "theory"
+      ]
+    },
+    "use_quad": {
+      "default": "False",
+      "used_by": [
+        "eft_model",
+        "individual_eft_model"
+      ]
+    },
+    "use_t0": {
+      "default": "False",
+      "used_by": [
+        "fit_covmat"
+      ]
+    },
+    "use_theory_covmat": {
+      "default": "False",
+      "used_by": [
+        "fit_covmat",
+        "pseudodata"
+      ]
+    }
+  },
+  "settings_blocks": {
+    "bayesian_update_path": {
+      "defaults": {},
+      "known_keys": null
+    },
+    "blackjax_settings": {
+      "defaults": {
+        "delete_fraction": "0.5",
+        "log_dir": "str(output_path / 'blackjax_logs')",
+        "log_precision": "-2",
+        "n_live": "500",
+        "n_posterior_samples": "1000",
+        "posterior_resampling_seed": "123456",
+        "repeats": "3",
+        "seed": "0"
+      },
+      "known_keys": [
+        "delete_fraction",
+        "log_precision",
+        "n_live",
+        "n_posterior_samples",
+        "posterior_resampling_seed",
+        "repeats",
+        "seed"
+      ]
+    },
+    "coefficients": {
+      "defaults": {},
+      "known_keys": null
+    },
+    "data_path": {
+      "defaults": {},
+      "known_keys": null
+    },
+    "external_chi2": {
+      "defaults": {
+        "group": "(no default)"
+      },
+      "known_keys": null
+    },
+    "gradient_descent_settings": {
+      "defaults": {
+        "n_steps": "2000",
+        "sm_solution": "False",
+        "tol": "1e-08"
+      },
+      "known_keys": [
+        "n_steps",
+        "sm_solution",
+        "tol"
+      ]
+    },
+    "hessian_settings": {
+      "defaults": {
+        "n_samples": "10000",
+        "seed": "42"
+      },
+      "known_keys": [
+        "n_samples",
+        "seed"
+      ]
+    },
+    "optimizer_settings": {
+      "defaults": {},
+      "known_keys": [
+        "clipnorm",
+        "optimizer",
+        "optimizer_hyperparams",
+        "scheduler"
+      ]
+    },
+    "pseudodata_settings": {
+      "defaults": {
+        "fred_sys": "1.0",
+        "fred_tot": "1.0",
+        "lumi_new": "None",
+        "noise": "'L0'",
+        "seed": "None"
+      },
+      "known_keys": [
+        "fred_sys",
+        "fred_tot",
+        "lumi_new",
+        "noise",
+        "seed"
+      ]
+    },
+    "rge": {
+      "defaults": {
+        "obs_scale": "'dynamic'"
+      },
+      "known_keys": [
+        "adm_QCD",
+        "init_scale",
+        "obs_scale",
+        "rg_matrix",
+        "scale_variation",
+        "smeft_accuracy",
+        "yukawa"
+      ]
+    },
+    "theory_path": {
+      "defaults": {},
+      "known_keys": null
+    },
+    "ultranest_settings": {
+      "defaults": {
+        "ReactiveNS_settings": "{}",
+        "Run_settings": "{}",
+        "SliceSampler_settings": "{}",
+        "sampler_plot": "False",
+        "ultranest_seed": "123456"
+      },
+      "known_keys": [
+        "ReactiveNS_settings",
+        "Run_settings",
+        "SliceSampler_settings",
+        "sampler_plot",
+        "ultranest_seed"
+      ]
+    },
+    "whitening": {
+      "defaults": {
+        "eps": "1e-08",
+        "sigma_prior": "5.0"
+      },
+      "known_keys": [
+        "eps",
+        "sigma_prior"
+      ]
+    }
+  },
+  "top_level_keys": [
+    "actions_",
+    "bayesian_update_path",
+    "blackjax_settings",
+    "coefficients",
+    "data_path",
+    "datasets",
+    "external_chi2",
+    "gradient_descent_settings",
+    "hessian_settings",
+    "meta",
+    "optimizer_settings",
+    "pseudodata_settings",
+    "rge",
+    "template_text",
+    "theory_path",
+    "ultranest_settings",
+    "use_quad",
+    "use_t0",
+    "use_theory_covmat",
+    "whitening"
+  ]
+}

@@ -22,9 +22,12 @@ and then use them in runcards the same way:
     data_path: lhc_database/commondata
 """
 
+import logging
 import pathlib
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 # Repo-local config — machine-specific, listed in .gitignore
 USER_PATHS_CONFIG = pathlib.Path(__file__).parents[1] / ".config" / "paths.yaml"
@@ -105,9 +108,6 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
     resource_name = rel.parts[0]
     subdir = results_dir / f"{resource_type}s"
 
-    import logging
-
-    log = logging.getLogger(__name__)
     log.info(
         "%s '%s' not found locally — attempting to download from server ...",
         resource_type.capitalize(),

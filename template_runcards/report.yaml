@@ -1,6 +1,6 @@
 # path to data and theory
-data_path: ../commondata
-theory_path: ../theory
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -128,7 +128,7 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       group: LHC-DY
       use_quad: True
       order: NLO_QCD

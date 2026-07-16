@@ -14,6 +14,12 @@ conda install pandoc
 pip install -e .
 ```
 
+### Local setup and server access
+
+After installing the package, follow the instructions in [`LOCAL_SETUP.md`](LOCAL_SETUP.md) to configure the default paths for datasets and results.
+
+For instructions on using the server, see [`SERVER.md`](SERVER.md).
+
 ### GPU (CUDA) Support
 
 To enable GPU acceleration, install JAX with CUDA 12 (or 13 if available) support:

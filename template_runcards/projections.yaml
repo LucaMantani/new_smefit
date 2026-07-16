@@ -1,7 +1,7 @@
 # path to data and theory: point these into a clone of
 # https://github.com/LHCfitNikhef/smefit_database (<clone>/commondata, <clone>/theory)
-data_path: ../commondata
-theory_path: ../theory
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True

@@ -46,6 +46,7 @@ _RESOURCE_MARKERS = {
     "report": "index.html",
 }
 REGISTRY_PATH = "registry.json"
+LOCAL_RESULTS_REGISTRY = "registry.json"
 MISC_REGISTRY_PATH = "misc/registry_misc.json"
 BIN_DIR = "bin"
 BIN_REGISTRY_PATH = "bin/registry_bin.json"
@@ -236,6 +237,22 @@ def _write_registry(client, registry: dict) -> None:
                 remote_path_to=_registry_backup_path("registry.json"),
             )
         client.upload_sync(remote_path=REGISTRY_PATH, local_path=str(tmp))
+
+
+def _read_local_registry(local_results_dir: pathlib.Path) -> dict:
+    """Read the local registry from *local_results_dir*/registry.json."""
+    path = local_results_dir / LOCAL_RESULTS_REGISTRY
+    if not path.exists():
+        return _empty_registry()
+    data = json.loads(path.read_text())
+    return {**_empty_registry(), **data}
+
+
+def _write_local_registry(local_results_dir: pathlib.Path, registry: dict) -> None:
+    """Write the local registry to *local_results_dir*/registry.json."""
+    local_results_dir.mkdir(parents=True, exist_ok=True)
+    path = local_results_dir / LOCAL_RESULTS_REGISTRY
+    path.write_text(json.dumps(registry, indent=2, sort_keys=True))
 
 
 def _read_misc_registry(client) -> dict:
@@ -886,6 +903,28 @@ class Downloader:
             names.append(e)
         return names
 
+    def update_local_registry(
+        self,
+        resource_type: str,
+        resource_name: str,
+        local_results_dir: pathlib.Path,
+    ) -> None:
+        """Mirror the server registry entry for *resource_name* into the local registry.
+
+        Only operates on archivable types (fit, report); silently skips others.
+        """
+        if resource_type not in _ARCHIVABLE_TYPES:
+            return
+        registry = _read_registry(self._client)
+        meta = registry.get(f"{resource_type}s", {}).get(resource_name, {})
+        local_reg = _read_local_registry(local_results_dir)
+        local_reg.setdefault(f"{resource_type}s", {})[resource_name] = meta
+        _write_local_registry(local_results_dir, local_reg)
+        log.info(
+            "Local registry updated: %s",
+            local_results_dir / LOCAL_RESULTS_REGISTRY,
+        )
+
     def download(
         self,
         resource_type: str,
@@ -1132,3 +1171,57 @@ def get_free_space(server: str | None = None) -> int:
     """Return the free space on *server* in bytes."""
     client = _get_client(server, need_write=False)
     return client.free()
+
+
+# ---------------------------------------------------------------------------
+# Local project management
+# ---------------------------------------------------------------------------
+
+
+def list_local_projects(local_results_dir: pathlib.Path) -> list:
+    """Return the sorted project list from the local registry."""
+    return sorted(_read_local_registry(local_results_dir).get("projects", []))
+
+
+def add_local_project(project_name: str, local_results_dir: pathlib.Path) -> None:
+    """Add *project_name* to the local registry's project list."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if project_name in projects:
+        raise ServerError(f"Project '{project_name}' already exists.")
+    projects.append(project_name)
+    reg["projects"] = sorted(projects)
+    _write_local_registry(local_results_dir, reg)
+    log.info("Added project '%s'.", project_name)
+
+
+def rename_local_project(
+    old_name: str, new_name: str, local_results_dir: pathlib.Path
+) -> None:
+    """Rename a project in the local registry and update all resources that reference it."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if old_name not in projects:
+        raise ServerError(f"Project '{old_name}' not found.")
+    if new_name in projects:
+        raise ServerError(f"Project '{new_name}' already exists.")
+    projects[projects.index(old_name)] = new_name
+    reg["projects"] = sorted(projects)
+    for section in ("fits", "reports"):
+        for meta in reg.get(section, {}).values():
+            if meta.get("project") == old_name:
+                meta["project"] = new_name
+    _write_local_registry(local_results_dir, reg)
+    log.info("Renamed project '%s' -> '%s'.", old_name, new_name)
+
+
+def remove_local_project(project_name: str, local_results_dir: pathlib.Path) -> None:
+    """Remove *project_name* from the local registry's project list."""
+    reg = _read_local_registry(local_results_dir)
+    projects = reg.setdefault("projects", [])
+    if project_name not in projects:
+        raise ServerError(f"Project '{project_name}' not found.")
+    projects.remove(project_name)
+    reg["projects"] = sorted(projects)
+    _write_local_registry(local_results_dir, reg)
+    log.info("Removed project '%s'.", project_name)

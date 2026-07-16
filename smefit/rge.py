@@ -13,6 +13,7 @@ import pandas as pd
 import wilson
 
 from smefit.constants import gs, mz
+from smefit.paths import fetch_fit_if_missing, resolve_path
 from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
 
 # Numerical threshold for filtering small Wilson coefficient values
@@ -640,6 +641,8 @@ def load_rge_matrix(
     # load precomputed RGE matrix if it exists
     path_to_rge_mat = rge_dict.get("rg_matrix", False)
     if path_to_rge_mat:
+        path_to_rge_mat = resolve_path(path_to_rge_mat)
+        fetch_fit_if_missing(pathlib.Path(path_to_rge_mat))
         rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, rge_settings)
 
     # compute or fetch the RGE matrix for each scale

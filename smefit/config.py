@@ -20,6 +20,12 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
+from smefit.paths import (
+    USER_PATHS_CONFIG,
+    fetch_fit_if_missing,
+    load_user_paths,
+    resolve_path,
+)
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
@@ -32,9 +38,9 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path."""
+        """Parse data path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
-        # Verify it exists
         if not data_path.exists():
             log.error(f"data_path {data_path} does not exist.")
             raise ValueError(f"data_path {data_path} does not exist.")
@@ -42,9 +48,9 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path."""
+        """Parse theory path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
-        # Verify it exists
         if not theory_path.exists():
             log.error(f"theory_path {theory_path} does not exist.")
             raise ValueError(f"theory_path {theory_path} does not exist.")
@@ -95,6 +101,9 @@ class smefitConfig(Config):
             raise ConfigError(
                 "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
             )
+        if "rg_matrix" in rge:
+            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
+            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
         return rge
 
     def produce_init_scale(self, rge):
@@ -210,14 +219,20 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser. Strips 'group' keys and caches them for produce_data_groups."""
+        """Pass-through parser. Strips 'group' keys and resolves prefix-relative paths."""
         self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
             group = cfg.get("group")
             if group is not None:
                 self._ext_chi2_groups[name] = group
-            cleaned[name] = {k: v for k, v in cfg.items() if k != "group"}
+            entry = {k: v for k, v in cfg.items() if k != "group"}
+            if "path" in entry:
+                entry["path"] = resolve_path(entry["path"])
+            if "rg_matrix" in entry:
+                entry["rg_matrix"] = resolve_path(entry["rg_matrix"])
+                fetch_fit_if_missing(pathlib.Path(entry["rg_matrix"]))
+            cleaned[name] = entry
         return cleaned
 
     def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):

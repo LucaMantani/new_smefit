@@ -1,5 +1,5 @@
-# path to data and theory: point these into a clone of
-# https://github.com/LHCfitNikhef/smefit_database (<clone>/commondata, <clone>/theory)
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
 data_path: smefit_database/commondata
 theory_path: smefit_database/theory
 # Covmat settings

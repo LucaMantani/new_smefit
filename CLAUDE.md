@@ -128,8 +128,8 @@ Key design points:
 ## Runcard structure
 
 ```yaml
-data_path: /path/to/smefit_database/commondata
-theory_path: /path/to/smefit_database/theory
+data_path: smefit_database/commondata    # prefix resolved via .config/paths.yaml (smefit_setup_local)
+theory_path: smefit_database/theory
 use_theory_covmat: False
 use_t0: False
 use_quad: True

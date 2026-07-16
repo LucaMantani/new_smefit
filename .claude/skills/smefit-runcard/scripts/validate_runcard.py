@@ -14,6 +14,7 @@ Exit codes: 0 = valid, 1 = errors found, 2 = cannot read input.
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +53,76 @@ def load_keys():
         return None
     with open(KEYS_JSON) as f:
         return json.load(f)
+
+
+def find_paths_config():
+    """Locate the machine-specific .config/paths.yaml (created by smefit_setup_local)."""
+    # 1. Walk up from cwd (covers running inside the repo or a work dir below it).
+    for parent in [Path.cwd()] + list(Path.cwd().parents):
+        candidate = parent / ".config" / "paths.yaml"
+        if candidate.is_file():
+            return candidate
+    # 2. Script-relative repo root (.claude/skills/<skill>/scripts/ -> repo).
+    candidate = Path(__file__).resolve().parents[4] / ".config" / "paths.yaml"
+    if candidate.is_file():
+        return candidate
+    # 3. Ask an installed smefit where its config lives (smefit.paths only
+    #    imports pathlib+yaml, so this subprocess is cheap).
+    try:
+        out = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from smefit.paths import USER_PATHS_CONFIG; print(USER_PATHS_CONFIG)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if out.returncode == 0:
+            candidate = Path(out.stdout.strip())
+            if candidate.is_file():
+                return candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+class PathResolver:
+    """Mirror of smefit.paths.resolve_path: expand prefix-relative runcard paths
+    (e.g. smefit_database/commondata) using .config/paths.yaml, longest key first.
+    Standard prefixes that are not configured are reported as errors."""
+
+    def __init__(self, standard_prefixes):
+        self.standard_prefixes = standard_prefixes
+        self.config_file = find_paths_config()
+        self.user_paths = {}
+        if self.config_file is not None:
+            try:
+                loaded = yaml.safe_load(self.config_file.read_text())
+                if isinstance(loaded, dict):
+                    self.user_paths = loaded
+            except (yaml.YAMLError, OSError):
+                pass
+
+    def has_prefix(self, path_str, prefix):
+        return path_str == prefix or path_str.startswith(prefix + "/")
+
+    def resolve(self, path_str, rep, label):
+        """Return the resolved path string, or None if a prefix cannot be resolved."""
+        path_str = str(path_str)
+        for key in sorted(self.user_paths, key=len, reverse=True):
+            if self.has_prefix(path_str, key):
+                return str(self.user_paths[key]).rstrip("/") + path_str[len(key) :]
+        for prefix in self.standard_prefixes:
+            if self.has_prefix(path_str, prefix):
+                where = self.config_file or ".config/paths.yaml (none found)"
+                rep.error(
+                    f"{label}: '{path_str}' uses the '{prefix}' prefix but it is "
+                    f"not configured in {where} — run 'smefit_setup_local'"
+                )
+                return None
+        return path_str
 
 
 def check_coefficient(name, spec, prior_dists, rep):
@@ -111,7 +182,7 @@ def check_coefficient(name, spec, prior_dists, rep):
             rep.error(f"coefficients.{name}: 'vars' contains duplicates")
 
 
-def check_datasets(runcard, keys, rep):
+def check_datasets(runcard, keys, rep, resolver):
     datasets = runcard.get("datasets")
     if datasets is None:
         return
@@ -121,6 +192,10 @@ def check_datasets(runcard, keys, rep):
 
     data_path = runcard.get("data_path")
     theory_path = runcard.get("theory_path")
+    if data_path:
+        data_path = resolver.resolve(data_path, rep, "data_path")
+    if theory_path:
+        theory_path = resolver.resolve(theory_path, rep, "theory_path")
     data_dir = Path(data_path) if data_path else None
     theory_dir = Path(theory_path) if theory_path else None
     if data_dir and not data_dir.is_dir():
@@ -194,6 +269,21 @@ def check_settings_blocks(runcard, keys, rep):
             rep.warn(f"{block}: unknown sub-key '{k}' (known: {info['known_keys']})")
 
 
+def check_rg_matrix(value, label, resolver, rep):
+    """Check an rg_matrix path. Missing files under smefit_results/ are only a
+    warning: smefit auto-downloads the fit from the server before failing."""
+    resolved = resolver.resolve(value, rep, label)
+    if resolved is None or Path(resolved).exists():
+        return
+    if resolver.has_prefix(str(value), "smefit_results"):
+        rep.warn(
+            f"{label}: {resolved} not found locally — smefit will try to "
+            "download the fit from the server at run time"
+        )
+    else:
+        rep.error(f"{label}: file not found: {resolved}")
+
+
 def check_actions(runcard, rep):
     actions = runcard.get("actions_")
     if not actions:
@@ -258,6 +348,17 @@ def main():
             f"runcard-keys.json not found at {KEYS_JSON} — key checks skipped "
             "(regenerate with scripts/generate_skill_reference.py)"
         )
+    standard_prefixes = (keys.get("path_prefixes") if keys else None) or [
+        "new_smefit",
+        "smefit_database",
+        "smefit_results",
+    ]
+    resolver = PathResolver(standard_prefixes)
+    if not resolver.user_paths:
+        rep.warnings.append(
+            "no .config/paths.yaml found — prefix-relative paths (e.g. "
+            "smefit_database/commondata) cannot be resolved; run 'smefit_setup_local'"
+        )
 
     if "datasets" not in runcard and "external_chi2" not in runcard:
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
@@ -290,6 +391,8 @@ def main():
             obs_scale = rge.get("obs_scale", "dynamic")
             if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
                 rep.error("rge.obs_scale must be a number or 'dynamic'")
+            if "rg_matrix" in rge:
+                check_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
 
     external = runcard.get("external_chi2")
     if external is not None:
@@ -299,10 +402,17 @@ def main():
             for cname, cfg in external.items():
                 if not isinstance(cfg, dict) or "path" not in cfg:
                     rep.error(f"external_chi2.{cname}: needs a 'path' key")
-                elif not Path(cfg["path"]).exists():
-                    rep.error(f"external_chi2.{cname}: path not found: {cfg['path']}")
+                    continue
+                label = f"external_chi2.{cname}"
+                resolved = resolver.resolve(cfg["path"], rep, f"{label}.path")
+                if resolved is not None and not Path(resolved).exists():
+                    rep.error(f"{label}: path not found: {resolved}")
+                if cfg.get("rg_matrix"):
+                    check_rg_matrix(
+                        cfg["rg_matrix"], f"{label}.rg_matrix", resolver, rep
+                    )
 
-    check_datasets(runcard, keys, rep)
+    check_datasets(runcard, keys, rep, resolver)
     check_settings_blocks(runcard, keys, rep)
     check_actions(runcard, rep)
     check_top_level(runcard, keys, rep)

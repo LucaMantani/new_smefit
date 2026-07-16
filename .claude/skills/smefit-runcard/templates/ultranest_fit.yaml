@@ -1,10 +1,9 @@
 # AUTO-COPIED from template_runcards/ultranest_fit.yaml by scripts/generate_skill_reference.py
 # — edit the original and regenerate; do not edit this copy.
-
-# path to data and theory: point these into a clone of
-# https://github.com/LHCfitNikhef/smefit_database (<clone>/commondata, <clone>/theory)
-data_path: /path/to/smefit_database/commondata  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
-theory_path: /path/to/smefit_database/theory  # <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -61,7 +60,7 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: /path/to/smefit_database/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"

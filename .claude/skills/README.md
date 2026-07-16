@@ -19,8 +19,9 @@ python scripts/generate_skill_reference.py --check  # CI freshness check
 ```
 
 which introspects the package (runcard keys from `smefit/config.py`, actions
-from the provider modules in `smefit/app.py`, priors from `smefit/priors.py`)
-and copies `template_runcards/*.yaml`. Generated files:
+from the provider modules in `smefit/app.py`, priors from `smefit/priors.py`,
+path prefixes from `smefit/paths.py`) and copies `template_runcards/*.yaml`
+verbatim (they already use shareable prefix paths). Generated files:
 
 - `smefit-runcard/references/runcard-keys.{md,json}`, `actions.md`, `priors.md`
 - `smefit-runcard/templates/*.yaml`
@@ -50,5 +51,6 @@ editing skills, preserve these invariants:
    `skills/<name>/` layout survives plugin packaging.
 4. **Scripts never import smefit** — stdlib + pyyaml only, so they work before
    the environment is set up.
-5. **User state stays in the user home** (`~/.config/smefit/database_path`),
-   never in the repo or the skill directory.
+5. **No skill-owned user state** — machine-specific configuration belongs to
+   smefit itself (the git-ignored `.config/paths.yaml` managed by
+   `smefit_setup_local`); skill scripts only read it, never write it.

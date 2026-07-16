@@ -38,7 +38,9 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        """Parse data path, resolving prefix-relative paths (e.g. smefit_database/commondata)
+        via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
+        """
         data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
         if not data_path.exists():
@@ -48,7 +50,9 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path, resolving prefix-relative paths from ~/.config/smefit/paths.yaml."""
+        """Parse theory path, resolving prefix-relative paths (e.g. smefit_database/theory)
+        via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
+        """
         theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
         if not theory_path.exists():

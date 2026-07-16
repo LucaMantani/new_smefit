@@ -20,7 +20,10 @@ rge:
 
 - Computing the RGE matrix can be slow; it is saved automatically under the
   run's output directory. To reuse one across runs, point `rg_matrix:` at the
-  saved pickle.
+  saved pickle — preferably via the `smefit_results` prefix:
+  `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
+  present locally, smefit automatically tries to download it from the server
+  before failing.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 
@@ -55,16 +58,21 @@ fit must NOT be repeated in this runcard, or they are double-counted.
 
 For likelihoods that cannot be expressed as commondata+theory files
 (e.g. Drell-Yan with analytic likelihoods, optimal observables at future
-colliders). Modules live in `external_chi2/` of the smefit_database repo.
+colliders). Modules live in an `external_chi2/` folder (in the new_smefit repo
+and in smefit_database — reference them with the matching path prefix).
 
 ```yaml
 external_chi2:
   CMS_DYMee_13TeV:                     # class name inside the module
-    path: /path/to/smefit_database/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+    path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py  # prefix-resolved
     use_quad: True                     # extra keys are forwarded to the class
     order: NLO_QCD
     group: drell_yan                   # optional: report/Fisher grouping (stripped before forwarding)
 ```
+
+`path` and `rg_matrix` entries are prefix-resolved like all runcard paths
+(`new_smefit/...`, `smefit_database/...`, `smefit_results/...`); an `rg_matrix`
+under `smefit_results/` is auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,

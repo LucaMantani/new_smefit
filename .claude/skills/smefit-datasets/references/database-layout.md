@@ -16,7 +16,10 @@ smefit_database/
 ```
 
 A valid local clone is recognized by `smefit_db.py` when it contains
-`commondata/`, `theory/`, and `data_summary.yaml`.
+`commondata/`, `theory/`, and `data_summary.yaml`. Its location is recorded in
+smefit's machine-specific `.config/paths.yaml` (key `smefit_database`, created
+by `smefit_setup_local`), which lets runcards use the shareable prefix form
+`data_path: smefit_database/commondata` instead of absolute paths.
 
 ## data_summary.yaml
 

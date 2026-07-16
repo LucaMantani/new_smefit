@@ -4,13 +4,17 @@
 Prefers a local clone of https://github.com/LHCfitNikhef/smefit_database; falls
 back to fetching the small catalog files from GitHub when no clone is found.
 
+The clone location is read from smefit's machine-specific `.config/paths.yaml`
+(key `smefit_database`, created by the interactive `smefit_setup_local` command),
+with fallbacks for unconfigured setups.
+
 Subcommands:
-    locate [--save PATH]   find (or record) the local smefit_database clone
+    locate                 find the local smefit_database clone
     search KEYWORD         find datasets matching a keyword (name or experiment group)
     info DATASET           show metadata + operators entering a dataset
     operators [PATTERN]    list implemented Wilson coefficients (optionally filtered)
     ext [PATTERN]          list external likelihoods with ready-to-paste runcard blocks
-    clone [DEST]           print the git clone command (never executes it)
+    clone [DEST]           print the setup/clone commands (never executes them)
 
 Common flags: --json (machine-readable output), --offline (never touch the network).
 
@@ -20,7 +24,7 @@ available (neither local clone nor network).
 
 import argparse
 import json
-import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -36,7 +40,6 @@ except ImportError:
 
 REPO_URL = "https://github.com/LHCfitNikhef/smefit_database"
 RAW_BASE = "https://raw.githubusercontent.com/LHCfitNikhef/smefit_database/main"
-CONFIG_FILE = Path.home() / ".config" / "smefit" / "database_path"
 CACHE_DIR = Path(tempfile.gettempdir()) / "smefit_db_cache"
 CACHE_MAX_AGE = 24 * 3600  # seconds
 
@@ -56,20 +59,56 @@ def is_database(path):
     )
 
 
+def find_paths_config():
+    """Locate smefit's machine-specific .config/paths.yaml (see smefit_setup_local)."""
+    # 1. Walk up from cwd (covers running inside the repo or a work dir below it).
+    for parent in [Path.cwd()] + list(Path.cwd().parents):
+        candidate = parent / ".config" / "paths.yaml"
+        if candidate.is_file():
+            return candidate
+    # 2. Script-relative repo root (.claude/skills/<skill>/scripts/ -> repo).
+    candidate = Path(__file__).resolve().parents[4] / ".config" / "paths.yaml"
+    if candidate.is_file():
+        return candidate
+    # 3. Ask an installed smefit where its config lives (smefit.paths only
+    #    imports pathlib+yaml, so this subprocess is cheap).
+    try:
+        out = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from smefit.paths import USER_PATHS_CONFIG; print(USER_PATHS_CONFIG)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if out.returncode == 0:
+            candidate = Path(out.stdout.strip())
+            if candidate.is_file():
+                return candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
 def find_database():
     """Return (path, how) for the first valid smefit_database clone found, else (None, None)."""
-    env = os.environ.get("SMEFIT_DATABASE_PATH")
-    if env:
-        p = Path(env).expanduser()
-        if is_database(p):
-            return p, "SMEFIT_DATABASE_PATH"
+    # Official mechanism: smefit_database key in .config/paths.yaml.
+    config = find_paths_config()
+    if config is not None:
+        try:
+            user_paths = yaml.safe_load(config.read_text()) or {}
+        except (yaml.YAMLError, OSError):
+            user_paths = {}
+        db = user_paths.get("smefit_database")
+        if db:
+            p = Path(str(db)).expanduser()
+            if is_database(p):
+                return p, f"smefit_database in {config}"
 
-    if CONFIG_FILE.is_file():
-        p = Path(CONFIG_FILE.read_text().strip()).expanduser()
-        if is_database(p):
-            return p, f"config file {CONFIG_FILE}"
-
-    # Scan runcards in cwd (and ./runcards) for data_path pointing into a clone.
+    # Fallbacks for unconfigured setups.
+    # Scan runcards in cwd (and ./runcards) for an absolute data_path into a clone.
     candidates = list(Path.cwd().glob("*.yaml"))
     runcard_dir = Path.cwd() / "runcards"
     if runcard_dir.is_dir():
@@ -130,15 +169,20 @@ def load_catalog(kind, db_path, offline):
     return None, None
 
 
+SETUP_HINT = (
+    "Run smefit's interactive local setup (after confirming with the user) —\n"
+    "it records the path in .config/paths.yaml and offers to clone the database:\n"
+    "    smefit_setup_local\n"
+    f"Alternatively clone manually and re-run the setup:\n    git clone {REPO_URL}"
+)
+
+
 def no_database_exit(offline):
     print(
         "No local smefit_database clone found"
         + (" and --offline set." if offline else " and GitHub is unreachable.")
     )
-    print(f"Clone it with:\n    git clone {REPO_URL}")
-    print(
-        "then record its location:\n    python smefit_db.py locate --save /path/to/smefit_database"
-    )
+    print(SETUP_HINT)
     return 3
 
 
@@ -148,43 +192,50 @@ def no_database_exit(offline):
 
 
 def cmd_locate(args):
-    if args.save:
-        p = Path(args.save).expanduser().resolve()
-        if not is_database(p):
-            print(
-                f"ERROR: {p} is not a smefit_database clone "
-                "(needs commondata/, theory/, data_summary.yaml)"
-            )
-            return 2
-        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(str(p) + "\n")
-        print(f"Saved database path to {CONFIG_FILE}: {p}")
-        return 0
-
     db, how = find_database()
     if db is None:
         print("No local smefit_database clone found.")
-        print(f"Clone it with:\n    git clone {REPO_URL}")
-        print(
-            "then record its location:\n    python smefit_db.py locate --save /path/to/smefit_database"
-        )
+        print(SETUP_HINT)
         return 3
+    # Prefix form only works once paths.yaml is configured; otherwise recommend
+    # absolute paths (and suggest running the setup).
+    configured = "paths.yaml" in how
     if args.json:
         print(
             json.dumps(
                 {
                     "database": str(db),
-                    "data_path": str(db / "commondata"),
-                    "theory_path": str(db / "theory"),
+                    "data_path": (
+                        "smefit_database/commondata"
+                        if configured
+                        else str(db / "commondata")
+                    ),
+                    "theory_path": (
+                        "smefit_database/theory" if configured else str(db / "theory")
+                    ),
+                    "resolved_data_path": str(db / "commondata"),
+                    "resolved_theory_path": str(db / "theory"),
                     "projections_path": str(db / "commondata_projections_L0"),
+                    "prefix_form_available": configured,
                     "found_via": how,
                 }
             )
         )
+        return 0
+    print(f"database: {db}   (via {how})")
+    if configured:
+        print("Use the shareable prefix form in runcards:")
+        print("  data_path: smefit_database/commondata")
+        print("  theory_path: smefit_database/theory")
+        print(f"(resolved via .config/paths.yaml to {db})")
     else:
-        print(f"database:    {db}   (via {how})")
-        print(f"data_path:   {db / 'commondata'}")
-        print(f"theory_path: {db / 'theory'}")
+        print("Runcard values (absolute — .config/paths.yaml is not set up):")
+        print(f"  data_path: {db / 'commondata'}")
+        print(f"  theory_path: {db / 'theory'}")
+        print(
+            "Tip: run 'smefit_setup_local' once (after confirming with the user) "
+            "to enable shareable prefix paths like smefit_database/commondata."
+        )
     return 0
 
 
@@ -372,10 +423,12 @@ def cmd_ext(args):
 
 
 def cmd_clone(args):
+    print("Preferred (after confirming with the user): run smefit's interactive")
+    print("setup — it configures .config/paths.yaml and offers the clone itself:")
+    print("    smefit_setup_local")
     dest = args.dest or "smefit_database"
-    print("Run (after confirming with the user):")
+    print("Manual alternative (then re-run smefit_setup_local to record the path):")
     print(f"    git clone {REPO_URL} {dest}")
-    print(f"    python {Path(__file__).name} locate --save {dest}")
     return 0
 
 
@@ -390,9 +443,6 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("locate", help="find the local smefit_database clone")
-    p.add_argument(
-        "--save", metavar="PATH", help="record PATH as the database location"
-    )
     p.set_defaults(func=cmd_locate)
 
     p = sub.add_parser("search", help="find datasets by keyword")

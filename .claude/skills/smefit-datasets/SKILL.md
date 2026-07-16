@@ -8,9 +8,11 @@ version: 0.1.0
 
 All experimental data and theory predictions live in a separate repository:
 [LHCfitNikhef/smefit_database](https://github.com/LHCfitNikhef/smefit_database).
-Runcards point into a local clone of it (`data_path: <clone>/commondata`,
-`theory_path: <clone>/theory`). Layout and file schemas:
-`references/database-layout.md`.
+Runcards reference a local clone of it through the shareable prefix form
+(`data_path: smefit_database/commondata`, `theory_path: smefit_database/theory`),
+resolved via the machine-specific `.config/paths.yaml` that the interactive
+`smefit_setup_local` command creates (it also offers to clone the database).
+Layout and file schemas: `references/database-layout.md`.
 
 **Never answer catalog questions from memory.** Always run the bundled script —
 it reads the database's machine-readable catalogs (`data_summary.yaml`,
@@ -23,23 +25,25 @@ python <this skill dir>/scripts/smefit_db.py <subcommand> [--json] [--offline]
 
 | Subcommand | Purpose |
 |---|---|
-| `locate` | Find the local clone; prints `data_path`/`theory_path` to use in runcards |
-| `locate --save PATH` | Record the clone location in `~/.config/smefit/database_path` |
+| `locate` | Find the local clone (via `.config/paths.yaml` first); prints the `data_path`/`theory_path` values to use in runcards |
 | `search KEYWORD` | Datasets matching a keyword (name or experiment group), with allowed orders |
 | `info DATASET` | Metadata (description, arxiv, num_data) + operators entering the predictions |
 | `operators [PATTERN]` | Implemented Wilson coefficients with their WCxf Warsaw-basis definitions |
 | `ext [PATTERN]` | External likelihoods, printed as ready-to-paste `external_chi2:` runcard blocks |
-| `clone [DEST]` | Print the `git clone` command (never executes it) |
+| `clone [DEST]` | Print the setup/clone commands (never executes them) |
 
 Exit codes: `0` ok, `1` nothing matched, `3` no database reachable (no clone,
 no network).
 
 ## Workflow
 
-1. Run `smefit_db.py locate`. If it finds a clone, use the printed paths.
-2. If it exits with code 3, **ask the user** whether to clone the database
-   (~large repo), then run the `git clone` command it prints and
-   `locate --save` the result. Do not clone without confirmation.
+1. Run `smefit_db.py locate`. If it finds a clone, use the printed runcard
+   values (prefix form when `.config/paths.yaml` is configured, absolute
+   otherwise).
+2. If it exits with code 3 (or suggests it), **ask the user** whether to run
+   `smefit_setup_local` — smefit's interactive setup that records the paths in
+   `.config/paths.yaml` and offers to clone the database (~large repo). Do not
+   run it or clone without confirmation.
 3. Use `search`/`info` to pick datasets. A dataset's `order` in a runcard must
    be one of its `allowed_orders`; `info` also shows which Wilson coefficients
    actually enter its predictions — useful to pick coefficients that the chosen

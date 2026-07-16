@@ -7,6 +7,39 @@ Only the keys documented here exist. smefit warns on unknown sub-keys instead
 of rejecting them, so a misspelled key is silently ignored — always validate
 with `scripts/validate_runcard.py`.
 
+## Path resolution (shareable runcards)
+
+Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,
+`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,
+resolved via the machine-specific `.config/paths.yaml` (created by
+`smefit_setup_local`). Standard prefixes: `new_smefit`, `smefit_database`, `smefit_results`.
+From `smefit.paths`:
+
+```
+User-specific path configuration for smefit.
+
+Paths are stored in <new_smefit>/.config/paths.yaml with one key per directory:
+
+    new_smefit:      /path/to/new_smefit
+    smefit_database: /path/to/smefit_database
+    smefit_results:  /path/to/smefit_results
+
+The file is auto-created on first use, assuming the three directories are
+siblings of each other. Edit it directly or run 'smefit_setup_local' to update.
+
+In runcards, use the key name as a prefix for relative paths:
+    data_path:  smefit_database/commondata
+    theory_path: smefit_database/theory
+    path:        new_smefit/external_chi2/drell_yan/MyModule.py
+    rg_matrix:   smefit_results/fits/my_fit/rge_matrix.pkl
+
+Users can add extra aliases for any directory (e.g. an alternative database):
+    lhc_database: /data/shared/lhc_database_v2
+
+and then use them in runcards the same way:
+    data_path: lhc_database/commondata
+```
+
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
@@ -56,11 +89,12 @@ Parse coefficients configuration.
 
 ### `data_path`
 
-Parse data path.
+Parse data path, resolving prefix-relative paths (e.g. smefit_database/commondata)
+via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
 
 ### `external_chi2`
 
-Pass-through parser. Strips 'group' keys and caches them for produce_data_groups.
+Pass-through parser. Strips 'group' keys and resolves prefix-relative paths.
 
 ### `gradient_descent_settings`
 
@@ -159,7 +193,8 @@ Validation errors raised while parsing:
 
 ### `theory_path`
 
-Parse theory path.
+Parse theory path, resolving prefix-relative paths (e.g. smefit_database/theory)
+via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
 
 ### `ultranest_settings`
 
@@ -176,12 +211,8 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 Internal defaults `reactive_defaults`:
 
-```python
-reactive_defaults = {
-    "log_dir": str(output_path / "ultranest_logs"),
-    "resume": False,
-    "vectorized": False,
-}
+```
+reactive_defaults = {'log_dir': str(output_path / 'ultranest_logs'), 'resume': False, 'vectorized': False}
 ```
 
 ### `whitening`

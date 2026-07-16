@@ -27,6 +27,14 @@ The `smefit` CLI must run in an environment with the package installed (in the
 development repo: `conda activate new_smefit`). The run executes every entry in
 `actions_:`; reportengine resolves the dependency graph automatically.
 
+First-time machines need the local path setup once (`smefit_setup_local`,
+interactive — ask the user before running it): it writes `.config/paths.yaml`,
+which resolves the prefix paths (`smefit_database/...`, `smefit_results/...`)
+used in shareable runcards. Fits/reports shared via the server live under the
+configured `smefit_results/` directory (`smefit_ls` to list, `smefit_get` to
+download); a runcard referencing `smefit_results/fits/<name>/...` triggers an
+automatic download when the fit is missing locally.
+
 ## Reading results
 
 Every fit action prints a summary table (best fit, std, prior per coefficient;

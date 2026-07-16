@@ -28,15 +28,19 @@ code and kept in sync by CI:
    `blackjax_individual_fit.yaml`, `hessian_fit.yaml`, `projections.yaml`,
    `time_likelihood.yaml`, `report.yaml`). Do not write a runcard from scratch.
 
-2. **Resolve `data_path` / `theory_path`**. They must point into a local clone of
-   the [smefit_database](https://github.com/LHCfitNikhef/smefit_database) repo
-   (`<clone>/commondata` and `<clone>/theory`). Find the clone by running the
-   smefit-datasets skill's locate script:
+2. **Resolve `data_path` / `theory_path`**. Prefer the shareable prefix form —
+   `data_path: smefit_database/commondata`, `theory_path: smefit_database/theory` —
+   which smefit resolves through the machine-specific `.config/paths.yaml`
+   (created once by the interactive `smefit_setup_local` command; any key in
+   that file works as a prefix, and absolute paths still work too). Check the
+   setup by running the smefit-datasets skill's locate script:
    ```bash
    python "$(dirname <this skill dir>)/smefit-datasets/scripts/smefit_db.py" locate
    ```
    (i.e. `../smefit-datasets/scripts/smefit_db.py` relative to this SKILL.md).
-   If it exits with "no database found", follow its instructions to clone.
+   It prints the recommended runcard values. If it exits with "no database
+   found", ask the user before running `smefit_setup_local` (it also offers to
+   clone the database).
 
 3. **Choose datasets** with the same script (`smefit_db.py search <keyword>`,
    `smefit_db.py info <dataset>`). Never invent dataset names: every entry in
@@ -61,8 +65,8 @@ code and kept in sync by CI:
 ## Minimal skeleton
 
 ```yaml
-data_path: /path/to/smefit_database/commondata
-theory_path: /path/to/smefit_database/theory
+data_path: smefit_database/commondata    # prefix resolved via .config/paths.yaml
+theory_path: smefit_database/theory
 use_theory_covmat: True
 use_t0: True
 use_quad: False        # include (dim-6)^2 terms?
@@ -83,6 +87,10 @@ actions_:
 
 ## Rules of thumb
 
+- Prefer prefix paths (`smefit_database/...`, `new_smefit/...`,
+  `smefit_results/...`) over absolute ones — the runcard then works unchanged
+  on any machine that ran `smefit_setup_local`. See the "Path resolution"
+  section of `references/runcard-keys.md`.
 - `run_analytic_fit` requires a purely linear model: `use_quad: False` and no
   expression-constrained coefficients (the posterior must be Gaussian).
 - Every free coefficient needs a `prior`; only `uniform` and `gaussian`/`normal`

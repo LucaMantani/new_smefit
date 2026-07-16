@@ -35,11 +35,6 @@ TEMPLATE_BANNER = (
     "# — edit the original and regenerate; do not edit this copy.\n"
 )
 
-# Placeholder paths written into the template copies (the repo-local ../commondata
-# etc. folders are being removed; users point at a smefit_database clone instead).
-DB_PLACEHOLDER = "/path/to/smefit_database"
-PATH_HINT = "# <-- set to your smefit_database clone (smefit-datasets skill: smefit_db.py locate)"
-
 # Runcard keys consumed by reportengine itself rather than smefitConfig.
 REPORTENGINE_KEYS = {
     "actions_": "List of actions to execute (see actions.md). Required in every runcard.",
@@ -252,16 +247,38 @@ def collect_actions():
                 and not fname.startswith("_")
             ):
                 doc = (inspect.getdoc(obj) or "").split("\n\n")[0].replace("\n", " ")
+                sig = inspect.signature(obj)
                 funcs.append(
                     {
                         "name": fname,
-                        "signature": str(inspect.signature(obj)),
+                        "signature": str(sig),
                         "doc": doc,
+                        "optional_params": [
+                            p.name
+                            for p in sig.parameters.values()
+                            if p.default is not inspect.Parameter.empty
+                        ],
                     }
                 )
         if funcs:
             modules.append({"module": mod_name, "functions": funcs})
     return modules
+
+
+def collect_paths():
+    """Introspect smefit.paths: prefix-resolution mechanism for runcard paths."""
+    import smefit.paths as paths_mod
+
+    return {
+        "doc": (paths_mod.__doc__ or "").strip(),
+        "standard_prefixes": sorted(paths_mod._STANDARD_PREFIXES),
+        # Store repo-relative so the generated output is machine-independent.
+        "config_file": str(
+            paths_mod.USER_PATHS_CONFIG.relative_to(
+                paths_mod.USER_PATHS_CONFIG.parents[1]
+            )
+        ),
+    }
 
 
 def collect_priors():
@@ -306,11 +323,12 @@ def _render_settings_block(entry):
         lines += ["Additional defaults applied while parsing:", ""]
         lines += [f"- `{k}` — default: `{entry['defaults'][k]}`" for k in extra]
         lines.append("")
+    # Plain fence (not ```python): blacken-docs must not reformat generated output.
     for name, value in sorted(entry["dict_defaults"].items()):
         lines += [
             f"Internal defaults `{name}`:",
             "",
-            f"```python\n{name} = {value}\n```",
+            f"```\n{name} = {value}\n```",
             "",
         ]
     if entry["constraints"]:
@@ -320,7 +338,7 @@ def _render_settings_block(entry):
     return lines
 
 
-def render_runcard_keys_md(surface):
+def render_runcard_keys_md(surface, paths_info):
     lines = [
         BANNER.rstrip("\n"),
         "",
@@ -329,6 +347,20 @@ def render_runcard_keys_md(surface):
         "Only the keys documented here exist. smefit warns on unknown sub-keys instead",
         "of rejecting them, so a misspelled key is silently ignored — always validate",
         "with `scripts/validate_runcard.py`.",
+        "",
+        "## Path resolution (shareable runcards)",
+        "",
+        "Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,",
+        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,",
+        f"resolved via the machine-specific `{paths_info['config_file']}` (created by",
+        "`smefit_setup_local`). Standard prefixes: "
+        + ", ".join(f"`{p}`" for p in paths_info["standard_prefixes"])
+        + ".",
+        "From `smefit.paths`:",
+        "",
+        "```",
+        paths_info["doc"],
+        "```",
         "",
         "## Keys consumed directly from the runcard (no dedicated parser)",
         "",
@@ -439,7 +471,28 @@ def render_priors_md(priors):
     return "\n".join(lines)
 
 
-def build_runcard_keys_json(surface, priors):
+def collect_provider_arg_keys(action_modules, surface):
+    """Optional provider-function arguments (e.g. n_samples, batch_sample_sizes).
+
+    reportengine resolves action arguments from the config namespace, so any
+    defaulted parameter of a provider function is a legitimate top-level
+    runcard key. Resource names (parsed/produced) are excluded.
+    """
+    resources = (
+        {e["key"] for e in surface["parse"]}
+        | {e["key"] for e in surface["produce"]}
+        | set(surface["raw"])
+        | {"output_path"}
+        | IGNORED_RAW_PARAMS
+    )
+    keys = set()
+    for mod in action_modules:
+        for fn in mod["functions"]:
+            keys.update(fn["optional_params"])
+    return sorted(keys - resources)
+
+
+def build_runcard_keys_json(surface, priors, paths_info, action_modules):
     """Machine-readable key list consumed by validate_runcard.py."""
     settings_blocks = {}
     for entry in surface["parse"]:
@@ -447,8 +500,12 @@ def build_runcard_keys_json(surface, priors):
             "known_keys": entry["known_keys"],
             "defaults": entry["defaults"],
         }
+    provider_args = collect_provider_arg_keys(action_modules, surface)
     top_level = sorted(
-        set(surface["raw"]) | set(settings_blocks) | set(REPORTENGINE_KEYS)
+        set(surface["raw"])
+        | set(settings_blocks)
+        | set(REPORTENGINE_KEYS)
+        | set(provider_args)
     )
     return {
         "top_level_keys": top_level,
@@ -457,27 +514,23 @@ def build_runcard_keys_json(surface, priors):
         "derived_keys": sorted(e["key"] for e in surface["produce"]),
         "prior_dists": priors,
         "dataset_entry_keys": ["name", "order", "theory_cov", "group"],
+        "path_prefixes": paths_info["standard_prefixes"],
+        "paths_config": paths_info["config_file"],
+        "provider_arg_keys": provider_args,
     }
 
 
 def render_templates():
-    """Copy template_runcards/*.yaml, rewriting repo-local data paths."""
+    """Copy template_runcards/*.yaml verbatim (plus banner).
+
+    Templates already carry shareable prefix paths (smefit_database/commondata,
+    new_smefit/external_chi2/...) resolved via .config/paths.yaml at run time,
+    so no rewriting is needed.
+    """
     out = {}
     template_dir = REPO_ROOT / "template_runcards"
     for path in sorted(template_dir.glob("*.yaml")):
-        lines = [TEMPLATE_BANNER.format(name=path.name)]
-        for line in path.read_text().splitlines():
-            stripped = line.strip()
-            if stripped.startswith("data_path:"):
-                line = f"data_path: {DB_PLACEHOLDER}/commondata  {PATH_HINT}"
-            elif stripped.startswith("theory_path:"):
-                line = f"theory_path: {DB_PLACEHOLDER}/theory  {PATH_HINT}"
-            elif "../external_chi2/" in line:
-                line = line.replace(
-                    "../external_chi2/", f"{DB_PLACEHOLDER}/external_chi2/"
-                )
-            lines.append(line)
-        out[path.name] = "\n".join(lines) + "\n"
+        out[path.name] = TEMPLATE_BANNER.format(name=path.name) + path.read_text()
     return out
 
 
@@ -491,12 +544,17 @@ def generate_outputs():
     surface = collect_config_surface()
     action_modules = collect_actions()
     priors = collect_priors()
+    paths_info = collect_paths()
 
     actions_md = render_actions_md(action_modules)
     outputs = {
-        "smefit-runcard/references/runcard-keys.md": render_runcard_keys_md(surface),
+        "smefit-runcard/references/runcard-keys.md": render_runcard_keys_md(
+            surface, paths_info
+        ),
         "smefit-runcard/references/runcard-keys.json": json.dumps(
-            build_runcard_keys_json(surface, priors), indent=2, sort_keys=True
+            build_runcard_keys_json(surface, priors, paths_info, action_modules),
+            indent=2,
+            sort_keys=True,
         )
         + "\n",
         "smefit-runcard/references/actions.md": actions_md,

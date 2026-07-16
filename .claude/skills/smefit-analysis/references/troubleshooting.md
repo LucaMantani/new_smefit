@@ -7,7 +7,10 @@ of the actual exceptions raised by the code.
 
 | Error | Cause → fix |
 |---|---|
-| `data_path ... does not exist` / `theory_path ... does not exist` | Paths don't point into a smefit_database clone. Run the smefit-datasets skill's `smefit_db.py locate`. |
+| `Path '<p>' starts with '<prefix>' but '<prefix>' is not set in .../.config/paths.yaml` | The runcard uses a prefix path (`smefit_database/...`, `smefit_results/...`) but the machine's local setup is missing/incomplete → run `smefit_setup_local` (ask the user first). |
+| `smefit_results is not configured. Run 'smefit_setup_local' to set it up.` | Server-related scripts need the `smefit_results` key in `.config/paths.yaml` → run `smefit_setup_local`. |
+| `'<path>' does not exist locally and could not be downloaded from the server: ...` | An `rg_matrix` (or fit) under `smefit_results/fits/<name>/` is neither local nor on the server — check the fit name (`smefit_ls`), network, and server credentials. |
+| `data_path ... does not exist` / `theory_path ... does not exist` | The (resolved) paths don't point into a smefit_database clone. Run the smefit-datasets skill's `smefit_db.py locate`; check `.config/paths.yaml`. |
 | `Dataset <name> not found in <data_path>` | Typo in `datasets[].name`, or the dataset lives in `commondata_projections_L0/` while `data_path` points at `commondata/`. Check with `smefit_db.py search`. |
 | `Theory predictions for dataset <name> not found` | Missing `<name>.json` under `theory_path` — same causes as above. |
 | `KeyError: '<order>'` while loading theory | The requested `order` is not a key of that dataset's theory JSON. `smefit_db.py info <name>` lists the allowed orders. |
@@ -38,7 +41,8 @@ of the actual exceptions raised by the code.
 
 - **Long startup before sampling**: the RGE matrix is being computed
   (per-datapoint scales). Reuse `<output>/rge_matrix.pkl` via `rge.rg_matrix:`
-  in subsequent runs.
+  in subsequent runs — e.g. `rg_matrix: smefit_results/fits/<fit>/rge_matrix.pkl`
+  (auto-downloaded from the server if the fit is not local).
 - **Out of memory with `use_quad: True`**: quadratic predictions are
   `[ndata, n_ops, n_ops]` arrays — reduce coefficients/datasets or run `-f32`.
 - **Sampler runs forever**: lower `min_num_live_points`/`min_ess` (UltraNest)

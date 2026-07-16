@@ -27,6 +27,12 @@
     "theory",
     "whitening_matrix"
   ],
+  "path_prefixes": [
+    "new_smefit",
+    "smefit_database",
+    "smefit_results"
+  ],
+  "paths_config": ".config/paths.yaml",
   "prior_dists": {
     "gaussian": [
       "mean",
@@ -41,6 +47,14 @@
       "high"
     ]
   },
+  "provider_arg_keys": [
+    "batch_sample_sizes",
+    "n_eval",
+    "n_samples",
+    "n_steps",
+    "seed",
+    "tol"
+  ],
   "raw_keys": {
     "datasets": {
       "default": null,
@@ -206,6 +220,7 @@
   },
   "top_level_keys": [
     "actions_",
+    "batch_sample_sizes",
     "bayesian_update_path",
     "blackjax_settings",
     "coefficients",
@@ -215,11 +230,16 @@
     "gradient_descent_settings",
     "hessian_settings",
     "meta",
+    "n_eval",
+    "n_samples",
+    "n_steps",
     "optimizer_settings",
     "pseudodata_settings",
     "rge",
+    "seed",
     "template_text",
     "theory_path",
+    "tol",
     "ultranest_settings",
     "use_quad",
     "use_t0",

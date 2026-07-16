@@ -21,9 +21,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
-    USER_PATHS_CONFIG,
     fetch_fit_if_missing,
-    load_user_paths,
     resolve_path,
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
@@ -38,9 +36,7 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path, resolving prefix-relative paths (e.g. smefit_database/commondata)
-        via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
-        """
+        """Parse data path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
         data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
         if not data_path.exists():
@@ -50,9 +46,7 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path, resolving prefix-relative paths (e.g. smefit_database/theory)
-        via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
-        """
+        """Parse theory path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
         theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
         if not theory_path.exists():
@@ -233,9 +227,6 @@ class smefitConfig(Config):
             entry = {k: v for k, v in cfg.items() if k != "group"}
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
-            if "rg_matrix" in entry:
-                entry["rg_matrix"] = resolve_path(entry["rg_matrix"])
-                fetch_fit_if_missing(pathlib.Path(entry["rg_matrix"]))
             cleaned[name] = entry
         return cleaned
 

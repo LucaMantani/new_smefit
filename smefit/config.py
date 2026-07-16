@@ -21,9 +21,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
-    USER_PATHS_CONFIG,
     fetch_fit_if_missing,
-    load_user_paths,
     resolve_path,
 )
 from smefit.priors import Prior, _build_dist, _UniformDist

@@ -102,7 +102,7 @@ Parse optional settings for the gradient-descent best-fit node.
 Keys
 ----
 sm_solution : bool, default False
-    If True, skip optimisation and use c=0 (SM point) as the
+    If True, skip optimisation and use coefficients baseline values as the
     best-fit point.
 n_steps : int, default 2000
     Maximum number of gradient-descent steps.
@@ -227,14 +227,14 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 reportengine builds these nodes on demand; they are listed so you can trace
 which runcard keys each action ultimately needs.
 
-- `chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce the chi2 function, optionally combining with external chi2s.
+- `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
 - `data`(datasets, data_path) — Produce data group object.
 - `data_groups`(datasets) — Build data_groups from inline group: keys on each dataset entry.
 - `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
 - `eft_model`(theory, coefficients, use_quad, rge_matrix) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.
 - `fit_covmat`(data, theory, use_t0, use_theory_covmat) — Produce the covariance matrix to be used in the fit.
-- `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func) — Produce chi2 for a single-free-parameter individual fit.
+- `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
 - `individual_coefficients`(coefficients, individual_fit_coefficient) — Produce a single-free-parameter coefficient group for individual fits.
 - `individual_eft_model`(theory, individual_coefficients, use_quad, rge_matrix) — Produce EFT model for a single-free-parameter individual fit.
 - `individual_ext_chi2_func`(individual_coefficients, external_chi2, rge) — Load and wrap external chi2 modules for a single-free-parameter individual fit.

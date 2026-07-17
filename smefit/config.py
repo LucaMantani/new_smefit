@@ -494,7 +494,7 @@ class smefitConfig(Config):
         Keys
         ----
         sm_solution : bool, default False
-            If True, skip optimisation and use c=0 (SM point) as the
+            If True, skip optimisation and use coefficients baseline values as the
             best-fit point.
         n_steps : int, default 2000
             Maximum number of gradient-descent steps.
@@ -646,6 +646,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         individual_ext_chi2_func=None,
+        individual_coefficients=None,
     ):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
@@ -653,6 +654,7 @@ class smefitConfig(Config):
             data,
             fit_covmat,
             individual_ext_chi2_func,
+            individual_coefficients,
         )
 
     def produce_individual_prior(self, individual_coefficients):

@@ -107,6 +107,25 @@ def test_coefficient_constrain_expr():
     assert float(c.constrain(2.0)) == pytest.approx(5.0)
 
 
+def test_coefficient_baseline_value_default():
+    c = Coefficient(
+        name="X", free=True, prior={"dist": "uniform", "low": -1, "high": 1}
+    )
+    assert c.baseline_value == 0.0
+
+
+def test_coeff_group_baseline_free():
+    """baseline_free follows free_names order; fixed-coeff baselines are ignored."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    c_b = Coefficient(name="OpB", free=True, prior=prior, baseline_value=0.7)
+    c_a = Coefficient(name="OpA", free=True, prior=prior, baseline_value=-0.3)
+    c_default = Coefficient(name="OpD", free=True, prior=prior)
+    c_fixed = Coefficient(name="OpC", free=False, value=1.0, baseline_value=5.0)
+    cg = CoefficientGroup([c_b, c_a, c_default, c_fixed])
+    assert cg.free_names == ["OpA", "OpB", "OpD"]
+    assert jnp.allclose(cg.baseline_free, jnp.array([-0.3, 0.7, 0.0]))
+
+
 # ---------------------------------------------------------------------------
 # DataGroup
 # ---------------------------------------------------------------------------

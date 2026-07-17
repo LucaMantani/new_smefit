@@ -162,6 +162,7 @@ class Coefficient:
     value: Optional[float] = None
     expr: Optional[str] = None
     vars: Optional[List[str]] = None
+    baseline_value: float = 0.0
 
     def __post_init__(self) -> None:
         if self.free:
@@ -378,6 +379,8 @@ class CoefficientGroup:
         self.free_coeffs = [c for c in self.coefficients if c.free]
         self.free_names = [c.name for c in self.free_coeffs]
         self.fixed_coeffs = [c for c in self.coefficients if not c.free]
+        # baseline ("default") values of the free coefficients, ordered by free_names
+        self.baseline_free = jnp.array([c.baseline_value for c in self.free_coeffs])
 
         # Whitening matrix (set via whitened())
         self._W = None

@@ -136,9 +136,15 @@ use_quad: True
 datasets:
   - {name: DATASET_NAME, order: LO}  # order: LO/NLO/NNLO
 coefficients:
-  OpName: {free: True, prior: {dist: uniform, low: -1.0, high: 1.0}}
+  OpName: {free: True, prior: {dist: uniform, low: -1.0, high: 1.0}, baseline_value: 0.0}
   OpFixed: {free: False, value: 1.0}
   OpExpr: {free: False, vars: [other_coeff], expr: "other_coeff**2"}
 actions_:
   - run_test
 ```
+
+`baseline_value` (optional, defaults to `0.0`) sets the "default" value of a free
+coefficient. It is the point the gradient descent starts from, and the vector
+returned directly when `gradient_descent_settings.sm_solution: true`.
+It is a property of the coefficients dictionary, so it also
+applies to external-`chi2`-only fits. It is ignored for non-free coefficients.

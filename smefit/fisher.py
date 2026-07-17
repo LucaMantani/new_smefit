@@ -19,7 +19,7 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
 
     For each source (data-based dataset or external chi2), the Fisher matrix is
     F = 0.5 * H where H is the Hessian of the chi2 evaluated at ``gd_best_fit``.
-    To evaluate at the SM point (c=0), set ``sm_solution: true`` in the
+    To evaluate at the coefficient baseline values, set ``sm_solution: true`` in the
     ``gradient_descent_settings`` runcard block.
 
     Parameters

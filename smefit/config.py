@@ -240,6 +240,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Shared chi2 build logic used by both joint and individual producers."""
 
@@ -269,8 +270,17 @@ class smefitConfig(Config):
             else ext_chi2_func[0].param_names
         )
 
+        # baseline ("default") values of the free coefficients; a property of the
+        # coefficients dictionary, so it applies to external-chi2-only fits too.
+        baseline = coefficients.baseline_free if coefficients is not None else None
+
         if ext_chi2_func is None:
-            return Chi2(base_chi2, param_names=free_names, num_data=data.num_data)
+            return Chi2(
+                base_chi2,
+                param_names=free_names,
+                num_data=data.num_data,
+                baseline=baseline,
+            )
 
         if base_chi2 is None:
 
@@ -291,6 +301,7 @@ class smefitConfig(Config):
             param_names=free_names,
             num_data=tot_num_data,
             has_external=True,
+            baseline=baseline,
         )
 
     def produce_chi2(
@@ -299,13 +310,16 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
         contributions are summed.
         """
-        return self._build_chi2_impl(eft_model, data, fit_covmat, ext_chi2_func)
+        return self._build_chi2_impl(
+            eft_model, data, fit_covmat, ext_chi2_func, coefficients
+        )
 
     def produce_datasets_chi2(
         self,
@@ -490,7 +504,7 @@ class smefitConfig(Config):
         Keys
         ----
         sm_solution : bool, default False
-            If True, skip optimisation and use c=0 (SM point) as the
+            If True, skip optimisation and use coefficients baseline values as the
             best-fit point.
         n_steps : int, default 2000
             Maximum number of gradient-descent steps.
@@ -642,6 +656,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         individual_ext_chi2_func=None,
+        individual_coefficients=None,
     ):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
@@ -649,6 +664,7 @@ class smefitConfig(Config):
             data,
             fit_covmat,
             individual_ext_chi2_func,
+            individual_coefficients,
         )
 
     def produce_individual_prior(self, individual_coefficients):

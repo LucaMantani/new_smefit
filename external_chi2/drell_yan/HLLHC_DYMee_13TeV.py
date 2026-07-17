@@ -104,4 +104,4 @@ class HLLHC_DYMee_13TeV:
             data > 0, safe_data * jnp.log(safe_data / safe_theory), 0.0
         )
 
-        return 2.0 * jnp.sum(theory - data + log_term)
+        return 2.0 * jnp.sum(safe_theory - data + log_term)

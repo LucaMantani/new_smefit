@@ -89,8 +89,7 @@ Parse coefficients configuration.
 
 ### `data_path`
 
-Parse data path, resolving prefix-relative paths (e.g. smefit_database/commondata)
-via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
+Parse data path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml.
 
 ### `external_chi2`
 
@@ -193,8 +192,7 @@ Validation errors raised while parsing:
 
 ### `theory_path`
 
-Parse theory path, resolving prefix-relative paths (e.g. smefit_database/theory)
-via .config/paths.yaml in the repo root; run 'smefit_setup_local' to configure it.
+Parse theory path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml.
 
 ### `ultranest_settings`
 

@@ -103,6 +103,13 @@ def test_load_theory_missing_cov_type(fixtures_theory_path):
         load_theory(fixtures_theory_path, "TESTDATA", "NLO", th_cov_type="nonexistent")
 
 
+def test_load_theory_zero_cov_type(fixtures_theory_path):
+    # "zero" opts out of a theory covmat, even though "theory_cov_zero" is not in the JSON
+    th = load_theory(fixtures_theory_path, "TESTDATA", "NLO", th_cov_type="zero")
+    assert th.sm_covmat.shape == (3, 3)
+    assert jnp.allclose(th.sm_covmat, jnp.zeros((3, 3)))
+
+
 def test_load_theory_not_found(fixtures_theory_path):
     with pytest.raises(FileNotFoundError):
         load_theory(fixtures_theory_path, "NONEXISTENT", "NLO")

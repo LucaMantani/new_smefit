@@ -101,7 +101,7 @@ def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
-    if th_cov_type == "none":
+    if th_cov_type == "zero":
         # explicitly opt out of a theory covmat for this dataset
         sm_covmat = jnp.zeros((sm_pred.size, sm_pred.size))
     else:

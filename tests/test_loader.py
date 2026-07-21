@@ -84,7 +84,8 @@ def test_load_dataset_not_found(fixtures_data_path):
 
 
 def test_load_theory_basic(fixtures_theory_path):
-    th = load_theory(fixtures_theory_path, "TESTDATA", "NLO")
+    ds = {"name": "TESTDATA", "order": "NLO"}
+    th = load_theory(fixtures_theory_path, ds)
     assert th.name == "TESTDATA"
     assert jnp.allclose(th.sm_pred, jnp.array([10.0, 20.0, 30.0]))
     # operators must be sorted
@@ -93,23 +94,29 @@ def test_load_theory_basic(fixtures_theory_path):
 
 def test_load_theory_operators_from_quadratic(fixtures_theory_path):
     # TESTDATA.json has OpA*OpB in NLO; both must appear in operators
-    th = load_theory(fixtures_theory_path, "TESTDATA", "NLO")
+    ds = {"name": "TESTDATA", "order": "NLO"}
+    th = load_theory(fixtures_theory_path, ds)
     assert "OpA" in th.operators
     assert "OpB" in th.operators
 
 
 def test_load_theory_missing_cov_type(fixtures_theory_path):
     with pytest.raises(ValueError):
-        load_theory(fixtures_theory_path, "TESTDATA", "NLO", th_cov_type="nonexistent")
+        load_theory(
+            fixtures_theory_path,
+            {"name": "TESTDATA", "order": "NLO", "theory_cov": "nonexistent"},
+        )
 
 
 def test_load_theory_zero_cov_type(fixtures_theory_path):
     # "zero" opts out of a theory covmat, even though "theory_cov_zero" is not in the JSON
-    th = load_theory(fixtures_theory_path, "TESTDATA", "NLO", th_cov_type="zero")
+    th = load_theory(
+        fixtures_theory_path, {"name": "TESTDATA", "order": "NLO", "theory_cov": "zero"}
+    )
     assert th.sm_covmat.shape == (3, 3)
     assert jnp.allclose(th.sm_covmat, jnp.zeros((3, 3)))
 
 
 def test_load_theory_not_found(fixtures_theory_path):
     with pytest.raises(FileNotFoundError):
-        load_theory(fixtures_theory_path, "NONEXISTENT", "NLO")
+        load_theory(fixtures_theory_path, {"name": "NONEXISTENT", "order": "NLO"})

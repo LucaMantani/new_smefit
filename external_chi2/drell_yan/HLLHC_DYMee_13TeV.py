@@ -54,7 +54,7 @@ class HLLHC_DYMee_13TeV:
 
         ds = {"name": "HLLHC_DYMee_13TeV", "order": order}
 
-        dataset = loader.load_dataset(data_path, "HLLHC_DYMee_13TeV")
+        dataset = loader.load_dataset(data_path, ds)
         theory = loader.load_theory(theory_path, ds)
 
         data = DataGroup([dataset])

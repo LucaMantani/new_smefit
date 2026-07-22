@@ -62,7 +62,7 @@ class smefitConfig(Config):
 
         parsed_datasets = []
         for ds in datasets:
-            dataset = load_dataset(data_path, ds["name"])
+            dataset = load_dataset(data_path, ds)
             parsed_datasets.append(dataset)
 
         self._cached_data_group = DataGroup(parsed_datasets)

@@ -14,7 +14,7 @@ from smefit.loader import load_dataset, load_theory
 
 
 def test_load_dataset_basic(fixtures_data_path):
-    ds = load_dataset(fixtures_data_path, "TESTDATA")
+    ds = load_dataset(fixtures_data_path, {"name": "TESTDATA"})
     assert ds.name == "TESTDATA"
     assert ds.num_data == 3
     assert jnp.allclose(ds.central_values, jnp.array([1.0, 2.0, 3.0]))
@@ -22,7 +22,7 @@ def test_load_dataset_basic(fixtures_data_path):
 
 
 def test_load_dataset_scalar_luminosity(fixtures_data_path):
-    ds = load_dataset(fixtures_data_path, "TESTDATA")
+    ds = load_dataset(fixtures_data_path, {"name": "TESTDATA"})
     assert ds.luminosity.shape == (3,)
     assert jnp.allclose(ds.luminosity, jnp.full(3, 1.5))
 
@@ -39,7 +39,7 @@ def test_load_dataset_list_luminosity(tmp_path):
         "luminosity": [10.0, 20.0, 30.0],
     }
     (tmp_path / "TMP.yaml").write_text(yaml.dump(data))
-    ds = load_dataset(tmp_path, "TMP")
+    ds = load_dataset(tmp_path, {"name": "TMP"})
     assert jnp.allclose(ds.luminosity, jnp.array([10.0, 20.0, 30.0]))
 
 
@@ -54,7 +54,7 @@ def test_load_dataset_no_luminosity(tmp_path):
         "sys_type": ["ADD"],
     }
     (tmp_path / "TMP.yaml").write_text(yaml.dump(data))
-    ds = load_dataset(tmp_path, "TMP")
+    ds = load_dataset(tmp_path, {"name": "TMP"})
     assert jnp.all(jnp.isnan(ds.luminosity))
 
 
@@ -70,12 +70,12 @@ def test_load_dataset_length_mismatch(tmp_path):
     }
     (tmp_path / "TMP.yaml").write_text(yaml.dump(data))
     with pytest.raises(ValueError):
-        load_dataset(tmp_path, "TMP")
+        load_dataset(tmp_path, {"name": "TMP"})
 
 
 def test_load_dataset_not_found(fixtures_data_path):
     with pytest.raises(FileNotFoundError):
-        load_dataset(fixtures_data_path, "NONEXISTENT")
+        load_dataset(fixtures_data_path, {"name": "NONEXISTENT"})
 
 
 # ---------------------------------------------------------------------------

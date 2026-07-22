@@ -16,8 +16,9 @@ from smefit.utils import ensure_list
 log = logging.getLogger(__name__)
 
 
-def load_dataset(data_path, dataset_name):
+def load_dataset(data_path, dataset_dict):
     """Load dataset from given path."""
+    dataset_name = dataset_dict["name"]
     dataset_path = data_path / f"{dataset_name}.yaml"
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset {dataset_name} not found in {data_path}")

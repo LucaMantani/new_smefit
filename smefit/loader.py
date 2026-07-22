@@ -23,7 +23,28 @@ def load_dataset(data_path, dataset_dict):
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset {dataset_name} not found in {data_path}")
 
+    stat_unc_type = dataset_dict.get("stat_unc", "current")
+    syst_unc_type = dataset_dict.get("syst_unc", "current")
+    for unc_type, unc_name in [
+        (stat_unc_type, "stat_unc"),
+        (syst_unc_type, "syst_unc"),
+    ]:
+        if unc_type not in ("current", "zero"):
+            raise ValueError(
+                f"{dataset_name}: {unc_name} must be 'current' or 'zero', got {unc_type!r}"
+            )
+
     log.info("Loading dataset %s", dataset_name)
+    if stat_unc_type == "zero":
+        log.warning(
+            "Statistical uncertainty explicitly set to zero for dataset %s",
+            dataset_name,
+        )
+    if syst_unc_type == "zero":
+        log.warning(
+            "Systematic uncertainties explicitly set to zero for dataset %s",
+            dataset_name,
+        )
 
     with open(dataset_path) as file:
         dataset = yaml.safe_load(file)
@@ -40,6 +61,13 @@ def load_dataset(data_path, dataset_dict):
     if syst_err.ndim == 1:
         # interpret as n_sys systematics for one datapoint
         syst_err = syst_err[:, None]  # (n_sys, 1)
+
+    if stat_unc_type == "zero":
+        # explicitly opt out of the statistical uncertainty for this dataset
+        stat_err = jnp.zeros_like(stat_err)
+    if syst_unc_type == "zero":
+        # explicitly opt out of the systematic uncertainties for this dataset
+        syst_err = jnp.zeros_like(syst_err)
 
     for arr, label in [
         (central_values, "data_central"),

@@ -82,8 +82,11 @@ def load_dataset(data_path, dataset_name):
     )
 
 
-def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
+def load_theory(theory_path, dataset_dict):
     """Load theory predictions from given path."""
+    dataset_name = dataset_dict["name"]
+    order = dataset_dict["order"]
+    th_cov_type = dataset_dict.get("theory_cov", "current")
     theory_file = theory_path / f"{dataset_name}.json"
     if not theory_file.exists():
         raise FileNotFoundError(

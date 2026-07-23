@@ -60,13 +60,13 @@ def _build_matrix(chi2, whitening, center):
     return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))
 
 
-def _no_shift(chi2, whitening):
+def _whitening_no_shift(chi2, whitening):
     """Hessian evaluated at c=0, no shift."""
     zeros = jnp.zeros(chi2.nparam)
     return WhitenTransform(matrix=_build_matrix(chi2, whitening, zeros), shift=zeros)
 
 
-def _with_shift(chi2, gd_best_fit, whitening):
+def _whitening_with_shift(chi2, gd_best_fit, whitening):
     """Hessian evaluated at the gradient-descent best-fit point.
 
     Only reached when whitening["shift"] is True; this is the sole path
@@ -77,7 +77,7 @@ def _with_shift(chi2, gd_best_fit, whitening):
     return WhitenTransform(matrix=_build_matrix(chi2, whitening, shift), shift=shift)
 
 
-def _disabled():
+def _whitening_disabled():
     """Returned when whitening is disabled entirely; takes no dependencies."""
     return None
 

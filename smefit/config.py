@@ -26,7 +26,11 @@ from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
-from smefit.whitening import _disabled, _no_shift, _with_shift
+from smefit.whitening import (
+    _whitening_disabled,
+    _whitening_no_shift,
+    _whitening_with_shift,
+)
 
 log = logging.getLogger(__name__)
 
@@ -201,10 +205,10 @@ class smefitConfig(Config):
         Returns None (via a zero-argument worker) when whitening is disabled.
         """
         if whitening is None:
-            return _disabled
+            return _whitening_disabled
         if whitening["shift"]:
-            return _with_shift
-        return _no_shift
+            return _whitening_with_shift
+        return _whitening_no_shift
 
     def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
         """Produce EFT model mapping coefficients to theory predictions."""

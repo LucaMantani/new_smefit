@@ -8,9 +8,9 @@ from smefit.core import Coefficient, CoefficientGroup
 from smefit.whitening import (
     WhitenTransform,
     _build_matrix,
-    _disabled,
-    _no_shift,
-    _with_shift,
+    _whitening_disabled,
+    _whitening_no_shift,
+    _whitening_with_shift,
     apply_whitening,
 )
 
@@ -54,7 +54,7 @@ def test_to_dict_from_dict_roundtrip():
 
 
 # ---------------------------------------------------------------------------
-# _build_matrix / _no_shift / _with_shift / _disabled
+# _build_matrix / _whitening_no_shift / _whitening_with_shift / _whitening_disabled
 # ---------------------------------------------------------------------------
 
 
@@ -69,7 +69,7 @@ def test_build_matrix_matches_hand_computed_cholesky():
 
 def test_no_shift_evaluates_hessian_at_zero():
     chi2 = _quadratic_chi2()
-    transform = _no_shift(chi2, _WHITENING)
+    transform = _whitening_no_shift(chi2, _WHITENING)
     assert jnp.allclose(transform.shift, jnp.zeros(2))
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
@@ -77,14 +77,14 @@ def test_no_shift_evaluates_hessian_at_zero():
 def test_with_shift_centers_on_given_point():
     chi2 = _quadratic_chi2()
     gd_best_fit = jnp.array([1.0, -2.0])
-    transform = _with_shift(chi2, gd_best_fit, _WHITENING)
+    transform = _whitening_with_shift(chi2, gd_best_fit, _WHITENING)
     assert jnp.allclose(transform.shift, gd_best_fit)
     # Hessian of sum(c**2) is constant (2*I), so matrix agrees with the no-shift case.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
 
 def test_disabled_takes_no_arguments_and_returns_none():
-    assert _disabled() is None
+    assert _whitening_disabled() is None
 
 
 # ---------------------------------------------------------------------------

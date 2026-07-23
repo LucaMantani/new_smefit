@@ -14,7 +14,11 @@ from smefit.config import smefitConfig
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.model import EFTModel
 from smefit.priors import Prior
-from smefit.whitening import _disabled, _no_shift, _with_shift
+from smefit.whitening import (
+    _whitening_disabled,
+    _whitening_no_shift,
+    _whitening_with_shift,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture: bare smefitConfig instance (no reportengine DAG)
@@ -429,7 +433,7 @@ def test_parse_whitening_unknown_key_warns(cfg, caplog):
 def test_produce_whitening_transformation_disabled(cfg):
     node = cfg.produce_whitening_transformation(whitening=None)
     assert isinstance(node, ExplicitNode)
-    assert node.value is _disabled
+    assert node.value is _whitening_disabled
     # zero-argument worker: no dependency on gd_best_fit or anything else
     assert inspect.signature(node.value).parameters == {}
     assert node.value() is None
@@ -439,7 +443,7 @@ def test_produce_whitening_transformation_no_shift(cfg):
     whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": False}
     node = cfg.produce_whitening_transformation(whitening=whitening)
     assert isinstance(node, ExplicitNode)
-    assert node.value is _no_shift
+    assert node.value is _whitening_no_shift
     # must not depend on gd_best_fit, so gradient_descent_settings is never required
     assert "gd_best_fit" not in inspect.signature(node.value).parameters
 
@@ -448,14 +452,14 @@ def test_produce_whitening_transformation_with_shift(cfg):
     whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": True}
     node = cfg.produce_whitening_transformation(whitening=whitening)
     assert isinstance(node, ExplicitNode)
-    assert node.value is _with_shift
+    assert node.value is _whitening_with_shift
     assert "gd_best_fit" in inspect.signature(node.value).parameters
 
 
 def test_no_shift_worker_centers_at_zero():
     chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
     whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": False}
-    transform = _no_shift(chi2, whitening)
+    transform = _whitening_no_shift(chi2, whitening)
     assert jnp.allclose(transform.shift, jnp.zeros(2))
     # Hessian of sum(c**2) is 2*I -> H = L L^T with L = sqrt(2)*I -> W = L^-T = I/sqrt(2)
     expected = jnp.eye(2) / jnp.sqrt(2.0)
@@ -466,7 +470,7 @@ def test_with_shift_worker_centers_at_gd_best_fit():
     chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
     whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": True}
     gd_best_fit = jnp.array([1.0, 2.0])
-    transform = _with_shift(chi2, gd_best_fit, whitening)
+    transform = _whitening_with_shift(chi2, gd_best_fit, whitening)
     assert jnp.allclose(transform.shift, gd_best_fit)
     expected = jnp.eye(2) / jnp.sqrt(2.0)
     assert jnp.allclose(transform.matrix, expected, atol=1e-5)

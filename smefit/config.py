@@ -27,9 +27,9 @@ from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
+    _whitening_baseline_shift,
     _whitening_disabled,
-    _whitening_no_shift,
-    _whitening_with_shift,
+    _whitening_gradient_descent_shift,
 )
 
 log = logging.getLogger(__name__)
@@ -188,10 +188,17 @@ class smefitConfig(Config):
         known_keys = {"sigma_prior", "eps", "shift"}
         for k in set(whitening.keys()) - known_keys:
             log.warning("Unknown key '%s' in whitening settings.", k)
+        shift = whitening.get("shift", "baseline")
+        allowed_shifts = {"baseline", "gradient_descent"}
+        if shift not in allowed_shifts:
+            raise ConfigError(
+                f"whitening.shift must be one of {sorted(allowed_shifts)}, "
+                f"got '{shift}'"
+            )
         return {
             "sigma_prior": float(whitening.get("sigma_prior", 5.0)),
             "eps": float(whitening.get("eps", 1e-8)),
-            "shift": bool(whitening.get("shift", False)),
+            "shift": shift,
         }
 
     @explicit_node
@@ -200,15 +207,16 @@ class smefitConfig(Config):
 
         This must stay an ExplicitNode-returning method on smefitConfig (not
         a plain provider function) so the decision of whether gd_best_fit is
-        needed can be made dynamically: only ``whitening["shift"]`` triggers
-        a dependency on ``gd_best_fit`` (and hence ``gradient_descent_settings``).
-        Returns None (via a zero-argument worker) when whitening is disabled.
+        needed can be made dynamically: only ``whitening["shift"] ==
+        "gradient_descent"`` triggers a dependency on ``gd_best_fit`` (and
+        hence ``gradient_descent_settings``). Returns None (via a
+        zero-argument worker) when whitening is disabled.
         """
         if whitening is None:
             return _whitening_disabled
-        if whitening["shift"]:
-            return _whitening_with_shift
-        return _whitening_no_shift
+        if whitening["shift"] == "gradient_descent":
+            return _whitening_gradient_descent_shift
+        return _whitening_baseline_shift
 
     def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
         """Produce EFT model mapping coefficients to theory predictions."""

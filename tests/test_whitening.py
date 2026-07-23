@@ -8,13 +8,13 @@ from smefit.core import Coefficient, CoefficientGroup
 from smefit.whitening import (
     WhitenTransform,
     _build_matrix,
+    _whitening_baseline_shift,
     _whitening_disabled,
-    _whitening_no_shift,
-    _whitening_with_shift,
+    _whitening_gradient_descent_shift,
     apply_whitening,
 )
 
-_WHITENING = {"sigma_prior": 5.0, "eps": 1e-8, "shift": False}
+_WHITENING = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
 
@@ -54,7 +54,8 @@ def test_to_dict_from_dict_roundtrip():
 
 
 # ---------------------------------------------------------------------------
-# _build_matrix / _whitening_no_shift / _whitening_with_shift / _whitening_disabled
+# _build_matrix / _whitening_baseline_shift / _whitening_gradient_descent_shift
+# / _whitening_disabled
 # ---------------------------------------------------------------------------
 
 
@@ -67,30 +68,30 @@ def test_build_matrix_matches_hand_computed_cholesky():
     assert jnp.allclose(matrix, expected, atol=1e-5)
 
 
-def test_no_shift_evaluates_hessian_at_default_zero_baseline():
+def test_baseline_shift_evaluates_hessian_at_default_zero_baseline():
     """With no baseline set, chi2.baseline defaults to zeros."""
     chi2 = _quadratic_chi2()
-    transform = _whitening_no_shift(chi2, _WHITENING)
+    transform = _whitening_baseline_shift(chi2, _WHITENING)
     assert jnp.allclose(transform.shift, jnp.zeros(2))
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
 
-def test_no_shift_evaluates_hessian_at_coefficients_baseline():
+def test_baseline_shift_evaluates_hessian_at_coefficients_baseline():
     """shift should track chi2.baseline, not a hardcoded zero vector."""
     baseline = jnp.array([1.0, -2.0])
     chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=1, baseline=baseline)
-    transform = _whitening_no_shift(chi2, _WHITENING)
+    transform = _whitening_baseline_shift(chi2, _WHITENING)
     assert jnp.allclose(transform.shift, baseline)
     # Hessian of sum(c**2) is constant (2*I) everywhere, so the matrix is unchanged.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
 
-def test_with_shift_centers_on_given_point():
+def test_gradient_descent_shift_centers_on_given_point():
     chi2 = _quadratic_chi2()
     gd_best_fit = jnp.array([1.0, -2.0])
-    transform = _whitening_with_shift(chi2, gd_best_fit, _WHITENING)
+    transform = _whitening_gradient_descent_shift(chi2, gd_best_fit, _WHITENING)
     assert jnp.allclose(transform.shift, gd_best_fit)
-    # Hessian of sum(c**2) is constant (2*I), so matrix agrees with the no-shift case.
+    # Hessian of sum(c**2) is constant (2*I), so matrix agrees with the baseline case.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
 

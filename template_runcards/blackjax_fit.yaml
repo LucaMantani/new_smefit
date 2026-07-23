@@ -61,7 +61,7 @@ external_chi2:
 # whitening:
 #   sigma_prior: 5.0
 #   eps: 1e-8
-#   shift: false
+#   shift: baseline  # baseline or gradient_descent
 
 actions_:
 - run_blackjax_fit

@@ -26,8 +26,9 @@ class WhitenTransform:
     matrix : jnp.ndarray, shape (n_free, n_free)
         Cholesky-derived unwhitening matrix, W = L^{-T} where H = L L^T.
     shift : jnp.ndarray, shape (n_free,)
-        Translation applied after the linear map. Zero vector when no shift
-        was requested.
+        Translation applied after the linear map: the coefficients' baseline
+        point by default, or the gradient-descent best-fit point when
+        ``whitening.shift: gradient_descent`` is requested.
     """
 
     matrix: jnp.ndarray
@@ -60,20 +61,21 @@ def _build_matrix(chi2, whitening, center):
     return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))
 
 
-def _whitening_no_shift(chi2, whitening):
-    """Hessian evaluated at the coefficients' baseline point, no GD-based shift."""
+def _whitening_baseline_shift(chi2, whitening):
+    """Hessian evaluated at the coefficients' baseline point.
+
+    Reached when whitening["shift"] == "baseline" (the default).
+    """
     baseline = chi2.baseline
     return WhitenTransform(
         matrix=_build_matrix(chi2, whitening, baseline), shift=baseline
     )
 
 
-def _whitening_with_shift(chi2, gd_best_fit, whitening):
+def _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening):
     """Hessian evaluated at the gradient-descent best-fit point.
 
-    Only reached when whitening["shift"] is True; this is the sole path
-    through which gd_best_fit (and therefore gradient_descent_settings)
-    enters the DAG for a whitening-enabled runcard.
+    Only reached when whitening["shift"] == "gradient_descent".
     """
     shift = gd_best_fit
     return WhitenTransform(matrix=_build_matrix(chi2, whitening, shift), shift=shift)

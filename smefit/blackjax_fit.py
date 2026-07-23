@@ -18,7 +18,8 @@ from blackjax.ns.utils import ess, finalise, log_weights, sample
 from jax.scipy.special import logsumexp
 
 from smefit.fit_result import FitResult
-from smefit.utils import apply_whitening, resolve_posterior
+from smefit.utils import resolve_posterior
+from smefit.whitening import apply_whitening
 
 log = logging.getLogger(__name__)
 

@@ -20,16 +20,6 @@ from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 log = logging.getLogger(__name__)
 
 
-def apply_whitening(chi2, coefficients, whitening_transformation):
-    """Transform chi2 and coefficients into whitened space.
-
-    Returns the transformed chi2 callable and whitened CoefficientGroup.
-    """
-    _chi2 = lambda c_w: chi2(whitening_transformation.to_physical(c_w))
-    resolve_coeffs = coefficients.whitened(whitening_transformation)
-    return _chi2, resolve_coeffs
-
-
 def resolve_posterior(resolve_coeffs, posterior_free, best_free):
     """Resolve posterior samples and best-fit point from free to full coefficient space.
 

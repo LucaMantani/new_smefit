@@ -80,3 +80,13 @@ def _with_shift(chi2, gd_best_fit, whitening):
 def _disabled():
     """Returned when whitening is disabled entirely; takes no dependencies."""
     return None
+
+
+def apply_whitening(chi2, coefficients, whitening_transformation):
+    """Transform chi2 and coefficients into whitened space.
+
+    Returns the transformed chi2 callable and whitened CoefficientGroup.
+    """
+    _chi2 = lambda c_w: chi2(whitening_transformation.to_physical(c_w))
+    resolve_coeffs = coefficients.whitened(whitening_transformation)
+    return _chi2, resolve_coeffs

@@ -142,6 +142,7 @@ applies to external-`chi2`-only fits. It is ignored for non-free coefficients.
 
 An optional `whitening:` block reparametrises free coefficients into a
 better-conditioned space for sampling: `whitening: {sigma_prior: 5.0, eps: 1e-8,
-shift: false}`. When `shift: true`, the whitening transform is centred on the
-`gd_best_fit` point instead of zero, which additionally requires a
-`gradient_descent_settings` block in the runcard.
+shift: false}`. By default (`shift: false`) the whitening transform is centred
+on the coefficients' baseline point (`baseline_value`, zero by default). When
+`shift: true`, it is centred on the `gd_best_fit` point instead, which
+additionally requires a `gradient_descent_settings` block in the runcard.

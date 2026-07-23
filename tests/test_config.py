@@ -456,7 +456,8 @@ def test_produce_whitening_transformation_with_shift(cfg):
     assert "gd_best_fit" in inspect.signature(node.value).parameters
 
 
-def test_no_shift_worker_centers_at_zero():
+def test_no_shift_worker_centers_at_baseline():
+    """With no baseline set, chi2.baseline defaults to zeros."""
     chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
     whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": False}
     transform = _whitening_no_shift(chi2, whitening)

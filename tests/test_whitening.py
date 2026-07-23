@@ -67,10 +67,21 @@ def test_build_matrix_matches_hand_computed_cholesky():
     assert jnp.allclose(matrix, expected, atol=1e-5)
 
 
-def test_no_shift_evaluates_hessian_at_zero():
+def test_no_shift_evaluates_hessian_at_default_zero_baseline():
+    """With no baseline set, chi2.baseline defaults to zeros."""
     chi2 = _quadratic_chi2()
     transform = _whitening_no_shift(chi2, _WHITENING)
     assert jnp.allclose(transform.shift, jnp.zeros(2))
+    assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
+
+
+def test_no_shift_evaluates_hessian_at_coefficients_baseline():
+    """shift should track chi2.baseline, not a hardcoded zero vector."""
+    baseline = jnp.array([1.0, -2.0])
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=1, baseline=baseline)
+    transform = _whitening_no_shift(chi2, _WHITENING)
+    assert jnp.allclose(transform.shift, baseline)
+    # Hessian of sum(c**2) is constant (2*I) everywhere, so the matrix is unchanged.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
 
 

@@ -61,9 +61,11 @@ def _build_matrix(chi2, whitening, center):
 
 
 def _whitening_no_shift(chi2, whitening):
-    """Hessian evaluated at c=0, no shift."""
-    zeros = jnp.zeros(chi2.nparam)
-    return WhitenTransform(matrix=_build_matrix(chi2, whitening, zeros), shift=zeros)
+    """Hessian evaluated at the coefficients' baseline point, no GD-based shift."""
+    baseline = chi2.baseline
+    return WhitenTransform(
+        matrix=_build_matrix(chi2, whitening, baseline), shift=baseline
+    )
 
 
 def _whitening_with_shift(chi2, gd_best_fit, whitening):

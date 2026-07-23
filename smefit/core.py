@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from smefit.data_utils import covmat_from_systematics
+from smefit.whitening import WhitenTransform
 
 # Namespace available in coefficient expressions.
 # All functions map to JAX equivalents so they are fully differentiable.
@@ -382,8 +383,8 @@ class CoefficientGroup:
         # baseline ("default") values of the free coefficients, ordered by free_names
         self.baseline_free = jnp.array([c.baseline_value for c in self.free_coeffs])
 
-        # Whitening matrix (set via whitened())
-        self._W = None
+        # Whitening transform (set via whitened())
+        self._transform = None
 
         # Precompute resolution mapping
         self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
@@ -420,18 +421,18 @@ class CoefficientGroup:
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
 
-    def whitened(self, W: "jnp.ndarray") -> "CoefficientGroup":
+    def whitened(self, transform: WhitenTransform) -> "CoefficientGroup":
         """Return a CoefficientGroup whose resolve un-whitens free coefficients first.
 
         Parameters
         ----------
-        W : jnp.ndarray
-            Unwhitening matrix of shape (n_free, n_free). Applied as c = W @ c_w
-            before the standard resolve logic.
+        transform : WhitenTransform
+            Affine transform. Applied as c = transform.to_physical(c_w) before
+            the standard resolve logic.
         """
 
         new = copy.copy(self)
-        new._W = W
+        new._transform = transform
         return new
 
     def resolve(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
@@ -441,16 +442,17 @@ class CoefficientGroup:
         ----------
         free_coeffs : jnp.ndarray
             Values of the free coefficients, ordered by self.free_coeffs.
-            If this CoefficientGroup was created via ``whitened(W)``, the input
-            is treated as whitened coordinates and un-whitened first (c = W @ c_w).
+            If this CoefficientGroup was created via ``whitened(transform)``,
+            the input is treated as whitened coordinates and mapped to
+            physical space first (c = transform.to_physical(c_w)).
 
         Returns
         -------
         jnp.ndarray
             Values for all coefficients, in self.coefficients order.
         """
-        if self._W is not None:
-            free_coeffs = self._W @ free_coeffs
+        if self._transform is not None:
+            free_coeffs = self._transform.to_physical(free_coeffs)
         result = jnp.zeros(len(self.coefficients))
         # Place free coefficients
         result = result.at[jnp.array(self._free_indices, dtype=int)].set(free_coeffs)

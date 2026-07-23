@@ -8,10 +8,8 @@ import logging
 import os
 import pathlib
 
-import jax
-import jax.numpy as jnp
 import optax
-from reportengine.configparser import ConfigError
+from reportengine.configparser import ConfigError, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
@@ -28,6 +26,7 @@ from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
+from smefit.whitening import _disabled, _no_shift, _with_shift
 
 log = logging.getLogger(__name__)
 
@@ -182,30 +181,30 @@ class smefitConfig(Config):
 
     def parse_whitening(self, whitening):
         """Parse and validate the optional whitening block."""
-        known_keys = {"sigma_prior", "eps"}
+        known_keys = {"sigma_prior", "eps", "shift"}
         for k in set(whitening.keys()) - known_keys:
             log.warning("Unknown key '%s' in whitening settings.", k)
         return {
             "sigma_prior": float(whitening.get("sigma_prior", 5.0)),
             "eps": float(whitening.get("eps", 1e-8)),
+            "shift": bool(whitening.get("shift", False)),
         }
 
-    def produce_whitening_matrix(self, chi2, whitening=None):
-        """Produce the whitening matrix W from the chi2 Hessian at c=0.
+    @explicit_node
+    def produce_whitening_transformation(self, whitening=None):
+        """Dispatch to the correct whitening-transform builder.
 
-        Uses the plain chi2 node (already built by produce_chi2) to compute
-        H = d²chi2/dc² at c=0, then returns W = L^{-T} where H = L L^T
-        (Cholesky). When whitening is disabled (no whitening block in the
-        runcard), returns None.
+        This must stay an ExplicitNode-returning method on smefitConfig (not
+        a plain provider function) so the decision of whether gd_best_fit is
+        needed can be made dynamically: only ``whitening["shift"]`` triggers
+        a dependency on ``gd_best_fit`` (and hence ``gradient_descent_settings``).
+        Returns None (via a zero-argument worker) when whitening is disabled.
         """
         if whitening is None:
-            return None
-        eps = whitening["eps"]
-        zeros = jnp.zeros(chi2.nparam)
-        H = jax.hessian(chi2)(zeros) + eps * jnp.eye(chi2.nparam)
-        log.info("Hessian whitening: cond(H) = %.3e", float(jnp.linalg.cond(H)))
-        L = jnp.linalg.cholesky(H)
-        return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))  # W = L^{-T}
+            return _disabled
+        if whitening["shift"]:
+            return _with_shift
+        return _no_shift
 
     def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
         """Produce EFT model mapping coefficients to theory predictions."""

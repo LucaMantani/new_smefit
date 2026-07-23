@@ -24,7 +24,7 @@ def ultranest_fit(
     chi2,
     coefficients,
     ultranest_settings,
-    whitening_matrix=None,
+    whitening_transformation=None,
     n_samples=10000,
 ):
     """Run UltraNest nested sampling and return a FitResult.
@@ -41,9 +41,9 @@ def ultranest_fit(
         Coefficient group (used to resolve derived coefficients from free ones).
     ultranest_settings : dict
         Settings for the UltraNest sampler.
-    whitening_matrix : jnp.ndarray, optional
-        Unwhitening matrix W (shape n_free x n_free). When set, the sampler
-        works in the whitened space c_w and evaluates chi2(W @ c_w).
+    whitening_transformation : WhitenTransform, optional
+        Affine whitening transform. When set, the sampler works in the
+        whitened space c_w and evaluates chi2(transform.to_physical(c_w)).
     n_samples : int, optional
         Number of posterior samples to draw from the full set of UltraNest samples.
 
@@ -51,9 +51,11 @@ def ultranest_fit(
     -------
     FitResult
     """
-    if whitening_matrix is not None:
-        log.info("Using whitening matrix in UltraNest fit.")
-        _chi2, resolve_coeffs = apply_whitening(chi2, coefficients, whitening_matrix)
+    if whitening_transformation is not None:
+        log.info("Using whitening transformation in UltraNest fit.")
+        _chi2, resolve_coeffs = apply_whitening(
+            chi2, coefficients, whitening_transformation
+        )
     else:
         _chi2 = chi2
         resolve_coeffs = coefficients
@@ -142,6 +144,6 @@ def ultranest_fit(
         logz=logz,
         samples=samples,
         prior_specs=prior.prior_specs,
-        whitening_matrix=whitening_matrix,
-        whitening_active=whitening_matrix is not None,
+        whitening_transformation=whitening_transformation,
+        whitening_active=whitening_transformation is not None,
     )

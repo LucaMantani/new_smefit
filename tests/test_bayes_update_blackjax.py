@@ -32,6 +32,7 @@ from smefit.priors import (
     _UniformDist,
     _WhitenedToPhysicalPrior,
 )
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Problem constants
@@ -59,21 +60,25 @@ class _Coeffs:
     def resolve(self, x):
         return x
 
-    def whitened(self, W):
-        return _CoeffsWhitened(self.names, W)
+    def whitened(self, transform):
+        return _CoeffsWhitened(self.names, transform)
 
 
 class _CoeffsWhitened:
-    def __init__(self, names, W):
+    def __init__(self, names, transform):
         self.names = list(names)
         self.free_names = list(names)
-        self._W = W
+        self._transform = transform
 
     def resolve(self, c_w):
-        return self._W @ c_w
+        return self._transform.to_physical(c_w)
 
-    def whitened(self, W):
-        return _CoeffsWhitened(self.names, self._W @ W)
+    def whitened(self, transform):
+        composed = WhitenTransform(
+            matrix=self._transform.matrix @ transform.matrix,
+            shift=self._transform.matrix @ transform.shift + self._transform.shift,
+        )
+        return _CoeffsWhitened(self.names, composed)
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +207,7 @@ def test_bayes_update_with_whitening(correlated_problem, tmp_path):
     H = jax.hessian(lambda x: chi2_D1(x))(jnp.zeros(n)) + 1e-8 * jnp.eye(n)
     L = jnp.linalg.cholesky(H)
     W = jnp.linalg.solve(L.T, jnp.eye(n))
+    transform = WhitenTransform(matrix=W, shift=jnp.zeros(n))
 
     prior_w = Prior([_UniformDist(-SIGMA_PRIOR, SIGMA_PRIOR)] * n, names)
 
@@ -210,12 +216,12 @@ def test_bayes_update_with_whitening(correlated_problem, tmp_path):
         chi2_D1,
         coeffs,
         _bj_cfg(tmp_path / "fit1_w"),
-        whitening_matrix=W,
+        whitening_transformation=transform,
         n_samples=N_SAMPLES,
     )
     _assert_posterior(fr_fit1_w, names, Sigma1)
 
-    prior_1_phys = _WhitenedToPhysicalPrior(prior_w, W)
+    prior_1_phys = _WhitenedToPhysicalPrior(prior_w, transform)
     prior_upd = ExactPosteriorPrior(
         base_prior=prior_1_phys,
         log_likelihood_1=jax.jit(lambda t: -chi2_D1(t) / 2.0),

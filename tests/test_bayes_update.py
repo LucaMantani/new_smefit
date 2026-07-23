@@ -28,6 +28,7 @@ from smefit.priors import (
     _WhitenedToPhysicalPrior,
 )
 from smefit.utils import build_exact_posterior_prior
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,7 +46,7 @@ def _make_fit_dir(
     free_params,
     samples,
     whitening_active=False,
-    whitening_matrix=None,
+    whitening_transformation=None,
     datasets=None,
     external_chi2=None,
 ):
@@ -71,9 +72,9 @@ def _make_fit_dir(
         "prior_specs": {
             p: {"dist": "uniform", "low": -1.0, "high": 1.0} for p in free_params
         },
-        "whitening_matrix": (
-            [[float(v) for v in row] for row in whitening_matrix.tolist()]
-            if whitening_matrix is not None
+        "whitening_transformation": (
+            whitening_transformation.to_dict()
+            if whitening_transformation is not None
             else None
         ),
         "whitening_active": whitening_active,
@@ -106,8 +107,8 @@ def _make_fit_dir(
 def test_whitened_to_physical_identity_W():
     """With W=I, log_prob in physical space equals the wrapped prior's log_prob."""
     base = _uniform_prior(["OpA", "OpB"])
-    W = jnp.eye(2)
-    wrapped = _WhitenedToPhysicalPrior(base, W)
+    transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
+    wrapped = _WhitenedToPhysicalPrior(base, transform)
     x = jnp.array([0.0, 0.5])
     assert float(wrapped.log_prob(x)) == pytest.approx(
         float(base.log_prob(x)), rel=1e-5
@@ -118,8 +119,8 @@ def test_whitened_to_physical_diagonal_W():
     """With diagonal W=diag(2,2), physical params are half the whitened ones.
     The Jacobian factor is log|det(W^{-1})| = log(1/4) = -log(4)."""
     base = _uniform_prior(["OpA", "OpB"], low=-2.0, high=2.0)
-    W = 2.0 * jnp.eye(2)
-    wrapped = _WhitenedToPhysicalPrior(base, W)
+    transform = WhitenTransform(matrix=2.0 * jnp.eye(2), shift=jnp.zeros(2))
+    wrapped = _WhitenedToPhysicalPrior(base, transform)
     # x_phys in support of base after W^{-1} mapping (W^{-1} x = 0.5*x)
     x_phys = jnp.array([0.5, 0.5])
     x_w = 0.5 * x_phys  # = [0.25, 0.25], inside [-2, 2]
@@ -129,8 +130,29 @@ def test_whitened_to_physical_diagonal_W():
 
 def test_whitened_to_physical_inherits_param_names():
     base = _uniform_prior(["OpA"])
-    wrapped = _WhitenedToPhysicalPrior(base, jnp.eye(1))
+    transform = WhitenTransform(matrix=jnp.eye(1), shift=jnp.zeros(1))
+    wrapped = _WhitenedToPhysicalPrior(base, transform)
     assert wrapped.param_names == ["OpA"]
+
+
+def test_whitened_to_physical_shift_does_not_affect_jacobian():
+    """A nonzero shift only translates coordinates; the log-det term is unchanged."""
+    base = _uniform_prior(["OpA", "OpB"], low=-2.0, high=2.0)
+    matrix = 2.0 * jnp.eye(2)
+    no_shift = WhitenTransform(matrix=matrix, shift=jnp.zeros(2))
+    shifted = WhitenTransform(matrix=matrix, shift=jnp.array([0.2, -0.2]))
+    wrapped_no_shift = _WhitenedToPhysicalPrior(base, no_shift)
+    wrapped_shifted = _WhitenedToPhysicalPrior(base, shifted)
+    assert float(wrapped_no_shift._log_abs_det_matrix_inv) == pytest.approx(
+        float(wrapped_shifted._log_abs_det_matrix_inv)
+    )
+    # log_prob at the corresponding physical point (offset by the shift) should match.
+    x_w = jnp.array([0.25, 0.25])
+    x_phys_no_shift = no_shift.to_physical(x_w)
+    x_phys_shifted = shifted.to_physical(x_w)
+    assert float(wrapped_no_shift.log_prob(x_phys_no_shift)) == pytest.approx(
+        float(wrapped_shifted.log_prob(x_phys_shifted)), rel=1e-5
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -233,13 +255,14 @@ def test_fit_result_from_json_roundtrip(tmp_path):
     assert recovered.max_loglikelihood == pytest.approx(-2.0)
     assert recovered.num_data == 8
     assert list(recovered.samples["OpA"]) == pytest.approx([0.1, 0.2, 0.3])
-    assert recovered.whitening_matrix is None
+    assert recovered.whitening_transformation is None
     assert recovered.whitening_active is False
 
 
-def test_fit_result_from_json_with_whitening_matrix(tmp_path):
-    """whitening_matrix is round-tripped correctly."""
+def test_fit_result_from_json_with_whitening_transformation(tmp_path):
+    """whitening_transformation is round-tripped correctly."""
     W = jnp.array([[2.0, 0.5], [0.0, 1.0]])
+    transform = WhitenTransform(matrix=W, shift=jnp.zeros(2))
     samples = {"OpA": jnp.array([0.1]), "OpB": jnp.array([0.2])}
     fr = FitResult(
         free_parameters=["OpA", "OpB"],
@@ -247,17 +270,39 @@ def test_fit_result_from_json_with_whitening_matrix(tmp_path):
         max_loglikelihood=-1.0,
         num_data=5,
         samples=samples,
-        whitening_matrix=W,
+        whitening_transformation=transform,
         whitening_active=True,
     )
     fr.write(tmp_path)
     recovered = FitResult.from_json(tmp_path)
 
     assert recovered.whitening_active is True
-    assert recovered.whitening_matrix is not None
-    assert recovered.whitening_matrix.shape == (2, 2)
-    assert float(recovered.whitening_matrix[0, 0]) == pytest.approx(2.0)
-    assert float(recovered.whitening_matrix[0, 1]) == pytest.approx(0.5)
+    assert recovered.whitening_transformation is not None
+    assert recovered.whitening_transformation.matrix.shape == (2, 2)
+    assert float(recovered.whitening_transformation.matrix[0, 0]) == pytest.approx(2.0)
+    assert float(recovered.whitening_transformation.matrix[0, 1]) == pytest.approx(0.5)
+    assert jnp.allclose(recovered.whitening_transformation.shift, jnp.zeros(2))
+
+
+def test_fit_result_from_json_with_whitening_transformation_and_shift(tmp_path):
+    """Nonzero shift is round-tripped correctly."""
+    W = jnp.array([[2.0, 0.5], [0.0, 1.0]])
+    shift = jnp.array([0.3, -0.7])
+    transform = WhitenTransform(matrix=W, shift=shift)
+    samples = {"OpA": jnp.array([0.1]), "OpB": jnp.array([0.2])}
+    fr = FitResult(
+        free_parameters=["OpA", "OpB"],
+        best_fit_point={"OpA": 0.0, "OpB": 0.0},
+        max_loglikelihood=-1.0,
+        num_data=5,
+        samples=samples,
+        whitening_transformation=transform,
+        whitening_active=True,
+    )
+    fr.write(tmp_path)
+    recovered = FitResult.from_json(tmp_path)
+
+    assert jnp.allclose(recovered.whitening_transformation.shift, shift)
 
 
 def test_fit_result_from_json_no_samples(tmp_path):
@@ -439,13 +484,13 @@ def test_build_returns_exact_posterior_prior(tmp_path):
 
 def test_build_whitening_wraps_prior(tmp_path):
     """When the previous fit used whitening, the prior is wrapped in _WhitenedToPhysicalPrior."""
-    W = jnp.eye(2)
+    transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
     fit_dir = _make_fit_dir(
         tmp_path,
         free_params=["OpA", "OpB"],
         samples={"OpA": [0.1, 0.2], "OpB": [-0.1, 0.0]},
         whitening_active=True,
-        whitening_matrix=W,
+        whitening_transformation=transform,
     )
     cg = _mock_coeff_group(["OpA", "OpB"])
     base_prior = _uniform_prior(["OpA", "OpB"])
@@ -463,13 +508,13 @@ def test_build_whitening_wraps_prior(tmp_path):
 
 
 def test_build_whitening_active_but_no_matrix_raises(tmp_path):
-    """whitening_active=True without a saved matrix raises ConfigError."""
+    """whitening_active=True without a saved transformation raises ConfigError."""
     fit_dir = _make_fit_dir(
         tmp_path,
         free_params=["OpA"],
         samples={"OpA": [0.1, 0.2]},
         whitening_active=True,
-        whitening_matrix=None,
+        whitening_transformation=None,
     )
     cg = _mock_coeff_group(["OpA"])
     base_prior = _uniform_prior(["OpA"])
@@ -478,5 +523,5 @@ def test_build_whitening_active_but_no_matrix_raises(tmp_path):
     with patch("smefit.api.smefitAPI") as mock_api:
         mock_api.chi2.return_value = mock_chi2_fn
         mock_api.prior.return_value = base_prior
-        with pytest.raises(ConfigError, match="whitening_matrix was saved"):
+        with pytest.raises(ConfigError, match="whitening_transformation was saved"):
             build_exact_posterior_prior(fit_dir, cg, datasets=None)

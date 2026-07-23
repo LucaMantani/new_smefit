@@ -118,24 +118,29 @@ class Prior:
 class _WhitenedToPhysicalPrior:
     """Wraps a whitened prior, evaluated at physical-space coordinates.
 
-    When a previous fit used whitening (c = W @ c_w), the prior was defined
-    over c_w. To evaluate it at physical coords c we apply W⁻¹:
+    When a previous fit used whitening (c = transform.to_physical(c_w) =
+    matrix @ c_w + shift), the prior was defined over c_w. To evaluate it at
+    physical coords c we invert the transform:
 
-        log p_phys(c) = log p_w(W⁻¹ c) + log|det(W⁻¹)|
+        log p_phys(c) = log p_w(transform.to_whitened(c)) + log|det(matrix⁻¹)|
+
+    The additive ``shift`` only translates coordinates and leaves the
+    Jacobian determinant unchanged, so the log-det term depends only on
+    ``transform.matrix``.
     """
 
-    def __init__(self, whitened_prior, W):
+    def __init__(self, whitened_prior, transform):
         self.param_names = whitened_prior.param_names
         self.prior_specs = whitened_prior.prior_specs
         self._whitened_prior = whitened_prior
-        W_inv = jnp.linalg.inv(W)
-        self._W_inv = W_inv
-        self._log_abs_det_W_inv = jnp.log(jnp.abs(jnp.linalg.det(W_inv)))
+        self._transform = transform
+        matrix_inv = jnp.linalg.inv(transform.matrix)
+        self._log_abs_det_matrix_inv = jnp.log(jnp.abs(jnp.linalg.det(matrix_inv)))
 
     @jax.jit(static_argnames=("self",))
     def log_prob(self, x_phys):
-        x_w = self._W_inv @ x_phys
-        return self._whitened_prior.log_prob(x_w) + self._log_abs_det_W_inv
+        x_w = self._transform.to_whitened(x_phys)
+        return self._whitened_prior.log_prob(x_w) + self._log_abs_det_matrix_inv
 
 
 class ExactPosteriorPrior:

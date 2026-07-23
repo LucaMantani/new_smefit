@@ -20,13 +20,13 @@ from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 log = logging.getLogger(__name__)
 
 
-def apply_whitening(chi2, coefficients, whitening_matrix):
+def apply_whitening(chi2, coefficients, whitening_transformation):
     """Transform chi2 and coefficients into whitened space.
 
     Returns the transformed chi2 callable and whitened CoefficientGroup.
     """
-    _chi2 = lambda c_w: chi2(whitening_matrix @ c_w)
-    resolve_coeffs = coefficients.whitened(whitening_matrix)
+    _chi2 = lambda c_w: chi2(whitening_transformation.to_physical(c_w))
+    resolve_coeffs = coefficients.whitened(whitening_transformation)
     return _chi2, resolve_coeffs
 
 
@@ -231,12 +231,12 @@ def build_exact_posterior_prior(
     # --- Reconstruct prior_1 in physical space via the API (handles chains recursively) ---
     prior_1 = smefitAPI.prior(**prev_rc)
     if prev.whitening_active:
-        if prev.whitening_matrix is None:
+        if prev.whitening_transformation is None:
             raise ConfigError(
                 f"Previous fit at {bayesian_update_path} used whitening but "
-                "no whitening_matrix was saved."
+                "no whitening_transformation was saved."
             )
-        prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_matrix)
+        prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
 
     return ExactPosteriorPrior(
         base_prior=prior_1,

@@ -6,6 +6,7 @@ import pytest
 
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.utils import apply_whitening, ensure_list, resolve_posterior
+from smefit.whitening import WhitenTransform
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
@@ -40,24 +41,39 @@ def test_ensure_list_wraps_string():
 def test_apply_whitening_chi2_equivalent():
     """Whitened chi2 evaluated at c_w equals original chi2 at W @ c_w."""
     W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
+    transform = WhitenTransform(matrix=W, shift=jnp.zeros(2))
     chi2 = lambda c: jnp.sum(c**2)
     cg = CoefficientGroup([_free("OpA"), _free("OpB")])
 
-    whitened_chi2, _ = apply_whitening(chi2, cg, W)
+    whitened_chi2, _ = apply_whitening(chi2, cg, transform)
 
     c_w = jnp.array([1.0, 1.0])
     assert float(whitened_chi2(c_w)) == pytest.approx(float(chi2(W @ c_w)))
 
 
-def test_apply_whitening_coeff_group():
-    """Returned CoefficientGroup should have _W set (whitening active)."""
-    W = jnp.eye(2)
+def test_apply_whitening_chi2_equivalent_with_shift():
+    """Whitened chi2 at c_w equals original chi2 at W @ c_w + shift."""
+    W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
+    shift = jnp.array([0.5, -1.0])
+    transform = WhitenTransform(matrix=W, shift=shift)
     chi2 = lambda c: jnp.sum(c**2)
     cg = CoefficientGroup([_free("OpA"), _free("OpB")])
 
-    _, whitened_cg = apply_whitening(chi2, cg, W)
+    whitened_chi2, _ = apply_whitening(chi2, cg, transform)
 
-    assert whitened_cg._W is not None
+    c_w = jnp.array([1.0, 1.0])
+    assert float(whitened_chi2(c_w)) == pytest.approx(float(chi2(W @ c_w + shift)))
+
+
+def test_apply_whitening_coeff_group():
+    """Returned CoefficientGroup should have _transform set (whitening active)."""
+    transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
+    chi2 = lambda c: jnp.sum(c**2)
+    cg = CoefficientGroup([_free("OpA"), _free("OpB")])
+
+    _, whitened_cg = apply_whitening(chi2, cg, transform)
+
+    assert whitened_cg._transform is not None
 
 
 # ---------------------------------------------------------------------------

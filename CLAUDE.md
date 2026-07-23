@@ -139,3 +139,9 @@ coefficient. It is the point the gradient descent starts from, and the vector
 returned directly when `gradient_descent_settings.sm_solution: true`.
 It is a property of the coefficients dictionary, so it also
 applies to external-`chi2`-only fits. It is ignored for non-free coefficients.
+
+An optional `whitening:` block reparametrises free coefficients into a
+better-conditioned space for sampling: `whitening: {sigma_prior: 5.0, eps: 1e-8,
+shift: false}`. When `shift: true`, the whitening transform is centred on the
+`gd_best_fit` point instead of zero, which additionally requires a
+`gradient_descent_settings` block in the runcard.

@@ -12,8 +12,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -33,14 +31,10 @@ jobs:
         run: |
           pip install pytest-cov
           pytest tests/ --cov=smefit --cov-report=xml --cov-report=term-missing
-          coverage report >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Check PR diff coverage
-        if: github.event_name == 'pull_request'
-        run: |
-          pip install diff-cover
-          diff-cover coverage.xml \
-            --compare-branch=origin/${{ github.base_ref }} \
-            --fail-under=100 \
-            --format markdown:diff-cover-report.md
-          cat diff-cover-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

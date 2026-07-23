@@ -9,7 +9,6 @@ from smefit.whitening import (
     WhitenTransform,
     _build_matrix,
     _whitening_baseline_shift,
-    _whitening_disabled,
     _whitening_gradient_descent_shift,
     apply_whitening,
 )
@@ -55,7 +54,6 @@ def test_to_dict_from_dict_roundtrip():
 
 # ---------------------------------------------------------------------------
 # _build_matrix / _whitening_baseline_shift / _whitening_gradient_descent_shift
-# / _whitening_disabled
 # ---------------------------------------------------------------------------
 
 
@@ -93,10 +91,6 @@ def test_gradient_descent_shift_centers_on_given_point():
     assert jnp.allclose(transform.shift, gd_best_fit)
     # Hessian of sum(c**2) is constant (2*I), so matrix agrees with the baseline case.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
-
-
-def test_disabled_takes_no_arguments_and_returns_none():
-    assert _whitening_disabled() is None
 
 
 # ---------------------------------------------------------------------------

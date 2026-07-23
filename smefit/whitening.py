@@ -81,11 +81,6 @@ def _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening):
     return WhitenTransform(matrix=_build_matrix(chi2, whitening, shift), shift=shift)
 
 
-def _whitening_disabled():
-    """Returned when whitening is disabled entirely; takes no dependencies."""
-    return None
-
-
 def apply_whitening(chi2, coefficients, whitening_transformation):
     """Transform chi2 and coefficients into whitened space.
 

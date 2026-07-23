@@ -28,7 +28,6 @@ from smefit.rge import load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
-    _whitening_disabled,
     _whitening_gradient_descent_shift,
 )
 
@@ -209,11 +208,13 @@ class smefitConfig(Config):
         a plain provider function) so the decision of whether gd_best_fit is
         needed can be made dynamically: only ``whitening["shift"] ==
         "gradient_descent"`` triggers a dependency on ``gd_best_fit`` (and
-        hence ``gradient_descent_settings``). Returns None (via a
-        zero-argument worker) when whitening is disabled.
+        hence ``gradient_descent_settings``). When whitening is disabled, the
+        worker must still be a zero-argument callable (reportengine's
+        ExplicitNode dispatch calls inspect.signature on it), so a plain
+        ``None`` cannot be returned directly.
         """
         if whitening is None:
-            return _whitening_disabled
+            return lambda: None
         if whitening["shift"] == "gradient_descent":
             log.info("Whitening: centering on the gradient-descent best-fit point.")
             return _whitening_gradient_descent_shift

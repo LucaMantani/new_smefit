@@ -16,7 +16,6 @@ from smefit.model import EFTModel
 from smefit.priors import Prior
 from smefit.whitening import (
     _whitening_baseline_shift,
-    _whitening_disabled,
     _whitening_gradient_descent_shift,
 )
 
@@ -438,7 +437,6 @@ def test_parse_whitening_unknown_key_warns(cfg, caplog):
 def test_produce_whitening_transformation_disabled(cfg):
     node = cfg.produce_whitening_transformation(whitening=None)
     assert isinstance(node, ExplicitNode)
-    assert node.value is _whitening_disabled
     # zero-argument worker: no dependency on gd_best_fit or anything else
     assert inspect.signature(node.value).parameters == {}
     assert node.value() is None

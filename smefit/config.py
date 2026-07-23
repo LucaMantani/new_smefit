@@ -215,7 +215,9 @@ class smefitConfig(Config):
         if whitening is None:
             return _whitening_disabled
         if whitening["shift"] == "gradient_descent":
+            log.info("Whitening: centering on the gradient-descent best-fit point.")
             return _whitening_gradient_descent_shift
+        log.info("Whitening: centering on the coefficients' baseline point.")
         return _whitening_baseline_shift
 
     def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):

@@ -66,7 +66,6 @@ def _whitening_baseline_shift(chi2, whitening):
 
     Reached when whitening["shift"] == "baseline" (the default).
     """
-    log.info("Whitening: centering on the coefficients' baseline point.")
     baseline = chi2.baseline
     return WhitenTransform(
         matrix=_build_matrix(chi2, whitening, baseline), shift=baseline
@@ -78,7 +77,6 @@ def _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening):
 
     Only reached when whitening["shift"] == "gradient_descent".
     """
-    log.info("Whitening: centering on the gradient-descent best-fit point.")
     shift = gd_best_fit
     return WhitenTransform(matrix=_build_matrix(chi2, whitening, shift), shift=shift)
 

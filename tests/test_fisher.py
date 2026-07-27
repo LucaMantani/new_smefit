@@ -1,6 +1,9 @@
 """Unit tests for smefit.fisher — fisher_information_matrices function."""
 
+import logging
+
 import jax.numpy as jnp
+import pandas as pd
 
 from smefit.chi2 import Chi2, build_datasets_chi2
 from smefit.core import (
@@ -11,7 +14,11 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
-from smefit.fisher import fisher_information_matrices
+from smefit.fisher import (
+    _resolve_groups,
+    aggregate_fisher_information_matrices,
+    fisher_information_matrices,
+)
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -332,3 +339,65 @@ def test_fisher_uses_gd_best_fit_point():
     assert jnp.allclose(
         jnp.array(result_mle["DS_Q"].values), jnp.array([[13.0]]), atol=1e-5
     )
+
+
+# ---------------------------------------------------------------------------
+# _resolve_groups / aggregate_fisher_information_matrices
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_returns_unchanged_when_no_groups():
+    """data_groups=None returns the original dict unchanged (same object)."""
+    fim = {"DS_A": pd.DataFrame([[1.0]], index=["OpA"], columns=["OpA"])}
+
+    result = aggregate_fisher_information_matrices(fim, data_groups=None)
+
+    assert result is fim
+
+
+def test_resolve_groups_declared_group_first():
+    """Declared groups come first, in data_groups order, using source-name order."""
+    groups = _resolve_groups(["DS_A", "DS_B", "DS_C"], {"Group1": ["DS_B", "DS_C"]})
+
+    assert groups == [("Group1", [1, 2]), ("DS_A", [0])]
+
+
+def test_resolve_groups_ungrouped_kept_individually():
+    """With no groups declared, every source is kept as an individual entry."""
+    groups = _resolve_groups(["DS_A", "DS_B"], {})
+
+    assert groups == [("DS_A", [0]), ("DS_B", [1])]
+
+
+def test_resolve_groups_empty_match_skipped(caplog):
+    """A group matching no source is skipped, with a warning logged."""
+    with caplog.at_level(logging.WARNING):
+        groups = _resolve_groups(["DS_A"], {"EmptyGroup": ["NOPE"]})
+
+    assert groups == [("DS_A", [0])]
+    assert "EmptyGroup" in caplog.text
+
+
+def test_aggregate_sums_grouped_matrices():
+    """Grouped sources are summed elementwise; ungrouped sources are kept as-is."""
+    fim = {
+        "DS_A": pd.DataFrame(
+            [[1.0, 0.0], [0.0, 2.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+        "DS_B": pd.DataFrame(
+            [[3.0, 0.0], [0.0, 4.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+        "DS_C": pd.DataFrame(
+            [[5.0, 0.0], [0.0, 6.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+    }
+    data_groups = {"Merged": ["DS_A", "DS_B"]}
+
+    result = aggregate_fisher_information_matrices(fim, data_groups)
+
+    assert list(result.keys()) == ["Merged", "DS_C"]
+    expected_merged = pd.DataFrame(
+        [[4.0, 0.0], [0.0, 6.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+    )
+    pd.testing.assert_frame_equal(result["Merged"], expected_merged)
+    pd.testing.assert_frame_equal(result["DS_C"], fim["DS_C"])

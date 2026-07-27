@@ -34,14 +34,17 @@ def gd_best_fit(chi2, optimizer, gradient_descent_settings):
         Best-fit coefficient vector of shape ``(n_free,)``.
     """
     sm_solution = gradient_descent_settings.get("sm_solution")
-    zeros = jnp.zeros(chi2.nparam)
+    start = chi2.baseline
+
     if sm_solution:
-        log.info("GD best-fit: using SM point (c=0).")
-        return zeros
+        log.info("GD best-fit: using baseline point.")
+        return start
     n_steps = gradient_descent_settings.get("n_steps")
     tol = gradient_descent_settings.get("tol")
-    log.info("GD best-fit: running gradient descent (max_steps=%d) from c=0.", n_steps)
-    return gd_minimize(chi2, optimizer, zeros, n_steps=n_steps, tol=tol)
+    log.info(
+        "GD best-fit: running gradient descent (max_steps=%d) from baseline.", n_steps
+    )
+    return gd_minimize(chi2, optimizer, start, n_steps=n_steps, tol=tol)
 
 
 def gd_minimize(chi2, optimizer, start, n_steps=2000, tol=1e-8):
@@ -78,6 +81,10 @@ def gd_minimize(chi2, optimizer, start, n_steps=2000, tol=1e-8):
                 "Gradient descent: converged at step %d, chi2=%.6f", step, float(val)
             )
             break
+
+        if step % 100 == 0:
+            log.info(f"Epoch {step}, loss: {val:.3f}")
+
     else:
         log.info(
             "Gradient descent: reached max steps (%d), chi2=%.6f",

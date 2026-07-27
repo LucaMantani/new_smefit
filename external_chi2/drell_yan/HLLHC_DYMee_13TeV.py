@@ -52,8 +52,10 @@ class HLLHC_DYMee_13TeV:
 
         coeff_list = sorted(coefficients.names)
 
-        dataset = loader.load_dataset(data_path, "HLLHC_DYMee_13TeV")
-        theory = loader.load_theory(theory_path, "HLLHC_DYMee_13TeV", order)
+        ds = {"name": "HLLHC_DYMee_13TeV", "order": order}
+
+        dataset = loader.load_dataset(data_path, ds)
+        theory = loader.load_theory(theory_path, ds)
 
         data = DataGroup([dataset])
         theory_group = TheoryGroup([theory])
@@ -92,13 +94,16 @@ class HLLHC_DYMee_13TeV:
         self.inv_covmat = jnp.linalg.inv(fit_covmat)
 
     def compute_chi2(self, coeffs):
-        # Compute theory predictions
         theory = self.model.forward_map(coeffs)
+        safe_theory = jnp.clip(theory, a_min=1e-6)
 
-        theory = jnp.where(theory > 0, theory, 1e-6)
         data = self.data_cv
+        # Standard JAX pattern: safe_data=1.0 on masked bins keeps log(1/t) finite
+        # on the unselected branch, preventing nan gradients from 0*log(0/t)
+        safe_data = jnp.where(data > 0, data, 1.0)
 
-        # Poisson log-likelihood chi2; if data == 0, the x*log(x) term vanishes
-        log_term = jnp.where(data > 1e-6, data * jnp.log(data / theory), 0.0)
+        log_term = jnp.where(
+            data > 0, safe_data * jnp.log(safe_data / safe_theory), 0.0
+        )
 
-        return 2.0 * jnp.sum(theory - data + log_term)
+        return 2.0 * jnp.sum(safe_theory - data + log_term)

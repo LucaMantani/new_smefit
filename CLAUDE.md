@@ -74,6 +74,48 @@ Three variants are used:
 
 The runcard flags `use_theory_covmat` and `use_t0` control which are included in `fit_covmat`.
 
+## Server infrastructure
+
+All server logic lives in `smefit/server_utils.py`. The registry is a JSON file (`registry.json`) stored on the remote WebDAV server with the structure:
+
+```json
+{
+  "fits":     { "<name>": { "created_at", "uploaded_by", "has_rge", "rge_path", "runcard_path", "comment", "project" } },
+  "reports":  { "<name>": { "created_at", "uploaded_by", "comment", "project" } },
+  "projects": ["project_a", "project_b"]
+}
+```
+
+Key design points:
+- `_read_registry` / `_write_registry` download/upload the JSON atomically via a temp file.
+- `_empty_registry()` always includes the `"projects"` key — migration from old format happens in `_read_registry`.
+- Two servers: `public` (bundled read-only creds, team members can also have write creds) and `private`.
+- `Uploader.upload()` accepts an optional `project` kwarg that is stored in the registry entry.
+- `sync_registry` rebuilds the registry from scratch but preserves `projects` via `_empty_registry` merge.
+
+### CLI scripts (`smefit/scripts/`)
+
+| Command | Description |
+|---|---|
+| `smefit_ls` | List fits/reports/rge/misc from the registry |
+| `smefit_upload` | Upload a resource; prompts for comment then project |
+| `smefit_get` | Download a resource |
+| `smefit_mv` | Rename a resource |
+| `smefit_rm` | Move a resource to `bin/` on the server (soft delete) |
+| `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
+| `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
+| `smefit_mkdir` | Create a directory under `misc/` |
+| `view_report` | Download + open a report in the browser |
+
+### Adding new metadata fields
+
+1. Add the field to the `entry` dict in `Uploader.upload()` (and `sync_registry` if it should survive a resync).
+2. If it needs a separate managed list (like `projects`), add helpers following the pattern of `add_project` / `rename_project` / `remove_project` in `server_utils.py`.
+3. Update `_fit_rows` / `_report_rows` in `smefit_ls.py` to display the field conditionally (only when at least one resource has it set).
+4. Document in `SERVER.md`.
+
+---
+
 ## Runcard structure
 
 ```yaml
@@ -85,9 +127,15 @@ use_quad: True
 datasets:
   - {name: DATASET_NAME, order: LO}  # order: LO/NLO/NNLO
 coefficients:
-  OpName: {free: True, prior: {dist: uniform, low: -1.0, high: 1.0}}
+  OpName: {free: True, prior: {dist: uniform, low: -1.0, high: 1.0}, baseline_value: 0.0}
   OpFixed: {free: False, value: 1.0}
   OpExpr: {free: False, vars: [other_coeff], expr: "other_coeff**2"}
 actions_:
   - run_test
 ```
+
+`baseline_value` (optional, defaults to `0.0`) sets the "default" value of a free
+coefficient. It is the point the gradient descent starts from, and the vector
+returned directly when `gradient_descent_settings.sm_solution: true`.
+It is a property of the coefficients dictionary, so it also
+applies to external-`chi2`-only fits. It is ignored for non-free coefficients.

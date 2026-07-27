@@ -21,6 +21,10 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
+from smefit.paths import (
+    fetch_fit_if_missing,
+    resolve_path,
+)
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
 from smefit.rge import load_rge_matrix
@@ -33,9 +37,9 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path."""
+        """Parse data path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
+        data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
-        # Verify it exists
         if not data_path.exists():
             log.error(f"data_path {data_path} does not exist.")
             raise ValueError(f"data_path {data_path} does not exist.")
@@ -43,9 +47,9 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path."""
+        """Parse theory path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
+        theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
-        # Verify it exists
         if not theory_path.exists():
             log.error(f"theory_path {theory_path} does not exist.")
             raise ValueError(f"theory_path {theory_path} does not exist.")
@@ -59,7 +63,7 @@ class smefitConfig(Config):
 
         parsed_datasets = []
         for ds in datasets:
-            dataset = load_dataset(data_path, ds["name"])
+            dataset = load_dataset(data_path, ds)
             parsed_datasets.append(dataset)
 
         self._cached_data_group = DataGroup(parsed_datasets)
@@ -96,6 +100,9 @@ class smefitConfig(Config):
             raise ConfigError(
                 "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
             )
+        if "rg_matrix" in rge:
+            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
+            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
         return rge
 
     def produce_init_scale(self, rge):
@@ -128,12 +135,7 @@ class smefitConfig(Config):
         if hasattr(self, "_cached_theory_group"):
             return self._cached_theory_group
 
-        parsed_theories = [
-            load_theory(
-                theory_path, ds["name"], ds["order"], ds.get("theory_cov", "current")
-            )
-            for ds in datasets
-        ]
+        parsed_theories = [load_theory(theory_path, ds) for ds in datasets]
 
         self._cached_theory_group = TheoryGroup(parsed_theories)
         return self._cached_theory_group
@@ -211,14 +213,17 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser. Strips 'group' keys and caches them for produce_data_groups."""
+        """Pass-through parser. Strips 'group' keys and resolves prefix-relative paths."""
         self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
             group = cfg.get("group")
             if group is not None:
                 self._ext_chi2_groups[name] = group
-            cleaned[name] = {k: v for k, v in cfg.items() if k != "group"}
+            entry = {k: v for k, v in cfg.items() if k != "group"}
+            if "path" in entry:
+                entry["path"] = resolve_path(entry["path"])
+            cleaned[name] = entry
         return cleaned
 
     def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
@@ -231,6 +236,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Shared chi2 build logic used by both joint and individual producers."""
 
@@ -260,8 +266,17 @@ class smefitConfig(Config):
             else ext_chi2_func[0].param_names
         )
 
+        # baseline ("default") values of the free coefficients; a property of the
+        # coefficients dictionary, so it applies to external-chi2-only fits too.
+        baseline = coefficients.baseline_free if coefficients is not None else None
+
         if ext_chi2_func is None:
-            return Chi2(base_chi2, param_names=free_names, num_data=data.num_data)
+            return Chi2(
+                base_chi2,
+                param_names=free_names,
+                num_data=data.num_data,
+                baseline=baseline,
+            )
 
         if base_chi2 is None:
 
@@ -282,6 +297,7 @@ class smefitConfig(Config):
             param_names=free_names,
             num_data=tot_num_data,
             has_external=True,
+            baseline=baseline,
         )
 
     def produce_chi2(
@@ -290,13 +306,16 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
         contributions are summed.
         """
-        return self._build_chi2_impl(eft_model, data, fit_covmat, ext_chi2_func)
+        return self._build_chi2_impl(
+            eft_model, data, fit_covmat, ext_chi2_func, coefficients
+        )
 
     def produce_datasets_chi2(
         self,
@@ -481,7 +500,7 @@ class smefitConfig(Config):
         Keys
         ----
         sm_solution : bool, default False
-            If True, skip optimisation and use c=0 (SM point) as the
+            If True, skip optimisation and use coefficients baseline values as the
             best-fit point.
         n_steps : int, default 2000
             Maximum number of gradient-descent steps.
@@ -646,6 +665,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         individual_ext_chi2_func=None,
+        individual_coefficients=None,
     ):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
@@ -653,6 +673,7 @@ class smefitConfig(Config):
             data,
             fit_covmat,
             individual_ext_chi2_func,
+            individual_coefficients,
         )
 
     def produce_individual_prior(self, individual_coefficients):

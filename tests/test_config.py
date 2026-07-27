@@ -43,6 +43,22 @@ def test_parse_data_path_missing(cfg, tmp_path):
         cfg.parse_data_path(missing)
 
 
+def test_parse_data_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "smefit_database" / "commondata").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
+    ):
+        result = cfg.parse_data_path("smefit_database/commondata")
+    assert result == tmp_path / "smefit_database" / "commondata"
+
+
+def test_parse_data_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
+            cfg.parse_data_path("smefit_database/commondata")
+
+
 def test_parse_theory_path_valid(cfg, tmp_path):
     result = cfg.parse_theory_path(str(tmp_path))
     assert result == tmp_path
@@ -52,6 +68,22 @@ def test_parse_theory_path_missing(cfg, tmp_path):
     missing = str(tmp_path / "nonexistent")
     with pytest.raises(ValueError, match="does not exist"):
         cfg.parse_theory_path(missing)
+
+
+def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "smefit_database" / "theory").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
+    ):
+        result = cfg.parse_theory_path("smefit_database/theory")
+    assert result == tmp_path / "smefit_database" / "theory"
+
+
+def test_parse_theory_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
+            cfg.parse_theory_path("smefit_database/theory")
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +278,42 @@ def test_build_chi2_ext_only(cfg):
     assert isinstance(result, Chi2)
     assert result.num_data == 7
     assert result.has_external
+
+
+def test_build_chi2_baseline_from_coefficients(cfg):
+    """baseline flows from the coefficients node into the Chi2 (base-only path)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [
+            Coefficient(name="OpA", free=True, prior=prior, baseline_value=0.7),
+            Coefficient(name="OpB", free=True, prior=prior, baseline_value=-0.3),
+        ]
+    )
+    mock_eft = MagicMock()
+    mock_eft.coefficients.free_names = ["OpA", "OpB"]
+    mock_data = MagicMock()
+    mock_data.num_data = 5
+
+    with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
+        result = cfg._build_chi2_impl(
+            eft_model=mock_eft,
+            data=mock_data,
+            fit_covmat=jnp.eye(3),
+            coefficients=coefficients,
+        )
+    assert jnp.allclose(result.baseline, jnp.array([0.7, -0.3]))
+
+
+def test_build_chi2_ext_only_baseline_from_coefficients(cfg):
+    """External-chi2-only fits still honor baseline_value (no eft_model)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [Coefficient(name="OpA", free=True, prior=prior, baseline_value=1.5)]
+    )
+    ext = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA"], num_data=7)
+    result = cfg._build_chi2_impl(ext_chi2_func=[ext], coefficients=coefficients)
+    assert result.has_external
+    assert jnp.allclose(result.baseline, jnp.array([1.5]))
 
 
 def test_build_chi2_combined(cfg):
@@ -583,3 +651,15 @@ def test_parse_external_chi2_mixed_group_and_no_group(cfg):
     assert "group" not in result["ExtA"]
     assert result["ExtB"] == {"path": "/b.py"}
     assert cfg._ext_chi2_groups == {"ExtA": "G1"}
+
+
+def test_parse_external_chi2_resolves_prefix_path(cfg):
+    raw = {"MyExt": {"path": "new_smefit/external_chi2/foo.py"}}
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"new_smefit": "/home/user/smefit/new_smefit"},
+    ):
+        result = cfg.parse_external_chi2(raw)
+    assert (
+        result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
+    )

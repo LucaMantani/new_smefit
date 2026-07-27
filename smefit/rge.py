@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import pickle
 from contextlib import contextmanager
 from copy import deepcopy
@@ -12,6 +13,7 @@ import pandas as pd
 import wilson
 
 from smefit.constants import gs, mz
+from smefit.paths import fetch_fit_if_missing, resolve_path
 from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
 
 # Numerical threshold for filtering small Wilson coefficient values
@@ -397,6 +399,7 @@ class RGE:
         name: str
             name of the file to save the RGE matrix
         """
+        path = pathlib.Path(path)
         to_dump = {}
         to_dump["rge_settings"] = rge_settings
         # put together the scales and the RGE matrices, having the scale as key for the matrix.
@@ -638,6 +641,8 @@ def load_rge_matrix(
     # load precomputed RGE matrix if it exists
     path_to_rge_mat = rge_dict.get("rg_matrix", False)
     if path_to_rge_mat:
+        path_to_rge_mat = resolve_path(path_to_rge_mat)
+        fetch_fit_if_missing(pathlib.Path(path_to_rge_mat))
         rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, rge_settings)
 
     # compute or fetch the RGE matrix for each scale

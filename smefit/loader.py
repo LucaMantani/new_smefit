@@ -16,8 +16,9 @@ from smefit.utils import ensure_list
 log = logging.getLogger(__name__)
 
 
-def load_dataset(data_path, dataset_name):
+def load_dataset(data_path, dataset_dict):
     """Load dataset from given path."""
+    dataset_name = dataset_dict["name"]
     dataset_path = data_path / f"{dataset_name}.yaml"
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset {dataset_name} not found in {data_path}")
@@ -82,8 +83,11 @@ def load_dataset(data_path, dataset_name):
     )
 
 
-def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
+def load_theory(theory_path, dataset_dict):
     """Load theory predictions from given path."""
+    dataset_name = dataset_dict["name"]
+    order = dataset_dict["order"]
+    th_cov_type = dataset_dict.get("theory_cov", "current")
     theory_file = theory_path / f"{dataset_name}.json"
     if not theory_file.exists():
         raise FileNotFoundError(
@@ -101,12 +105,16 @@ def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
-    # check if the requested theory covariance type exists in the data
-    if f"theory_cov_{th_cov_type}" not in theory_data:
-        raise ValueError(
-            f"Theory covariance type {th_cov_type} not found for dataset {dataset_name}"
-        )
-    sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
+    if th_cov_type == "zero":
+        # explicitly opt out of a theory covmat for this dataset
+        sm_covmat = jnp.zeros((sm_pred.size, sm_pred.size))
+    else:
+        # check if the requested theory covariance type exists in the data
+        if f"theory_cov_{th_cov_type}" not in theory_data:
+            raise ValueError(
+                f"Theory covariance type {th_cov_type} not found for dataset {dataset_name}"
+            )
+        sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]
 

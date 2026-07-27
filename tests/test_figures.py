@@ -1,12 +1,6 @@
-"""Unit tests for smefit.figures — _plot_heatmap and plot_fisher_diagonals_heatmap.
+"""Unit tests for smefit.figures"""
 
-_plot_heatmap enables matplotlib's usetex globally, which would require a
-LaTeX installation to actually render text. Tests here never draw/save the
-figure (get_text() etc. only read stored attributes), and the module-level
-`rc` call is neutralised so running the suite never depends on LaTeX being
-installed (e.g. on CI runners).
-"""
-
+import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,6 +13,10 @@ from smefit.figures import _plot_heatmap, plot_chi2_scan, plot_fisher_diagonals_
 @pytest.fixture(autouse=True)
 def _no_matplotlib_rc(monkeypatch):
     monkeypatch.setattr(figures_mod, "rc", lambda *args, **kwargs: None)
+    monkeypatch.setitem(plt.rcParams, "text.usetex", False)
+    monkeypatch.setattr(
+        matplotlib.figure.Figure, "tight_layout", lambda self, *a, **kw: None
+    )
     yield
     plt.close("all")
 

@@ -1,12 +1,13 @@
 """Unit tests for smefit/config.py."""
 
+import logging
 import os
-import pathlib
 from unittest.mock import MagicMock, patch
 
 import jax.numpy as jnp
 import pytest
 from reportengine.configparser import ConfigError
+from reportengine.namespaces import NSList
 
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
@@ -663,3 +664,137 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     assert (
         result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# Mass-scan producers
+# ---------------------------------------------------------------------------
+
+
+def test_produce_individual_mass_scales_requires_single_free_coefficient(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient("OpA", free=True, prior=_PRIOR),
+            Coefficient("OpB", free=True, prior=_PRIOR),
+        ]
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        cfg.produce_individual_mass_scales(cg, {"n_points": 5})
+    assert exc_info.value.bad_item == ["OpA", "OpB"]
+
+
+def test_produce_individual_mass_scales_uses_uniform_prior(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "uniform", "low": -2.0, "high": 2.0}
+            )
+        ]
+    )
+    result = cfg.produce_individual_mass_scales(cg, {"n_points": 5})
+    assert isinstance(result, NSList)
+    assert len(result) == 5
+    assert result[0] == pytest.approx(-2.0)
+    assert result[-1] == pytest.approx(2.0)
+
+
+def test_produce_individual_mass_scales_fallback_range_and_warns(cfg, caplog):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "normal", "loc": 0.0, "scale": 1.0}
+            )
+        ]
+    )
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        result = cfg.produce_individual_mass_scales(cg, {"n_points": 3})
+    assert result[0] == pytest.approx(-1.0)
+    assert result[-1] == pytest.approx(1.0)
+    assert any("lacks a uniform prior" in r.message for r in caplog.records)
+
+
+def test_produce_individual_mass_scales_default_n_points(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "uniform", "low": 0.0, "high": 1.0}
+            )
+        ]
+    )
+    result = cfg.produce_individual_mass_scales(cg, {})
+    assert len(result) == 50
+
+
+def test_produce_individual_mass_rge_matrix_overrides_init_scale(cfg, theory_a):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    theory = TheoryGroup([theory_a])
+    rge = {"init_scale": 10.0, "obs_scale": 1000.0}
+
+    with patch("smefit.config.load_rge_matrix", return_value="RGE_MATRIX") as mock_load:
+        result = cfg.produce_individual_mass_rge_matrix(rge, cg, theory, 42.0)
+
+    assert result == "RGE_MATRIX"
+    _, kwargs = mock_load.call_args
+    assert kwargs["rge_dict"]["init_scale"] == 42.0
+    assert kwargs["coeff_list"] == ["OpA"]
+    assert kwargs["theory_group"] is theory
+    assert kwargs["save_path"] is None
+    # the caller's rge dict must not be mutated in place
+    assert rge["init_scale"] == 10.0
+
+
+def test_produce_individual_mass_eft_model_builds_model(cfg, theory_a):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    theory = TheoryGroup([theory_a])
+
+    result = cfg.produce_individual_mass_eft_model(
+        theory, cg, individual_mass_rge_matrix=None, use_quad=True
+    )
+
+    assert isinstance(result, EFTModel)
+    assert result.use_quad is True
+    assert result.coefficients is cg
+
+
+def test_produce_individual_mass_ext_chi2_func_overrides_init_scale_when_rge_set(cfg):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    rge = {"init_scale": 10.0}
+
+    with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
+        result = cfg.produce_individual_mass_ext_chi2_func(
+            cg, ["ext_mod"], 42.0, rge=rge
+        )
+
+    assert result == "EXT"
+    _, kwargs = mock_load.call_args
+    assert kwargs["rge_dict"]["init_scale"] == 42.0
+    assert rge["init_scale"] == 10.0  # caller's dict must not be mutated
+
+
+def test_produce_individual_mass_ext_chi2_func_no_rge(cfg):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+
+    with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
+        result = cfg.produce_individual_mass_ext_chi2_func(
+            cg, ["ext_mod"], 42.0, rge=None
+        )
+
+    assert result == "EXT"
+    _, kwargs = mock_load.call_args
+    assert kwargs["rge_dict"] is None
+
+
+def test_produce_individual_mass_chi2_delegates_to_build_chi2_impl(cfg):
+    mock_eft = MagicMock()
+    mock_eft.coefficients.free_names = ["OpA"]
+    mock_data = MagicMock()
+    mock_data.num_data = 5
+
+    with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
+        result = cfg.produce_individual_mass_chi2(
+            individual_mass_eft_model=mock_eft, data=mock_data, fit_covmat=jnp.eye(3)
+        )
+
+    assert isinstance(result, Chi2)
+    assert result.num_data == 5
+    assert not result.has_external

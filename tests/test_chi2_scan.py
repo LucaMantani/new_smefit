@@ -6,7 +6,7 @@ import logging
 import jax.numpy as jnp
 import pytest
 
-from smefit.chi2_scan import individual_chi2_scan
+from smefit.chi2_scan import individual_chi2_scan, individual_mass_scan_point
 from smefit.core import Coefficient, CoefficientGroup
 
 _UNIFORM_PRIOR = {"dist": "uniform", "low": -2.0, "high": 2.0}
@@ -139,3 +139,40 @@ def test_individual_chi2_scan_returns_python_floats(coeff_with_uniform_prior):
     )
     for v in result["OpA"]["chi2"]:
         assert isinstance(v, float)
+
+
+# ---------------------------------------------------------------------------
+# individual_mass_scan_point
+# ---------------------------------------------------------------------------
+
+
+def test_individual_mass_scan_point_evaluates_chi2_at_scale():
+    result = individual_mass_scan_point(
+        individual_mass_chi2=lambda c: c[0] ** 2,
+        individual_mass_scale=3.0,
+    )
+    assert result == pytest.approx(9.0)
+
+
+def test_individual_mass_scan_point_returns_python_float():
+    result = individual_mass_scan_point(
+        individual_mass_chi2=lambda c: jnp.sum(c**2),
+        individual_mass_scale=2,
+    )
+    assert isinstance(result, float)
+
+
+def test_individual_mass_scan_point_wraps_scale_as_single_element_array():
+    seen = []
+
+    def chi2_fn(c):
+        seen.append(c)
+        return jnp.array(0.0)
+
+    individual_mass_scan_point(
+        individual_mass_chi2=chi2_fn,
+        individual_mass_scale=5.0,
+    )
+    assert len(seen) == 1
+    assert seen[0].shape == (1,)
+    assert float(seen[0][0]) == pytest.approx(5.0)

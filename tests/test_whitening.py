@@ -66,6 +66,14 @@ def test_build_matrix_matches_hand_computed_cholesky():
     assert jnp.allclose(matrix, expected, atol=1e-5)
 
 
+def test_build_matrix_raises_on_non_positive_definite_hessian():
+    """Negative-definite Hessian -> Cholesky produces NaNs -> ValueError."""
+    chi2 = Chi2(lambda c: -jnp.sum(c**2), ["OpA", "OpB"], num_data=1)
+    center = jnp.zeros(2)
+    with pytest.raises(ValueError, match="not positive definite"):
+        _build_matrix(chi2, _WHITENING, center)
+
+
 def test_baseline_shift_evaluates_hessian_at_default_zero_baseline():
     """With no baseline set, chi2.baseline defaults to zeros."""
     chi2 = _quadratic_chi2()

@@ -71,6 +71,15 @@ def test_minimal_runcard_is_valid(tmp_path):
     assert "OK (0 warning(s))" in out
 
 
+def test_absolute_paths_do_not_warn_about_missing_paths_config(tmp_path):
+    """Regression guard: the .config/paths.yaml hint is only for runcards whose
+    paths actually need it — on a machine without one (e.g. CI) a runcard using
+    absolute paths must still be warning-free."""
+    code, out = validate(tmp_path)
+    assert code == 0, out
+    assert "paths.yaml" not in out
+
+
 def test_baseline_value_is_a_known_coefficient_key(tmp_path):
     """Regression guard: baseline_value comes from the Coefficient dataclass and
     must not be reported as an unknown sub-key."""

@@ -102,6 +102,9 @@ class PathResolver:
     def __init__(self, standard_prefixes):
         self.standard_prefixes = standard_prefixes
         self.config_file = find_paths_config()
+        # Set when a path could have been a prefix but no config was available to
+        # expand it: worth a hint, unlike a runcard that only uses real paths.
+        self.saw_unresolvable_prefix = False
         self.user_paths = {}
         if self.config_file is not None:
             try:
@@ -113,6 +116,13 @@ class PathResolver:
 
     def has_prefix(self, path_str, prefix):
         return path_str == prefix or path_str.startswith(prefix + "/")
+
+    @staticmethod
+    def looks_prefix_relative(path_str):
+        """True for a bare 'name/sub/...' path, i.e. one that paths.yaml could
+        have expanded. Absolute, '~'- and '.'-rooted paths never are."""
+        head = path_str.split("/", 1)[0]
+        return "/" in path_str and head != "" and not head.startswith(("~", "."))
 
     def resolve(self, path_str, rep, label):
         """Return the resolved path string, or None if a prefix cannot be resolved."""
@@ -128,6 +138,8 @@ class PathResolver:
                     f"not configured in {where} — run 'smefit_setup_local'"
                 )
                 return None
+        if not self.user_paths and self.looks_prefix_relative(path_str):
+            self.saw_unresolvable_prefix = True
         return path_str
 
 
@@ -440,11 +452,6 @@ def main():
         "smefit_results",
     ]
     resolver = PathResolver(standard_prefixes)
-    if not resolver.user_paths:
-        rep.warnings.append(
-            "no .config/paths.yaml found — prefix-relative paths (e.g. "
-            "smefit_database/commondata) cannot be resolved; run 'smefit_setup_local'"
-        )
 
     if "datasets" not in runcard and "external_chi2" not in runcard:
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
@@ -517,6 +524,13 @@ def main():
     check_settings_blocks(runcard, keys, rep)
     check_actions(runcard, rep, nonlinear_exprs)
     check_top_level(runcard, keys, rep)
+    # Only relevant once a path in this runcard actually needed the config: a
+    # runcard using absolute paths does not care that paths.yaml is missing.
+    if resolver.saw_unresolvable_prefix:
+        rep.warnings.append(
+            "no .config/paths.yaml found — prefix-relative paths (e.g. "
+            "smefit_database/commondata) cannot be resolved; run 'smefit_setup_local'"
+        )
 
     for msg in rep.warnings:
         print(f"WARNING: {msg}")

@@ -33,6 +33,12 @@ BANNER = (
 TEMPLATE_BANNER = (
     "# AUTO-COPIED from template_runcards/{name} by scripts/generate_skill_reference.py\n"
     "# — edit the original and regenerate; do not edit this copy.\n"
+    "#\n"
+    "# These are the repo's smoke-test runcards, so the settings blocks and the\n"
+    "# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:\n"
+    "# the `datasets`, `coefficients` (especially any `expr` constraints) and\n"
+    "# `external_chi2` entries are illustrative and must be replaced with ones\n"
+    "# chosen for the analysis at hand — do not carry them over verbatim.\n"
 )
 
 # Runcard keys consumed by reportengine itself rather than smefitConfig.
@@ -45,6 +51,25 @@ REPORTENGINE_KEYS = {
 # Raw params that look like runcard keys but are internal reportengine namespace
 # entries (produced via NSList nskey), never written by users.
 IGNORED_RAW_PARAMS = {"individual_fit_coefficient"}
+
+# Runnable actions vs internal providers. reportengine will happily accept any
+# provider under `actions_:`, but only these are meaningful entry points; the
+# rest are intermediate nodes it resolves on demand.
+ACTION_NAME_PREFIXES = ("run_", "write_", "plot_")
+# Modules whose public functions are all report-tag actions (tables, figures).
+ACTION_MODULES = {"smefit.tables", "smefit.figures"}
+# Actions that follow neither rule.
+EXTRA_ACTION_NAMES = {"chi2_timing", "time_chi2_vec"}
+
+
+def is_runnable_action(module_name, func_name):
+    """True if `func_name` is a legitimate `actions_:` entry."""
+    return (
+        module_name in ACTION_MODULES
+        or func_name.startswith(ACTION_NAME_PREFIXES)
+        or func_name in EXTRA_ACTION_NAMES
+    )
+
 
 # Curated map: fit type -> (action, settings blocks it reads). The action table
 # itself is fully auto-generated; this map only adds the pairing guidance.
@@ -265,6 +290,29 @@ def collect_actions():
     return modules
 
 
+def collect_coefficient_keys():
+    """Introspect smefit.core.Coefficient: the sub-keys of a `coefficients:` entry.
+
+    produce_coefficients builds these dataclasses straight from the runcard, so
+    its fields (minus `name`, which is the mapping key) are exactly the allowed
+    sub-keys — including ones no parser mentions, e.g. baseline_value.
+    """
+    import dataclasses
+
+    from smefit.core import Coefficient
+
+    fields = []
+    for field in dataclasses.fields(Coefficient):
+        if field.name == "name":
+            continue  # supplied by the coefficients mapping key, not written
+        if field.default is dataclasses.MISSING:
+            default = None
+        else:
+            default = repr(field.default)
+        fields.append({"name": field.name, "default": default})
+    return fields
+
+
 def collect_paths():
     """Introspect smefit.paths: prefix-resolution mechanism for runcard paths."""
     import smefit.paths as paths_mod
@@ -338,7 +386,31 @@ def _render_settings_block(entry):
     return lines
 
 
-def render_runcard_keys_md(surface, paths_info):
+def _render_coefficient_keys(coeff_keys):
+    """Sub-key table for one `coefficients:` entry (from the Coefficient dataclass)."""
+    lines = [
+        "Each entry under `coefficients:` is `Name: {…}`. Allowed sub-keys, from",
+        "the fields of `smefit.core.Coefficient` — anything else is ignored:",
+        "",
+        "| sub-key | default |",
+        "|---|---|",
+    ]
+    for field in coeff_keys:
+        default = (
+            f"`{field['default']}`" if field["default"] is not None else "required"
+        )
+        lines.append(f"| `{field['name']}` | {default} |")
+    lines += [
+        "",
+        "Which combination is legal depends on the coefficient kind (free / fixed /",
+        "expression-constrained) — the invariants are enforced in",
+        "`Coefficient.__post_init__` and spelled out in `coefficients.md`.",
+        "",
+    ]
+    return lines
+
+
+def render_runcard_keys_md(surface, paths_info, coeff_keys):
     lines = [
         BANNER.rstrip("\n"),
         "",
@@ -386,6 +458,8 @@ def render_runcard_keys_md(surface, paths_info):
     lines += ["", "## Keys with dedicated parsers", ""]
     for entry in surface["parse"]:
         lines += _render_settings_block(entry)
+        if entry["key"] == "coefficients":
+            lines += _render_coefficient_keys(coeff_keys)
     lines += [
         "## Derived resources (produced internally — NEVER write these in a runcard)",
         "",
@@ -401,16 +475,43 @@ def render_runcard_keys_md(surface, paths_info):
     return "\n".join(lines)
 
 
+def _render_function_list(action_modules, runnable):
+    """Render the per-module bullet lists, keeping only one side of the split."""
+    lines = []
+    for mod in action_modules:
+        selected = [
+            fn
+            for fn in mod["functions"]
+            if is_runnable_action(mod["module"], fn["name"]) is runnable
+        ]
+        if not selected:
+            continue
+        lines += [f"### `{mod['module']}`", ""]
+        for fn in selected:
+            lines.append(f"- `{fn['name']}{fn['signature']}`")
+            if fn["doc"]:
+                lines.append(f"  - {fn['doc']}")
+        lines.append("")
+    return lines
+
+
 def render_actions_md(action_modules):
     lines = [
         BANNER.rstrip("\n"),
         "",
         "# smefit actions reference",
         "",
-        "Any public function below can be listed under `actions_:` in a runcard or",
-        "called via `{@action@}` tags in a report `template_text`. Function arguments",
-        "are config resources resolved automatically by reportengine (see",
-        "runcard-keys.md for what each resource needs).",
+        "Provider functions come in two kinds, and the difference matters:",
+        "",
+        "- **Actions** (first list) are the entry points you write under `actions_:`",
+        "  in a runcard, or call via `{@action@}` tags in a report `template_text`.",
+        "- **Internal providers** (second list) are intermediate nodes reportengine",
+        "  builds on demand to satisfy an action's arguments. Writing one of these",
+        "  under `actions_:` is a mistake — it either fails or silently produces",
+        "  nothing useful.",
+        "",
+        "Function arguments are config resources resolved automatically by",
+        "reportengine (see runcard-keys.md for what each resource needs).",
         "",
         "## Which action for which fit",
         "",
@@ -419,21 +520,21 @@ def render_actions_md(action_modules):
     ]
     for fit_type, action, blocks in FIT_TYPE_MAP:
         lines.append(f"| {fit_type} | `{action}` | {blocks} |")
-    lines += ["", "## All provider functions", ""]
-    for mod in action_modules:
-        lines += [f"### `{mod['module']}`", ""]
-        for fn in mod["functions"]:
-            lines.append(f"- `{fn['name']}{fn['signature']}`")
-            if fn["doc"]:
-                lines.append(f"  - {fn['doc']}")
-        lines.append("")
+    lines += ["", "## Actions — valid under `actions_:`", ""]
+    lines += _render_function_list(action_modules, runnable=True)
     lines += [
         "### `reportengine.report`",
         "",
         "- `report(...)` — renders `template_text` (or a `template` file), executing",
         "  every `{@action@}` tag and assembling an HTML report in the output folder.",
         "",
+        "## Internal providers — NEVER write these under `actions_:`",
+        "",
+        "Listed so you can trace what an action depends on, and recognize these",
+        "names in tracebacks. They are resolved for you.",
+        "",
     ]
+    lines += _render_function_list(action_modules, runnable=False)
     return "\n".join(lines)
 
 
@@ -492,7 +593,7 @@ def collect_provider_arg_keys(action_modules, surface):
     return sorted(keys - resources)
 
 
-def build_runcard_keys_json(surface, priors, paths_info, action_modules):
+def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_keys):
     """Machine-readable key list consumed by validate_runcard.py."""
     settings_blocks = {}
     for entry in surface["parse"]:
@@ -513,6 +614,7 @@ def build_runcard_keys_json(surface, priors, paths_info, action_modules):
         "raw_keys": surface["raw"],
         "derived_keys": sorted(e["key"] for e in surface["produce"]),
         "prior_dists": priors,
+        "coefficient_keys": [f["name"] for f in coeff_keys],
         "dataset_entry_keys": ["name", "order", "theory_cov", "group"],
         "path_prefixes": paths_info["standard_prefixes"],
         "paths_config": paths_info["config_file"],
@@ -545,14 +647,17 @@ def generate_outputs():
     action_modules = collect_actions()
     priors = collect_priors()
     paths_info = collect_paths()
+    coeff_keys = collect_coefficient_keys()
 
     actions_md = render_actions_md(action_modules)
     outputs = {
         "smefit-runcard/references/runcard-keys.md": render_runcard_keys_md(
-            surface, paths_info
+            surface, paths_info, coeff_keys
         ),
         "smefit-runcard/references/runcard-keys.json": json.dumps(
-            build_runcard_keys_json(surface, priors, paths_info, action_modules),
+            build_runcard_keys_json(
+                surface, priors, paths_info, action_modules, coeff_keys
+            ),
             indent=2,
             sort_keys=True,
         )

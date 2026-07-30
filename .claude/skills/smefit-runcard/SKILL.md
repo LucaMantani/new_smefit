@@ -1,7 +1,6 @@
 ---
 name: smefit-runcard
 description: Use this skill when creating, editing, or validating a smefit runcard — the YAML configuration for a SMEFT fit. Covers choosing the fit action (analytic, ultranest, blackjax, hessian, individual fits, projections, reports), defining Wilson coefficients and priors, RGE running, covariance flags (use_t0, use_theory_covmat, use_quad), external chi2, whitening, and every settings block (ultranest_settings, blackjax_settings, optimizer_settings, gradient_descent_settings, hessian_settings, pseudodata_settings).
-version: 0.1.0
 ---
 
 # smefit runcard authoring
@@ -27,17 +26,24 @@ code and kept in sync by CI:
    (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
    `blackjax_individual_fit.yaml`, `hessian_fit.yaml`, `projections.yaml`,
    `time_likelihood.yaml`, `report.yaml`). Do not write a runcard from scratch.
+   Take the **structure** from them — settings blocks, key names, which blocks
+   pair with which action — but treat their `datasets`, `coefficients` and
+   `external_chi2` entries as placeholders: they are the repo's smoke-test
+   values (e.g. `expr: "y**2 + 0.5*OpWB**2"`), not a physics starting point.
+   Replace them using steps 3–4.
 
 2. **Resolve `data_path` / `theory_path`**. Prefer the shareable prefix form —
    `data_path: smefit_database/commondata`, `theory_path: smefit_database/theory` —
    which smefit resolves through the machine-specific `.config/paths.yaml`
    (created once by the interactive `smefit_setup_local` command; any key in
    that file works as a prefix, and absolute paths still work too). Check the
-   setup by running the smefit-datasets skill's locate script:
+   setup by running the smefit-datasets skill's locate script — it lives in the
+   sibling skill directory, `../smefit-datasets/scripts/smefit_db.py` relative
+   to this file, so build an absolute path from this skill's directory rather
+   than running it relative to the working directory:
    ```bash
-   python "$(dirname <this skill dir>)/smefit-datasets/scripts/smefit_db.py" locate
+   python /abs/path/to/skills/smefit-datasets/scripts/smefit_db.py locate
    ```
-   (i.e. `../smefit-datasets/scripts/smefit_db.py` relative to this SKILL.md).
    It prints the recommended runcard values. If it exits with "no database
    found", ask the user before running `smefit_setup_local` (it also offers to
    clone the database).
@@ -55,9 +61,10 @@ code and kept in sync by CI:
    the matching settings block must agree (e.g. `run_ultranest_fit` ↔
    `ultranest_settings`).
 
-6. **Validate** before handing the runcard to the user:
+6. **Validate** before handing the runcard to the user, using an absolute path
+   to this skill's own `scripts/` directory:
    ```bash
-   python <this skill dir>/scripts/validate_runcard.py <runcard.yaml>
+   python /abs/path/to/skills/smefit-runcard/scripts/validate_runcard.py <runcard.yaml>
    ```
    Fix every error it reports. Then the authoritative check is simply running
    `smefit <runcard.yaml>` (see the smefit-analysis skill).

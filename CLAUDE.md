@@ -4,12 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working in this
 
 ## Skills
 
-User-facing help (runcard authoring, dataset discovery, running/interpreting fits)
-lives in the skills under `.claude/skills/` — see `.claude/skills/README.md`.
+The skills under `.claude/skills/` carry the detail this file deliberately does
+not — see `.claude/skills/README.md`. Reach for them by name:
+
+- `smefit-runcard`, `smefit-datasets`, `smefit-analysis` — user-facing:
+  authoring runcards, finding datasets/operators, running and reading fits.
+- **`smefit-dev` — extending smefit itself**: adding a reportengine node
+  (`parse_*`/`produce_*`), a runcard key, an action, a prior, a coefficient
+  field; the conventions the generator depends on; which tests to extend.
+- `smefit-server` — the server/registry infrastructure.
+
 Files marked AUTO-GENERATED there are produced by
 `python scripts/generate_skill_reference.py`; regenerate and commit them whenever
 user-facing surface changes (runcard keys, actions, priors, template_runcards/).
-CI (`.github/workflows/skills.yml`) fails if they are stale.
+CI (`.github/workflows/skills.yml`) fails if they are stale, and runs
+`tests/test_skill_scripts.py`.
 
 ## Agents
 
@@ -86,9 +95,13 @@ Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultra
 
 The framework uses reportengine's dependency injection pattern. All `produce_*` methods in `smefitConfig` are automatically called by reportengine when the corresponding key is needed. Actions listed under `actions_:` in the runcard are executed as the analysis steps.
 
+**Adding to the graph** — a node, a runcard key, an action, a prior — has
+conventions that the reference generator and validator depend on: use the
+`smefit-dev` skill rather than pattern-matching on an existing method.
+
 ### Coefficient constraints
 
-`Coefficient` objects can be free (with a prior distribution), fixed to a value, or expression-constrained (e.g., `expr: "y**2 + 0.5*OpWB**2"`). Expressions reference other coefficient names and are compiled via `compile()` with empty builtins for safety. Evaluated in `constrain(*args)` which is cached after first compilation.
+`Coefficient` objects can be free (with a prior distribution), fixed to a value, or expression-constrained (e.g., `expr: "y**2 + 0.5*OpWB**2"`). Expressions reference other coefficient names and are evaluated as a lambda built with `eval` over `_EXPR_NAMESPACE` (empty builtins plus a few JAX functions, so constraints stay differentiable), cached on first use and applied in `constrain(*args)`.
 
 ### EFT predictions
 
@@ -105,50 +118,18 @@ The runcard flags `use_theory_covmat` and `use_t0` control which are included in
 
 ## Server infrastructure
 
-All server logic lives in `smefit/server_utils.py`. The registry is a JSON file (`registry.json`) stored on the remote WebDAV server with the structure:
+Fits and reports are shared through a WebDAV server described by a `registry.json`.
+All the logic lives in `smefit/server_utils.py`, driven by the `smefit_*` CLI
+scripts in `smefit/scripts/` (`smefit_ls`, `smefit_upload`, `smefit_get`, …).
 
-```json
-{
-  "fits":     { "<name>": { "created_at", "uploaded_by", "has_rge", "rge_path", "runcard_path", "comment", "project" } },
-  "reports":  { "<name>": { "created_at", "uploaded_by", "comment", "project" } },
-  "projects": ["project_a", "project_b"]
-}
-```
+**Working on it? Use the `smefit-server` skill** — it carries the registry and
+remote-layout schemas, the CLI command table, the design rules, the WebDAV
+client cheatsheet, and the recipes for adding a metadata field or a new command.
+Deliberately not duplicated here: this file is loaded into every session, the
+skill only when it's relevant.
 
-Key design points:
-- `_read_registry` / `_write_registry` download/upload the JSON atomically via a temp file.
-- `_empty_registry()` always includes the `"projects"` key — migration from old format happens in `_read_registry`.
-- Two servers: `public` (bundled read-only creds, team members can also have write creds) and `private`.
-- `Uploader.upload()` accepts an optional `project` kwarg that is stored in the registry entry.
-- `sync_registry` rebuilds the registry from scratch but preserves `projects` via `_empty_registry` merge.
-
-### CLI scripts (`smefit/scripts/`)
-
-| Command | Description |
-|---|---|
-| `smefit_ls` | List fits/reports/rge/misc from the registry |
-| `smefit_upload` | Upload a resource; prompts for comment then project |
-| `smefit_get` | Download a resource |
-| `smefit_mv` | Rename a resource |
-| `smefit_rm` | Move a resource to `bin/` on the server (soft delete) |
-| `smefit_restore` | Restore a resource from `bin/` back to its original location |
-| `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
-| `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
-| `smefit_setup_local` | Interactive local setup: writes `.config/paths.yaml`, offers to clone `smefit_database` |
-| `smefit_setup_server` | Configure server credentials (`~/.config/smefit/server.yaml`), from a shared YAML or interactively |
-| `smefit_sync_registry` | Rebuild `registry.json` from scratch (preserving `projects`) |
-| `smefit_mkdir` | Create a directory under `misc/` |
-| `view_report` | Download + open a report in the browser |
-
-See `LOCAL_SETUP.md` (local path/database setup) and `SERVER.md` (server usage, credentials,
-registry) for user-facing documentation of these.
-
-### Adding new metadata fields
-
-1. Add the field to the `entry` dict in `Uploader.upload()` (and `sync_registry` if it should survive a resync).
-2. If it needs a separate managed list (like `projects`), add helpers following the pattern of `add_project` / `rename_project` / `remove_project` in `server_utils.py`.
-3. Update `_fit_rows` / `_report_rows` in `smefit_ls.py` to display the field conditionally (only when at least one resource has it set).
-4. Document in `SERVER.md`.
+User-facing docs: `SERVER.md` (server usage, credentials, registry) and
+`LOCAL_SETUP.md` (local path/database setup).
 
 ---
 

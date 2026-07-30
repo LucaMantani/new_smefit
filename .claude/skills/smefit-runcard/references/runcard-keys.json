@@ -1,4 +1,12 @@
 {
+  "coefficient_keys": [
+    "free",
+    "prior",
+    "value",
+    "expr",
+    "vars",
+    "baseline_value"
+  ],
   "dataset_entry_keys": [
     "name",
     "order",

@@ -1,7 +1,6 @@
 ---
 name: smefit-analysis
 description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information tables and heatmaps, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
-version: 0.1.0
 ---
 
 # Running and interpreting smefit analyses

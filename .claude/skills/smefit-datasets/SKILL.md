@@ -1,7 +1,6 @@
 ---
 name: smefit-datasets
 description: Use this skill when discovering or looking up SMEFiT datasets, Wilson coefficients/operators, or external likelihoods — e.g. "what datasets are available for top/Higgs/diboson?", "which operators does dataset X constrain?", "is OtG implemented?" — and when locating, cloning, or setting up the smefit_database repository (commondata, theory tables, projections, external chi2).
-version: 0.1.0
 ---
 
 # SMEFiT dataset discovery
@@ -20,7 +19,8 @@ it reads the database's machine-readable catalogs (`data_summary.yaml`,
 local clone and transparently falling back to GitHub:
 
 ```bash
-python <this skill dir>/scripts/smefit_db.py <subcommand> [--json] [--offline]
+# absolute path to this skill's own scripts/ directory — the script is not on PATH
+python /abs/path/to/skills/smefit-datasets/scripts/smefit_db.py <subcommand> [--json] [--offline]
 ```
 
 | Subcommand | Purpose |

@@ -36,7 +36,13 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
+        """Parse `data_path`, the commondata directory holding `<dataset>.yaml`.
+
+        Accepts an absolute path, or the shareable prefix form
+        (`smefit_database/commondata`) resolved through the machine-specific
+        `<new_smefit>/.config/paths.yaml` written by `smefit_setup_local`.
+        Raises if the resolved directory does not exist.
+        """
         data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
         if not data_path.exists():
@@ -46,7 +52,13 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path, resolving prefix-relative paths from <new_smefit>/.config/paths.yaml."""
+        """Parse `theory_path`, the directory holding `<dataset>.json` predictions.
+
+        Same resolution rules as `data_path`: absolute, or the shareable
+        prefix form (`smefit_database/theory`) resolved through
+        `<new_smefit>/.config/paths.yaml`. Every dataset listed in the runcard
+        needs a matching JSON here, with the requested `order` as a key.
+        """
         theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
         if not theory_path.exists():
@@ -173,7 +185,26 @@ class smefitConfig(Config):
         return covmat
 
     def parse_coefficients(self, coefficients):
-        """Parse coefficients configuration."""
+        """Parse the `coefficients:` mapping into a CoefficientGroup.
+
+        Each entry is `Name: {…}`, whose sub-keys are passed verbatim to
+        `smefit.core.Coefficient` — so the dataclass fields are the allowed
+        sub-keys, and `Coefficient.__post_init__` enforces which combination
+        is legal for each kind:
+
+        free (fitted)
+            `free: True` (the default) plus a required `prior`; `value`,
+            `expr` and `vars` are forbidden.
+        fixed constant
+            `free: False` plus `value`; `prior`, `expr`, `vars` forbidden.
+        expression-constrained
+            `free: False` plus `expr` and a non-empty `vars` naming other
+            coefficients in this same mapping; `prior` and `value` forbidden.
+
+        `baseline_value` (default 0.0) applies to free coefficients only: it
+        is the gradient-descent starting point, and the vector returned
+        directly under `gradient_descent_settings.sm_solution: True`.
+        """
         coeffs = []
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
@@ -212,7 +243,20 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser. Strips 'group' keys and resolves prefix-relative paths."""
+        """Parse the `external_chi2:` mapping of custom likelihood modules.
+
+        Each entry is `ClassName: {path: …, …}`, where `path` points at the
+        Python module defining that class (prefix-relative paths are resolved
+        here, as is `rg_matrix`). Every other key is forwarded verbatim to the
+        class constructor, which must also accept `coefficients=` and
+        `rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
+
+        `group` is the one exception: it is stripped here and kept aside for
+        report/Fisher aggregation rather than forwarded.
+
+        A runcard may define `external_chi2` with no `datasets:` at all, in
+        which case the fit runs on the external likelihoods alone.
+        """
         self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():

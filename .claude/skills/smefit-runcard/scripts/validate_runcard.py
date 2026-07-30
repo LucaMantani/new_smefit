@@ -14,6 +14,7 @@ Exit codes: 0 = valid, 1 = errors found, 2 = cannot read input.
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -56,7 +57,12 @@ def load_keys():
 
 
 def find_paths_config():
-    """Locate the machine-specific .config/paths.yaml (created by smefit_setup_local)."""
+    """Locate the machine-specific .config/paths.yaml (created by smefit_setup_local).
+
+    Mirrored verbatim in ../../smefit-datasets/scripts/smefit_db.py — each skill
+    directory has to stand alone (see .claude/skills/README.md), so keep the two
+    copies in sync rather than factoring one out.
+    """
     # 1. Walk up from cwd (covers running inside the repo or a work dir below it).
     for parent in [Path.cwd()] + list(Path.cwd().parents):
         candidate = parent / ".config" / "paths.yaml"
@@ -125,10 +131,16 @@ class PathResolver:
         return path_str
 
 
-def check_coefficient(name, spec, prior_dists, rep):
+def check_coefficient(name, spec, prior_dists, rep, coeff_keys=None):
     if not isinstance(spec, dict):
         rep.error(f"coefficients.{name}: must be a mapping, got {type(spec).__name__}")
         return
+    if coeff_keys:
+        for k in set(spec) - set(coeff_keys):
+            rep.warn(
+                f"coefficients.{name}: unknown sub-key '{k}' — it is ignored "
+                f"(known: {sorted(coeff_keys)})"
+            )
     free = spec.get("free", True)
     if free:
         for forbidden in ("value", "expr", "vars"):
@@ -182,13 +194,71 @@ def check_coefficient(name, spec, prior_dists, rep):
             rep.error(f"coefficients.{name}: 'vars' contains duplicates")
 
 
+def check_vars_references(coefficients, rep):
+    """Every name in a `vars:` list must be another coefficient in this runcard.
+
+    CoefficientGroup raises "var '<v>' in 'vars' is not defined" at run time;
+    catching it here saves a full startup.
+    """
+    defined = set(coefficients)
+    for name, spec in coefficients.items():
+        if not isinstance(spec, dict) or spec.get("free", True):
+            continue
+        for var in spec.get("vars") or []:
+            if var not in defined:
+                rep.error(
+                    f"coefficients.{name}: 'vars' references '{var}', which is not "
+                    f"defined in this runcard (defined: {sorted(defined)})"
+                )
+
+
+# Nonlinearity markers in an `expr:` — any of these makes the model nonlinear
+# even at use_quad: False, which invalidates run_analytic_fit.
+_NONLINEAR_FUNCS = ("sqrt", "exp", "log", "sin", "cos", "tan", "abs")
+
+
+def expr_is_nonlinear(expr, variables):
+    """Best-effort: True when `expr` is certainly nonlinear in `variables`."""
+    expr = str(expr)
+    if "**" in expr:
+        return True
+    if any(re.search(rf"\b{fn}\s*\(", expr) for fn in _NONLINEAR_FUNCS):
+        return True
+    # a product of two coefficient names, e.g. "y*OpWB" (but not "100*y")
+    for lhs, rhs in re.findall(r"([A-Za-z_]\w*)\s*\*(?!\*)\s*([A-Za-z_]\w*)", expr):
+        if lhs in variables and rhs in variables:
+            return True
+    return False
+
+
+def check_coefficients_against_theory(coefficients, operators, rep):
+    """Warn about coefficients no selected theory file knows about.
+
+    `operators` is the union of operator keys across the chosen datasets/orders.
+    A coefficient absent from all of them is either a typo or simply not probed
+    by this data — in both cases its posterior comes back equal to its prior.
+    """
+    if not operators:
+        return
+    for name, spec in coefficients.items():
+        if not isinstance(spec, dict) or not spec.get("free", True):
+            continue  # fixed/constrained entries include auxiliary parameters
+        if name not in operators:
+            rep.warn(
+                f"coefficients.{name}: no selected dataset's theory file contains "
+                "this operator — check the spelling (smefit_db.py operators), or "
+                "expect an unconstrained, prior-shaped posterior"
+            )
+
+
 def check_datasets(runcard, keys, rep, resolver):
+    operators = set()  # union of operator keys across the selected datasets/orders
     datasets = runcard.get("datasets")
     if datasets is None:
-        return
+        return operators
     if not isinstance(datasets, list):
         rep.error("datasets: must be a list of {name, order, ...} entries")
-        return
+        return operators
 
     data_path = runcard.get("data_path")
     theory_path = runcard.get("theory_path")
@@ -243,6 +313,11 @@ def check_datasets(runcard, keys, rep, resolver):
                     f"{label}: order '{entry['order']}' not in theory file "
                     f"(available: {orders})"
                 )
+            elif "order" in entry:
+                # Keys of the order dict are "SM", "<Op>" and "<OpA>*<OpB>".
+                block = theory[entry["order"]]
+                if isinstance(block, dict):
+                    operators.update(k for k in block if k != "SM" and "*" not in k)
             cov = entry.get("theory_cov", "current")
             if f"theory_cov_{cov}" not in theory:
                 available = sorted(
@@ -254,6 +329,8 @@ def check_datasets(runcard, keys, rep, resolver):
                     f"{label}: theory_cov '{cov}' not in theory file "
                     f"(available: {available})"
                 )
+
+    return operators
 
 
 def check_settings_blocks(runcard, keys, rep):
@@ -284,7 +361,7 @@ def check_rg_matrix(value, label, resolver, rep):
         rep.error(f"{label}: file not found: {resolved}")
 
 
-def check_actions(runcard, rep):
+def check_actions(runcard, rep, nonlinear_exprs=()):
     actions = runcard.get("actions_")
     if not actions:
         rep.error("runcard needs a non-empty 'actions_' list")
@@ -307,10 +384,19 @@ def check_actions(runcard, rep):
             rep.error(
                 "actions_: 'report' requires a 'template_text' (or 'template') key"
             )
-        if action == "run_analytic_fit" and runcard.get("use_quad", False):
-            rep.error(
-                "actions_: 'run_analytic_fit' requires a linear model — set use_quad: False"
-            )
+        if action in ("run_analytic_fit", "run_individual_analytic_fits"):
+            if runcard.get("use_quad", False):
+                rep.error(
+                    f"actions_: '{action}' requires a linear model — set use_quad: False"
+                )
+            if nonlinear_exprs:
+                rep.error(
+                    f"actions_: '{action}' requires a linear model, but "
+                    f"{', '.join(sorted(nonlinear_exprs))} "
+                    f"{'has' if len(nonlinear_exprs) == 1 else 'have'} a nonlinear "
+                    "'expr' — the posterior is not Gaussian; use a sampler or the "
+                    "hessian fit instead"
+                )
 
 
 def check_top_level(runcard, keys, rep):
@@ -368,10 +454,12 @@ def main():
                 rep.error(f"'{key}' is required when 'datasets' is present")
 
     coefficients = runcard.get("coefficients")
+    nonlinear_exprs = []
     if not coefficients:
         rep.error("runcard needs a non-empty 'coefficients' mapping")
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}
+        coeff_keys = keys.get("coefficient_keys") if keys else None
         skip_prior = "whitening" in runcard or "bayesian_update_path" in runcard
         for name, spec in coefficients.items():
             if skip_prior and isinstance(spec, dict) and spec.get("free", True):
@@ -379,9 +467,17 @@ def main():
                     spec,
                     prior=spec.get("prior", {"dist": "uniform", "low": 0, "high": 1}),
                 )
-            check_coefficient(name, spec, prior_dists, rep)
+            check_coefficient(name, spec, prior_dists, rep, coeff_keys)
+            if (
+                isinstance(spec, dict)
+                and spec.get("expr")
+                and expr_is_nonlinear(spec["expr"], spec.get("vars") or [])
+            ):
+                nonlinear_exprs.append(name)
+        check_vars_references(coefficients, rep)
     else:
         rep.error("coefficients: must be a mapping of Name: {…}")
+        coefficients = None
 
     rge = runcard.get("rge")
     if rge is not None:
@@ -412,9 +508,14 @@ def main():
                         cfg["rg_matrix"], f"{label}.rg_matrix", resolver, rep
                     )
 
-    check_datasets(runcard, keys, rep, resolver)
+    operators = check_datasets(runcard, keys, rep, resolver)
+    # An `rge` block evolves coefficients from a different scale, and external
+    # chi2 modules bring their own parameters: in both cases a coefficient can
+    # legitimately be absent from every theory file, so skip the cross-check.
+    if isinstance(coefficients, dict) and not ("rge" in runcard or external):
+        check_coefficients_against_theory(coefficients, operators, rep)
     check_settings_blocks(runcard, keys, rep)
-    check_actions(runcard, rep)
+    check_actions(runcard, rep, nonlinear_exprs)
     check_top_level(runcard, keys, rep)
 
     for msg in rep.warnings:

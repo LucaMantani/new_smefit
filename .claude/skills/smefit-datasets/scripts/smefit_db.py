@@ -60,7 +60,12 @@ def is_database(path):
 
 
 def find_paths_config():
-    """Locate smefit's machine-specific .config/paths.yaml (see smefit_setup_local)."""
+    """Locate smefit's machine-specific .config/paths.yaml (see smefit_setup_local).
+
+    Mirrored verbatim in ../../smefit-runcard/scripts/validate_runcard.py — each
+    skill directory has to stand alone (see .claude/skills/README.md), so keep
+    the two copies in sync rather than factoring one out.
+    """
     # 1. Walk up from cwd (covers running inside the repo or a work dir below it).
     for parent in [Path.cwd()] + list(Path.cwd().parents):
         candidate = parent / ".config" / "paths.yaml"

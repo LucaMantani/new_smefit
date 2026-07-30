@@ -1,5 +1,11 @@
 # AUTO-COPIED from template_runcards/blackjax_individual_fit.yaml by scripts/generate_skill_reference.py
 # — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
 # path to data and theory: prefixes are resolved via the machine-specific
 # .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
 data_path: smefit_database/commondata

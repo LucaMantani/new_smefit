@@ -7,7 +7,10 @@ on:
       - "smefit/**"
       - "template_runcards/**"
       - ".claude/skills/**"
+      - ".claude/agents/**"
       - "scripts/generate_skill_reference.py"
+      - "tests/test_skill_scripts.py"
+      - "pyproject.toml"
       - ".github/workflows/skills.yml"
   pull_request:
     branches: [ "main" ]
@@ -15,7 +18,10 @@ on:
       - "smefit/**"
       - "template_runcards/**"
       - ".claude/skills/**"
+      - ".claude/agents/**"
       - "scripts/generate_skill_reference.py"
+      - "tests/test_skill_scripts.py"
+      - "pyproject.toml"
       - ".github/workflows/skills.yml"
 
 jobs:
@@ -35,3 +41,6 @@ jobs:
 
       - name: Check generated skill references are up to date
         run: python scripts/generate_skill_reference.py --check
+
+      - name: Test the scripts bundled with the skills
+        run: pytest tests/test_skill_scripts.py -q

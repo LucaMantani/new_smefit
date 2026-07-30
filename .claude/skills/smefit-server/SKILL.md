@@ -1,7 +1,6 @@
 ---
 name: smefit-server
 description: Use this skill when working on the SMEFiT server infrastructure — adding new CLI commands, new metadata fields, new resource types, changing how the bin/trash/delete flow works, or extending the registry. Also use when debugging upload/download/rename/move operations or WebDAV client interactions.
-version: 0.1.0
 ---
 
 # SMEFiT Server Implementation Guide
@@ -17,6 +16,24 @@ version: 0.1.0
 - `smefit/scripts/smefit_server.py` — server admin: credentials setup, storage check, sync registry, tutorial
 - `smefit/scripts/smefit_manage_project.py` — project list CRUD via `add_project` / `rename_project` / `remove_project`
 - `SERVER.md` — user-facing documentation
+
+## CLI commands (entry points in `pyproject.toml`)
+
+| Command | Description |
+|---|---|
+| `smefit_ls` | List fits/reports/rge/misc from the registry |
+| `smefit_upload` | Upload a resource; prompts for comment then project |
+| `smefit_get` | Download a resource |
+| `smefit_mv` | Rename a resource |
+| `smefit_rm` | Move a resource to `bin/` on the server (soft delete) |
+| `smefit_restore` | Restore a resource from `bin/` back to its original location |
+| `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
+| `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
+| `smefit_setup_local` | Interactive local setup: writes `.config/paths.yaml`, offers to clone `smefit_database` |
+| `smefit_setup_server` | Configure server credentials (`~/.config/smefit/server.yaml`), from a shared YAML or interactively |
+| `smefit_sync_registry` | Rebuild `registry.json` from scratch (preserving `projects`) |
+| `smefit_mkdir` | Create a directory under `misc/` |
+| `view_report` | Download + open a report in the browser |
 
 ## Remote layout
 
@@ -97,11 +114,13 @@ Key is `"<resource_type>/<resource_name>"`. `_read_bin_registry` / `_write_bin_r
 ## Design rules
 
 1. **Two servers**: `public` (bundled read-only creds; team members can have write creds) and `private`. Pass `server=None` to auto-detect.
-2. **Registry is atomic**: always `_read_registry` → mutate → `_write_registry` in one function. Never partial writes.
+2. **Registry is atomic**: always `_read_registry` → mutate → `_write_registry` in one function (they download/upload the JSON via a temp file). Never partial writes.
 3. **`_ensure_remote_path`**: call before any `client.move()` or `client.upload_sync()` to a new path.
 4. **`_empty_registry()`** always includes `"projects": []`. Migration from old flat format happens in `_read_registry`.
 5. **`trash()` not `delete()`**: `smefit_rm` moves to `bin/` to avoid data loss.
 6. **Fit sub-files**: rge and runcard are stored separately and must be moved/deleted/trashed alongside the main archive.
+7. **`sync_registry` rebuilds from scratch** but must preserve the managed lists — `projects` survives via the `_empty_registry` merge. Any new managed list needs the same treatment.
+8. **`Uploader.upload()` takes an optional `project` kwarg**, stored in the registry entry.
 
 ## How to add a new metadata field
 
@@ -115,7 +134,7 @@ Key is `"<resource_type>/<resource_name>"`. `_read_bin_registry` / `_write_bin_r
 1. Create `smefit/scripts/smefit_<name>.py` with a `main()` entry point.
 2. Register in `pyproject.toml` under `[project.scripts]`.
 3. Import server functions from `smefit.server_utils`.
-4. Add to the table in `SERVER.md` and the command list in `CLAUDE.md`.
+4. Add to the CLI command table above and to `SERVER.md`.
 5. **Update `_COMMANDS` in `smefit/scripts/smefit_server.py`** — the tutorial must stay in sync with the actual command set and descriptions. Keep descriptions accurate (e.g. "Move to bin" not "Delete"). Continuation lines in multi-line descriptions use a plain `\n` with no extra leading spaces; `_print_tutorial` handles alignment automatically via `cmd_w + 10`.
 
 ## WebDAV client cheatsheet

@@ -10,7 +10,7 @@ description: >
   cross-checks the runcard/dataset against known failure modes, inspects
   logs and fit_results.json for evidence, and reports a root cause plus a
   concrete recommended fix. Does not edit files or rewrite runcards.
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, Skill
 model: sonnet
 ---
 
@@ -37,12 +37,32 @@ If none of a runcard, an output directory, or error text is provided, ask the
 calling conversation for at least one before proceeding — a symptom
 description alone, with nothing on disk to inspect, isn't enough to diagnose.
 
+## Step 0 — locate the bundled skill files
+
+The reference files and scripts you need live in a `skills/` directory that
+sits next to your own definition file, but **your tool calls resolve against
+the user's working directory, not against this file** — so a literal
+`../skills/...` path will not work. Resolve the real location once, before
+step 1:
+
+```
+Glob: **/skills/smefit-analysis/references/troubleshooting.md
+```
+
+Call the parent of the matched `skills/` directory `<SKILLS>`, and use
+`<SKILLS>/smefit-<name>/...` absolute paths for every later step. If the Glob
+returns nothing, the skills are not installed alongside you: use the `Skill`
+tool instead (`smefit-analysis` for troubleshooting and output layout,
+`smefit-runcard` for the validator, `smefit-datasets` for the database
+script), and if that also fails, say so in your report rather than guessing
+paths.
+
 ## Workflow — cheap and evidence-first, before reproducing anything
 
 Work through these in order; stop as soon as you have a confident root cause.
 
 1. **Match against known failure modes first.** Read
-   `../skills/smefit-analysis/references/troubleshooting.md` and check
+   `<SKILLS>/smefit-analysis/references/troubleshooting.md` and check
    whether the symptom (error string, traceback, or described behavior)
    matches an entry in the config/startup-error table, the "silent
    misbehavior" section, or the "performance/resources" section. Many cases
@@ -50,7 +70,7 @@ Work through these in order; stop as soon as you have a confident root cause.
 
 2. **Statically validate the runcard**, if one is available:
    ```bash
-   python ../skills/smefit-runcard/scripts/validate_runcard.py <runcard.yaml>
+   python <SKILLS>/smefit-runcard/scripts/validate_runcard.py <runcard.yaml>
    ```
    This is read-only (stdlib + pyyaml, no smefit import) and catches key
    typos, missing priors, and coefficient-kind invariant violations before
@@ -58,7 +78,7 @@ Work through these in order; stop as soon as you have a confident root cause.
 
 3. **Mine any existing output directory for post-hoc evidence** before
    reproducing anything. Layout and schema are in
-   `../skills/smefit-analysis/references/output-layout.md`:
+   `<SKILLS>/smefit-analysis/references/output-layout.md`:
    - `input/runcard.yaml` — the runcard actually used; diff it against the
      runcard the user thinks they ran, if both are available.
    - `fit_results.json` — `chi2_ndof` far above 1 suggests dataset tension or
@@ -77,7 +97,7 @@ Work through these in order; stop as soon as you have a confident root cause.
 4. **For "posterior == prior" or "coefficient seems unconstrained" symptoms**,
    confirm sensitivity with:
    ```bash
-   python ../skills/smefit-datasets/scripts/smefit_db.py info <dataset>
+   python <SKILLS>/smefit-datasets/scripts/smefit_db.py info <dataset>
    ```
    A flat posterior for a coefficient the dataset doesn't actually probe is
    correct behavior, not a bug.
@@ -100,8 +120,11 @@ Work through these in order; stop as soon as you have a confident root cause.
       one) if RGE recomputation looks like the bottleneck.
 
    If none of the above localizes the issue, run a longer reproduction only
-   with a bounded wall-clock cap — report interim evidence (partial logs,
-   iteration rate, memory growth) rather than blocking on full completion.
+   with an explicit cap: pass the Bash tool's `timeout` parameter (budget
+   300000 ms / 5 min, never more than 600000) and report interim evidence
+   (partial logs, iteration rate, memory growth) rather than blocking on full
+   completion. A repro that hits the cap is itself a finding — say how far it
+   got.
 
 ## Evidence-gathering toolbox
 
@@ -129,7 +152,10 @@ Always structure your answer to the calling conversation as:
    for the calling conversation to apply (e.g. "set `use_quad: False`, or
    reduce the number of free operators, or add `-f32`"). Describe the
    change; do not perform it.
-4. **Confidence / open questions** — if evidence was inconclusive, say so
+4. **Commands run** — the exact commands you executed (validator, `smefit_db`,
+   any repro), so the calling conversation can re-run them without a round
+   trip. Write them with the resolved `<SKILLS>` path substituted in.
+5. **Confidence / open questions** — if evidence was inconclusive, say so
    plainly rather than overclaiming a root cause, and suggest the next
    diagnostic step.
 
@@ -146,10 +172,10 @@ Always structure your answer to the calling conversation as:
 - **Don't run a full expensive sampler to completion** when a cheaper
   diagnostic (chi2_timing, reduced live points, `-f32`, analytic fit, cached
   RGE matrix) already answers the question.
-- **Reference sibling skill files/scripts by relative path only**
-  (`../skills/<skill>/...`, relative to this file) — never an absolute repo
-  path, and never assume `CLAUDE.md` or `template_runcards/` exist at a fixed
-  location.
+- **Never hard-code paths to the skill files** — resolve `<SKILLS>` with the
+  Glob in step 0 and build paths from it, or fall back to the `Skill` tool.
+  Never assume a fixed repo layout, and never assume `CLAUDE.md` or
+  `template_runcards/` exist at a fixed location.
 - **Don't assume conversation state you weren't given** — if invoked fresh
   with no context, ask for a runcard path, output directory, or error text
   rather than guessing one.

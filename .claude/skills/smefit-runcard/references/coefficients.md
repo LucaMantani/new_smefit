@@ -12,6 +12,15 @@ OpWB: {free: True, prior: {dist: uniform, low: -0.5, high: 0.5}}
 
 - `prior` is **required** (allowed distributions: see `priors.md`).
 - `value`, `expr`, `vars` are **forbidden**.
+- `baseline_value` (optional, default `0.0`) sets the coefficient's "default"
+  point: where gradient descent starts, and the value returned directly under
+  `gradient_descent_settings: {sm_solution: True}`. Because it belongs to the
+  coefficients block rather than to any dataset, it applies to
+  external-`chi2`-only fits too. Ignored for non-free coefficients.
+
+```yaml
+OpWB: {free: True, prior: {dist: uniform, low: -0.5, high: 0.5}, baseline_value: 0.0}
+```
 
 ## 2. Fixed constant
 

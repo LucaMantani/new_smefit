@@ -3,10 +3,17 @@
 
 # smefit actions reference
 
-Any public function below can be listed under `actions_:` in a runcard or
-called via `{@action@}` tags in a report `template_text`. Function arguments
-are config resources resolved automatically by reportengine (see
-runcard-keys.md for what each resource needs).
+Provider functions come in two kinds, and the difference matters:
+
+- **Actions** (first list) are the entry points you write under `actions_:`
+  in a runcard, or call via `{@action@}` tags in a report `template_text`.
+- **Internal providers** (second list) are intermediate nodes reportengine
+  builds on demand to satisfy an action's arguments. Writing one of these
+  under `actions_:` is a mistake — it either fails or silently produces
+  nothing useful.
+
+Function arguments are config resources resolved automatically by
+reportengine (see runcard-keys.md for what each resource needs).
 
 ## Which action for which fit
 
@@ -21,7 +28,60 @@ runcard-keys.md for what each resource needs).
 | Likelihood timing benchmark | `chi2_timing` | none |
 | Report (Fisher information, tables, plots) | `report` | template_text + optimizer_settings/gradient_descent_settings (Fisher needs gd_best_fit) |
 
-## All provider functions
+## Actions — valid under `actions_:`
+
+### `smefit.utils`
+
+- `chi2_timing(chi2, n_eval=1000)`
+  - Time the evaluation of the chi2 function.
+- `run_prior_test(prior)`
+- `run_test(eft_model, chi2)`
+- `time_chi2_vec(chi2, output_path, batch_sample_sizes=None)`
+  - Time the vectorized chi2 across different batch sizes.
+
+### `smefit.fit_actions`
+
+- `run_analytic_fit(analytic_fit, output_path)`
+  - Print and save the result of the analytic fit.
+- `run_blackjax_fit(blackjax_fit, output_path)`
+  - Print and save the result of the BlackJAX nested-sampling fit.
+- `run_hessian_fit(hessian_fit, output_path)`
+  - Print and save the result of the Hessian fit.
+- `run_individual_analytic_fits(individual_analytic_fits, output_path)`
+  - Print and save individual analytic fit results.
+- `run_individual_blackjax_fits(individual_blackjax_fits, output_path)`
+  - Print and save individual BlackJAX fit results.
+- `run_individual_hessian_fits(individual_hessian_fits, output_path)`
+  - Print and save individual Hessian fit results.
+- `run_individual_ultranest_fits(individual_ultranest_fits, output_path)`
+  - Print and save individual ultranest fit results.
+- `run_ultranest_fit(ultranest_fit, output_path)`
+  - Print and save the result of the UltraNest nested-sampling fit.
+
+### `smefit.tables`
+
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices)`
+  - Extract row-normalised diagonals of per-source Fisher matrices.
+
+### `smefit.figures`
+
+- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
+  - Plot the Fisher diagonals matrix as a heatmap.
+
+### `smefit.utils_actions`
+
+- `write_pseudodata(pseudodata, theory_path, output_path)`
+  - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
+
+### `reportengine.report`
+
+- `report(...)` — renders `template_text` (or a `template` file), executing
+  every `{@action@}` tag and assembling an HTML report in the output folder.
+
+## Internal providers — NEVER write these under `actions_:`
+
+Listed so you can trace what an action depends on, and recognize these
+names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
@@ -29,16 +89,10 @@ runcard-keys.md for what each resource needs).
   - Transform chi2 and coefficients into whitened space.
 - `build_exact_posterior_prior(bayesian_update_path, coefficients, datasets, external_chi2=None)`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
-- `chi2_timing(chi2, n_eval=1000)`
-  - Time the evaluation of the chi2 function.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
 - `resolve_posterior(resolve_coeffs, posterior_free, best_free)`
   - Resolve posterior samples and best-fit point from free to full coefficient space.
-- `run_prior_test(prior)`
-- `run_test(eft_model, chi2)`
-- `time_chi2_vec(chi2, output_path, batch_sample_sizes=None)`
-  - Time the vectorized chi2 across different batch sizes.
 
 ### `smefit.analytic_fit`
 
@@ -80,48 +134,9 @@ runcard-keys.md for what each resource needs).
 - `individual_ultranest_fit(individual_prior, individual_chi2, individual_coefficients, ultranest_settings, individual_fit_coefficient)`
   - UltraNest fit for a single free coefficient.
 
-### `smefit.fit_actions`
-
-- `run_analytic_fit(analytic_fit, output_path)`
-  - Print and save the result of the analytic fit.
-- `run_blackjax_fit(blackjax_fit, output_path)`
-  - Print and save the result of the BlackJAX nested-sampling fit.
-- `run_hessian_fit(hessian_fit, output_path)`
-  - Print and save the result of the Hessian fit.
-- `run_individual_analytic_fits(individual_analytic_fits, output_path)`
-  - Print and save individual analytic fit results.
-- `run_individual_blackjax_fits(individual_blackjax_fits, output_path)`
-  - Print and save individual BlackJAX fit results.
-- `run_individual_hessian_fits(individual_hessian_fits, output_path)`
-  - Print and save individual Hessian fit results.
-- `run_individual_ultranest_fits(individual_ultranest_fits, output_path)`
-  - Print and save individual ultranest fit results.
-- `run_ultranest_fit(ultranest_fit, output_path)`
-  - Print and save the result of the UltraNest nested-sampling fit.
-
 ### `smefit.fisher`
 
 - `aggregate_fisher_information_matrices(fisher_information_matrices, data_groups=None)`
   - Aggregate Fisher matrices by summing within each group.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
-
-### `smefit.tables`
-
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices)`
-  - Extract row-normalised diagonals of per-source Fisher matrices.
-
-### `smefit.figures`
-
-- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
-  - Plot the Fisher diagonals matrix as a heatmap.
-
-### `smefit.utils_actions`
-
-- `write_pseudodata(pseudodata, theory_path, output_path)`
-  - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
-
-### `reportengine.report`
-
-- `report(...)` — renders `template_text` (or a `template` file), executing
-  every `{@action@}` tag and assembling an HTML report in the output folder.

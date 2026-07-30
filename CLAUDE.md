@@ -36,10 +36,17 @@ smefit <runcard.yaml>
 ```
 
 ## Test new functionalities
-Test functionalities by running the prototype_runcard.yaml in the root of the repository, after
-modifying it to the needs.
+Test functionalities by copying a runcard from `template_runcards/` (e.g.
+`template_runcards/analytical_fit.yaml`, fast and exact) into a scratch file and
+modifying it to the needs, rather than editing the templates in place.
 ```bash
-smefit prototype_runcard.yaml
+smefit my_test_runcard.yaml
+```
+
+**Run the test suite**:
+```bash
+pytest                    # full suite
+pytest -m "not slow"      # skip tests that call real external samplers or RGE evolution
 ```
 
 **Code formatting/linting**:
@@ -64,8 +71,16 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`model.py`**: `EFTModel` — maps free coefficient values to theory predictions. `forward_map` is JAX JIT-compiled.
 - **`loader.py`**: Reads datasets from YAML and theories from JSON files in an external `smefit_database`.
 - **`data_utils.py`**: Covariance matrix construction (handles correlated/uncorrelated systematics).
-- **`utils.py`**: `build_chi2` returns a JAX-differentiable loss function; `run_test` is a reportengine action.
+- **`chi2.py`**: `build_chi2` returns a JAX-differentiable loss function.
+- **`fit_actions.py`**: The reportengine actions listed under `actions_:` in a runcard (`run_analytic_fit`, `run_ultranest_fit`, `run_blackjax_fit`, `run_hessian_fit`, and their `run_individual_*_fits` counterparts) — each takes its produced fit object plus `output_path` and executes/writes it.
+- **`utils.py`**: Whitening (`apply_whitening`), posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
+
+Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
+`blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `gradient_descent.py`, `projections.py`,
+`external_chi2.py`, `rge.py`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
+`tables.py`, `wcxf.py`, `op_to_latex.py`, `utils_actions.py`, `constants.py`, `api.py` (the
+`reportengine` programmatic API).
 
 ### reportengine integration
 
@@ -116,10 +131,17 @@ Key design points:
 | `smefit_get` | Download a resource |
 | `smefit_mv` | Rename a resource |
 | `smefit_rm` | Move a resource to `bin/` on the server (soft delete) |
+| `smefit_restore` | Restore a resource from `bin/` back to its original location |
 | `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
 | `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
+| `smefit_setup_local` | Interactive local setup: writes `.config/paths.yaml`, offers to clone `smefit_database` |
+| `smefit_setup_server` | Configure server credentials (`~/.config/smefit/server.yaml`), from a shared YAML or interactively |
+| `smefit_sync_registry` | Rebuild `registry.json` from scratch (preserving `projects`) |
 | `smefit_mkdir` | Create a directory under `misc/` |
 | `view_report` | Download + open a report in the browser |
+
+See `LOCAL_SETUP.md` (local path/database setup) and `SERVER.md` (server usage, credentials,
+registry) for user-facing documentation of these.
 
 ### Adding new metadata fields
 

@@ -23,6 +23,8 @@ def load_dataset(data_path, dataset_dict):
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset {dataset_name} not found in {data_path}")
 
+    log.info("Loading dataset %s", dataset_name)
+
     stat_unc_type = dataset_dict.get("stat_unc", "current")
     syst_unc_type = dataset_dict.get("syst_unc", "current")
     for unc_type, unc_name in [

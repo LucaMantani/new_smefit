@@ -78,6 +78,27 @@ def test_load_dataset_not_found(fixtures_data_path):
         load_dataset(fixtures_data_path, {"name": "NONEXISTENT"})
 
 
+def test_load_dataset_zero_stat_unc(fixtures_data_path):
+    ds = load_dataset(fixtures_data_path, {"name": "TESTDATA", "stat_unc": "zero"})
+    assert jnp.allclose(ds.stat_err, jnp.zeros(3))
+
+
+def test_load_dataset_zero_syst_unc(fixtures_data_path):
+    ds = load_dataset(fixtures_data_path, {"name": "TESTDATA", "syst_unc": "zero"})
+    assert jnp.allclose(ds.syst_err, jnp.zeros_like(ds.syst_err))
+
+
+def test_load_dataset_invalid_unc_type(fixtures_data_path):
+    with pytest.raises(ValueError):
+        load_dataset(
+            fixtures_data_path, {"name": "TESTDATA", "stat_unc": "nonexistent"}
+        )
+    with pytest.raises(ValueError):
+        load_dataset(
+            fixtures_data_path, {"name": "TESTDATA", "syst_unc": "nonexistent"}
+        )
+
+
 # ---------------------------------------------------------------------------
 # load_theory
 # ---------------------------------------------------------------------------

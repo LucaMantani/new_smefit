@@ -168,6 +168,21 @@ class smefitConfig(Config):
             log.info("Adding theory covariance matrix to data covariance matrix.")
             covmat += theory.sm_covmat
 
+        offset = 0
+        singular_datasets = []
+        for name, n in zip(data.names, data.ndata_list):
+            block = covmat[offset : offset + n, offset : offset + n]
+            sign, _ = jnp.linalg.slogdet(block)
+            if sign == 0:
+                singular_datasets.append(name)
+            offset += n
+
+        if singular_datasets:
+            raise ValueError(
+                "The covariance matrix block is singular for the following "
+                f"dataset(s): {', '.join(singular_datasets)}."
+            )
+
         self._cached_fit_covmat = covmat
 
         return covmat

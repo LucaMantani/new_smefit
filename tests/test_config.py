@@ -10,7 +10,14 @@ from reportengine.configparser import ConfigError
 
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
-from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.core import (
+    Coefficient,
+    CoefficientGroup,
+    DataGroup,
+    Dataset,
+    Theory,
+    TheoryGroup,
+)
 from smefit.model import EFTModel
 from smefit.priors import Prior
 
@@ -245,6 +252,84 @@ def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
     theory = TheoryGroup([theory_b])
     with pytest.raises(ValueError, match="different datasets"):
         cfg.produce_fit_covmat(data, theory)
+
+
+def test_produce_fit_covmat_singular_dataset_raises(cfg, dataset_a, theory_a):
+    # zero out DS_A's stat and syst uncertainties, and its theory covmat: its
+    # diagonal block becomes all zeros, i.e. singular
+    zero_dataset = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_theory = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    data = DataGroup([zero_dataset])
+    theory = TheoryGroup([zero_theory])
+    with pytest.raises(ValueError, match="singular.*DS_A"):
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+
+
+def test_produce_fit_covmat_lists_all_singular_datasets(
+    cfg, dataset_a, dataset_b, theory_a, theory_b
+):
+    # zero out both DS_A and DS_B (stat, syst, and theory covmat), leaving
+    # nothing else in the fit: both blocks are singular and should be listed
+    zero_dataset_a = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_dataset_b = Dataset(
+        name=dataset_b.name,
+        num_data=dataset_b.num_data,
+        central_values=dataset_b.central_values,
+        stat_err=jnp.zeros_like(dataset_b.stat_err),
+        syst_err=jnp.zeros_like(dataset_b.syst_err),
+        sys_names=dataset_b.sys_names,
+        sys_types=dataset_b.sys_types,
+        luminosity=dataset_b.luminosity,
+    )
+    zero_theory_a = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    zero_theory_b = Theory(
+        name=theory_b.name,
+        order=theory_b.order,
+        sm_pred=theory_b.sm_pred,
+        eft_pred=theory_b.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_b.sm_covmat),
+        scales=theory_b.scales,
+        operators=list(theory_b.operators),
+    )
+    data = DataGroup([zero_dataset_a, zero_dataset_b])
+    theory = TheoryGroup([zero_theory_a, zero_theory_b])
+    with pytest.raises(ValueError, match="DS_A") as exc_info:
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+    assert "DS_B" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

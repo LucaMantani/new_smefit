@@ -1,19 +1,31 @@
 """Unit tests for smefit/config.py."""
 
+import inspect
 import logging
 import os
 from unittest.mock import MagicMock, patch
 
 import jax.numpy as jnp
 import pytest
-from reportengine.configparser import ConfigError
+from reportengine.configparser import ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
-from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.core import (
+    Coefficient,
+    CoefficientGroup,
+    DataGroup,
+    Dataset,
+    Theory,
+    TheoryGroup,
+)
 from smefit.model import EFTModel
 from smefit.priors import Prior
+from smefit.whitening import (
+    _whitening_baseline_shift,
+    _whitening_gradient_descent_shift,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture: bare smefitConfig instance (no reportengine DAG)
@@ -248,6 +260,84 @@ def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
         cfg.produce_fit_covmat(data, theory)
 
 
+def test_produce_fit_covmat_singular_dataset_raises(cfg, dataset_a, theory_a):
+    # zero out DS_A's stat and syst uncertainties, and its theory covmat: its
+    # diagonal block becomes all zeros, i.e. singular
+    zero_dataset = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_theory = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    data = DataGroup([zero_dataset])
+    theory = TheoryGroup([zero_theory])
+    with pytest.raises(ValueError, match="singular.*DS_A"):
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+
+
+def test_produce_fit_covmat_lists_all_singular_datasets(
+    cfg, dataset_a, dataset_b, theory_a, theory_b
+):
+    # zero out both DS_A and DS_B (stat, syst, and theory covmat), leaving
+    # nothing else in the fit: both blocks are singular and should be listed
+    zero_dataset_a = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_dataset_b = Dataset(
+        name=dataset_b.name,
+        num_data=dataset_b.num_data,
+        central_values=dataset_b.central_values,
+        stat_err=jnp.zeros_like(dataset_b.stat_err),
+        syst_err=jnp.zeros_like(dataset_b.syst_err),
+        sys_names=dataset_b.sys_names,
+        sys_types=dataset_b.sys_types,
+        luminosity=dataset_b.luminosity,
+    )
+    zero_theory_a = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    zero_theory_b = Theory(
+        name=theory_b.name,
+        order=theory_b.order,
+        sm_pred=theory_b.sm_pred,
+        eft_pred=theory_b.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_b.sm_covmat),
+        scales=theory_b.scales,
+        operators=list(theory_b.operators),
+    )
+    data = DataGroup([zero_dataset_a, zero_dataset_b])
+    theory = TheoryGroup([zero_theory_a, zero_theory_b])
+    with pytest.raises(ValueError, match="DS_A") as exc_info:
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+    assert "DS_B" in str(exc_info.value)
+
+
 # ---------------------------------------------------------------------------
 # _build_chi2_impl
 # ---------------------------------------------------------------------------
@@ -425,6 +515,78 @@ def test_parse_chi2_scan_settings_unknown_key_warns(cfg, caplog):
     with caplog.at_level(logging.WARNING, logger="smefit.config"):
         cfg.parse_chi2_scan_settings({"n_points": 10, "bad_key": "oops"})
     assert any("bad_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# parse_whitening / produce_whitening_transformation
+# ---------------------------------------------------------------------------
+
+
+def test_parse_whitening_defaults(cfg):
+    result = cfg.parse_whitening({})
+    assert result == {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+
+
+def test_parse_whitening_shift_gradient_descent(cfg):
+    result = cfg.parse_whitening({"shift": "gradient_descent"})
+    assert result["shift"] == "gradient_descent"
+
+
+def test_parse_whitening_shift_invalid_raises(cfg):
+    with pytest.raises(ConfigError, match="whitening.shift"):
+        cfg.parse_whitening({"shift": "bogus"})
+
+
+def test_parse_whitening_unknown_key_warns(cfg, caplog):
+    with caplog.at_level("WARNING"):
+        cfg.parse_whitening({"bogus": 1})
+    assert "Unknown key 'bogus'" in caplog.text
+
+
+def test_produce_whitening_transformation_disabled(cfg):
+    node = cfg.produce_whitening_transformation(whitening=None)
+    assert isinstance(node, ExplicitNode)
+    # zero-argument worker: no dependency on gd_best_fit or anything else
+    assert inspect.signature(node.value).parameters == {}
+    assert node.value() is None
+
+
+def test_produce_whitening_transformation_baseline_shift(cfg):
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+    node = cfg.produce_whitening_transformation(whitening=whitening)
+    assert isinstance(node, ExplicitNode)
+    assert node.value is _whitening_baseline_shift
+    # must not depend on gd_best_fit, so gradient_descent_settings is never required
+    assert "gd_best_fit" not in inspect.signature(node.value).parameters
+
+
+def test_produce_whitening_transformation_gradient_descent_shift(cfg):
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "gradient_descent"}
+    node = cfg.produce_whitening_transformation(whitening=whitening)
+    assert isinstance(node, ExplicitNode)
+    assert node.value is _whitening_gradient_descent_shift
+    assert "gd_best_fit" in inspect.signature(node.value).parameters
+
+
+def test_baseline_shift_worker_centers_at_baseline():
+    """With no baseline set, chi2.baseline defaults to zeros."""
+    chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+    transform = _whitening_baseline_shift(chi2, whitening)
+    assert jnp.allclose(transform.shift, jnp.zeros(2))
+    # Hessian of sum(c**2) is 2*I -> H = L L^T with L = sqrt(2)*I -> W = L^-T = I/sqrt(2)
+    expected = jnp.eye(2) / jnp.sqrt(2.0)
+    assert jnp.allclose(transform.matrix, expected, atol=1e-5)
+
+
+def test_gradient_descent_shift_worker_centers_at_gd_best_fit():
+    chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "gradient_descent"}
+    gd_best_fit = jnp.array([1.0, 2.0])
+    transform = _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening)
+    assert jnp.allclose(transform.shift, gd_best_fit)
+    expected = jnp.eye(2) / jnp.sqrt(2.0)
+    assert jnp.allclose(transform.matrix, expected, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------

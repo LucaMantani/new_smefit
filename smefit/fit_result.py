@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from smefit.priors import _build_dist
+from smefit.whitening import WhitenTransform
 
 
 def _format_prior(spec: Optional[Mapping]) -> str:
@@ -44,8 +45,8 @@ class FitResult:
     samples : dict[str, jnp.ndarray] or None
         Posterior samples for every coefficient,
         shape ``(n_samples,)`` per entry.
-    whitening_matrix : jnp.ndarray or None
-        Unwhitening matrix W (shape n_free x n_free). Saved when whitening is
+    whitening_transformation : WhitenTransform or None
+        Affine unwhitening transform (matrix, shift). Saved when whitening is
         active.
     """
 
@@ -56,7 +57,7 @@ class FitResult:
     logz: Optional[float] = None
     samples: Optional[Dict[str, jnp.ndarray]] = None
     prior_specs: Optional[Dict[str, Mapping]] = None
-    whitening_matrix: Optional[jnp.ndarray] = None
+    whitening_transformation: Optional[WhitenTransform] = None
     whitening_active: bool = False
 
     # ------------------------------------------------------------------
@@ -171,9 +172,9 @@ class FitResult:
                 else None
             ),
             "prior_specs": self.prior_specs,
-            "whitening_matrix": (
-                self.whitening_matrix.tolist()
-                if self.whitening_matrix is not None
+            "whitening_transformation": (
+                self.whitening_transformation.to_dict()
+                if self.whitening_transformation is not None
                 else None
             ),
             "whitening_active": self.whitening_active,
@@ -195,8 +196,10 @@ class FitResult:
             if d.get("samples")
             else None
         )
-        whitening_matrix = (
-            jnp.array(d["whitening_matrix"]) if d.get("whitening_matrix") else None
+        whitening_transformation = (
+            WhitenTransform.from_dict(d["whitening_transformation"])
+            if d.get("whitening_transformation")
+            else None
         )
         return cls(
             free_parameters=free_parameters,
@@ -206,7 +209,7 @@ class FitResult:
             logz=d.get("logz"),
             samples=samples,
             prior_specs=d.get("prior_specs"),
-            whitening_matrix=whitening_matrix,
+            whitening_transformation=whitening_transformation,
             whitening_active=d.get("whitening_active", False),
         )
 

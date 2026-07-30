@@ -15,11 +15,11 @@ from smefit.fit_result import FitResult
 
 
 def _make_final_states():
-    """Return a mock final_states object with real JAX arrays for indexing."""
+    """Return a mock final_states (NSInfo-like) object with real JAX arrays for indexing."""
     fs = MagicMock()
-    fs.loglikelihood = jnp.array([-1.5, -2.0])
-    fs.loglikelihood_birth = jnp.array([-3.0, -4.0])
-    fs.particles = jnp.zeros((2, 1))
+    fs.particles.loglikelihood = jnp.array([-1.5, -2.0])
+    fs.particles.loglikelihood_birth = jnp.array([-3.0, -4.0])
+    fs.particles.position = jnp.zeros((2, 1))
     return fs
 
 
@@ -53,18 +53,21 @@ def _run_blackjax_fit(prior, chi2, coeff_group, settings, whitening_matrix=None)
     # state whose logZ_live - logZ satisfies termination immediately:
     # 0.0 - 5.0 = -5.0 < log_precision=-2 → while condition is False on first check
     mock_state = MagicMock()
-    mock_state.logZ_live = 0.0
-    mock_state.logZ = 5.0
+    mock_state.integrator.logZ_live = 0.0
+    mock_state.integrator.logZ = 5.0
     mock_algo.init.return_value = mock_state
 
     mock_nested = MagicMock()
+
+    mock_sample_result = MagicMock()
+    mock_sample_result.position = jnp.zeros((2, 1))
 
     with (
         patch("smefit.blackjax_fit.blackjax.nss", return_value=mock_algo),
         patch("smefit.blackjax_fit.finalise", return_value=final_states),
         patch("smefit.blackjax_fit.ess", return_value=2),
         patch("smefit.blackjax_fit.log_weights", return_value=jnp.zeros(3)),
-        patch("smefit.blackjax_fit.sample", return_value=jnp.zeros((2, 1))),
+        patch("smefit.blackjax_fit.sample", return_value=mock_sample_result),
         patch("smefit.blackjax_fit.anesthetic.NestedSamples", return_value=mock_nested),
         patch(
             "smefit.blackjax_fit.resolve_posterior",

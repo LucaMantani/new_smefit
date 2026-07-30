@@ -1,0 +1,44 @@
+# Claude Code agents for smefit
+
+One custom subagent so far:
+
+| Agent | Purpose |
+|---|---|
+| `smefit-fit-doctor` | Diagnose a failing/hanging/misbehaving `smefit` run: reproduce cheaply, cross-check against known failure modes, report root cause + fix |
+
+Unlike the skills in `.claude/skills/`, which are single-shot reference
+lookups (dataset discovery, runcard templating), a fit-diagnosis session is
+multi-step and can generate a lot of noisy intermediate output (tracebacks,
+sampler logs, repeated reproduction attempts). Isolating that in a subagent
+keeps the main conversation clean — only the final root cause and fix come
+back.
+
+## Plugin-readiness rules
+
+These agents are meant to ship alongside `.claude/skills/` in a future
+distributable Claude Code plugin, as a sibling `agents/` directory. The same
+invariants that `.claude/skills/README.md` documents for skills apply here:
+
+1. **Self-contained** — an agent file should not depend on state outside
+   what it's given as input at invocation time.
+2. **No repo assumptions in agent bodies** — no absolute paths, no
+   references to repo-root files (`CLAUDE.md`, `template_runcards/`), no
+   `conda activate new_smefit` except as a dev-repo aside.
+3. **Cross-skill references** — only via sibling-directory relative paths
+   (e.g. `../skills/smefit-analysis/references/troubleshooting.md`, relative
+   to the agent's own file under `.claude/agents/`).
+4. **No agent-owned user state** — machine-specific configuration belongs to
+   smefit itself (`.config/paths.yaml`); agents only read it, never write it.
+
+## Tools-allowlist convention
+
+Diagnostic agents (read-only investigation, recommend rather than act) get
+`Bash, Read, Grep, Glob` — deliberately no `Edit`/`Write`, so a diagnosis
+session can never modify the user's runcard or output files. If a future
+agent's job is genuinely to make changes, give it `Edit`/`Write` explicitly
+and say so in its description; don't grant it by default.
+
+These files are hand-maintained — there is no auto-generation or CI
+freshness check for `.claude/agents/` (unlike several files under
+`.claude/skills/`, which are generated from the code by
+`scripts/generate_skill_reference.py`).

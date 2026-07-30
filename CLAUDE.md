@@ -11,6 +11,11 @@ Files marked AUTO-GENERATED there are produced by
 user-facing surface changes (runcard keys, actions, priors, template_runcards/).
 CI (`.github/workflows/skills.yml`) fails if they are stale.
 
+## Agents
+
+Custom subagents live under `.claude/agents/` — see `.claude/agents/README.md`.
+Currently just `smefit-fit-doctor`, for diagnosing failing/hanging smefit runs.
+
 ## Commands
 
 **Install**:

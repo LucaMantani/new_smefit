@@ -17,8 +17,8 @@ not — see `.claude/skills/README.md`. Reach for them by name:
 Files marked AUTO-GENERATED there are produced by
 `python scripts/generate_skill_reference.py`; regenerate and commit them whenever
 user-facing surface changes (runcard keys, actions, priors, template_runcards/).
-CI (`.github/workflows/skills.yml`) fails if they are stale, and runs
-`tests/test_skill_scripts.py`.
+CI (`.github/workflows/skills.yml`) fails if they are stale; the scripts the
+skills bundle are covered by `tests/test_skill_scripts.py` in the normal suite.
 
 ## Agents
 

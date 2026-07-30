@@ -44,8 +44,10 @@ references, the bundled scripts) is hand-maintained.
 
 ## Tests
 
-`tests/test_skill_scripts.py` runs both bundled scripts as subprocesses — the
-way a skill invokes them — covering the validator's error paths against
+`tests/test_skill_scripts.py` is part of the normal `pytest` suite (run by the
+unconditional `tests.yml` workflow, not by `skills.yml`, which only gates
+freshness). It runs both bundled scripts as subprocesses — the way a skill
+invokes them — covering the validator's error paths against
 `tests/fixtures/`, and asserting every `template_runcards/*.yaml` validates
 with **zero warnings**. That last assertion is the drift alarm: a new runcard
 or dataset-entry key used in a template but missing from the generated

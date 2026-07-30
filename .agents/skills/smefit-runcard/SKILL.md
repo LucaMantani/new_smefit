@@ -92,6 +92,20 @@ actions_:
   - run_analytic_fit
 ```
 
+## Confirm with the user before finalizing
+
+These change the physics content of the fit, not just its robustness —
+always surface them as an explicit question rather than defaulting silently:
+- `use_quad` (linear vs. linear+quadratic — no universally correct choice)
+- `rge` presence and `init_scale` (observable-scale vs. high-scale matching)
+- prior distributions/ranges when not supplied by the user (placeholders bias
+  interpretation even if the fit "runs fine")
+- any dataset chosen to constrain a coefficient not requested by the user
+  (e.g. adding a Higgs dataset so a requested coefficient is constrained at all)
+
+`use_t0`/`use_theory_covmat` remain safe to default to `True` when
+systematics/theory errors are present — just say so, don't ask.
+
 ## Rules of thumb
 
 - Prefer prefix paths (`smefit_database/...`, `new_smefit/...`,

@@ -34,18 +34,6 @@ def load_dataset(data_path, dataset_dict):
                 f"{dataset_name}: {unc_name} must be 'current' or 'zero', got {unc_type!r}"
             )
 
-    log.info("Loading dataset %s", dataset_name)
-    if stat_unc_type == "zero":
-        log.warning(
-            "Statistical uncertainty explicitly set to zero for dataset %s",
-            dataset_name,
-        )
-    if syst_unc_type == "zero":
-        log.warning(
-            "Systematic uncertainties explicitly set to zero for dataset %s",
-            dataset_name,
-        )
-
     with open(dataset_path) as file:
         dataset = yaml.safe_load(file)
 
@@ -65,9 +53,17 @@ def load_dataset(data_path, dataset_dict):
     if stat_unc_type == "zero":
         # explicitly opt out of the statistical uncertainty for this dataset
         stat_err = jnp.zeros_like(stat_err)
+        log.warning(
+            "Statistical uncertainty explicitly set to zero for dataset %s",
+            dataset_name,
+        )
     if syst_unc_type == "zero":
         # explicitly opt out of the systematic uncertainties for this dataset
         syst_err = jnp.zeros_like(syst_err)
+        log.warning(
+            "Systematic uncertainties explicitly set to zero for dataset %s",
+            dataset_name,
+        )
 
     for arr, label in [
         (central_values, "data_central"),

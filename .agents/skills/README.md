@@ -1,4 +1,4 @@
-# Claude Code skills for smefit
+# Agent skills for smefit
 
 Five skills assist users and developers working with smefit:
 
@@ -16,7 +16,7 @@ without cloning this repo. The maintainer-only skills document the internals of
 this repository — repo paths (`smefit/config.py`, `smefit/server_utils.py`,
 `pyproject.toml`) are their subject matter, so rules 1–2 do not apply to them
 and they would be excluded from a distributable plugin. They are the single
-source of truth for their areas; `CLAUDE.md` only points at them.
+source of truth for their areas; `AGENTS.md` only points at them.
 
 ## Generated vs hand-written files
 
@@ -54,12 +54,37 @@ or dataset-entry key used in a template but missing from the generated
 `runcard-keys.json` shows up there as an "unknown key" warning. The
 database-dependent tests skip when no `smefit_database` clone is configured.
 
+## Portability
+
+This directory is the canonical location. `.agents/skills/` (workspace) and
+`~/.agents/skills/` (user) are the discovery paths of the [Agent Skills open
+standard](https://agentskills.io), so **Codex CLI and Gemini CLI find these
+skills with no configuration** — as do Cursor and other tools implementing the
+standard. Claude Code has not adopted the standard directory yet
+([anthropics/claude-code#31005](https://github.com/anthropics/claude-code/issues/31005)),
+so a committed symlink `.claude/skills` → `../.agents/skills` covers it. Add new
+skills here, never under `.claude/`.
+
+Only `name` and `description` frontmatter is used, which is the portable subset;
+progressive disclosure (short SKILL.md, detail in `references/`) is what every
+adopting tool expects. The plugin-readiness invariants below therefore double as
+the cross-tool portability contract.
+
+Two consequences worth knowing:
+
+- The generator, `tests/test_skill_scripts.py` and
+  `.github/workflows/skills.yml` all address `.agents/skills`. If the symlink
+  direction is ever inverted, those are the four places to change.
+- A Windows clone made without symlink support turns `.claude/skills` into a
+  plain text file; the real files are still here, so Codex/Gemini users are
+  unaffected. See the root `README.md` for the user-facing fix.
+
 ## Plugin-readiness rules
 
 These skills are written so they can be packaged later as a distributable
 Claude Code plugin (`.claude-plugin/plugin.json` + this directory as
-`skills/`) for users who pip-install smefit without cloning this repo. When
-editing skills, preserve these invariants:
+`skills/`) or a Gemini CLI extension, for users who pip-install smefit without
+cloning this repo. When editing skills, preserve these invariants:
 
 1. **Self-contained skill dirs** — everything a skill needs at runtime
    (references, templates, scripts) lives inside its own directory; generated
@@ -70,7 +95,7 @@ editing skills, preserve these invariants:
    these by hand: the generator writes both copies of `actions.md`, and the
    script helper is mirrored on purpose so each script runs standalone.
 2. **No repo assumptions in skill bodies** — no absolute paths, no references
-   to repo-root files (`CLAUDE.md`, `template_runcards/`, `smefit/…`), no
+   to repo-root files (`AGENTS.md`, `template_runcards/`, `smefit/…`), no
    `conda activate new_smefit` (except as an aside for the dev repo).
 3. **Cross-skill references** — only via sibling-directory wording/paths
    (`../smefit-datasets/scripts/smefit_db.py` relative to a SKILL.md); the

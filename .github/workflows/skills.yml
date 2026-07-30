@@ -6,7 +6,7 @@ on:
     paths:
       - "smefit/**"
       - "template_runcards/**"
-      - ".claude/skills/**"
+      - ".agents/skills/**"
       - "scripts/generate_skill_reference.py"
       - ".github/workflows/skills.yml"
   pull_request:
@@ -14,7 +14,7 @@ on:
     paths:
       - "smefit/**"
       - "template_runcards/**"
-      - ".claude/skills/**"
+      - ".agents/skills/**"
       - "scripts/generate_skill_reference.py"
       - ".github/workflows/skills.yml"
 

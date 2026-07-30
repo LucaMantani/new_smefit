@@ -1,12 +1,18 @@
 # Claude Code agents for smefit
 
+**Claude Code only.** Subagents are not part of the Agent Skills open standard
+that the portable `.agents/skills/` tree follows, and Codex CLI has no
+user-defined equivalent at all, so this directory stays under `.claude/` and
+other agent CLIs simply do not see it. Anything a non-Claude tool needs must
+live in a skill, not here.
+
 One custom subagent so far:
 
 | Agent | Purpose |
 |---|---|
 | `smefit-fit-doctor` | Diagnose a failing/hanging/misbehaving `smefit` run: reproduce cheaply, cross-check against known failure modes, report root cause + fix |
 
-Unlike the skills in `.claude/skills/`, which are single-shot reference
+Unlike the skills in `.agents/skills/`, which are single-shot reference
 lookups (dataset discovery, runcard templating), a fit-diagnosis session is
 multi-step and can generate a lot of noisy intermediate output (tracebacks,
 sampler logs, repeated reproduction attempts). Isolating that in a subagent
@@ -15,14 +21,14 @@ back.
 
 ## Plugin-readiness rules
 
-These agents are meant to ship alongside `.claude/skills/` in a future
-distributable Claude Code plugin, as a sibling `agents/` directory. The same
-invariants that `.claude/skills/README.md` documents for skills apply here:
+These agents are meant to ship alongside the skills in a future distributable
+Claude Code plugin, as a sibling `agents/` directory. The same invariants that
+`.agents/skills/README.md` documents for skills apply here:
 
 1. **Self-contained** — an agent file should not depend on state outside
    what it's given as input at invocation time.
 2. **No repo assumptions in agent bodies** — no absolute paths, no
-   references to repo-root files (`CLAUDE.md`, `template_runcards/`), no
+   references to repo-root files (`AGENTS.md`, `template_runcards/`), no
    `conda activate new_smefit` except as a dev-repo aside.
 3. **Cross-skill references** — describe the *layout* (`skills/<name>/...`, a
    sibling of `agents/`), never a literal relative path. An agent's tool calls
@@ -47,5 +53,5 @@ explicitly and say so in its description; don't grant it by default.
 
 These files are hand-maintained — there is no auto-generation or CI
 freshness check for `.claude/agents/` (unlike several files under
-`.claude/skills/`, which are generated from the code by
+`.agents/skills/`, which are generated from the code by
 `scripts/generate_skill_reference.py`).

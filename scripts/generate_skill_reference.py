@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Generate the auto-generated reference files bundled with the Claude Code skills.
+"""Generate the auto-generated reference files bundled with the agent skills.
 
 Introspects the smefit package (runcard keys from smefit.config, actions from the
 provider modules registered in smefit.app, prior distributions from smefit.priors)
 and copies the template runcards, writing the results into the skill directories
-under .claude/skills/.
+under .agents/skills/.
 
 Usage:
     python scripts/generate_skill_reference.py           # regenerate in place
@@ -642,7 +642,7 @@ def render_templates():
 
 
 def generate_outputs():
-    """Return {relative posix path under .claude/skills: content}."""
+    """Return {relative posix path under .agents/skills: content}."""
     surface = collect_config_surface()
     action_modules = collect_actions()
     priors = collect_priors()
@@ -684,7 +684,7 @@ def check_outputs(outputs, skills_root):
     for rel, content in outputs.items():
         target = skills_root / rel
         if not target.exists():
-            problems.append(f"MISSING: .claude/skills/{rel}")
+            problems.append(f"MISSING: .agents/skills/{rel}")
             continue
         committed = target.read_text()
         if committed != content:
@@ -697,7 +697,7 @@ def check_outputs(outputs, skills_root):
                 )
             )
             problems.append(
-                f"STALE: .claude/skills/{rel}\n{textwrap.indent(diff, '    ')}"
+                f"STALE: .agents/skills/{rel}\n{textwrap.indent(diff, '    ')}"
             )
     # The templates dir is fully generator-owned: flag stray files.
     templates_dir = skills_root / "smefit-runcard" / "templates"
@@ -710,7 +710,7 @@ def check_outputs(outputs, skills_root):
         for path in sorted(templates_dir.glob("*.yaml")):
             if path.name not in expected:
                 problems.append(
-                    f"ORPHAN: .claude/skills/smefit-runcard/templates/{path.name} "
+                    f"ORPHAN: .agents/skills/smefit-runcard/templates/{path.name} "
                     "(no matching file in template_runcards/)"
                 )
     return problems
@@ -725,7 +725,7 @@ def main():
     )
     args = parser.parse_args()
 
-    skills_root = REPO_ROOT / ".claude" / "skills"
+    skills_root = REPO_ROOT / ".agents" / "skills"
     outputs = generate_outputs()
 
     if args.check:

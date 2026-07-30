@@ -174,7 +174,7 @@ Always structure your answer to the calling conversation as:
   RGE matrix) already answers the question.
 - **Never hard-code paths to the skill files** — resolve `<SKILLS>` with the
   Glob in step 0 and build paths from it, or fall back to the `Skill` tool.
-  Never assume a fixed repo layout, and never assume `CLAUDE.md` or
+  Never assume a fixed repo layout, and never assume `AGENTS.md` or
   `template_runcards/` exist at a fixed location.
 - **Don't assume conversation state you weren't given** — if invoked fresh
   with no context, ask for a runcard path, output directory, or error text

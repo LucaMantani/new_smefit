@@ -77,7 +77,7 @@ protection against misspelling it.
   field there and it becomes a runcard key automatically — including in the
   generated reference, which introspects the dataclass. Invariants between
   fields belong in `__post_init__`, and must be mirrored in
-  `.claude/skills/smefit-runcard/references/coefficients.md` and in
+  `../smefit-runcard/references/coefficients.md` and in
   `validate_runcard.py`'s `check_coefficient`.
 - **Priors**: add the distribution class to `_DIST_REGISTRY` in
   `smefit/priors.py`; the constructor signature becomes the required prior

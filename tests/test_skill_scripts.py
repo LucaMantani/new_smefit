@@ -1,7 +1,7 @@
-"""Tests for the standalone scripts bundled with the Claude Code skills.
+"""Tests for the standalone scripts bundled with the agent skills.
 
-`validate_runcard.py` and `smefit_db.py` are stdlib-only scripts that Claude is
-instructed to trust, so they need the same coverage as the package itself.
+`validate_runcard.py` and `smefit_db.py` are stdlib-only scripts that the agent
+is instructed to trust, so they need the same coverage as the package itself.
 They are run as subprocesses (never imported), which is exactly how a skill
 invokes them.
 """
@@ -15,7 +15,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILLS = REPO_ROOT / ".claude" / "skills"
+SKILLS = REPO_ROOT / ".agents" / "skills"
 VALIDATOR = SKILLS / "smefit-runcard" / "scripts" / "validate_runcard.py"
 SMEFIT_DB = SKILLS / "smefit-datasets" / "scripts" / "smefit_db.py"
 FIXTURES = Path(__file__).parent / "fixtures"

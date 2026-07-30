@@ -63,7 +63,7 @@ def find_paths_config():
     """Locate smefit's machine-specific .config/paths.yaml (see smefit_setup_local).
 
     Mirrored verbatim in ../../smefit-runcard/scripts/validate_runcard.py — each
-    skill directory has to stand alone (see .claude/skills/README.md), so keep
+    skill directory has to stand alone (see the skills README.md), so keep
     the two copies in sync rather than factoring one out.
     """
     # 1. Walk up from cwd (covers running inside the repo or a work dir below it).
@@ -71,7 +71,7 @@ def find_paths_config():
         candidate = parent / ".config" / "paths.yaml"
         if candidate.is_file():
             return candidate
-    # 2. Script-relative repo root (.claude/skills/<skill>/scripts/ -> repo).
+    # 2. Script-relative repo root (.agents/skills/<skill>/scripts/ -> repo).
     candidate = Path(__file__).resolve().parents[4] / ".config" / "paths.yaml"
     if candidate.is_file():
         return candidate

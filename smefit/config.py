@@ -62,7 +62,7 @@ class smefitConfig(Config):
 
         parsed_datasets = []
         for ds in datasets:
-            dataset = load_dataset(data_path, ds["name"])
+            dataset = load_dataset(data_path, ds)
             parsed_datasets.append(dataset)
 
         self._cached_data_group = DataGroup(parsed_datasets)
@@ -134,12 +134,7 @@ class smefitConfig(Config):
         if hasattr(self, "_cached_theory_group"):
             return self._cached_theory_group
 
-        parsed_theories = [
-            load_theory(
-                theory_path, ds["name"], ds["order"], ds.get("theory_cov", "current")
-            )
-            for ds in datasets
-        ]
+        parsed_theories = [load_theory(theory_path, ds) for ds in datasets]
 
         self._cached_theory_group = TheoryGroup(parsed_theories)
         return self._cached_theory_group

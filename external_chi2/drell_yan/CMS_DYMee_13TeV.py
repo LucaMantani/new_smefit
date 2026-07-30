@@ -58,8 +58,10 @@ class CMS_DYMee_13TeV:
 
         coeff_list = sorted(coefficients.names)
 
-        dataset = loader.load_dataset(data_path, "CMS_DYMee_13TeV")
-        theory = loader.load_theory(theory_path, "CMS_DYMee_13TeV", order)
+        ds = {"name": "CMS_DYMee_13TeV", "order": order}
+
+        dataset = loader.load_dataset(data_path, ds)
+        theory = loader.load_theory(theory_path, ds)
 
         data = DataGroup([dataset])
         theory_group = TheoryGroup([theory])

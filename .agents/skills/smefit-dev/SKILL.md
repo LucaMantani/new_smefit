@@ -25,6 +25,60 @@ runcard key. This is why renaming a parameter is an API change, and why a
 typo'd parameter name surfaces as "cannot find a way to compute" rather than
 as a `NameError`.
 
+A `produce_` can also be decorated with `@explicit_node`, which changes what it
+returns and lets it pick its *own* dependencies — see below.
+
+## Dynamic dependencies: `@explicit_node`
+
+A plain `produce_X` returns the **value** of `X`, and its dependencies are
+fixed: whatever its own signature names, always. An `@explicit_node`-decorated
+`produce_X` instead returns a **function**, and reportengine builds the node
+from *that* function — resolving its parameters as further graph requirements.
+The dependency set is therefore chosen at graph-build time, from the runcard.
+
+The one instance in smefit is `produce_whitening_transformation`
+(`smefit/config.py`), dispatching to the workers in `smefit/whitening.py`:
+
+```python
+@explicit_node
+def produce_whitening_transformation(self, whitening=None):
+    if whitening is None:
+        return lambda: None  # no deps
+    if whitening["shift"] == "gradient_descent":
+        return _whitening_gradient_descent_shift  # (chi2, gd_best_fit, whitening)
+    return _whitening_baseline_shift  # (chi2, whitening)
+```
+
+Only `shift: gradient_descent` pulls `gd_best_fit` into the DAG — and with it
+`optimizer` and `gradient_descent_settings`. With a plain `produce_`, every
+whitened fit would have to declare a `gradient_descent_settings` block and pay
+for a gradient descent it does not use.
+
+Rules:
+
+- **Return a callable, always.** Reportengine calls `inspect.signature` on the
+  returned object (`_make_callspec` in `reportengine/resourcebuilder.py`), so
+  the "feature disabled" branch must be a zero-argument callable —
+  `lambda: None`, never a bare `None`.
+- **The workers are plain module-level functions** living next to the feature
+  (not in `config.py`), and their parameter names are resource names, resolved
+  by the usual rules. Keep them private (`_`-prefixed) so the generated
+  reference does not advertise them as actions.
+- **It must stay a method on `smefitConfig`.** The dispatch reads parsed
+  runcard values (`whitening["shift"]`), which only the config sees; a provider
+  function would already be a node and could not rewrite its own edges.
+- **Do not call the worker yourself.** Returning `worker(...)` defeats the
+  point: the deferral *is* the mechanism.
+- **Reach for it only when the alternatives have different dependencies.** Same
+  deps, different maths → a plain `produce_` with an `if` is simpler and easier
+  to read.
+- Document *why* in the method docstring, as the whitening one does — the next
+  reader's instinct will be to "simplify" it back into a plain `produce_`.
+
+Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
+`reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
+→ `_make_node((name, val.value))` → `_make_callspec`.
+
 ## Adding a runcard key
 
 1. **A settings block** (`<thing>_settings:`) → add `parse_<thing>_settings`
@@ -130,6 +184,9 @@ mutation. Precision is set once at startup by `smefitEnvironment`
   check it is in a module listed in `smefit_providers`.
 - *A settings block is ignored* — the runcard key and the `parse_` suffix must
   match exactly (`ultranest_settings` ↔ `parse_ultranest_settings`).
+- *A resource is demanded that the runcard never asked for* (e.g. a fit without
+  `gradient_descent_settings` complaining about it) — follow the
+  `@explicit_node` dispatch: the branch taken decides the dependencies.
 - Runtime symptoms of a *user's* fit (not the code) belong to the
   `smefit-analysis` skill's `references/troubleshooting.md` and the
   `smefit-fit-doctor` agent.

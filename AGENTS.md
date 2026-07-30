@@ -104,6 +104,13 @@ Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultra
 
 The framework uses reportengine's dependency injection pattern. All `produce_*` methods in `smefitConfig` are automatically called by reportengine when the corresponding key is needed. Actions listed under `actions_:` in the runcard are executed as the analysis steps.
 
+A `produce_*` decorated with `@explicit_node` returns a *function* instead of a
+value, and reportengine resolves that function's parameters as the node's
+dependencies — so the dependency set is chosen at graph-build time from the
+runcard. `produce_whitening_transformation` (`config.py`) is the example: only
+`whitening.shift: gradient_descent` makes the graph depend on `gd_best_fit`.
+Never flatten one back into a plain `produce_`; see the `smefit-dev` skill.
+
 **Adding to the graph** — a node, a runcard key, an action, a prior — has
 conventions that the reference generator and validator depend on: use the
 `smefit-dev` skill rather than pattern-matching on an existing method.

@@ -8,6 +8,7 @@ import logging
 import os
 import pathlib
 
+import jax.numpy as jnp
 import optax
 from reportengine.configparser import ConfigError, explicit_node
 from reportengine.namespaces import NSList

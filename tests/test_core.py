@@ -12,6 +12,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Dataset
@@ -210,10 +211,28 @@ def test_coeff_group_whitened_resolve():
     cg = CoefficientGroup([c1, c2])
     # sorted: OpA (0), OpB (1)
     W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
-    wcg = cg.whitened(W)
+    transform = WhitenTransform(matrix=W, shift=jnp.zeros(2))
+    wcg = cg.whitened(transform)
     result = wcg.resolve(jnp.array([1.0, 1.0]))
     # un-whitened: W @ [1, 1] = [2, 3]; both free → result = [2, 3]
     assert jnp.allclose(result, jnp.array([2.0, 3.0]))
+
+
+def test_coeff_group_whitened_resolve_with_shift():
+    c1 = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c2 = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    cg = CoefficientGroup([c1, c2])
+    W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
+    shift = jnp.array([0.5, -1.0])
+    transform = WhitenTransform(matrix=W, shift=shift)
+    wcg = cg.whitened(transform)
+    result = wcg.resolve(jnp.array([1.0, 1.0]))
+    # un-whitened: W @ [1, 1] + shift = [2, 3] + [0.5, -1.0] = [2.5, 2.0]
+    assert jnp.allclose(result, jnp.array([2.5, 2.0]))
 
 
 def test_coeff_group_single_free():

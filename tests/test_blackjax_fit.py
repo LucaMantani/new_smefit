@@ -8,6 +8,7 @@ import pytest
 
 from smefit.blackjax_fit import blackjax_fit
 from smefit.fit_result import FitResult
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,7 +46,9 @@ _MOCK_BEST = {"OpA": 0.0, "OpB": 2.0, "OpC": 0.0}
 # ---------------------------------------------------------------------------
 
 
-def _run_blackjax_fit(prior, chi2, coeff_group, settings, whitening_matrix=None):
+def _run_blackjax_fit(
+    prior, chi2, coeff_group, settings, whitening_transformation=None
+):
     """Helper that patches external dependencies and calls blackjax_fit."""
     final_states = _make_final_states()
     mock_algo = MagicMock()
@@ -79,7 +82,7 @@ def _run_blackjax_fit(prior, chi2, coeff_group, settings, whitening_matrix=None)
             chi2=chi2,
             coefficients=coeff_group,
             blackjax_settings=settings,
-            whitening_matrix=whitening_matrix,
+            whitening_transformation=whitening_transformation,
         )
     return result, mock_nested
 
@@ -104,10 +107,12 @@ def test_blackjax_fit_happy_path(minimal_prior, minimal_chi2, coeff_group, tmp_p
 def test_blackjax_fit_whitening_active(
     minimal_prior, minimal_chi2, coeff_group, tmp_path
 ):
-    """whitening_matrix is not None → whitening_active=True in result."""
+    """whitening_transformation is not None → whitening_active=True in result."""
     settings = _blackjax_settings(tmp_path / "bj_logs")
-    W = jnp.eye(1)
-    result, _ = _run_blackjax_fit(minimal_prior, minimal_chi2, coeff_group, settings, W)
+    transform = WhitenTransform(matrix=jnp.eye(1), shift=jnp.zeros(1))
+    result, _ = _run_blackjax_fit(
+        minimal_prior, minimal_chi2, coeff_group, settings, transform
+    )
 
     assert result.whitening_active is True
 

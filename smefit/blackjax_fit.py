@@ -18,7 +18,8 @@ from blackjax.ns.utils import ess, finalise, log_weights, sample
 from jax.scipy.special import logsumexp
 
 from smefit.fit_result import FitResult
-from smefit.utils import apply_whitening, resolve_posterior
+from smefit.utils import resolve_posterior
+from smefit.whitening import apply_whitening
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def blackjax_fit(
     chi2,
     coefficients,
     blackjax_settings,
-    whitening_matrix=None,
+    whitening_transformation=None,
     n_samples=10000,
 ):
     """Run BlackJAX nested sampling and return a FitResult.
@@ -45,9 +46,9 @@ def blackjax_fit(
         Coefficient group (used to resolve derived coefficients from free ones).
     blackjax_settings : dict
         Settings for the BlackJAX sampler.
-    whitening_matrix : jnp.ndarray, optional
-        Unwhitening matrix W (shape n_free x n_free). When set, the sampler
-        works in the whitened space c_w and evaluates chi2(W @ c_w).
+    whitening_transformation : WhitenTransform, optional
+        Affine whitening transform. When set, the sampler works in the
+        whitened space c_w and evaluates chi2(transform.to_physical(c_w)).
     n_samples : int, optional
         Number of posterior samples to draw from the full set of BlackJAX samples.
 
@@ -55,9 +56,11 @@ def blackjax_fit(
     -------
     FitResult
     """
-    if whitening_matrix is not None:
-        log.info("Using whitening matrix in BlackJAX fit.")
-        _chi2, resolve_coeffs = apply_whitening(chi2, coefficients, whitening_matrix)
+    if whitening_transformation is not None:
+        log.info("Using whitening transformation in BlackJAX fit.")
+        _chi2, resolve_coeffs = apply_whitening(
+            chi2, coefficients, whitening_transformation
+        )
     else:
         _chi2 = chi2
         resolve_coeffs = coefficients
@@ -157,6 +160,6 @@ def blackjax_fit(
         logz=float(logzs.mean()),
         samples=samples,
         prior_specs=prior.prior_specs,
-        whitening_matrix=whitening_matrix,
-        whitening_active=whitening_matrix is not None,
+        whitening_transformation=whitening_transformation,
+        whitening_active=whitening_transformation is not None,
     )

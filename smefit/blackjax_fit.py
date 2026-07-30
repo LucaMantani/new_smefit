@@ -93,7 +93,10 @@ def blackjax_fit(
 
     t0 = time.time()
     with tqdm.tqdm(desc="Dead points", unit=" dead points") as pbar:
-        while not state.logZ_live - state.logZ < blackjax_settings["log_precision"]:
+        while not (
+            state.integrator.logZ_live - state.integrator.logZ
+            < blackjax_settings["log_precision"]
+        ):
             (state, rng_key), dead_info = one_step((state, rng_key), None)
             dead.append(dead_info)
             pbar.update(n_delete)
@@ -107,7 +110,7 @@ def blackjax_fit(
     ess_value = int(ess(ess_key, final_states))
     logw = log_weights(rng_key, final_states)
     logzs = logsumexp(logw, axis=0)
-    full_samples = sample(sample_key, final_states, ess_value)
+    full_samples = sample(sample_key, final_states, ess_value).position
 
     # Get number of posterior samples to resample
     n_posterior_samples = n_samples
@@ -126,9 +129,9 @@ def blackjax_fit(
 
     # write out an anesthetic dataframe
     nested_samples = anesthetic.NestedSamples(
-        data=final_states.particles,
-        logL=final_states.loglikelihood,
-        logL_birth=final_states.loglikelihood_birth,
+        data=final_states.particles.position,
+        logL=final_states.particles.loglikelihood,
+        logL_birth=final_states.particles.loglikelihood_birth,
         columns=prior.param_names,
     )
     # write nested_samples.csv to blackjax_logs
@@ -138,9 +141,9 @@ def blackjax_fit(
 
     # Compute bayesian metrics (similar to UltraNest)
     # Find maximum likelihood point
-    best_free_index = jnp.argmax(final_states.loglikelihood)
-    max_logl = float(final_states.loglikelihood[best_free_index])
-    best_free = final_states.particles[best_free_index]
+    best_free_index = jnp.argmax(final_states.particles.loglikelihood)
+    max_logl = float(final_states.particles.loglikelihood[best_free_index])
+    best_free = final_states.particles.position[best_free_index]
 
     samples, best_fit_point = resolve_posterior(
         resolve_coeffs, posterior_free, best_free

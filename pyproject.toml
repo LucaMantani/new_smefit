@@ -24,7 +24,7 @@ optax = "*"
 flax = "*"
 wilson="^2.4"
 webdavclient3 = "*"
-blackjax = {git = "https://github.com/handley-lab/blackjax", tag = "v0.1.0-beta"}
+blackjax = "*"
 tqdm = "*"
 anesthetic = "^2.10.2"
 ipython = "*"

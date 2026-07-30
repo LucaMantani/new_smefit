@@ -58,6 +58,12 @@ def _build_matrix(chi2, whitening, center):
     H = jax.hessian(chi2)(center) + eps * jnp.eye(chi2.nparam)
     log.info("Hessian whitening: cond(H) = %.3e", float(jnp.linalg.cond(H)))
     L = jnp.linalg.cholesky(H)
+    if bool(jnp.isnan(L).any()):
+        raise ValueError(
+            "Whitening: chi2 Hessian at the requested centre is not positive "
+            "definite (cond(H) = %.3e). Increase whitening.eps, or check that "
+            "gradient descent converged if applicable." % float(jnp.linalg.cond(H))
+        )
     return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))
 
 

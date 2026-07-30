@@ -101,7 +101,7 @@ class CMS_DYMee_13TeV:
 
     def compute_chi2(self, coeffs):
         theory = self.model.forward_map(coeffs)
-        safe_theory = jnp.clip(theory, a_min=1e-6)
+        safe_theory = jnp.clip(theory, min=1e-6)
 
         data = self.data_cv
         # Standard JAX pattern: safe_data=1.0 on masked bins keeps log(1/t) finite

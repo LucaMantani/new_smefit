@@ -276,6 +276,7 @@ Parse and validate the optional whitening block.
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `eps` — default: `1e-08`
+- `shift` — default: `'baseline'`
 - `sigma_prior` — default: `5.0`
 
 ## Derived resources (produced internally — NEVER write these in a runcard)
@@ -302,4 +303,4 @@ which runcard keys each action ultimately needs.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(rge, coefficients, theory, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.
-- `whitening_matrix`(chi2, whitening) — Produce the whitening matrix W from the chi2 Hessian at c=0.
+- `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

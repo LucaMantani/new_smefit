@@ -85,8 +85,6 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `apply_whitening(chi2, coefficients, whitening_matrix)`
-  - Transform chi2 and coefficients into whitened space.
 - `build_exact_posterior_prior(bayesian_update_path, coefficients, datasets, external_chi2=None)`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
@@ -113,12 +111,12 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.ultranest_fit`
 
-- `ultranest_fit(prior, chi2, coefficients, ultranest_settings, whitening_matrix=None, n_samples=10000)`
+- `ultranest_fit(prior, chi2, coefficients, ultranest_settings, whitening_transformation=None, n_samples=10000)`
   - Run UltraNest nested sampling and return a FitResult.
 
 ### `smefit.blackjax_fit`
 
-- `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_matrix=None, n_samples=10000)`
+- `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_transformation=None, n_samples=10000)`
   - Run BlackJAX nested sampling and return a FitResult.
 
 ### `smefit.individual_fit`

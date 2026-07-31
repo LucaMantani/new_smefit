@@ -1,6 +1,7 @@
 """Unit tests for smefit.fit_result — FitResult dataclass."""
 
 import json
+import logging
 import math
 
 import jax.numpy as jnp
@@ -125,6 +126,158 @@ def test_write_json_roundtrip(tmp_path):
     assert payload["chi2"] == pytest.approx(6.0)
     assert payload["best_fit_point"]["OpA"] == pytest.approx(1.5)
     assert payload["samples"]["OpA"] == pytest.approx([1.0, 2.0, 3.0])
+
+
+# ---------------------------------------------------------------------------
+# The RGE matrix companion artefact
+# ---------------------------------------------------------------------------
+
+
+def _make_rge_matrix(scales=(91.2,)):
+    """A small but real RGEMatrix, so the round trip goes through real pickling."""
+    from smefit.rge import RGEMatrix, RGESettings
+
+    return RGEMatrix(
+        stacked_mats=jnp.array([[[1.0], [2.0]] for _ in scales]),
+        obs_operators=["OpBox", "OpD"],
+        init_operators=["OpBox"],
+        scales=list(scales),
+        settings=RGESettings(init_scale=1000.0),
+    )
+
+
+def test_write_json_payload_keys_unaffected_by_rge_matrix(tmp_path):
+    """The payload key set must not depend on whether a matrix is attached.
+
+    `rge_scales` is written unconditionally (null when there is no matrix), like
+    every other optional field, so `from_json` never has to guess.
+    """
+    without = _make_result()
+    without.write(tmp_path / "plain")
+
+    with_rge = _make_result()
+    with_rge.rge_matrix = _make_rge_matrix()
+    with_rge.write(tmp_path / "with_rge")
+
+    with (tmp_path / "plain" / "fit_results.json").open() as f:
+        plain_payload = json.load(f)
+    with (tmp_path / "with_rge" / "fit_results.json").open() as f:
+        rge_payload = json.load(f)
+
+    assert plain_payload.keys() == rge_payload.keys()
+    assert "rge_matrix" not in rge_payload  # the matrix itself stays out of JSON
+    assert plain_payload["rge_scales"] is None
+    assert rge_payload["rge_scales"] == [91.2]
+
+
+def test_write_emits_rge_matrix_alongside_result(tmp_path):
+    fr = _make_result()
+    fr.rge_matrix = _make_rge_matrix()
+    fr.write(tmp_path)
+
+    assert (tmp_path / "rge_matrix.pkl").exists()
+
+
+def test_write_without_rge_matrix_writes_no_pickle(tmp_path):
+    _make_result().write(tmp_path)
+    assert not (tmp_path / "rge_matrix.pkl").exists()
+
+
+def test_from_json_restores_the_rge_matrix(tmp_path):
+    """The round trip is exact, including the per-data-point stacking."""
+    fr = _make_result()
+    fr.rge_matrix = _make_rge_matrix(scales=(91.2, 91.2, 200.0))
+    fr.write(tmp_path)
+
+    loaded = FitResult.from_json(tmp_path)
+
+    assert loaded.rge_matrix is not None
+    assert loaded.rge_matrix.scales == [91.2, 91.2, 200.0]
+    assert loaded.rge_matrix.obs_operators == ["OpBox", "OpD"]
+    assert loaded.rge_matrix.init_operators == ["OpBox"]
+    assert loaded.rge_matrix.stacked_mats.shape == fr.rge_matrix.stacked_mats.shape
+    assert loaded.rge_matrix.settings == fr.rge_matrix.settings
+
+
+def test_from_json_without_rge_matrix_gives_none(tmp_path):
+    _make_result().write(tmp_path)
+    assert FitResult.from_json(tmp_path).rge_matrix is None
+
+
+def test_from_json_tolerates_results_written_before_rge_scales_existed(tmp_path):
+    """Legacy fit_results.json has no rge_scales key at all."""
+    _make_result().write(tmp_path)
+    payload_file = tmp_path / "fit_results.json"
+    with payload_file.open() as f:
+        payload = json.load(f)
+    del payload["rge_scales"]
+    with payload_file.open("w") as f:
+        json.dump(payload, f)
+
+    assert FitResult.from_json(tmp_path).rge_matrix is None
+
+
+def test_from_json_warns_when_the_pickle_is_missing(tmp_path, caplog):
+    """Losing the companion file must be visible, not a silent None."""
+    fr = _make_result()
+    fr.rge_matrix = _make_rge_matrix()
+    fr.write(tmp_path)
+    (tmp_path / "rge_matrix.pkl").unlink()
+
+    with caplog.at_level(logging.WARNING):
+        loaded = FitResult.from_json(tmp_path)
+
+    assert loaded.rge_matrix is None
+    assert "rge_matrix.pkl" in caplog.text
+
+
+def test_group_takes_rge_matrix_over_from_its_results(tmp_path):
+    """Each sub-result carries the shared matrix; the group writes it once.
+
+    Individual fits all run against the same EFT model, so writing per-result
+    would put an identical pickle in every coefficient's subdirectory.
+    """
+    rge_matrix = _make_rge_matrix()
+    results = [
+        _make_individual_result("OpA", 1.0, [1.0, 2.0]),
+        _make_individual_result("OpB", 2.0, [2.0, 3.0]),
+    ]
+    for r in results:
+        r.rge_matrix = rge_matrix
+
+    group = FitResultGroup(results)
+    assert group.rge_matrix is rge_matrix
+
+    group.write_results(tmp_path)
+
+    assert (tmp_path / "rge_matrix.pkl").exists()
+    assert not list((tmp_path / "individual_fits").glob("*/rge_matrix.pkl"))
+
+
+def test_group_without_rge_matrix_writes_no_pickle(tmp_path):
+    results = [_make_individual_result("OpA", 1.0, [1.0, 2.0])]
+    FitResultGroup(results).write_results(tmp_path)
+    assert not (tmp_path / "rge_matrix.pkl").exists()
+
+
+def test_group_warns_if_results_carry_different_rge_matrices(caplog):
+    """They share one matrix by construction; if that breaks, say so out loud.
+
+    All of them target the same rge_matrix.pkl, so the extras would otherwise be
+    dropped silently.
+    """
+    results = [
+        _make_individual_result("OpA", 1.0, [1.0, 2.0]),
+        _make_individual_result("OpB", 2.0, [2.0, 3.0]),
+    ]
+    results[0].rge_matrix = _make_rge_matrix()
+    results[1].rge_matrix = _make_rge_matrix()
+
+    with caplog.at_level(logging.WARNING):
+        group = FitResultGroup(results)
+
+    assert "different RGE matrices" in caplog.text
+    assert group.rge_matrix is results[0].rge_matrix
 
 
 # ---------------------------------------------------------------------------

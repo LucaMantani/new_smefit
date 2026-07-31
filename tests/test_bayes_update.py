@@ -482,6 +482,56 @@ def test_build_returns_exact_posterior_prior(tmp_path):
     assert result.param_names == ["OpA", "OpB"]
 
 
+def _build_with_mocked_api(fit_dir, names):
+    """Run build_exact_posterior_prior with the DAG rebuild stubbed out.
+
+    Returns the runcard dict the API was handed, which is what the RGE-reuse
+    logic mutates.
+    """
+    cg = _mock_coeff_group(names)
+    with patch("smefit.api.smefitAPI") as mock_api:
+        mock_api.chi2.return_value = lambda theta: jnp.sum(theta**2)
+        mock_api.prior.return_value = _uniform_prior(names)
+        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+    return mock_api.chi2.call_args.kwargs
+
+
+def test_build_reuses_the_previous_fits_rge_matrix(tmp_path):
+    """Rebuilding fit1's chi2 must not re-run the RGE evolution it already did."""
+    fit_dir = _make_fit_dir(tmp_path, free_params=["OpA"], samples={"OpA": [0.1, 0.2]})
+    rc_path = fit_dir / "input" / "runcard.yaml"
+    rc = yaml.safe_load(rc_path.read_text())
+    rc["rge"] = {"init_scale": 1000.0}
+    rc_path.write_text(yaml.dump(rc))
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+
+    passed_rc = _build_with_mocked_api(fit_dir, ["OpA"])
+
+    assert passed_rc["rge"]["rg_matrix"] == str(fit_dir / "rge_matrix.pkl")
+
+
+def test_build_does_not_override_an_explicit_rg_matrix(tmp_path):
+    fit_dir = _make_fit_dir(tmp_path, free_params=["OpA"], samples={"OpA": [0.1, 0.2]})
+    rc_path = fit_dir / "input" / "runcard.yaml"
+    rc = yaml.safe_load(rc_path.read_text())
+    rc["rge"] = {"init_scale": 1000.0, "rg_matrix": "/somewhere/else.pkl"}
+    rc_path.write_text(yaml.dump(rc))
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+
+    passed_rc = _build_with_mocked_api(fit_dir, ["OpA"])
+
+    assert passed_rc["rge"]["rg_matrix"] == "/somewhere/else.pkl"
+
+
+def test_build_without_rge_block_is_untouched(tmp_path):
+    fit_dir = _make_fit_dir(tmp_path, free_params=["OpA"], samples={"OpA": [0.1, 0.2]})
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+
+    passed_rc = _build_with_mocked_api(fit_dir, ["OpA"])
+
+    assert "rge" not in passed_rc
+
+
 def test_build_whitening_wraps_prior(tmp_path):
     """When the previous fit used whitening, the prior is wrapped in _WhitenedToPhysicalPrior."""
     transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))

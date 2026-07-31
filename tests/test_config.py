@@ -1,6 +1,7 @@
 """Unit tests for smefit/config.py."""
 
 import inspect
+import logging
 import os
 import pathlib
 from unittest.mock import MagicMock, patch
@@ -143,9 +144,30 @@ def test_parse_coefficients_invalid_vars_raises(cfg):
 
 
 def test_parse_rge_valid(cfg):
-    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
-    result = cfg.parse_rge(rge)
-    assert result == rge
+    result = cfg.parse_rge({"init_scale": 1000.0, "obs_scale": "dynamic"})
+    assert result["init_scale"] == 1000.0
+    assert result["obs_scale"] == "dynamic"
+
+
+def test_parse_rge_applies_all_defaults(cfg):
+    """Every key is present after parsing, so smefit.rge never re-applies defaults."""
+    result = cfg.parse_rge({"init_scale": 1000.0})
+    assert result == {
+        "init_scale": 1000.0,
+        "obs_scale": "dynamic",
+        "smeft_accuracy": "integrate",
+        "yukawa": "top",
+        "adm_QCD": False,
+        "scale_variation": 1.0,
+        "rg_matrix": None,
+    }
+
+
+def test_parse_rge_casts_to_plain_python_types(cfg):
+    result = cfg.parse_rge({"init_scale": 1000, "adm_QCD": 1, "scale_variation": 2})
+    assert isinstance(result["init_scale"], float)
+    assert result["adm_QCD"] is True
+    assert isinstance(result["scale_variation"], float)
 
 
 def test_parse_rge_missing_init_scale_raises(cfg):
@@ -158,9 +180,25 @@ def test_parse_rge_invalid_obs_scale_raises(cfg):
         cfg.parse_rge({"init_scale": 1000.0, "obs_scale": "bad_value"})
 
 
+def test_parse_rge_invalid_yukawa_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "yukawa": "bottom"})
+
+
+def test_parse_rge_invalid_smeft_accuracy_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "smeft_accuracy": "nlo"})
+
+
+def test_parse_rge_unknown_key_warns_but_does_not_raise(cfg, caplog):
+    with caplog.at_level(logging.WARNING):
+        result = cfg.parse_rge({"init_scale": 1000.0, "not_a_key": 1})
+    assert "not_a_key" in caplog.text
+    assert result["init_scale"] == 1000.0
+
+
 def test_parse_rge_fixed_obs_scale_ok(cfg):
-    rge = {"init_scale": 1000.0, "obs_scale": 91.2}
-    result = cfg.parse_rge(rge)
+    result = cfg.parse_rge({"init_scale": 1000.0, "obs_scale": 91.2})
     assert result["obs_scale"] == 91.2
 
 

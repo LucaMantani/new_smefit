@@ -58,3 +58,10 @@ def test_forward_map_subset_operators(theory_a):
     model = EFTModel(theory_a, cg, use_quad=False)
     result = model.forward_map(jnp.array([0.0]))
     assert jnp.allclose(result, theory_a.sm_pred)
+
+
+def test_rge_matrix_is_exposed_as_an_attribute(theory_a):
+    """The fit routines read the matrix off the model rather than taking it as
+    a separate dependency, so it has to survive construction."""
+    cg = CoefficientGroup([_free("OpA")])
+    assert EFTModel(theory_a, cg, use_quad=False).rge_matrix is None

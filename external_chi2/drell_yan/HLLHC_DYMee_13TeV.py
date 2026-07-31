@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from smefit import loader
 from smefit.core import DataGroup, TheoryGroup
 from smefit.model import EFTModel
+from smefit.paths import fetch_fit_if_missing, resolve_path
 from smefit.rge import load_rge_matrix
 
 log = logging.getLogger(__name__)
@@ -62,19 +63,22 @@ class HLLHC_DYMee_13TeV:
 
         rge_matrix = None
         if rge_dict is not None:
-            # If a pre-computed rge matrix is provided, add it to the rge_dict
-            # If not, set it to False in case it was defined for the datasets
+            # Use this dataset's own precomputed matrix if one was given, and
+            # otherwise clear whatever path the datasets' rge block carried.
+            # smefit treats external_chi2 entries as opaque, so resolving this
+            # path is our job, not the config's.
             if rg_matrix is not None:
-                rge_dict["rg_matrix"] = rg_matrix
-            else:
-                rge_dict["rg_matrix"] = False
+                rg_matrix = resolve_path(rg_matrix)
+                fetch_fit_if_missing(pathlib.Path(rg_matrix))
+            rge_dict["rg_matrix"] = rg_matrix
 
             rge_matrix = load_rge_matrix(
                 rge_dict=rge_dict,
                 coeff_list=coeff_list,
                 theory_group=theory_group,
-                save_path=save_rge_path,
             )
+            if save_rge_path is not None:
+                rge_matrix.write(save_rge_path)
 
         self.model = EFTModel(
             theory_group, coefficients, use_quad, rge_matrix=rge_matrix

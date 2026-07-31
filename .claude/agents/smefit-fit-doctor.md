@@ -92,7 +92,10 @@ Work through these in order; stop as soon as you have a confident root cause.
      only warn, they never crash, so this is easy to miss and must be
      searched for actively.
    - `rge_matrix.pkl` — its presence/absence and mtime tell you whether a
-     slow startup is first-time RGE computation vs. something else.
+     slow startup is first-time RGE computation vs. something else. Note it is
+     written *with* the fit result, so a run that never finished has no pickle
+     even though the RGE step completed; a runcard listing `write_rge_matrix`
+     ahead of the fit action saves it up front instead.
 
 4. **For "posterior == prior" or "coefficient seems unconstrained" symptoms**,
    confirm sensitivity with:

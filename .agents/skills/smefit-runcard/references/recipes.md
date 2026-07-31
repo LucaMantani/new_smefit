@@ -18,12 +18,22 @@ rge:
   adm_QCD: false           # true = QCD-only anomalous dimensions (EW couplings zeroed)
 ```
 
-- Computing the RGE matrix can be slow; it is saved automatically under the
-  run's output directory. To reuse one across runs, point `rg_matrix:` at the
-  saved pickle — preferably via the `smefit_results` prefix:
+- Computing the RGE matrix can be slow. A fit action saves it under the run's
+  output directory automatically, next to `fit_results.json`. To reuse one
+  across runs, point `rg_matrix:` at the saved pickle — preferably via the
+  `smefit_results` prefix:
   `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
   present locally, smefit automatically tries to download it from the server
   before failing.
+- To precompute a matrix without running a fit — or to persist it up front,
+  before a long sampling run rather than after it — use the `write_rge_matrix`
+  action. It needs only the `rge:` block, `datasets:` and `coefficients:`:
+
+  ```yaml
+  actions_:
+    - write_rge_matrix   # first, so a killed run still leaves the matrix behind
+    - run_ultranest_fit
+  ```
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 

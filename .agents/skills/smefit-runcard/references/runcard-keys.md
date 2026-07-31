@@ -135,10 +135,15 @@ Raises if the resolved directory does not exist.
 Parse the `external_chi2:` mapping of custom likelihood modules.
 
 Each entry is `ClassName: {path: …, …}`, where `path` points at the
-Python module defining that class (prefix-relative paths are resolved
-here, as is `rg_matrix`). Every other key is forwarded verbatim to the
-class constructor, which must also accept `coefficients=` and
-`rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
+Python module defining that class; prefix-relative paths are resolved
+here. Every other key is forwarded verbatim to the class constructor,
+which must also accept `coefficients=` and `rge_dict=` and expose
+`compute_chi2`, `num_data` and `param_names`.
+
+Entries are otherwise opaque: their keys mean whatever the class decides,
+so smefit does not inspect or normalise them. A module taking a path of
+its own is responsible for running it through `smefit.paths.resolve_path`
+itself.
 
 `group` is the one exception: it is stripped here and kept aside for
 report/Fisher aggregation rather than forwarded.
@@ -224,17 +229,39 @@ Validation errors raised while parsing:
 
 ### `rge`
 
-Parse and validate RGE settings.
+Parse and validate the `rge:` block of renormalisation-group settings.
+
+Returns a fully normalised dict: every key below is always present, with
+plain Python types. This is the single place where `rge` defaults are
+applied and where `rg_matrix` is path-resolved, so `smefit.rge` can treat
+the dict as already validated.
+
+Keys
+----
+init_scale : float, required
+    Scale (GeV) at which the Wilson coefficients are defined.
+obs_scale : float or 'dynamic', default 'dynamic'
+    Scale to run down to. `'dynamic'` uses each data point's own scale.
+smeft_accuracy : str, default 'integrate'
+    Solution method passed to `wilson`: 'integrate' or 'leadinglog'.
+yukawa : str, default 'top'
+    Which Yukawas to keep: 'top', 'none' or 'full'.
+adm_QCD : bool, default False
+    If True, keep only the QCD anomalous dimensions (EW couplings off).
+scale_variation : float, default 1.0
+    Multiplies every observable scale; only used when obs_scale is dynamic.
+rg_matrix : str or None, default None
+    Path to a precomputed `rge_matrix.pkl` to reuse.
 
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
-- `adm_QCD`
+- `adm_QCD` — default: `False`
 - `init_scale`
 - `obs_scale` — default: `'dynamic'`
-- `rg_matrix`
-- `scale_variation`
-- `smeft_accuracy`
-- `yukawa`
+- `rg_matrix` — default: `None`
+- `scale_variation` — default: `1.0`
+- `smeft_accuracy` — default: `'integrate'`
+- `yukawa` — default: `'top'`
 
 Validation errors raised while parsing:
 
@@ -301,6 +328,6 @@ which runcard keys each action ultimately needs.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update_path) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
-- `rge_matrix`(rge, coefficients, theory, output_path) — Produce the stacked RGE matrix for all data points.
+- `rge_matrix`(rge, coefficients, theory) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.
 - `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

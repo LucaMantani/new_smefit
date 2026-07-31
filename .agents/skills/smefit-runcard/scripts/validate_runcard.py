@@ -494,7 +494,13 @@ def main():
             obs_scale = rge.get("obs_scale", "dynamic")
             if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
                 rep.error("rge.obs_scale must be a number or 'dynamic'")
-            if "rg_matrix" in rge:
+            yukawa = rge.get("yukawa", "top")
+            if yukawa not in ("top", "none", "full"):
+                rep.error("rge.yukawa must be one of 'top', 'none', 'full'")
+            accuracy = rge.get("smeft_accuracy", "integrate")
+            if accuracy not in ("integrate", "leadinglog"):
+                rep.error("rge.smeft_accuracy must be one of 'integrate', 'leadinglog'")
+            if rge.get("rg_matrix") is not None:
                 check_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
 
     external = runcard.get("external_chi2")

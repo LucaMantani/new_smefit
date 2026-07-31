@@ -183,7 +183,12 @@
     },
     "rge": {
       "defaults": {
-        "obs_scale": "'dynamic'"
+        "adm_QCD": "False",
+        "obs_scale": "'dynamic'",
+        "rg_matrix": "None",
+        "scale_variation": "1.0",
+        "smeft_accuracy": "'integrate'",
+        "yukawa": "'top'"
       },
       "known_keys": [
         "adm_QCD",

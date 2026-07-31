@@ -25,7 +25,7 @@ from smefit.paths import (
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
-from smefit.rge import load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
@@ -95,7 +95,30 @@ class smefitConfig(Config):
         return groups if groups else None
 
     def parse_rge(self, rge):
-        """Parse and validate RGE settings."""
+        """Parse and validate the `rge:` block of renormalisation-group settings.
+
+        Returns a fully normalised dict: every key below is always present, with
+        plain Python types. This is the single place where `rge` defaults are
+        applied and where `rg_matrix` is path-resolved, so `smefit.rge` can treat
+        the dict as already validated.
+
+        Keys
+        ----
+        init_scale : float, required
+            Scale (GeV) at which the Wilson coefficients are defined.
+        obs_scale : float or 'dynamic', default 'dynamic'
+            Scale to run down to. `'dynamic'` uses each data point's own scale.
+        smeft_accuracy : str, default 'integrate'
+            Solution method passed to `wilson`: 'integrate' or 'leadinglog'.
+        yukawa : str, default 'top'
+            Which Yukawas to keep: 'top', 'none' or 'full'.
+        adm_QCD : bool, default False
+            If True, keep only the QCD anomalous dimensions (EW couplings off).
+        scale_variation : float, default 1.0
+            Multiplies every observable scale; only used when obs_scale is dynamic.
+        rg_matrix : str or None, default None
+            Path to a precomputed `rge_matrix.pkl` to reuse.
+        """
         known_keys = {
             "init_scale",
             "obs_scale",
@@ -109,22 +132,55 @@ class smefitConfig(Config):
             log.warning("Unknown key '%s' in rge settings.", k)
         if "init_scale" not in rge:
             raise ConfigError("rge", rge, "rge block requires 'init_scale'")
+
         obs_scale = rge.get("obs_scale", "dynamic")
         if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
             raise ConfigError(
                 "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
             )
-        if "rg_matrix" in rge:
-            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
-            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
-        return rge
+        if isinstance(obs_scale, (int, float)):
+            obs_scale = float(obs_scale)
+
+        # Validate here rather than in RGE.__init__, so a typo fails before the
+        # datasets and theory tables are loaded.
+        yukawa = str(rge.get("yukawa", "top"))
+        if yukawa not in ALLOWED_YUKAWA:
+            raise ConfigError(
+                "yukawa", yukawa, f"yukawa must be one of {sorted(ALLOWED_YUKAWA)}"
+            )
+        smeft_accuracy = str(rge.get("smeft_accuracy", "integrate"))
+        if smeft_accuracy not in ALLOWED_SMEFT_ACCURACY:
+            raise ConfigError(
+                "smeft_accuracy",
+                smeft_accuracy,
+                f"smeft_accuracy must be one of {sorted(ALLOWED_SMEFT_ACCURACY)}",
+            )
+
+        rg_matrix = rge.get("rg_matrix", None)
+        if rg_matrix is not None:
+            rg_matrix = resolve_path(rg_matrix)
+            fetch_fit_if_missing(pathlib.Path(rg_matrix))
+
+        return {
+            "init_scale": float(rge["init_scale"]),
+            "obs_scale": obs_scale,
+            "smeft_accuracy": smeft_accuracy,
+            "yukawa": yukawa,
+            "adm_QCD": bool(rge.get("adm_QCD", False)),
+            "scale_variation": float(rge.get("scale_variation", 1.0)),
+            "rg_matrix": rg_matrix,
+        }
 
     def produce_init_scale(self, rge):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
-        return float(rge["init_scale"])
+        return rge["init_scale"]
 
-    def produce_rge_matrix(self, rge, coefficients, theory, output_path):
-        """Produce the stacked RGE matrix for all data points."""
+    def produce_rge_matrix(self, rge, coefficients, theory):
+        """Produce the stacked RGE matrix for all data points.
+
+        Pure: writing the matrix to disk is the job of `FitResult.write` or the
+        `write_rge_matrix` action, not of this node.
+        """
         if hasattr(self, "_cached_rge_matrix"):
             return self._cached_rge_matrix
 
@@ -134,7 +190,6 @@ class smefitConfig(Config):
             rge_dict=rge,
             coeff_list=coeff_list,
             theory_group=theory,
-            save_path=output_path,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",
@@ -276,10 +331,15 @@ class smefitConfig(Config):
         """Parse the `external_chi2:` mapping of custom likelihood modules.
 
         Each entry is `ClassName: {path: …, …}`, where `path` points at the
-        Python module defining that class (prefix-relative paths are resolved
-        here, as is `rg_matrix`). Every other key is forwarded verbatim to the
-        class constructor, which must also accept `coefficients=` and
-        `rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
+        Python module defining that class; prefix-relative paths are resolved
+        here. Every other key is forwarded verbatim to the class constructor,
+        which must also accept `coefficients=` and `rge_dict=` and expose
+        `compute_chi2`, `num_data` and `param_names`.
+
+        Entries are otherwise opaque: their keys mean whatever the class decides,
+        so smefit does not inspect or normalise them. A module taking a path of
+        its own is responsible for running it through `smefit.paths.resolve_path`
+        itself.
 
         `group` is the one exception: it is stripped here and kept aside for
         report/Fisher aggregation rather than forwarded.

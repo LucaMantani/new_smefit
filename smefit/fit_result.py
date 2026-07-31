@@ -5,9 +5,10 @@ FitResult dataclass shared across fitting routines.
 """
 
 import json
+import logging
 import pathlib
-from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
 from rich import box
@@ -16,6 +17,13 @@ from rich.table import Table
 
 from smefit.priors import _build_dist
 from smefit.whitening import WhitenTransform
+
+if TYPE_CHECKING:
+    # Import-time only: smefit.rge monkey-patches wilson and ckmutil when it is
+    # imported, and fit_result is loaded by every fit action.
+    from smefit.rge import RGEMatrix
+
+log = logging.getLogger(__name__)
 
 
 def _format_prior(spec: Optional[Mapping]) -> str:
@@ -48,6 +56,13 @@ class FitResult:
     whitening_transformation : WhitenTransform or None
         Affine unwhitening transform (matrix, shift). Saved when whitening is
         active.
+    rge_matrix : RGEMatrix or None
+        The RGE matrix the fit ran with, when the runcard had an `rge:` block.
+        This is a *companion artefact*, not part of `fit_results.json`: `write`
+        pickles it separately to `rge_matrix.pkl` so a later runcard can reuse
+        it via `rge.rg_matrix`. It is deliberately not restored by `from_json` —
+        the pickle keys frames by unique scale, so the per-data-point stacking
+        in `stacked_mats` cannot be reconstructed from it.
     """
 
     free_parameters: List[str]
@@ -59,6 +74,7 @@ class FitResult:
     prior_specs: Optional[Dict[str, Mapping]] = None
     whitening_transformation: Optional[WhitenTransform] = None
     whitening_active: bool = False
+    rge_matrix: Optional["RGEMatrix"] = field(default=None, repr=False, compare=False)
 
     # ------------------------------------------------------------------
     # Derived quantities
@@ -148,7 +164,10 @@ class FitResult:
     # ------------------------------------------------------------------
 
     def write(self, output_path) -> None:
-        """Serialise this result to JSON and write it to *output_path*."""
+        """Serialise this result to JSON and write it to *output_path*.
+
+        Also writes `rge_matrix.pkl` alongside it when the fit used RGE running.
+        """
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -184,6 +203,9 @@ class FitResult:
         with out_file.open("w") as f:
             json.dump(payload, f, indent=2)
 
+        if self.rge_matrix is not None:
+            self.rge_matrix.write(output_path)
+
     @classmethod
     def from_json(cls, path) -> "FitResult":
         """Load a FitResult from a directory containing fit_results.json."""
@@ -215,10 +237,35 @@ class FitResult:
 
 
 class FitResultGroup:
-    """A collection of FitResult objects from individual parameter fits."""
+    """A collection of FitResult objects from individual parameter fits.
 
-    def __init__(self, results: List[FitResult]):
+    All the results share one `rge_matrix` object, so the group takes it over
+    from them and writes a single copy at the top of the output directory rather
+    than an identical one per coefficient. They share it because
+    `produce_rge_matrix` depends on the *global* `coefficients` node, not on
+    `individual_coefficients` — every individual `EFTModel` is handed the same
+    full matrix and slices out the columns it needs in `EFTModel._apply_rge`.
+    That also means the matrix written here spans every fitted coefficient, not
+    just one, which is what makes it reusable via `rge.rg_matrix`.
+
+    If that ever stops holding, the extra matrices would be silently dropped —
+    they all target the same filename — so it is checked rather than assumed.
+    """
+
+    def __init__(
+        self, results: List[FitResult], rge_matrix: Optional["RGEMatrix"] = None
+    ):
         self.results = results
+        if rge_matrix is None:
+            matrices = [r.rge_matrix for r in results if r.rge_matrix is not None]
+            if len({id(m) for m in matrices}) > 1:
+                log.warning(
+                    "Individual fits carry %d different RGE matrices; only the "
+                    "first is written to rge_matrix.pkl.",
+                    len({id(m) for m in matrices}),
+                )
+            rge_matrix = matrices[0] if matrices else None
+        self.rge_matrix = rge_matrix
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
@@ -261,8 +308,12 @@ class FitResultGroup:
         base = pathlib.Path(output_path) / "individual_fits"
         for result in self.results:
             name = result.free_parameters[0]
-            result.write(base / name)
+            # Strip the shared matrix from the per-coefficient writes; the group
+            # emits a single copy at the top level below.
+            replace(result, rge_matrix=None).write(base / name)
         self.write_summary(output_path)
+        if self.rge_matrix is not None:
+            self.rge_matrix.write(output_path)
 
     def write_summary(self, output_path) -> None:
         """Write a combined fit_results.json aggregating all individual fits."""

@@ -13,11 +13,16 @@ import pandas as pd
 import wilson
 
 from smefit.constants import gs, mz
-from smefit.paths import fetch_fit_if_missing, resolve_path
 from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
 
 # Numerical threshold for filtering small Wilson coefficient values
 _SMALL_VALUE_THRESHOLD = 1e-14
+
+# Allowed values for the corresponding `rge:` runcard keys. Kept here, next to
+# the RGE runner that gives them meaning, and imported by smefitConfig.parse_rge
+# so a typo is caught at config time.
+ALLOWED_YUKAWA = frozenset({"top", "none", "full"})
+ALLOWED_SMEFT_ACCURACY = frozenset({"integrate", "leadinglog"})
 ### Patch of a CKM function, so that the CP violating
 ### phase is set to gamma and not computed explicitly
 ### See https://github.com/wilson-eft/wilson/issues/113#issuecomment-2179273979
@@ -210,7 +215,7 @@ class RGE:
         self.adm_QCD = adm_QCD
         self.yukawa = yukawa
 
-        if yukawa not in ("top", "none", "full"):
+        if yukawa not in ALLOWED_YUKAWA:
             raise ValueError(f"Yukawa parameter not supported: {yukawa}")
 
         _logger.info(f"Using Yukawa parameterization: {yukawa}.")
@@ -375,43 +380,6 @@ class RGE:
 
         return self.map_to_smefit(wc_final, scale)
 
-    @staticmethod
-    def save_rg(
-        path,
-        rgemat,
-        scales,
-        rge_settings,
-        name="rge_matrix",
-    ):
-        """
-        Save the RGE matrix to the result folder.
-
-        Parameters
-        ----------
-        path : pathlib.Path
-            path to the result folder
-        rgemat: list
-            List of RGE matrices for each datapoint
-        scales: list
-            List of scales for each datapoint
-        rge_settings: dict
-            dictionary with the RGE settings
-        name: str
-            name of the file to save the RGE matrix
-        """
-        path = pathlib.Path(path)
-        to_dump = {}
-        to_dump["rge_settings"] = rge_settings
-        # put together the scales and the RGE matrices, having the scale as key for the matrix.
-        for scale, matrix in zip(scales, rgemat):
-            to_dump[scale] = matrix
-        # check that the path exists
-        if not path.exists():
-            path.mkdir(parents=True, exist_ok=True)
-
-        with open(path / f"{name}.pkl", "wb") as f:
-            pickle.dump(to_dump, f)
-
     def clone_runner(self, coeff_list):
         """
         Clone the RGE runner with a different coefficient list.
@@ -435,6 +403,63 @@ class RGE:
         )
 
 
+@dataclass(frozen=True)
+class RGESettings:
+    """The physics settings that determine an RGE matrix.
+
+    These four values, and only these four, decide whether a stored
+    ``rge_matrix.pkl`` may be reused: :func:`load_precomputed_rge_matrix`
+    compares :meth:`to_dict` against the ``rge_settings`` entry of the pickle
+    with strict equality. Adding a field here — or changing a key name in
+    :meth:`to_dict` — invalidates every RGE matrix ever written, so don't.
+
+    ``obs_scale`` and ``scale_variation`` are deliberately absent: they select
+    *which* scales are requested, not how the running is done, and a cached
+    matrix keyed by scale is reusable across runcards that ask for different
+    scales.
+    """
+
+    init_scale: float
+    smeft_accuracy: str = "integrate"
+    adm_QCD: bool = False
+    yukawa: str = "top"
+
+    @classmethod
+    def from_dict(cls, rge_dict):
+        """Build from a raw or parsed ``rge:`` dict.
+
+        Tolerant of missing keys and of YAML wrapper types, so hand-built dicts
+        (external chi2 modules, tests) work as well as the normalised dict
+        returned by ``smefitConfig.parse_rge``. The casts also keep the pickled
+        settings plain-Python and therefore comparable.
+        """
+        return cls(
+            init_scale=float(rge_dict.get("init_scale", 1e3)),
+            smeft_accuracy=str(rge_dict.get("smeft_accuracy", "integrate")),
+            adm_QCD=bool(rge_dict.get("adm_QCD", False)),
+            yukawa=str(rge_dict.get("yukawa", "top")),
+        )
+
+    def to_dict(self):
+        """Plain-Python dict used as the on-disk compatibility key."""
+        return {
+            "init_scale": self.init_scale,
+            "smeft_accuracy": self.smeft_accuracy,
+            "adm_QCD": self.adm_QCD,
+            "yukawa": self.yukawa,
+        }
+
+    def runner(self, coeff_list):
+        """Return an :class:`RGE` runner configured with these settings."""
+        return RGE(
+            coeff_list,
+            self.init_scale,
+            self.smeft_accuracy,
+            self.adm_QCD,
+            self.yukawa,
+        )
+
+
 @dataclass
 class RGEMatrix:
     """Container for the stacked RGE matrices and associated metadata.
@@ -442,8 +467,9 @@ class RGEMatrix:
     Attributes
     ----------
     stacked_mats : jnp.ndarray
-        Shape ``(n_scales, n_obs_ops, n_init_coeffs)`` — one matrix per unique
-        observable scale (or ``(1, …)`` when a single fixed scale is used).
+        Shape ``(n_data, n_obs_ops, n_init_coeffs)`` — one matrix per data
+        point (or ``(1, …)`` when a single fixed observable scale is used and
+        the matrix is broadcast downstream by ``EFTModel._apply_rge``).
     obs_operators : list of str
         Observable-basis operator names (alphabetically sorted).
     init_operators : list of str
@@ -451,12 +477,52 @@ class RGEMatrix:
     scales : list of float
         One scale per data point for dynamic mode, or a single-element list for
         a fixed observable scale.
+    settings : RGESettings
+        The running configuration these matrices were computed with; stored in
+        the pickle so a later run can check reusability.
+
+    Notes
+    -----
+    Serialisation is deliberately one-way. :meth:`write` stores one frame per
+    *unique* scale, so the per-data-point stacking of ``stacked_mats`` cannot be
+    reconstructed from the file and there is no ``from_file``. Reading a stored
+    matrix back is the job of :func:`load_precomputed_rge_matrix` followed by
+    :func:`load_rge_mats_from_scales`, which need the new run's coefficient list
+    and scales anyway.
     """
 
     stacked_mats: jnp.ndarray
     obs_operators: list
     init_operators: list
     scales: list
+    settings: RGESettings
+
+    def to_dump_dict(self):
+        """Build the on-disk payload: ``{'rge_settings': {...}, <scale>: DataFrame}``.
+
+        Duplicate scales collapse to a single entry, so a dynamic-scale fit over
+        many data points sharing a scale stores one frame per unique scale.
+        """
+        to_dump = {"rge_settings": self.settings.to_dict()}
+        for scale, matrix in zip(self.scales, self.stacked_mats):
+            to_dump[scale] = pd.DataFrame(
+                np.asarray(matrix, dtype=float),
+                index=self.obs_operators,
+                columns=self.init_operators,
+            )
+        return to_dump
+
+    def write(self, output_path, name="rge_matrix"):
+        """Pickle this matrix to ``<output_path>/<name>.pkl``.
+
+        The file can be fed back to a later runcard through ``rge.rg_matrix``.
+        """
+        output_path = pathlib.Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        out_file = output_path / f"{name}.pkl"
+        with open(out_file, "wb") as f:
+            pickle.dump(self.to_dump_dict(), f)
+        _logger.info("RGE matrix written to %s.", out_file)
 
 
 def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
@@ -562,8 +628,10 @@ def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
                 ).fillna(0)
                 # reorder columns
                 rgemat_scale = rgemat_scale[sorted(rgemat_scale.columns.tolist())]
-                # cache the updated RGE matrix
-                rge_cache[scale] = rgemat_scale
+                # Update the cache under the key we matched, not under `scale`:
+                # the two differ by up to `rtol` and writing to a new key would
+                # leave the narrower matrix behind as a stale duplicate.
+                rge_cache[cached_key] = rgemat_scale
             else:
                 # take the columns corresponding to the requested coefficients
                 rgemat_scale = rgemat_scale[coeff_list]
@@ -600,7 +668,6 @@ def load_rge_matrix(
     rge_dict,
     coeff_list,
     theory_group,
-    save_path=None,
 ):
     """
     Load the RGE matrix for the SMEFT Wilson coefficients.
@@ -613,8 +680,6 @@ def load_rge_matrix(
         list of Wilson coefficients to be included in the RGE matrix
     theory_group: TheoryGroup
         theory group providing per-data-point observable scales
-    save_path: str, optional
-        path where to save the RGE matrix. If None, the matrix is not saved.
 
     Returns
     -------
@@ -624,26 +689,16 @@ def load_rge_matrix(
     # Sort the coefficient list alphabetically
     coeff_list = sorted(coeff_list)
     scales = _resolve_scales(rge_dict, theory_group)
-    # Cast to plain Python types to avoid pickling ruamel.yaml wrapper types
-    init_scale = float(rge_dict.get("init_scale", 1e3))
-    smeft_accuracy = str(rge_dict.get("smeft_accuracy", "integrate"))
-    adm_QCD = bool(rge_dict.get("adm_QCD", False))
-    yukawa = str(rge_dict.get("yukawa", "top"))
-    rge_settings = {
-        "init_scale": init_scale,
-        "smeft_accuracy": smeft_accuracy,
-        "adm_QCD": adm_QCD,
-        "yukawa": yukawa,
-    }
+    settings = RGESettings.from_dict(rge_dict)
     rge_cache = {}
-    rge_runner = RGE(coeff_list, init_scale, smeft_accuracy, adm_QCD, yukawa)
+    rge_runner = settings.runner(coeff_list)
 
-    # load precomputed RGE matrix if it exists
-    path_to_rge_mat = rge_dict.get("rg_matrix", False)
+    # load precomputed RGE matrix if it exists. The path is already resolved and
+    # fetched by smefitConfig.parse_rge; callers outside reportengine that pass
+    # a raw path should resolve it themselves.
+    path_to_rge_mat = rge_dict.get("rg_matrix", None)
     if path_to_rge_mat:
-        path_to_rge_mat = resolve_path(path_to_rge_mat)
-        fetch_fit_if_missing(pathlib.Path(path_to_rge_mat))
-        rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, rge_settings)
+        rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, settings.to_dict())
 
     # compute or fetch the RGE matrix for each scale
     rgemats = load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache)
@@ -664,18 +719,10 @@ def load_rge_matrix(
     # now stack the matrices in a 3D array
     stacked_mats = jnp.stack([mat.values for mat in rgemats])
 
-    # save RGE matrix to save_path
-    if save_path is not None:
-        RGE.save_rg(
-            save_path,
-            rgemat=rgemats,
-            scales=scales,
-            rge_settings=rge_settings,
-        )
-
     return RGEMatrix(
         stacked_mats=stacked_mats,
         obs_operators=obs_operators,
         init_operators=coeff_list,
         scales=scales,
+        settings=settings,
     )

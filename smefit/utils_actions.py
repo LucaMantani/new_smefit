@@ -11,6 +11,17 @@ import numpy as np
 import yaml
 
 
+def write_rge_matrix(rge_matrix, output_path):
+    """Write the RGE matrix to output_path/rge_matrix.pkl.
+
+    A fit action already writes the matrix alongside its result, so this is for
+    precomputing one on its own — a runcard whose only action is
+    `write_rge_matrix` produces a pickle that later runcards can reuse through
+    `rge: {rg_matrix: <path>}`, skipping the expensive `wilson` evolution.
+    """
+    rge_matrix.write(output_path)
+
+
 def write_pseudodata(pseudodata, theory_path, output_path):
     """Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 

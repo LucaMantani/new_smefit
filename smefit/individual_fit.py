@@ -48,6 +48,7 @@ def individual_ultranest_fit(
     individual_coefficients,
     ultranest_settings,
     individual_fit_coefficient,
+    individual_eft_model=None,
 ):
     """UltraNest fit for a single free coefficient.
 
@@ -62,7 +63,11 @@ def individual_ultranest_fit(
     settings["ReactiveNS_settings"]["resume"] = "overwrite"
 
     return ultranest_fit(
-        individual_prior, individual_chi2, individual_coefficients, settings
+        individual_prior,
+        individual_chi2,
+        individual_coefficients,
+        settings,
+        eft_model=individual_eft_model,
     )
 
 
@@ -72,6 +77,7 @@ def individual_blackjax_fit(
     individual_coefficients,
     blackjax_settings,
     individual_fit_coefficient,
+    individual_eft_model=None,
 ):
     """BlackJAX fit for a single free coefficient.
 
@@ -87,6 +93,7 @@ def individual_blackjax_fit(
         individual_chi2,
         individual_coefficients,
         settings,
+        eft_model=individual_eft_model,
     )
 
 

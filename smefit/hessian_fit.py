@@ -73,4 +73,5 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
         max_loglikelihood=max_loglikelihood,
         num_data=chi2.num_data,
         samples=samples,
+        rge_matrix=eft_model.rge_matrix,
     )

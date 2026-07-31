@@ -27,6 +27,7 @@ def ultranest_fit(
     ultranest_settings,
     whitening_transformation=None,
     n_samples=10000,
+    eft_model=None,
 ):
     """Run UltraNest nested sampling and return a FitResult.
 
@@ -47,6 +48,10 @@ def ultranest_fit(
         whitened space c_w and evaluates chi2(transform.to_physical(c_w)).
     n_samples : int, optional
         Number of posterior samples to draw from the full set of UltraNest samples.
+    eft_model : EFTModel, optional
+        Not used for sampling — only to carry its `rge_matrix` onto the
+        FitResult, so it is written next to the fit output. None for an
+        external-chi2-only fit, which has no EFT model.
 
     Returns
     -------
@@ -147,4 +152,5 @@ def ultranest_fit(
         prior_specs=prior.prior_specs,
         whitening_transformation=whitening_transformation,
         whitening_active=whitening_transformation is not None,
+        rge_matrix=eft_model.rge_matrix if eft_model is not None else None,
     )

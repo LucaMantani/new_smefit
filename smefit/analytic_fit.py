@@ -97,4 +97,5 @@ def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
         max_loglikelihood=max_loglikelihood,
         num_data=data.num_data,
         samples=samples,
+        rge_matrix=eft_model.rge_matrix,
     )

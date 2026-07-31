@@ -483,12 +483,12 @@ class RGEMatrix:
 
     Notes
     -----
-    Serialisation is deliberately one-way. :meth:`write` stores one frame per
-    *unique* scale, so the per-data-point stacking of ``stacked_mats`` cannot be
-    reconstructed from the file and there is no ``from_file``. Reading a stored
-    matrix back is the job of :func:`load_precomputed_rge_matrix` followed by
-    :func:`load_rge_mats_from_scales`, which need the new run's coefficient list
-    and scales anyway.
+    The file :meth:`write` produces is a *scale-keyed cache*: one frame per
+    unique scale, with no record of which data point sits at which scale. That
+    is what makes it reusable by a later runcard over different data (see
+    :func:`load_precomputed_rge_matrix` and :func:`load_rge_mats_from_scales`),
+    and it is why :meth:`from_file` needs the caller to supply the per-data-point
+    ``scales`` — `FitResult` stores them alongside, in ``fit_results.json``.
     """
 
     stacked_mats: jnp.ndarray
@@ -524,6 +524,66 @@ class RGEMatrix:
             pickle.dump(self.to_dump_dict(), f)
         _logger.info("RGE matrix written to %s.", out_file)
 
+    @classmethod
+    def from_file(cls, path, scales):
+        """Rebuild an RGEMatrix from a pickle written by :meth:`write`.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Path to an ``rge_matrix.pkl``.
+        scales : list of float
+            The per-data-point scales this matrix was built for. The file only
+            stores one frame per *unique* scale, so this is what restores the
+            row-per-data-point stacking of ``stacked_mats``.
+
+        Raises
+        ------
+        ValueError
+            If the file has no frame for one of the requested scales, i.e. it
+            does not belong to this fit.
+        """
+        settings_dict, frames = _read_rge_pickle(path)
+        if not frames:
+            raise ValueError(f"{path} contains no RGE matrices.")
+
+        # Resolve each distinct requested scale once: the stored float keys can
+        # differ from the requested ones in the last bits.
+        resolved = {}
+        for scale in dict.fromkeys(scales):
+            key = _find_cached_scale(frames, scale)
+            if key is None:
+                raise ValueError(
+                    f"{path} has no RGE matrix for scale {scale} GeV; it holds "
+                    f"{sorted(frames)}. This file belongs to a different fit."
+                )
+            resolved[scale] = frames[key]
+
+        reference = next(iter(frames.values()))
+        return cls(
+            stacked_mats=jnp.stack([resolved[scale].values for scale in scales]),
+            obs_operators=list(reference.index),
+            init_operators=list(reference.columns),
+            scales=list(scales),
+            settings=RGESettings.from_dict(settings_dict),
+        )
+
+
+def _read_rge_pickle(path_to_rge_mat):
+    """Unpickle an RGE matrix file into ``(settings_dict, {scale: DataFrame})``.
+
+    Sole owner of the payload layout: every key other than ``'rge_settings'`` is
+    a scale. Keeping that rule in one place matters because the flat float-keyed
+    format is a compatibility contract — `_find_cached_scale` does arithmetic on
+    those keys, so a stray non-numeric one would break every reader, including
+    older smefit installs reading a matrix shared through the server.
+    """
+    with open(path_to_rge_mat, "rb") as f:
+        payload = pickle.load(f)
+    settings = payload["rge_settings"]
+    frames = {k: v for k, v in payload.items() if k != "rge_settings"}
+    return settings, frames
+
 
 def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
     """
@@ -547,12 +607,10 @@ def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
     ValueError
         If the settings in the precomputed file do not match `rge_settings`.
     """
-    with open(path_to_rge_mat, "rb") as f:
-        rgemats_precomp = pickle.load(f)
-    if rge_settings != rgemats_precomp["rge_settings"]:
+    stored_settings, rge_cache = _read_rge_pickle(path_to_rge_mat)
+    if rge_settings != stored_settings:
         raise ValueError("RGE settings do not match RGE matrix precomputed settings.")
 
-    rge_cache = {k: v for k, v in rgemats_precomp.items() if k != "rge_settings"}
     _logger.info(f"Loaded precomputed RGE matrix from {path_to_rge_mat}.")
     return rge_cache
 

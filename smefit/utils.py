@@ -212,6 +212,17 @@ def build_exact_posterior_prior(
                 "the Bayesian update."
             )
 
+    # Rebuilding fit1's chi2 below re-runs its RGE evolution from scratch: the
+    # API call gets a fresh smefitConfig, so produce_rge_matrix's memo does not
+    # apply. The matrix it would recompute is already on disk next to the result
+    # we just loaded, so point the runcard at it.
+    prev_rge = prev_rc.get("rge")
+    if isinstance(prev_rge, dict) and not prev_rge.get("rg_matrix"):
+        prev_rge_matrix = pathlib.Path(bayesian_update_path) / "rge_matrix.pkl"
+        if prev_rge_matrix.exists():
+            prev_rge["rg_matrix"] = str(prev_rge_matrix)
+            log.info("Reusing the previous fit's RGE matrix at %s.", prev_rge_matrix)
+
     # Local import to avoid circular dependency
     from smefit.api import smefitAPI
 

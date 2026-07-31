@@ -58,11 +58,12 @@ class FitResult:
         active.
     rge_matrix : RGEMatrix or None
         The RGE matrix the fit ran with, when the runcard had an `rge:` block.
-        This is a *companion artefact*, not part of `fit_results.json`: `write`
-        pickles it separately to `rge_matrix.pkl` so a later runcard can reuse
-        it via `rge.rg_matrix`. It is deliberately not restored by `from_json` —
-        the pickle keys frames by unique scale, so the per-data-point stacking
-        in `stacked_mats` cannot be reconstructed from it.
+        It lives in a companion file rather than in `fit_results.json`: `write`
+        pickles it to `rge_matrix.pkl`, so a later runcard can reuse it via
+        `rge.rg_matrix`. That pickle is a scale-keyed cache and does not record
+        which data point sits at which scale, so `write` also stores the
+        per-data-point `rge_scales` in the JSON; together they let `from_json`
+        restore this field exactly.
     """
 
     free_parameters: List[str]
@@ -197,6 +198,13 @@ class FitResult:
                 else None
             ),
             "whitening_active": self.whitening_active,
+            # The matrix itself goes to rge_matrix.pkl; these are the scales
+            # that map its per-unique-scale frames back onto the data points.
+            "rge_scales": (
+                [float(s) for s in self.rge_matrix.scales]
+                if self.rge_matrix is not None
+                else None
+            ),
         }
 
         out_file = output_path / "fit_results.json"
@@ -208,8 +216,12 @@ class FitResult:
 
     @classmethod
     def from_json(cls, path) -> "FitResult":
-        """Load a FitResult from a directory containing fit_results.json."""
-        p = pathlib.Path(path) / "fit_results.json"
+        """Load a FitResult from a directory containing fit_results.json.
+
+        Restores `rge_matrix` too, from the `rge_matrix.pkl` written beside it.
+        """
+        path = pathlib.Path(path)
+        p = path / "fit_results.json"
         with p.open() as f:
             d = json.load(f)
         free_parameters = d["free_parameters"]
@@ -233,7 +245,32 @@ class FitResult:
             prior_specs=d.get("prior_specs"),
             whitening_transformation=whitening_transformation,
             whitening_active=d.get("whitening_active", False),
+            rge_matrix=cls._load_rge_matrix(path, d.get("rge_scales")),
         )
+
+    @staticmethod
+    def _load_rge_matrix(path, rge_scales):
+        """Rebuild the companion RGE matrix, or None if this fit has none.
+
+        `rge_scales` is absent from results written before the key existed, in
+        which case there is nothing to rebuild and nothing to complain about.
+        """
+        if not rge_scales:
+            return None
+        rge_path = path / "rge_matrix.pkl"
+        if not rge_path.exists():
+            log.warning(
+                "%s records RGE scales but %s is missing; loading the fit "
+                "without its RGE matrix.",
+                path / "fit_results.json",
+                rge_path.name,
+            )
+            return None
+        # Imported here, not at module scope: smefit.rge monkey-patches wilson
+        # and ckmutil process-wide, and fit_result is loaded by every fit action.
+        from smefit.rge import RGEMatrix
+
+        return RGEMatrix.from_file(rge_path, rge_scales)
 
 
 class FitResultGroup:

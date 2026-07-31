@@ -50,6 +50,7 @@ class EFTModel(BaseModel):
         self.theory = theory
         self.coefficients = coefficients
         self.use_quad = use_quad
+        self.rge_matrix = rge_matrix
 
         if rge_matrix is not None:
             self._apply_rge(theory, rge_matrix)

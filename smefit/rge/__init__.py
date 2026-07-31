@@ -19,7 +19,8 @@ from .loading import (
     load_rge_matrix,
     load_rge_mats_from_scales,
 )
-from .matrix import RGEMatrix, RGESettings, _find_cached_scale  # noqa: F401
+from .matrix import _find_cached_scale  # noqa: F401  (reached into by tests)
+from .matrix import RGEMatrix, RGESettings
 from .runner import _wilson_params  # noqa: F401  (reached into by tests)
 from .runner import evolve_gs  # noqa: F401  (reached into by tests)
 from .runner import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, RGE

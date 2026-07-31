@@ -1,3 +1,11 @@
+# AUTO-COPIED from template_runcards/ultranest_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
 # path to data and theory: prefixes are resolved via the machine-specific
 # .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
 data_path: smefit_database/commondata
@@ -8,26 +16,18 @@ use_t0: True
 # SMEFT Expansion Order
 use_quad: True
 
-optimizer_settings:
-    optimizer: adam
-    # clipnorm: 1.0
-    optimizer_hyperparams:
-      learning_rate: 0.001
-    # scheduler:
-    #   name: linear_schedule
-    #   params:
-    #     init_value: 1.0e-3
-    #     end_value:  1.0e-6
-    #     transition_begin: 3000
-    #     transition_steps: 10000
+# Nested Sampling settings
+ultranest_settings:
+  ReactiveNS_settings:
+    vectorized: False
+    ndraw_max: 500              # Maximum number of points to simultaneously propose.
+  Run_settings:
+    min_num_live_points: 200    # Minimum number of live points throughout the run.
+    min_ess: 50                 # Target number of effective posterior samples.
+    frac_remain: 0.01            # Integrate until this fraction of the integral is left in the remainder.
+  # SliceSampler_settings:
+  #   nsteps: 106                 # number of accepted steps until the sample is considered independent.
 
-gradient_descent_settings:
-    sm_solution: false
-    n_steps: 2000
-    tol: 1.0e-8
-
-hessian_settings:
-    n_samples: 10000
 
 rge:
   init_scale: 10000.0
@@ -71,7 +71,13 @@ external_chi2:
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
-      use_projection_L0: True
+      use_projection_L0: False
+
+
+# whitening:
+#   sigma_prior: 5.0
+#   eps: 1e-8
+#   shift: baseline  # baseline or gradient_descent
 
 actions_:
-- run_hessian_fit
+- run_ultranest_fit

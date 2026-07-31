@@ -43,15 +43,23 @@ rge:
 whitening:
   sigma_prior: 5.0
   eps: 1e-8
+  shift: baseline           # 'baseline' (default) or 'gradient_descent'
 ```
 
 Replaces per-coefficient priors: sampling happens in the whitened space where
-the chi2 Hessian at c=0 is the identity, with a `uniform[-sigma_prior,
-sigma_prior]` prior per direction. Useful when coefficients have wildly
-different sensitivities (badly conditioned posteriors). Individual `prior:`
-entries on free coefficients are ignored while whitening is active, but free
-coefficients still need `free: True`. Incompatible with
-`bayesian_update_path`.
+the chi2 Hessian at the shift point is the identity, with a
+`uniform[-sigma_prior, sigma_prior]` prior per direction. Useful when
+coefficients have wildly different sensitivities (badly conditioned
+posteriors). Individual `prior:` entries on free coefficients are ignored
+while whitening is active, but free coefficients still need `free: True`.
+Incompatible with `bayesian_update_path`.
+
+`shift` picks the point the whitening transform is centred on:
+- `baseline` (default) — the coefficients' baseline point (`baseline_value`,
+  zero unless set).
+- `gradient_descent` — the `gd_best_fit` point instead; this additionally
+  requires a `gradient_descent_settings` block in the runcard, since it makes
+  the graph depend on `gd_best_fit`.
 
 ## Sequential Bayesian updating
 

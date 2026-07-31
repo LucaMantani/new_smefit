@@ -266,8 +266,10 @@ class smefitConfig(Config):
         is legal for each kind:
 
         free (fitted)
-            `free: True` (the default) plus a required `prior`; `value`,
-            `expr` and `vars` are forbidden.
+            `free: True` (the default); `value`, `expr` and `vars` are
+            forbidden. `prior` is optional here — `Coefficient` itself does
+            not require it; it is only needed later by `produce_prior`/
+            `produce_individual_prior` for sampler actions.
         fixed constant
             `free: False` plus `value`; `prior`, `expr`, `vars` forbidden.
         expression-constrained

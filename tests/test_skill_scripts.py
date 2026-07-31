@@ -119,7 +119,6 @@ def test_fixed_and_expression_coefficients_are_valid(tmp_path):
     "spec, expected",
     [
         ({"free": True, "value": 1.0}, "free=True forbids 'value'"),
-        ({"free": True}, "needs a prior"),
         (
             {"free": True, "prior": {"dist": "cauchy", "scale": 1.0}},
             "unknown prior dist",
@@ -144,6 +143,45 @@ def test_coefficient_invariants_are_rejected(tmp_path, spec, expected):
     code, out = validate(tmp_path, coefficients={"OpA": spec})
     assert code == 1, out
     assert expected in out
+
+
+def test_free_coefficient_without_prior_is_valid_for_non_sampler_actions(tmp_path):
+    """run_analytic_fit (and run_hessian_fit, gradient-descent fits) never
+    resolve reportengine's `prior` node, so a free coefficient without one is
+    legitimate — regression guard against over-requiring priors."""
+    code, out = validate(tmp_path, coefficients={"OpA": {"free": True}})
+    assert code == 0, out
+
+
+def test_free_coefficient_needs_prior_for_sampler_action(tmp_path):
+    code, out = validate(
+        tmp_path,
+        coefficients={"OpA": {"free": True}},
+        actions_=["run_ultranest_fit"],
+    )
+    assert code == 1, out
+    assert "needs a prior" in out
+
+
+@pytest.mark.parametrize(
+    "extra_key, extra_value",
+    [
+        ("whitening", {"sigma_prior": 5.0}),
+        ("bayesian_update_path", "/some/previous/fit"),
+    ],
+)
+def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_prior(
+    tmp_path, extra_key, extra_value
+):
+    """whitening/bayesian_update_path make reportengine build the `prior`
+    node itself, without needing a per-coefficient spec."""
+    code, out = validate(
+        tmp_path,
+        coefficients={"OpA": {"free": True}},
+        actions_=["run_ultranest_fit"],
+        **{extra_key: extra_value},
+    )
+    assert code == 0, out
 
 
 def test_unknown_coefficient_subkey_warns(tmp_path):

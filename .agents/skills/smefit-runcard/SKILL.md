@@ -114,8 +114,11 @@ systematics/theory errors are present — just say so, don't ask.
   section of `references/runcard-keys.md`.
 - `run_analytic_fit` requires a purely linear model: `use_quad: False` and no
   expression-constrained coefficients (the posterior must be Gaussian).
-- Every free coefficient needs a `prior`; only `uniform` and `gaussian`/`normal`
-  exist (`references/priors.md`).
+- A free coefficient needs a `prior` only for sampler actions (`run_ultranest_fit`,
+  `run_blackjax_fit`, or their `individual_*` variants) — `run_analytic_fit`,
+  `run_hessian_fit`, and gradient-descent fits never consume it. `whitening`/
+  `bayesian_update_path` synthesize a prior automatically either way. Only
+  `uniform` and `gaussian`/`normal` exist (`references/priors.md`).
 - `use_t0: True` is the statistically sound choice when multiplicative
   systematics are present; pair it with `use_theory_covmat: True` when theory
   errors matter.

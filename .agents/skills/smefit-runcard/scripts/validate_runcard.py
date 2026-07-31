@@ -143,7 +143,9 @@ class PathResolver:
         return path_str
 
 
-def check_coefficient(name, spec, prior_dists, rep, coeff_keys=None):
+def check_coefficient(
+    name, spec, prior_dists, rep, coeff_keys=None, require_prior=True
+):
     if not isinstance(spec, dict):
         rep.error(f"coefficients.{name}: must be a mapping, got {type(spec).__name__}")
         return
@@ -160,10 +162,12 @@ def check_coefficient(name, spec, prior_dists, rep, coeff_keys=None):
                 rep.error(f"coefficients.{name}: free=True forbids '{forbidden}'")
         prior = spec.get("prior")
         if prior is None:
-            rep.error(
-                f"coefficients.{name}: free coefficient needs a prior "
-                "(unless the runcard uses whitening or bayesian_update_path)"
-            )
+            if require_prior:
+                rep.error(
+                    f"coefficients.{name}: free coefficient needs a prior — required "
+                    "by a sampler action in 'actions_' (unless the runcard uses "
+                    "whitening or bayesian_update_path)"
+                )
         elif isinstance(prior, dict):
             dist = prior.get("dist")
             if dist is None:
@@ -460,6 +464,7 @@ def main():
             if key not in runcard:
                 rep.error(f"'{key}' is required when 'datasets' is present")
 
+    actions = runcard.get("actions_")
     coefficients = runcard.get("coefficients")
     nonlinear_exprs = []
     if not coefficients:
@@ -467,14 +472,22 @@ def main():
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}
         coeff_keys = keys.get("coefficient_keys") if keys else None
-        skip_prior = "whitening" in runcard or "bayesian_update_path" in runcard
+        # A per-coefficient prior is only actually consumed by reportengine
+        # when a sampler action (run_*ultranest*/*blackjax*) needs the
+        # `prior`/`individual_prior` node — run_analytic_fit, run_hessian_fit,
+        # gradient-descent fits, and their individual variants never resolve
+        # it. Even then, `whitening`/`bayesian_update_path` make reportengine
+        # synthesize a prior itself, so per-coefficient priors are unneeded.
+        needs_sampler_prior = isinstance(actions, list) and any(
+            a in SAMPLER_BLOCKS for a in actions
+        )
+        require_prior = needs_sampler_prior and not (
+            "whitening" in runcard or "bayesian_update_path" in runcard
+        )
         for name, spec in coefficients.items():
-            if skip_prior and isinstance(spec, dict) and spec.get("free", True):
-                spec = dict(
-                    spec,
-                    prior=spec.get("prior", {"dist": "uniform", "low": 0, "high": 1}),
-                )
-            check_coefficient(name, spec, prior_dists, rep, coeff_keys)
+            check_coefficient(
+                name, spec, prior_dists, rep, coeff_keys, require_prior=require_prior
+            )
             if (
                 isinstance(spec, dict)
                 and spec.get("expr")

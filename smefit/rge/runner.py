@@ -176,6 +176,12 @@ class RGE:
         rge_matrix_dict = {}
         with _wilson_params(self.yukawa, self.adm_QCD):
             for wc_name, wc_vals in self.RGEbasis.items():
+                # External couplings map to the null vector: evolving them is a no-op,
+                # so skip the (expensive) wilson call and return no entries.
+                if not wc_vals:
+                    rge_matrix_dict[wc_name] = {}
+                    continue
+
                 _logger.info(f"Computing RGE for {wc_name} at {scale} GeV.")
                 wc_init = wilson.Wilson(
                     wc_vals, scale=self.init_scale, eft="SMEFT", basis="Warsaw"
@@ -237,7 +243,7 @@ class RGE:
                     f"Wilson coefficient {wc_name} not present in the WCxf translation dictionary."
                 )
                 _logger.warning(
-                    "Assuming it is a UV coupling and associating it to the null vector."
+                    "Assuming it is a external coupling and associating it to the null vector."
                 )
                 wc_basis[wc_name] = {}
                 continue

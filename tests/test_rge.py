@@ -13,7 +13,7 @@ import wilson
 
 from smefit.core import TheoryGroup
 from smefit.rge import RGE, RGEMatrix, build_rge_matrix, resolve_rge_matrices
-from smefit.rge.loading import _find_cached_scale, _resolve_scales
+from smefit.rge.build import _find_cached_scale, _resolve_scales
 from smefit.rge.runner import _wilson_params, evolve_gs
 
 # ---------------------------------------------------------------------------

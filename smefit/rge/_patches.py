@@ -1,6 +1,6 @@
 """Monkey patches applied to ``wilson``/``ckmutil`` on import of :mod:`smefit.rge`.
 
-Imported first by :mod:`smefit.rge` (before ``runner``, ``matrix``, ``loading``)
+Imported first by :mod:`smefit.rge` (before ``runner``, ``matrix``, ``build``)
 so every patch below is in effect before any RGE computation runs. That holds
 however the package is entered: importing a submodule such as
 ``smefit.rge.runner`` executes the package ``__init__`` first, so there is no

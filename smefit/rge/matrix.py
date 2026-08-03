@@ -44,7 +44,7 @@ class RGEMatrix:
     The file :meth:`write` produces is a *scale-keyed cache*: one frame per
     unique scale, with no record of which data point sits at which scale. That
     is what makes it reusable by a later runcard over different data (see
-    :meth:`read_cache` and :func:`smefit.rge.loading.resolve_rge_matrices`).
+    :meth:`read_cache` and :func:`smefit.rge.build.resolve_rge_matrices`).
     """
 
     stacked_mats: jnp.ndarray
@@ -94,7 +94,7 @@ class RGEMatrix:
         The read counterpart of :meth:`to_dump_dict`, and with it the sole
         owner of the payload layout: every key other than ``'rge_settings'`` is a
         scale. Keeping that rule in one place matters because the flat float-keyed
-        format is a compatibility contract — :func:`smefit.rge.loading._find_cached_scale`
+        format is a compatibility contract — :func:`smefit.rge.build._find_cached_scale`
         does arithmetic on those keys, so a stray non-numeric one would break every
         reader, including older smefit installs reading a matrix shared through the
         server.

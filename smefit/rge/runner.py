@@ -138,13 +138,7 @@ class RGE:
 
     @classmethod
     def from_rge_dict(cls, rge_dict, wc_names):
-        """Build a runner from a raw or parsed ``rge:`` dict.
-
-        Tolerant of missing keys and of YAML wrapper types, so hand-built dicts
-        (external chi2 modules, tests) work as well as the normalised dict
-        returned by ``smefitConfig.parse_rge``. The casts also keep
-        :attr:`settings` plain-Python and therefore comparable.
-        """
+        """Build a runner from a raw or parsed ``rge:`` dict."""
         return cls(
             wc_names,
             init_scale=float(rge_dict.get("init_scale", 1e3)),

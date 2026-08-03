@@ -25,7 +25,7 @@ from smefit.paths import (
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
-from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
@@ -142,7 +142,7 @@ class smefitConfig(Config):
 
         coeff_list = sorted(coefficients.names)
 
-        rge_matrix = load_rge_matrix(
+        rge_matrix = build_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
             theory_group=theory,

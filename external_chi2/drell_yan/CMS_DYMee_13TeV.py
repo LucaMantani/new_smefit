@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from smefit import loader
 from smefit.core import DataGroup, TheoryGroup
 from smefit.model import EFTModel
-from smefit.rge import load_rge_matrix
+from smefit.rge import build_rge_matrix
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class CMS_DYMee_13TeV:
             else:
                 rge_dict["rg_matrix"] = False
 
-            rge_matrix = load_rge_matrix(
+            rge_matrix = build_rge_matrix(
                 rge_dict=rge_dict,
                 coeff_list=coeff_list,
                 theory_group=theory_group,

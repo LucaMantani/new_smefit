@@ -1,7 +1,7 @@
 """The on-disk data model: :class:`RGEMatrix`.
 
 Owns both directions of the ``rge_matrix.pkl`` payload layout —
-:meth:`RGEMatrix.write` produces it, :func:`load_precomputed_rge_matrix`
+:meth:`RGEMatrix.write` produces it, :func:`read_rge_cache`
 consumes it — so the format is described in exactly one module.
 """
 
@@ -44,8 +44,8 @@ class RGEMatrix:
     The file :meth:`write` produces is a *scale-keyed cache*: one frame per
     unique scale, with no record of which data point sits at which scale. That
     is what makes it reusable by a later runcard over different data (see
-    :func:`smefit.rge.loading.load_precomputed_rge_matrix` and
-    :func:`smefit.rge.loading.load_rge_mats_from_scales`).
+    :func:`smefit.rge.matrix.read_rge_cache` and
+    :func:`smefit.rge.loading.resolve_rge_matrices`).
     """
 
     stacked_mats: jnp.ndarray
@@ -88,9 +88,9 @@ class RGEMatrix:
         _logger.info("RGE matrix written to %s.", out_file)
 
 
-def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
+def read_rge_cache(path_to_rge_mat, rge_settings):
     """
-    Load a precomputed RGE matrix pickle and validate its settings.
+    Read a precomputed RGE matrix pickle and validate its settings.
 
     The read counterpart of :meth:`RGEMatrix.to_dump_dict`, and with it the sole
     owner of the payload layout: every key other than ``'rge_settings'`` is a

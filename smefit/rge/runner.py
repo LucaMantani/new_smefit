@@ -152,7 +152,7 @@ class RGE:
         """The physics settings that determine the RGE matrices this runner produces.
 
         These four values, and only these four, decide whether a stored
-        ``rge_matrix.pkl`` may be reused: ``load_precomputed_rge_matrix``
+        ``rge_matrix.pkl`` may be reused: ``read_rge_cache``
         compares this dict against the ``rge_settings`` entry of the pickle with
         strict equality. Adding a key here — or renaming one — invalidates every
         RGE matrix ever written, so don't.

@@ -1,4 +1,4 @@
-"""Top-level ``load_rge_matrix`` entry point: scale resolution + caching.
+"""Top-level ``build_rge_matrix`` entry point: scale resolution + caching.
 
 Ties the :class:`~smefit.rge.runner.RGE` runner and the
 :class:`~smefit.rge.matrix.RGEMatrix` data model together into the function
@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .matrix import RGEMatrix, load_precomputed_rge_matrix
+from .matrix import RGEMatrix, read_rge_cache
 from .runner import RGE
 
 _logger = logging.getLogger(__name__)
@@ -25,9 +25,9 @@ def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float |
     return None
 
 
-def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):
+def resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache):
     """
-    Load or compute RGE matrices for the given list of scales.
+    Resolve the RGE matrices for the given list of scales, from cache or by computing them.
 
     For each scale in *scales* this function:
     - Returns a pandas DataFrame containing the RGE matrix for the requested
@@ -124,13 +124,13 @@ def _resolve_scales(rge_dict, theory_group):
     return scales
 
 
-def load_rge_matrix(
+def build_rge_matrix(
     rge_dict,
     coeff_list,
     theory_group,
 ):
     """
-    Load the RGE matrix for the SMEFT Wilson coefficients.
+    Build the RGE matrix for the SMEFT Wilson coefficients.
 
     Parameters
     ----------
@@ -157,10 +157,10 @@ def load_rge_matrix(
     # a raw path should resolve it themselves.
     path_to_rge_mat = rge_dict.get("rg_matrix", None)
     if path_to_rge_mat:
-        rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, rge_runner.settings)
+        rge_cache = read_rge_cache(path_to_rge_mat, rge_runner.settings)
 
     # compute or fetch the RGE matrix for each scale
-    rgemats = load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache)
+    rgemats = resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache)
 
     # Collect the union of all observable operators across scales
     all_obs_ops = set()

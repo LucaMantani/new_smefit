@@ -119,14 +119,14 @@ def test_rge_matrix_finite_values():
 
 
 @pytest.mark.slow
-def test_load_rge_matrix_shape(theory_a):
-    """load_rge_matrix should return an RGEMatrix with a 3-D stacked array."""
+def test_build_rge_matrix_shape(theory_a):
+    """build_rge_matrix should return an RGEMatrix with a 3-D stacked array."""
     from smefit.core import TheoryGroup
-    from smefit.rge import load_rge_matrix
+    from smefit.rge import build_rge_matrix
 
     tg = TheoryGroup([theory_a])
     rge_dict = {"init_scale": 1000, "obs_scale": "dynamic"}
-    result = load_rge_matrix(rge_dict, ["OpBox"], tg)
+    result = build_rge_matrix(rge_dict, ["OpBox"], tg)
 
     assert isinstance(result, RGEMatrix)
     assert result.stacked_mats.ndim == 3

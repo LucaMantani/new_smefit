@@ -72,13 +72,17 @@ class RGEMatrix:
         return to_dump
 
     def write(self, output_path, name=None):
-        """Pickle this matrix to ``<output_path>/<name>.pkl`` (default: `FILENAME`).
+        """Pickle this matrix to ``<output_path>/<name>``, defaulting to :attr:`FILENAME`.
+
+        ``name`` is a complete file name, extension included — the server layer
+        discovers these matrices by exact name, so anything other than the
+        default is invisible to it.
 
         The file can be fed back to a later runcard through ``rge.rg_matrix``.
         """
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
-        out_file = output_path / f"{name}.pkl" if name else output_path / self.FILENAME
+        out_file = output_path / (name or self.FILENAME)
         with open(out_file, "wb") as f:
             pickle.dump(self.to_dump_dict(), f)
         _logger.info("RGE matrix written to %s.", out_file)

@@ -235,7 +235,7 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `obs_scale` — default: `'dynamic'`
 - `rg_matrix`
 - `scale_variation`
-- `smeft_accuracy`
+- `smeft_accuracy` — default: `'integrate'`
 - `yukawa`
 
 Validation errors raised while parsing:

@@ -24,6 +24,10 @@ _SMALL_VALUE_THRESHOLD = 1e-14
 ALLOWED_YUKAWA = frozenset({"top", "none", "full"})
 ALLOWED_SMEFT_ACCURACY = frozenset({"integrate", "leadinglog"})
 
+# The observable-basis operator names an RGE matrix can have rows for. Fixed by
+# the WCxf translation table.
+ALL_OPS = tuple(sorted(wcxf_translate.keys()))
+
 _logger = logging.getLogger(__name__)
 
 ###########################
@@ -295,7 +299,7 @@ class RGE:
 
     @property
     def all_ops(self):
-        return sorted(wcxf_translate.keys())
+        return ALL_OPS
 
     def RGEevolve(self, wcs, scale):
         """

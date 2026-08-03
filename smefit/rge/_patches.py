@@ -1,7 +1,18 @@
 """Monkey patches applied to ``wilson``/``ckmutil`` on import of :mod:`smefit.rge`.
 
 Imported first by :mod:`smefit.rge` (before ``runner``, ``matrix``, ``loading``)
-so every patch below is in effect before any RGE computation runs.
+so every patch below is in effect before any RGE computation runs. That holds
+however the package is entered: importing a submodule such as
+``smefit.rge.runner`` executes the package ``__init__`` first, so there is no
+path to the runner that skips these patches.
+
+Every patch here rebinds a module attribute, and the call sites in ``wilson``
+look those attributes up at call time. Import order relative to ``wilson``
+itself therefore does not matter — only that the rebinding happens before the
+first ``match_run``.
+
+These are process-global: anything else importing ``wilson`` in the same
+interpreter gets the patched behaviour too.
 """
 
 from copy import deepcopy
@@ -14,7 +25,8 @@ import wilson
 ### Patch of a CKM function, so that the CP violating
 ### phase is set to gamma and not computed explicitly
 ### See https://github.com/wilson-eft/wilson/issues/113#issuecomment-2179273979
-### This needs to be done before the import of wilson
+### wilson calls this as ckmutil.ckm.ckm_tree(...), i.e. resolved on the module
+### at call time, so rebinding the attribute here is enough.
 
 # copying so we keep the original function
 ckm_tree = deepcopy(ckmutil.ckm.ckm_tree)

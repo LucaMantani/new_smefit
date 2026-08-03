@@ -25,7 +25,7 @@ from smefit.paths import (
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
-from smefit.rge import ALLOWED_SMEFT_ACCURACY, load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
@@ -108,18 +108,23 @@ class smefitConfig(Config):
         for k in set(rge.keys()) - known_keys:
             log.warning("Unknown key '%s' in rge settings.", k)
         if "init_scale" not in rge:
-            raise ConfigError("rge", rge, "rge block requires 'init_scale'")
+            raise ConfigError("rge block requires 'init_scale'", "init_scale")
         obs_scale = rge.get("obs_scale", "dynamic")
         if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
-            raise ConfigError(
-                "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
-            )
+            raise ConfigError("obs_scale must be a float/int or 'dynamic'", obs_scale)
         smeft_accuracy = rge.get("smeft_accuracy", "integrate")
         if smeft_accuracy not in ALLOWED_SMEFT_ACCURACY:
             raise ConfigError(
-                "smeft_accuracy",
+                "Invalid 'smeft_accuracy' in rge settings",
                 smeft_accuracy,
-                f"must be one of {sorted(ALLOWED_SMEFT_ACCURACY)}",
+                sorted(ALLOWED_SMEFT_ACCURACY),
+            )
+        yukawa = rge.get("yukawa", "top")
+        if yukawa not in ALLOWED_YUKAWA:
+            raise ConfigError(
+                "Invalid 'yukawa' in rge settings",
+                yukawa,
+                sorted(ALLOWED_YUKAWA),
             )
         if "rg_matrix" in rge:
             rge["rg_matrix"] = resolve_path(rge["rg_matrix"])

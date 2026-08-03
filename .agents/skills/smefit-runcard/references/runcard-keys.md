@@ -236,10 +236,12 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `rg_matrix`
 - `scale_variation`
 - `smeft_accuracy` — default: `'integrate'`
-- `yukawa`
+- `yukawa` — default: `'top'`
 
 Validation errors raised while parsing:
 
+- Invalid 'smeft_accuracy' in rge settings
+- Invalid 'yukawa' in rge settings
 - obs_scale must be a float/int or 'dynamic'
 - rge block requires 'init_scale'
 

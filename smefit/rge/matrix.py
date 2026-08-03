@@ -152,10 +152,10 @@ class RGEMatrix:
         """Rebuild an RGEMatrix from a pickle written by :meth:`write`, or None.
 
         Returns None if `scales` is falsy (nothing to rebuild — fits that ran
-        without RGE evolution, or results written before their caller started
-        recording scales) or if `path` does not exist (the companion file is
-        missing, e.g. lost or not fetched), logging a warning in the latter
-        case rather than failing the whole load.
+        without RGE evolution, or results written before ``rge_scales``
+        existed) or if `path` does not exist (the companion file is missing,
+        e.g. lost or not fetched), logging a warning in the latter case rather
+        than failing the whole load.
 
         Parameters
         ----------

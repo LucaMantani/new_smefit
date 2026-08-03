@@ -62,7 +62,7 @@ class FitResult:
         pickles it to `rge_matrix.pkl`, so a later runcard can reuse it via
         `rge.rg_matrix`. That pickle is a scale-keyed cache and does not record
         which data point sits at which scale, so `write` also stores the
-        per-data-point `scales` in the JSON; together they let `from_json`
+        per-data-point `rge_scales` in the JSON; together they let `from_json`
         restore this field exactly.
     """
 
@@ -200,7 +200,7 @@ class FitResult:
             "whitening_active": self.whitening_active,
             # The matrix itself goes to rge_matrix.pkl; these are the scales
             # that map its per-unique-scale frames back onto the data points.
-            "scales": (
+            "rge_scales": (
                 [float(s) for s in self.rge_matrix.scales]
                 if self.rge_matrix is not None
                 else None
@@ -249,7 +249,9 @@ class FitResult:
             prior_specs=d.get("prior_specs"),
             whitening_transformation=whitening_transformation,
             whitening_active=d.get("whitening_active", False),
-            rge_matrix=RGEMatrix.from_file(RGEMatrix.path_in(path), d.get("scales")),
+            rge_matrix=RGEMatrix.from_file(
+                RGEMatrix.path_in(path), d.get("rge_scales")
+            ),
         )
 
 

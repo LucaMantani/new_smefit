@@ -11,9 +11,17 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .matrix import RGEMatrix, RGESettings, _find_cached_scale, _read_rge_pickle
+from .matrix import RGEMatrix, RGESettings, _read_rge_pickle
 
 _logger = logging.getLogger(__name__)
+
+
+def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float | None:
+    """Return the matching key in cache if one exists within relative tolerance, else None."""
+    for key in cache:
+        if abs(key - scale) <= rtol * abs(key):
+            return key
+    return None
 
 
 def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):

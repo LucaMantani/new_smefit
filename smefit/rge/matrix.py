@@ -1,7 +1,7 @@
 """The on-disk data model: :class:`RGESettings` and :class:`RGEMatrix`.
 
 Owns the ``rge_matrix.pkl`` payload layout (see :func:`_read_rge_pickle`) —
-the only other reader/writer of that layout is :mod:`smefit.rge.loading`.
+the only reader of that layout is :mod:`smefit.rge.loading`.
 """
 
 import logging
@@ -102,9 +102,7 @@ class RGEMatrix:
     unique scale, with no record of which data point sits at which scale. That
     is what makes it reusable by a later runcard over different data (see
     :func:`smefit.rge.loading.load_precomputed_rge_matrix` and
-    :func:`smefit.rge.loading.load_rge_mats_from_scales`), and it is why
-    :meth:`from_file` needs the caller to supply the per-data-point ``scales``
-    — `FitResult` stores them alongside, in ``fit_results.json``.
+    :func:`smefit.rge.loading.load_rge_mats_from_scales`).
     """
 
     stacked_mats: jnp.ndarray
@@ -114,11 +112,6 @@ class RGEMatrix:
     settings: RGESettings
 
     FILENAME = "rge_matrix.pkl"
-
-    @classmethod
-    def path_in(cls, fit_dir):
-        """Path to the ``rge_matrix.pkl`` companion file inside a fit directory."""
-        return pathlib.Path(fit_dir) / cls.FILENAME
 
     def to_dump_dict(self):
         """Build the on-disk payload: ``{'rge_settings': {...}, <scale>: DataFrame}``.
@@ -142,67 +135,10 @@ class RGEMatrix:
         """
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
-        out_file = output_path / f"{name}.pkl" if name else self.path_in(output_path)
+        out_file = output_path / f"{name}.pkl" if name else output_path / self.FILENAME
         with open(out_file, "wb") as f:
             pickle.dump(self.to_dump_dict(), f)
         _logger.info("RGE matrix written to %s.", out_file)
-
-    @classmethod
-    def from_file(cls, path, scales):
-        """Rebuild an RGEMatrix from a pickle written by :meth:`write`, or None.
-
-        Returns None if `scales` is falsy (nothing to rebuild — fits that ran
-        without RGE evolution, or results written before ``rge_scales``
-        existed) or if `path` does not exist (the companion file is missing,
-        e.g. lost or not fetched), logging a warning in the latter case rather
-        than failing the whole load.
-
-        Parameters
-        ----------
-        path : str or pathlib.Path
-            Path to an ``rge_matrix.pkl``.
-        scales : list of float
-            The per-data-point scales this matrix was built for. The file only
-            stores one frame per *unique* scale, so this is what restores the
-            row-per-data-point stacking of ``stacked_mats``.
-
-        Raises
-        ------
-        ValueError
-            If the file has no frame for one of the requested scales, i.e. it
-            does not belong to this fit.
-        """
-        if not scales:
-            return None
-        path = pathlib.Path(path)
-        if not path.exists():
-            _logger.warning("%s is missing; loading without its RGE matrix.", path)
-            return None
-
-        settings_dict, frames = _read_rge_pickle(path)
-        if not frames:
-            raise ValueError(f"{path} contains no RGE matrices.")
-
-        # Resolve each distinct requested scale once: the stored float keys can
-        # differ from the requested ones in the last bits.
-        resolved = {}
-        for scale in dict.fromkeys(scales):
-            key = _find_cached_scale(frames, scale)
-            if key is None:
-                raise ValueError(
-                    f"{path} has no RGE matrix for scale {scale} GeV; it holds "
-                    f"{sorted(frames)}. This file belongs to a different fit."
-                )
-            resolved[scale] = frames[key]
-
-        reference = next(iter(frames.values()))
-        return cls(
-            stacked_mats=jnp.stack([resolved[scale].values for scale in scales]),
-            obs_operators=list(reference.index),
-            init_operators=list(reference.columns),
-            scales=list(scales),
-            settings=RGESettings.from_dict(settings_dict),
-        )
 
 
 def _read_rge_pickle(path_to_rge_mat):
@@ -210,20 +146,13 @@ def _read_rge_pickle(path_to_rge_mat):
 
     Sole owner of the payload layout: every key other than ``'rge_settings'`` is
     a scale. Keeping that rule in one place matters because the flat float-keyed
-    format is a compatibility contract — `_find_cached_scale` does arithmetic on
-    those keys, so a stray non-numeric one would break every reader, including
-    older smefit installs reading a matrix shared through the server.
+    format is a compatibility contract — :func:`smefit.rge.loading._find_cached_scale`
+    does arithmetic on those keys, so a stray non-numeric one would break every
+    reader, including older smefit installs reading a matrix shared through the
+    server.
     """
     with open(path_to_rge_mat, "rb") as f:
         payload = pickle.load(f)
     settings = payload["rge_settings"]
     frames = {k: v for k, v in payload.items() if k != "rge_settings"}
     return settings, frames
-
-
-def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float | None:
-    """Return the matching key in cache if one exists within relative tolerance, else None."""
-    for key in cache:
-        if abs(key - scale) <= rtol * abs(key):
-            return key
-    return None

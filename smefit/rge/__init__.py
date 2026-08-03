@@ -13,16 +13,12 @@ keeps working regardless of which submodule actually defines it.
 """
 
 from . import _patches  # noqa: F401  (import solely for its monkey-patch side effect)
-from .loading import _resolve_scales  # noqa: F401  (reached into by tests)
 from .loading import (
     load_precomputed_rge_matrix,
     load_rge_matrix,
     load_rge_mats_from_scales,
 )
-from .matrix import _find_cached_scale  # noqa: F401  (reached into by tests)
 from .matrix import RGEMatrix, RGESettings
-from .runner import _wilson_params  # noqa: F401  (reached into by tests)
-from .runner import evolve_gs  # noqa: F401  (reached into by tests)
 from .runner import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, RGE
 
 __all__ = [

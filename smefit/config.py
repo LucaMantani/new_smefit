@@ -25,7 +25,7 @@ from smefit.paths import (
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
-from smefit.rge import load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, load_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
@@ -113,6 +113,13 @@ class smefitConfig(Config):
         if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
             raise ConfigError(
                 "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
+            )
+        smeft_accuracy = rge.get("smeft_accuracy", "integrate")
+        if smeft_accuracy not in ALLOWED_SMEFT_ACCURACY:
+            raise ConfigError(
+                "smeft_accuracy",
+                smeft_accuracy,
+                f"must be one of {sorted(ALLOWED_SMEFT_ACCURACY)}",
             )
         if "rg_matrix" in rge:
             rge["rg_matrix"] = resolve_path(rge["rg_matrix"])

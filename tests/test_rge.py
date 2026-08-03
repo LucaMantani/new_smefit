@@ -1,4 +1,4 @@
-"""Tests for smefit/rge.py.
+"""Tests for smefit/rge/.
 
 Fast unit tests run without real Wilson evolution.
 Slow tests (marked @pytest.mark.slow) call the real wilson package.
@@ -7,7 +7,9 @@ Slow tests (marked @pytest.mark.slow) call the real wilson package.
 import pytest
 import wilson
 
-from smefit.rge import RGE, RGEMatrix, _resolve_scales, _wilson_params, evolve_gs
+from smefit.rge import RGE, RGEMatrix
+from smefit.rge.loading import _resolve_scales
+from smefit.rge.runner import _wilson_params, evolve_gs
 
 # ---------------------------------------------------------------------------
 # Unit tests — no I/O, no real wilson evolution

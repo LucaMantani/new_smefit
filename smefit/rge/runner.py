@@ -48,21 +48,7 @@ top_yukawa = {
     "m_tau": 0.0,
 }
 
-no_yukawa = {
-    "Vus": 0.0,
-    "Vub": 0.0,
-    "Vcb": 0.0,
-    "gamma": 0.0,
-    "m_b": 0.0,
-    "m_s": 0.0,
-    "m_c": 0.0,
-    "m_u": 0.0,
-    "m_d": 0.0,
-    "m_e": 0.0,
-    "m_mu": 0.0,
-    "m_tau": 0.0,
-    "m_t": 0.0,
-}
+no_yukawa = {**top_yukawa, "m_t": 0.0}
 
 QCD_only = {
     "alpha_e": 0.0,

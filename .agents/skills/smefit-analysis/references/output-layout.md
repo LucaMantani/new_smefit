@@ -40,12 +40,12 @@ Written by `FitResult.write` (`smefit/fit_result.py`):
 | `samples` | `{coefficient: [posterior samples]}` — null for pure best-fit runs |
 | `prior_specs` | the prior each free coefficient used |
 | `whitening_transformation`, `whitening_active` | set when the fit ran in whitened space |
-| `rge_scales` | one observable scale per data point, else null — maps the frames in `rge_matrix.pkl` back onto the data points |
+| `scales` | one observable scale per data point, else null — maps the frames in `rge_matrix.pkl` back onto the data points |
 
 Load it back in Python with `FitResult.from_json("<output>")` (takes the
 directory, not the file), or plain `json.load` for quick lookups. `from_json`
 also restores `rge_matrix` from the `rge_matrix.pkl` beside it, using
-`rge_scales`; if that file has been moved away it warns and leaves the field
+`scales`; if that file has been moved away it warns and leaves the field
 `None`.
 
 ## Individual fits

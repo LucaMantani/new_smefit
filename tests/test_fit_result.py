@@ -149,7 +149,7 @@ def _make_rge_matrix(scales=(91.2,)):
 def test_write_json_payload_keys_unaffected_by_rge_matrix(tmp_path):
     """The payload key set must not depend on whether a matrix is attached.
 
-    `rge_scales` is written unconditionally (null when there is no matrix), like
+    `scales` is written unconditionally (null when there is no matrix), like
     every other optional field, so `from_json` never has to guess.
     """
     without = _make_result()
@@ -166,8 +166,8 @@ def test_write_json_payload_keys_unaffected_by_rge_matrix(tmp_path):
 
     assert plain_payload.keys() == rge_payload.keys()
     assert "rge_matrix" not in rge_payload  # the matrix itself stays out of JSON
-    assert plain_payload["rge_scales"] is None
-    assert rge_payload["rge_scales"] == [91.2]
+    assert plain_payload["scales"] is None
+    assert rge_payload["scales"] == [91.2]
 
 
 def test_write_emits_rge_matrix_alongside_result(tmp_path):
@@ -205,12 +205,12 @@ def test_from_json_without_rge_matrix_gives_none(tmp_path):
 
 
 def test_from_json_tolerates_results_written_before_rge_scales_existed(tmp_path):
-    """Legacy fit_results.json has no rge_scales key at all."""
+    """Legacy fit_results.json has no scales key at all."""
     _make_result().write(tmp_path)
     payload_file = tmp_path / "fit_results.json"
     with payload_file.open() as f:
         payload = json.load(f)
-    del payload["rge_scales"]
+    del payload["scales"]
     with payload_file.open("w") as f:
         json.dump(payload, f)
 

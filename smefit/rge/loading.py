@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .matrix import RGEMatrix, read_rge_cache
+from .matrix import RGEMatrix
 from .runner import RGE
 
 _logger = logging.getLogger(__name__)
@@ -157,7 +157,7 @@ def build_rge_matrix(
     # a raw path should resolve it themselves.
     path_to_rge_mat = rge_dict.get("rg_matrix", None)
     if path_to_rge_mat:
-        rge_cache = read_rge_cache(path_to_rge_mat, rge_runner.settings)
+        rge_cache = RGEMatrix.read_cache(path_to_rge_mat, rge_runner.settings)
 
     # compute or fetch the RGE matrix for each scale
     rgemats = resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache)

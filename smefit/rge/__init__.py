@@ -15,7 +15,7 @@ keeps working regardless of which submodule actually defines it.
 
 from . import _patches  # noqa: F401  (import solely for its monkey-patch side effect)
 from .loading import build_rge_matrix, resolve_rge_matrices
-from .matrix import RGEMatrix, read_rge_cache
+from .matrix import RGEMatrix
 from .runner import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, RGE
 
 __all__ = [
@@ -24,6 +24,5 @@ __all__ = [
     "ALLOWED_YUKAWA",
     "ALLOWED_SMEFT_ACCURACY",
     "build_rge_matrix",
-    "read_rge_cache",
     "resolve_rge_matrices",
 ]

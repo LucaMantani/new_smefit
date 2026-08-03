@@ -1,7 +1,7 @@
 """The on-disk data model: :class:`RGEMatrix`.
 
 Owns both directions of the ``rge_matrix.pkl`` payload layout —
-:meth:`RGEMatrix.write` produces it, :func:`read_rge_cache`
+:meth:`RGEMatrix.write` produces it, :meth:`RGEMatrix.read_cache`
 consumes it — so the format is described in exactly one module.
 """
 
@@ -44,8 +44,7 @@ class RGEMatrix:
     The file :meth:`write` produces is a *scale-keyed cache*: one frame per
     unique scale, with no record of which data point sits at which scale. That
     is what makes it reusable by a later runcard over different data (see
-    :func:`smefit.rge.matrix.read_rge_cache` and
-    :func:`smefit.rge.loading.resolve_rge_matrices`).
+    :meth:`read_cache` and :func:`smefit.rge.loading.resolve_rge_matrices`).
     """
 
     stacked_mats: jnp.ndarray
@@ -87,43 +86,51 @@ class RGEMatrix:
             pickle.dump(self.to_dump_dict(), f)
         _logger.info("RGE matrix written to %s.", out_file)
 
+    @staticmethod
+    def read_cache(path_to_rge_mat, rge_settings):
+        """
+        Read a precomputed RGE matrix pickle and validate its settings.
 
-def read_rge_cache(path_to_rge_mat, rge_settings):
-    """
-    Read a precomputed RGE matrix pickle and validate its settings.
+        The read counterpart of :meth:`to_dump_dict`, and with it the sole
+        owner of the payload layout: every key other than ``'rge_settings'`` is a
+        scale. Keeping that rule in one place matters because the flat float-keyed
+        format is a compatibility contract — :func:`smefit.rge.loading._find_cached_scale`
+        does arithmetic on those keys, so a stray non-numeric one would break every
+        reader, including older smefit installs reading a matrix shared through the
+        server.
 
-    The read counterpart of :meth:`RGEMatrix.to_dump_dict`, and with it the sole
-    owner of the payload layout: every key other than ``'rge_settings'`` is a
-    scale. Keeping that rule in one place matters because the flat float-keyed
-    format is a compatibility contract — :func:`smefit.rge.loading._find_cached_scale`
-    does arithmetic on those keys, so a stray non-numeric one would break every
-    reader, including older smefit installs reading a matrix shared through the
-    server.
+        A ``staticmethod`` rather than a constructor: the pickle keys frames by
+        *unique* scale, so it cannot rebuild the per-data-point
+        :attr:`stacked_mats` and therefore cannot return an ``RGEMatrix``. It
+        lives on the class anyway so that both directions of the format sit
+        together.
 
-    Parameters
-    ----------
-    path_to_rge_mat : str or pathlib.Path
-        Path to the pickle file containing the precomputed RGE matrices.
-    rge_settings : dict
-        Expected RGE settings to validate against the stored file, as returned
-        by :attr:`smefit.rge.runner.RGE.settings`.
+        Parameters
+        ----------
+        path_to_rge_mat : str or pathlib.Path
+            Path to the pickle file containing the precomputed RGE matrices.
+        rge_settings : dict
+            Expected RGE settings to validate against the stored file, as returned
+            by :attr:`smefit.rge.runner.RGE.settings`.
 
-    Returns
-    -------
-    dict
-        A dictionary containing cached RGE matrices keyed by scale. The
-        returned dictionary excludes the `'rge_settings'` entry.
+        Returns
+        -------
+        dict
+            A dictionary containing cached RGE matrices keyed by scale. The
+            returned dictionary excludes the `'rge_settings'` entry.
 
-    Raises
-    ------
-    ValueError
-        If the settings in the precomputed file do not match `rge_settings`.
-    """
-    with open(path_to_rge_mat, "rb") as f:
-        payload = pickle.load(f)
+        Raises
+        ------
+        ValueError
+            If the settings in the precomputed file do not match `rge_settings`.
+        """
+        with open(path_to_rge_mat, "rb") as f:
+            payload = pickle.load(f)
 
-    if rge_settings != payload["rge_settings"]:
-        raise ValueError("RGE settings do not match RGE matrix precomputed settings.")
+        if rge_settings != payload["rge_settings"]:
+            raise ValueError(
+                "RGE settings do not match RGE matrix precomputed settings."
+            )
 
-    _logger.info("Loaded precomputed RGE matrix from %s.", path_to_rge_mat)
-    return {k: v for k, v in payload.items() if k != "rge_settings"}
+        _logger.info("Loaded precomputed RGE matrix from %s.", path_to_rge_mat)
+        return {k: v for k, v in payload.items() if k != "rge_settings"}

@@ -1,7 +1,8 @@
 """The on-disk data model: :class:`RGEMatrix`.
 
-Owns the ``rge_matrix.pkl`` payload layout (see :func:`_read_rge_pickle`) —
-the only reader of that layout is :mod:`smefit.rge.loading`.
+Owns both directions of the ``rge_matrix.pkl`` payload layout —
+:meth:`RGEMatrix.write` produces it, :func:`load_precomputed_rge_matrix`
+consumes it — so the format is described in exactly one module.
 """
 
 import logging
@@ -83,18 +84,42 @@ class RGEMatrix:
         _logger.info("RGE matrix written to %s.", out_file)
 
 
-def _read_rge_pickle(path_to_rge_mat):
-    """Unpickle an RGE matrix file into ``(settings_dict, {scale: DataFrame})``.
+def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
+    """
+    Load a precomputed RGE matrix pickle and validate its settings.
 
-    Sole owner of the payload layout: every key other than ``'rge_settings'`` is
-    a scale. Keeping that rule in one place matters because the flat float-keyed
+    The read counterpart of :meth:`RGEMatrix.to_dump_dict`, and with it the sole
+    owner of the payload layout: every key other than ``'rge_settings'`` is a
+    scale. Keeping that rule in one place matters because the flat float-keyed
     format is a compatibility contract — :func:`smefit.rge.loading._find_cached_scale`
     does arithmetic on those keys, so a stray non-numeric one would break every
     reader, including older smefit installs reading a matrix shared through the
     server.
+
+    Parameters
+    ----------
+    path_to_rge_mat : str or pathlib.Path
+        Path to the pickle file containing the precomputed RGE matrices.
+    rge_settings : dict
+        Expected RGE settings to validate against the stored file, as returned
+        by :attr:`smefit.rge.runner.RGE.settings`.
+
+    Returns
+    -------
+    dict
+        A dictionary containing cached RGE matrices keyed by scale. The
+        returned dictionary excludes the `'rge_settings'` entry.
+
+    Raises
+    ------
+    ValueError
+        If the settings in the precomputed file do not match `rge_settings`.
     """
     with open(path_to_rge_mat, "rb") as f:
         payload = pickle.load(f)
-    settings = payload["rge_settings"]
-    frames = {k: v for k, v in payload.items() if k != "rge_settings"}
-    return settings, frames
+
+    if rge_settings != payload["rge_settings"]:
+        raise ValueError("RGE settings do not match RGE matrix precomputed settings.")
+
+    _logger.info("Loaded precomputed RGE matrix from %s.", path_to_rge_mat)
+    return {k: v for k, v in payload.items() if k != "rge_settings"}

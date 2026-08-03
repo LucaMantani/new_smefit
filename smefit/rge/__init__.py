@@ -4,7 +4,8 @@ Split into:
 
 - ``_patches``: monkey patches applied to ``wilson``/``ckmutil`` at import time.
 - ``runner``: the :class:`RGE` runner — pure computation, no file I/O.
-- ``matrix``: the on-disk data model, :class:`RGEMatrix`.
+- ``matrix``: the on-disk data model, :class:`RGEMatrix`, and both directions of
+  the ``rge_matrix.pkl`` payload layout.
 - ``loading``: :func:`load_rge_matrix`, the top-level entry point tying the
   runner, the data model, and the scale-keyed cache together.
 
@@ -13,12 +14,8 @@ keeps working regardless of which submodule actually defines it.
 """
 
 from . import _patches  # noqa: F401  (import solely for its monkey-patch side effect)
-from .loading import (
-    load_precomputed_rge_matrix,
-    load_rge_matrix,
-    load_rge_mats_from_scales,
-)
-from .matrix import RGEMatrix
+from .loading import load_rge_matrix, load_rge_mats_from_scales
+from .matrix import RGEMatrix, load_precomputed_rge_matrix
 from .runner import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, RGE
 
 __all__ = [

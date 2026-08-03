@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .matrix import RGEMatrix, _read_rge_pickle
+from .matrix import RGEMatrix, load_precomputed_rge_matrix
 from .runner import RGE
 
 _logger = logging.getLogger(__name__)
@@ -23,36 +23,6 @@ def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float |
         if abs(key - scale) <= rtol * abs(key):
             return key
     return None
-
-
-def load_precomputed_rge_matrix(path_to_rge_mat, rge_settings):
-    """
-    Load a precomputed RGE matrix pickle and validate its settings.
-
-    Parameters
-    ----------
-    path_to_rge_mat : str or pathlib.Path
-        Path to the pickle file containing the precomputed RGE matrices.
-    rge_settings : dict
-        Expected RGE settings to validate against the stored file.
-
-    Returns
-    -------
-    dict
-        A dictionary containing cached RGE matrices keyed by scale. The
-        returned dictionary excludes the `'rge_settings'` entry.
-
-    Raises
-    ------
-    ValueError
-        If the settings in the precomputed file do not match `rge_settings`.
-    """
-    stored_settings, rge_cache = _read_rge_pickle(path_to_rge_mat)
-    if rge_settings != stored_settings:
-        raise ValueError("RGE settings do not match RGE matrix precomputed settings.")
-
-    _logger.info(f"Loaded precomputed RGE matrix from {path_to_rge_mat}.")
-    return rge_cache
 
 
 def load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache):

@@ -73,8 +73,9 @@ class HLLHC_DYMee_13TeV:
                 rge_dict=rge_dict,
                 coeff_list=coeff_list,
                 theory_group=theory_group,
-                save_path=save_rge_path,
             )
+            if save_rge_path is not None:
+                rge_matrix.write(save_rge_path)
 
         self.model = EFTModel(
             theory_group, coefficients, use_quad, rge_matrix=rge_matrix

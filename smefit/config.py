@@ -134,13 +134,14 @@ class smefitConfig(Config):
             rge_dict=rge,
             coeff_list=coeff_list,
             theory_group=theory,
-            save_path=output_path,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
+        # Write RGE matrix to disk for future reuse
+        rge_matrix.write(output_path)
         self._cached_rge_matrix = rge_matrix
         return rge_matrix
 

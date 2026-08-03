@@ -218,7 +218,10 @@ def build_exact_posterior_prior(
     # we just loaded, so point the runcard at it.
     prev_rge = prev_rc.get("rge")
     if isinstance(prev_rge, dict) and not prev_rge.get("rg_matrix"):
-        prev_rge_matrix = pathlib.Path(bayesian_update_path) / "rge_matrix.pkl"
+        # Local import: smefit.rge monkey-patches wilson/ckmutil process-wide.
+        from smefit.rge import RGEMatrix
+
+        prev_rge_matrix = RGEMatrix.path_in(bayesian_update_path)
         if prev_rge_matrix.exists():
             prev_rge["rg_matrix"] = str(prev_rge_matrix)
             log.info("Reusing the previous fit's RGE matrix at %s.", prev_rge_matrix)

@@ -113,6 +113,13 @@ class RGEMatrix:
     scales: list
     settings: RGESettings
 
+    FILENAME = "rge_matrix.pkl"
+
+    @classmethod
+    def path_in(cls, fit_dir):
+        """Path to the ``rge_matrix.pkl`` companion file inside a fit directory."""
+        return pathlib.Path(fit_dir) / cls.FILENAME
+
     def to_dump_dict(self):
         """Build the on-disk payload: ``{'rge_settings': {...}, <scale>: DataFrame}``.
 
@@ -128,21 +135,27 @@ class RGEMatrix:
             )
         return to_dump
 
-    def write(self, output_path, name="rge_matrix"):
-        """Pickle this matrix to ``<output_path>/<name>.pkl``.
+    def write(self, output_path, name=None):
+        """Pickle this matrix to ``<output_path>/<name>.pkl`` (default: `FILENAME`).
 
         The file can be fed back to a later runcard through ``rge.rg_matrix``.
         """
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
-        out_file = output_path / f"{name}.pkl"
+        out_file = output_path / f"{name}.pkl" if name else self.path_in(output_path)
         with open(out_file, "wb") as f:
             pickle.dump(self.to_dump_dict(), f)
         _logger.info("RGE matrix written to %s.", out_file)
 
     @classmethod
     def from_file(cls, path, scales):
-        """Rebuild an RGEMatrix from a pickle written by :meth:`write`.
+        """Rebuild an RGEMatrix from a pickle written by :meth:`write`, or None.
+
+        Returns None if `scales` is falsy (nothing to rebuild — fits that ran
+        without RGE evolution, or results written before ``rge_scales``
+        existed) or if `path` does not exist (the companion file is missing,
+        e.g. lost or not fetched), logging a warning in the latter case rather
+        than failing the whole load.
 
         Parameters
         ----------
@@ -159,6 +172,13 @@ class RGEMatrix:
             If the file has no frame for one of the requested scales, i.e. it
             does not belong to this fit.
         """
+        if not scales:
+            return None
+        path = pathlib.Path(path)
+        if not path.exists():
+            _logger.warning("%s is missing; loading without its RGE matrix.", path)
+            return None
+
         settings_dict, frames = _read_rge_pickle(path)
         if not frames:
             raise ValueError(f"{path} contains no RGE matrices.")

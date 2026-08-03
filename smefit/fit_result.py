@@ -235,6 +235,10 @@ class FitResult:
             if d.get("whitening_transformation")
             else None
         )
+        # Imported here, not at module scope: smefit.rge monkey-patches wilson
+        # and ckmutil process-wide, and fit_result is loaded by every fit action.
+        from smefit.rge import RGEMatrix
+
         return cls(
             free_parameters=free_parameters,
             best_fit_point=d["best_fit_point"],
@@ -245,32 +249,10 @@ class FitResult:
             prior_specs=d.get("prior_specs"),
             whitening_transformation=whitening_transformation,
             whitening_active=d.get("whitening_active", False),
-            rge_matrix=cls._load_rge_matrix(path, d.get("rge_scales")),
+            rge_matrix=RGEMatrix.from_file(
+                RGEMatrix.path_in(path), d.get("rge_scales")
+            ),
         )
-
-    @staticmethod
-    def _load_rge_matrix(path, rge_scales):
-        """Rebuild the companion RGE matrix, or None if this fit has none.
-
-        `rge_scales` is absent from results written before the key existed, in
-        which case there is nothing to rebuild and nothing to complain about.
-        """
-        if not rge_scales:
-            return None
-        rge_path = path / "rge_matrix.pkl"
-        if not rge_path.exists():
-            log.warning(
-                "%s records RGE scales but %s is missing; loading the fit "
-                "without its RGE matrix.",
-                path / "fit_results.json",
-                rge_path.name,
-            )
-            return None
-        # Imported here, not at module scope: smefit.rge monkey-patches wilson
-        # and ckmutil process-wide, and fit_result is loaded by every fit action.
-        from smefit.rge import RGEMatrix
-
-        return RGEMatrix.from_file(rge_path, rge_scales)
 
 
 class FitResultGroup:

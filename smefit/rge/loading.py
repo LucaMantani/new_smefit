@@ -1,8 +1,8 @@
 """Top-level ``load_rge_matrix`` entry point: scale resolution + caching.
 
 Ties the :class:`~smefit.rge.runner.RGE` runner and the
-:class:`~smefit.rge.matrix.RGEMatrix`/:class:`~smefit.rge.matrix.RGESettings`
-data model together into the function ``smefitConfig.produce_rge_matrix`` calls.
+:class:`~smefit.rge.matrix.RGEMatrix` data model together into the function
+``smefitConfig.produce_rge_matrix`` calls.
 """
 
 import logging
@@ -11,7 +11,8 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .matrix import RGEMatrix, RGESettings, _read_rge_pickle
+from .matrix import RGEMatrix, _read_rge_pickle
+from .runner import RGE
 
 _logger = logging.getLogger(__name__)
 
@@ -178,16 +179,15 @@ def load_rge_matrix(
     # Sort the coefficient list alphabetically
     coeff_list = sorted(coeff_list)
     scales = _resolve_scales(rge_dict, theory_group)
-    settings = RGESettings.from_dict(rge_dict)
     rge_cache = {}
-    rge_runner = settings.runner(coeff_list)
+    rge_runner = RGE.from_rge_dict(rge_dict, coeff_list)
 
     # load precomputed RGE matrix if it exists. The path is already resolved and
     # fetched by smefitConfig.parse_rge; callers outside reportengine that pass
     # a raw path should resolve it themselves.
     path_to_rge_mat = rge_dict.get("rg_matrix", None)
     if path_to_rge_mat:
-        rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, settings.to_dict())
+        rge_cache = load_precomputed_rge_matrix(path_to_rge_mat, rge_runner.settings)
 
     # compute or fetch the RGE matrix for each scale
     rgemats = load_rge_mats_from_scales(scales, coeff_list, rge_runner, rge_cache)
@@ -213,5 +213,5 @@ def load_rge_matrix(
         obs_operators=obs_operators,
         init_operators=coeff_list,
         scales=scales,
-        settings=settings,
+        settings=rge_runner.settings,
     )

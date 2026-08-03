@@ -132,6 +132,45 @@ class RGE:
             f"Initializing RGE runner with initial scale {init_scale} GeV and accuracy {accuracy}."
         )
 
+    @classmethod
+    def from_rge_dict(cls, rge_dict, wc_names):
+        """Build a runner from a raw or parsed ``rge:`` dict.
+
+        Tolerant of missing keys and of YAML wrapper types, so hand-built dicts
+        (external chi2 modules, tests) work as well as the normalised dict
+        returned by ``smefitConfig.parse_rge``. The casts also keep
+        :attr:`settings` plain-Python and therefore comparable.
+        """
+        return cls(
+            wc_names,
+            init_scale=float(rge_dict.get("init_scale", 1e3)),
+            accuracy=str(rge_dict.get("smeft_accuracy", "integrate")),
+            adm_QCD=bool(rge_dict.get("adm_QCD", False)),
+            yukawa=str(rge_dict.get("yukawa", "top")),
+        )
+
+    @property
+    def settings(self):
+        """The physics settings that determine the RGE matrices this runner produces.
+
+        These four values, and only these four, decide whether a stored
+        ``rge_matrix.pkl`` may be reused: ``load_precomputed_rge_matrix``
+        compares this dict against the ``rge_settings`` entry of the pickle with
+        strict equality. Adding a key here — or renaming one — invalidates every
+        RGE matrix ever written, so don't.
+
+        ``obs_scale`` and ``scale_variation`` are deliberately absent: they
+        select *which* scales are requested, not how the running is done, and a
+        cached matrix keyed by scale is reusable across runcards that ask for
+        different scales.
+        """
+        return {
+            "init_scale": self.init_scale,
+            "smeft_accuracy": self.accuracy,
+            "adm_QCD": self.adm_QCD,
+            "yukawa": self.yukawa,
+        }
+
     def RGEmatrix_dict(self, scale):
         """
         Compute the RGE solution at the scale `scale` and return it as a dictionary.

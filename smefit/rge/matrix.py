@@ -1,4 +1,4 @@
-"""The on-disk data model: :class:`RGESettings` and :class:`RGEMatrix`.
+"""The on-disk data model: :class:`RGEMatrix`.
 
 Owns the ``rge_matrix.pkl`` payload layout (see :func:`_read_rge_pickle`) —
 the only reader of that layout is :mod:`smefit.rge.loading`.
@@ -13,66 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from .runner import RGE
-
 _logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class RGESettings:
-    """The physics settings that determine an RGE matrix.
-
-    These four values, and only these four, decide whether a stored
-    ``rge_matrix.pkl`` may be reused: :func:`load_precomputed_rge_matrix`
-    compares :meth:`to_dict` against the ``rge_settings`` entry of the pickle
-    with strict equality. Adding a field here — or changing a key name in
-    :meth:`to_dict` — invalidates every RGE matrix ever written, so don't.
-
-    ``obs_scale`` and ``scale_variation`` are deliberately absent: they select
-    *which* scales are requested, not how the running is done, and a cached
-    matrix keyed by scale is reusable across runcards that ask for different
-    scales.
-    """
-
-    init_scale: float
-    smeft_accuracy: str = "integrate"
-    adm_QCD: bool = False
-    yukawa: str = "top"
-
-    @classmethod
-    def from_dict(cls, rge_dict):
-        """Build from a raw or parsed ``rge:`` dict.
-
-        Tolerant of missing keys and of YAML wrapper types, so hand-built dicts
-        (external chi2 modules, tests) work as well as the normalised dict
-        returned by ``smefitConfig.parse_rge``. The casts also keep the pickled
-        settings plain-Python and therefore comparable.
-        """
-        return cls(
-            init_scale=float(rge_dict.get("init_scale", 1e3)),
-            smeft_accuracy=str(rge_dict.get("smeft_accuracy", "integrate")),
-            adm_QCD=bool(rge_dict.get("adm_QCD", False)),
-            yukawa=str(rge_dict.get("yukawa", "top")),
-        )
-
-    def to_dict(self):
-        """Plain-Python dict used as the on-disk compatibility key."""
-        return {
-            "init_scale": self.init_scale,
-            "smeft_accuracy": self.smeft_accuracy,
-            "adm_QCD": self.adm_QCD,
-            "yukawa": self.yukawa,
-        }
-
-    def runner(self, coeff_list):
-        """Return an :class:`RGE` runner configured with these settings."""
-        return RGE(
-            coeff_list,
-            self.init_scale,
-            self.smeft_accuracy,
-            self.adm_QCD,
-            self.yukawa,
-        )
 
 
 @dataclass
@@ -92,9 +33,10 @@ class RGEMatrix:
     scales : list of float
         One scale per data point for dynamic mode, or a single-element list for
         a fixed observable scale.
-    settings : RGESettings
-        The running configuration these matrices were computed with; stored in
-        the pickle so a later run can check reusability.
+    settings : dict
+        The running configuration these matrices were computed with, as
+        returned by :attr:`smefit.rge.runner.RGE.settings`; stored in the pickle
+        so a later run can check reusability.
 
     Notes
     -----
@@ -109,7 +51,7 @@ class RGEMatrix:
     obs_operators: list
     init_operators: list
     scales: list
-    settings: RGESettings
+    settings: dict
 
     FILENAME = "rge_matrix.pkl"
 
@@ -119,7 +61,7 @@ class RGEMatrix:
         Duplicate scales collapse to a single entry, so a dynamic-scale fit over
         many data points sharing a scale stores one frame per unique scale.
         """
-        to_dump = {"rge_settings": self.settings.to_dict()}
+        to_dump = {"rge_settings": self.settings}
         for scale, matrix in zip(self.scales, self.stacked_mats):
             to_dump[scale] = pd.DataFrame(
                 np.asarray(matrix, dtype=float),

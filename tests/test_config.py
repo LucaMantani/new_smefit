@@ -1,12 +1,15 @@
 """Unit tests for smefit/config.py."""
 
 import inspect
+import json
+import logging
 import os
 import pathlib
 from unittest.mock import MagicMock, patch
 
 import jax.numpy as jnp
 import pytest
+import yaml
 from reportengine.configparser import ConfigError, ExplicitNode
 
 from smefit.chi2 import Chi2
@@ -802,3 +805,105 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     assert (
         result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# parse_fits
+# ---------------------------------------------------------------------------
+
+
+def _write_fit_dir(path, use_quad=False, action="run_analytic_fit"):
+    """Minimal fit directory, as written by a smefit run."""
+    (path / "input").mkdir(parents=True)
+    (path / "fit_results.json").write_text(
+        json.dumps(
+            {
+                "free_parameters": ["OpA", "OpB"],
+                "best_fit_point": {"OpA": 0.0, "OpB": 1.0},
+                "max_loglikelihood": -1.0,
+                "num_data": 5,
+                "samples": {"OpA": [0.0], "OpB": [1.0]},
+            }
+        )
+    )
+    (path / "input" / "runcard.yaml").write_text(
+        yaml.dump({"use_quad": use_quad, "actions_": [action]})
+    )
+    return path
+
+
+def test_parse_fits_accepts_plain_names(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "fits" / "fit_a")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits(["fit_a"])
+
+    assert result == [{"name": "fit_a", "path": fit, "label": None}]
+
+
+def test_parse_fits_accepts_mappings(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": "$A$"}]
+    )
+
+    assert result[0]["path"] == fit
+    assert result[0]["label"] == "$A$"
+
+
+def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
+    """A label is passed to matplotlib as given, backslashes and all."""
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    label = r"$\mathrm{FCC}\textnormal{-}\mathrm{ee\ descoped}$"
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": label}]
+    )
+
+    assert result[0]["label"] == label
+
+
+def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with pytest.raises(ConfigError, match="must be a string"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
+        )
+
+
+def test_parse_fits_requires_a_name(cfg):
+    with pytest.raises(ConfigError, match="requires a .name."):
+        cfg.parse_fits([{"label": "$A$"}])
+
+
+def test_parse_fits_missing_fit_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="not found"):
+        cfg.parse_fits([{"name": "does_not_exist", "path": str(tmp_path)}])
+
+
+def test_parse_fits_unknown_key_warns(cfg, tmp_path, caplog):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "unknown_key": 1}]
+        )
+
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "my_fits" / "my_fit")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
+
+    assert result[0]["path"] == fit

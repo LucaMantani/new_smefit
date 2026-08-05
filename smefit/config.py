@@ -21,6 +21,7 @@ from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
     fetch_fit_if_missing,
+    resolve_fit_dir,
     resolve_path,
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
@@ -696,6 +697,54 @@ class smefitConfig(Config):
             use_theory_covmat=use_theory_covmat,
             eft_model=eft_model,
         ).build_data_group()
+
+    # ------------------------------------------------------------------
+    # Previously run fits
+    # ------------------------------------------------------------------
+
+    def parse_fits(self, fits):
+        """Parse the list of previously run fits to be loaded.
+
+        Each entry is the name of a fit, or a mapping
+
+            - name: my_fit                     # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+              label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet. ``path`` is resolved
+        through ``.config/paths.yaml`` like any other path.
+
+        The name is how the fit is referred to everywhere downstream: it is the
+        key of the per-fit plot settings, and the legend label when no ``label``
+        is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+        LaTeX (quote it in YAML to keep the backslashes).
+        """
+        parsed = []
+        for entry in fits:
+            if isinstance(entry, str):
+                entry = {"name": entry}
+            if "name" not in entry:
+                raise ConfigError(f"Each fits entry requires a 'name': {entry}")
+
+            known_keys = {"name", "path", "label"}
+            for k in set(entry.keys()) - known_keys:
+                log.warning("Unknown key '%s' in fits entry.", k)
+
+            label = entry.get("label")
+            if label is not None and not isinstance(label, str):
+                raise ConfigError(
+                    f"The 'label' of fit '{entry['name']}' must be a string, "
+                    f"got {label!r}."
+                )
+
+            try:
+                path = resolve_fit_dir(entry["name"], entry.get("path"))
+            except (FileNotFoundError, ValueError) as e:
+                raise ConfigError(str(e)) from e
+
+            parsed.append({"name": entry["name"], "path": path, "label": label})
+        return parsed
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

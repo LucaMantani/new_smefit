@@ -148,6 +148,31 @@ report/Fisher aggregation rather than forwarded.
 A runcard may define `external_chi2` with no `datasets:` at all, in
 which case the fit runs on the external likelihoods alone.
 
+### `fits`
+
+Parse the list of previously run fits to be loaded.
+
+Each entry is the name of a fit, or a mapping
+
+    - name: my_fit                     # mandatory, the fit directory name
+      path: smefit_results/fits        # optional, where to look for it
+      label: '$\mathrm{My\ fit}$'      # optional, the legend label
+
+Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+downloaded from the server if it is not there yet. ``path`` is resolved
+through ``.config/paths.yaml`` like any other path.
+
+The name is how the fit is referred to everywhere downstream: it is the
+key of the per-fit plot settings, and the legend label when no ``label``
+is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+LaTeX (quote it in YAML to keep the backslashes).
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `label` — default: `(no default)`
+- `name`
+- `path` — default: `(no default)`
+
 ### `gradient_descent_settings`
 
 Parse optional settings for the gradient-descent best-fit node.

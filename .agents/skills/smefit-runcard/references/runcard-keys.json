@@ -134,6 +134,17 @@
       },
       "known_keys": null
     },
+    "fits": {
+      "defaults": {
+        "label": "(no default)",
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "label",
+        "name",
+        "path"
+      ]
+    },
     "gradient_descent_settings": {
       "defaults": {
         "n_steps": "2000",
@@ -237,6 +248,7 @@
     "data_path",
     "datasets",
     "external_chi2",
+    "fits",
     "gradient_descent_settings",
     "hessian_settings",
     "meta",

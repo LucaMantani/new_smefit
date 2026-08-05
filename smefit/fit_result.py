@@ -7,14 +7,15 @@ Two classes live here:
 
 - :class:`FitResult`, the bare numerical outcome of a fit — free parameters,
   best-fit point, likelihood, samples — and its ``fit_results.json`` schema.
-- :class:`Fit`, what the fitting routines actually return and what everything
-  downstream (plotting, reports) consumes: a ``FitResult`` plus the metadata a
-  fit carries beyond its numbers, such as its identity and whether quadratic
-  corrections were included.
+  This is what the fitting routines return and write.
+- :class:`Fit`, a fit that already exists on disk: the :class:`FitResult` it
+  produced, held as an attribute, plus the metadata describing how it was run.
+  It is built only by loading, never by a fitting routine, and it is what
+  downstream consumers (plotting, reports) work with.
 
-New attributes belong on :class:`Fit`, which is meant to grow; ``FitResult``
-stays the minimal record. Both serialise to the same file, ``fit_results.json``,
-through the ``_payload``/``_from_payload_kwargs`` hooks that ``Fit`` extends.
+New attributes describing a fit belong on :class:`Fit`, which is meant to grow;
+``FitResult`` stays the minimal numerical record and owns the
+``fit_results.json`` schema on its own.
 """
 
 import json
@@ -79,15 +80,55 @@ def _runcard_actions(config: Mapping) -> List[str]:
     return names
 
 
-def name_from_output_path(output_path) -> Optional[str]:
-    """The name a fit will be known by: the directory it is written to.
+def _as_joint_payload(d: Mapping) -> Dict:
+    """A payload normalised to the single-fit schema :class:`FitResult` reads.
 
-    That is what :meth:`Fit.from_json` reads back as the fit's name, so a fit
-    carries the same identity while it runs as it does once it is loaded again.
-    None when the fit is not headed for a directory, e.g. a routine called
-    directly from a notebook.
+    The summary of individual fits records one chi2 and one evidence per
+    coefficient rather than a single joint value; there is no joint likelihood
+    to report, so it becomes NaN and the evidence is dropped.
     """
-    return pathlib.Path(output_path).name if output_path is not None else None
+    d = dict(d)
+    max_loglikelihood = d.get("max_loglikelihood")
+    d["max_loglikelihood"] = (
+        float("nan") if max_loglikelihood is None else float(max_loglikelihood)
+    )
+    if isinstance(d.get("logz"), dict):
+        d["logz"] = None
+    return d
+
+
+def _metadata_from_runcard(path: pathlib.Path):
+    """How a fit was configured, read from the runcard it was run with.
+
+    The runcard is the authoritative record of a fit's configuration, so it is
+    the only source of this metadata — ``fit_results.json`` holds the numbers a
+    fit produced, not the settings it was given.
+
+    Returns ``(use_quad, fit_type, ran_individually)``.
+    """
+    config = _fit_runcard(path)
+    if config is None:
+        log.warning(
+            "No input/runcard.yaml found for '%s': assuming a linear, joint "
+            "fit of unknown type. Consumers that depend on it (e.g. the "
+            "contour style of plots) may need it set explicitly.",
+            path,
+        )
+        return False, None, False
+
+    for action in _runcard_actions(config):
+        if action in _FIT_ACTIONS:
+            fit_type, ran_individually = _FIT_ACTIONS[action]
+            break
+    else:
+        log.warning(
+            "The runcard of '%s' runs no known fit action: its fit type is "
+            "left unset.",
+            path,
+        )
+        fit_type, ran_individually = None, False
+
+    return bool(config.get("use_quad", False)), fit_type, ran_individually
 
 
 def _format_prior(spec: Optional[Mapping]) -> str:
@@ -224,13 +265,7 @@ class FitResult:
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        out_file = output_path / "fit_results.json"
-        with out_file.open("w") as f:
-            json.dump(self._payload(), f, indent=2)
-
-    def _payload(self) -> Dict:
-        """The ``fit_results.json`` payload. Subclasses add their own keys."""
-        return {
+        payload = {
             "free_parameters": self.free_parameters,
             "num_data": self.num_data,
             "n_free": self.n_free,
@@ -257,24 +292,25 @@ class FitResult:
             "whitening_active": self.whitening_active,
         }
 
-    @classmethod
-    def from_json(cls, path):
-        """Load from a directory containing ``fit_results.json``.
+        out_file = output_path / "fit_results.json"
+        with out_file.open("w") as f:
+            json.dump(payload, f, indent=2)
 
-        Returns an instance of the class it is called on, so ``Fit.from_json``
-        gives back a :class:`Fit` with its extra metadata filled in.
-        """
+    @classmethod
+    def from_json(cls, path) -> "FitResult":
+        """Load a FitResult from a directory containing ``fit_results.json``."""
         path = pathlib.Path(path)
         with (path / "fit_results.json").open() as f:
             d = json.load(f)
-        return cls(**cls._from_payload_kwargs(d, path))
+        return cls.from_payload(d)
 
     @classmethod
-    def _from_payload_kwargs(cls, d: Mapping, path: pathlib.Path) -> Dict:
-        """Constructor arguments read off a decoded payload.
+    def from_payload(cls, d: Mapping) -> "FitResult":
+        """Rebuild a FitResult from a decoded ``fit_results.json`` payload.
 
-        Subclasses extend the returned dict with the arguments of their own
-        fields.
+        Split out of :meth:`from_json` so that a reader which has already
+        inspected the payload — :meth:`Fit.from_json` — can hand it straight
+        over instead of decoding the file twice.
         """
         samples = (
             {name: jnp.array(vals) for name, vals in d["samples"].items()}
@@ -286,7 +322,7 @@ class FitResult:
             if d.get("whitening_transformation")
             else None
         )
-        return dict(
+        return cls(
             free_parameters=d["free_parameters"],
             best_fit_point=d["best_fit_point"],
             max_loglikelihood=d["max_loglikelihood"],
@@ -300,30 +336,31 @@ class FitResult:
 
 
 @dataclass
-class Fit(FitResult):
-    """A fit: its :class:`FitResult` plus the metadata that describes it.
+class Fit:
+    """A fit that exists on disk: what it produced, and how it was run.
 
-    This is what the fitting routines return and what everything downstream
-    consumes, and it is the class to extend when a fit needs to carry something
-    new — ``FitResult`` stays the bare numerical record.
+    A ``Fit`` is built only by loading — :meth:`from_json` — never by a fitting
+    routine, which returns the bare :class:`FitResult` it computed and knows
+    nothing of the directory it will be written to. This is the class to extend
+    when a fit needs to carry something new about itself; ``FitResult`` stays
+    the numerical record.
 
     None of this metadata is serialised: a fit's numbers live in
     ``fit_results.json``, while how it was configured is read back from the
     runcard it was run with (``input/runcard.yaml`` in the fit directory), the
-    authoritative record of that. See :meth:`_from_payload_kwargs`.
+    authoritative record of that.
 
     Attributes
     ----------
-    fit_name : str or None
-        Identity of the fit: the name of the directory it is written to, which
-        is also what it is loaded back under, and the coefficient name for a
-        member of a :class:`FitResultGroup`. Falls back to ``fit_type`` for a
-        fit that is not headed for a directory, e.g. one produced by calling a
-        fitting routine directly from a notebook.
+    fit_results : FitResult
+        The numbers the fit produced — best-fit point, likelihood, samples.
+    fit_name : str
+        Identity of the fit: the name of the directory it was loaded from,
+        which is what users refer to it by.
     fit_type : str or None
         Which routine produced the fit — ``analytic``, ``hessian``,
         ``ultranest`` or ``blackjax_NS`` — from the fit action the runcard ran.
-        None when the runcard of a loaded fit cannot be found.
+        None when the runcard cannot be found.
     use_quad : bool
         Whether the fit included quadratic EFT corrections, from ``use_quad``
         in the runcard. Downstream consumers need it after the run: it is what
@@ -331,21 +368,16 @@ class Fit(FitResult):
     individual_fit : bool
         True for the summary of one-at-a-time individual fits, i.e. when the
         runcard ran a ``run_individual_*_fits`` action. Every coefficient was
-        then fitted with the others held at their baseline, so ``samples`` holds
+        then fitted with the others held at their baseline, so the samples are
         independent 1D posteriors rather than a joint one — see
         :class:`FitResultGroup`.
     """
 
-    fit_name: Optional[str] = None
+    fit_results: FitResult
+    fit_name: str
     fit_type: Optional[str] = None
     use_quad: bool = False
     individual_fit: bool = False
-
-    def __post_init__(self):
-        # A fit that is not written anywhere has no name of its own; the
-        # routine that produced it is then the only identity it has.
-        if self.fit_name is None:
-            self.fit_name = self.fit_type
 
     # ------------------------------------------------------------------
     # I/O
@@ -355,103 +387,55 @@ class Fit(FitResult):
     def from_json(cls, path) -> "Fit":
         """Load a Fit from a directory containing ``fit_results.json``.
 
-        This is the only reader of the ``fit_results.json`` schema: everything
-        consuming a previous fit — Bayesian updates, plotting — goes through it.
-
         Both payloads written by this module are accepted: the standard one
-        from :meth:`write`, and the summary of individual fits from
+        from :meth:`FitResult.write`, and the summary of individual fits from
         :meth:`FitResultGroup.write_summary`. The latter has no joint
-        likelihood, so ``max_loglikelihood`` is NaN; use
+        likelihood, so ``fit_results.max_loglikelihood`` is NaN; use
         :meth:`FitResultGroup.from_json` to get the per-coefficient chi2 and
         evidence back.
         """
-        return super().from_json(path)
+        path = pathlib.Path(path)
+        with (path / "fit_results.json").open() as f:
+            d = json.load(f)
 
-    @classmethod
-    def _from_payload_kwargs(cls, d: Mapping, path: pathlib.Path) -> Dict:
-        # Individual-fit summaries record one chi2 and one evidence per
-        # coefficient rather than a single joint value: normalise them to the
-        # joint schema the base class reads before delegating to it.
-        d = dict(d)
-        max_loglikelihood = d.get("max_loglikelihood")
-        d["max_loglikelihood"] = (
-            float("nan") if max_loglikelihood is None else float(max_loglikelihood)
-        )
+        # A summary records one chi2 and one evidence per coefficient where a
+        # joint fit records a single value: the shape of the payload is what
+        # tells them apart, and it says so whatever else is missing.
         summary_payload = isinstance(d.get("chi2"), dict)
-        if isinstance(d.get("logz"), dict):
-            d["logz"] = None
+        use_quad, fit_type, ran_individually = _metadata_from_runcard(path)
 
-        use_quad, fit_type, ran_individually = cls._metadata_from_runcard(path)
-
-        kwargs = super()._from_payload_kwargs(d, path)
-        kwargs.update(
-            # The directory name is the identity users refer to in runcards,
-            # so it wins over whatever the fit called itself when it ran.
+        return cls(
+            fit_results=FitResult.from_payload(_as_joint_payload(d)),
+            # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
-            use_quad=use_quad,
             fit_type=fit_type,
+            use_quad=use_quad,
             # A per-coefficient subdirectory of an individual run holds one
             # coefficient's own fit, not the merged 1D posteriors — only the
-            # summary directory is the individual fit. A per-coefficient
-            # payload says so on its own, runcard or no runcard.
+            # summary directory is the individual fit.
             individual_fit=summary_payload
             or (ran_individually and path.parent.name != "individual_fits"),
         )
-        return kwargs
-
-    @classmethod
-    def _metadata_from_runcard(cls, path: pathlib.Path):
-        """How the fit was configured, read from the runcard it was run with.
-
-        The runcard is the authoritative record of a fit's configuration, so it
-        is the only source of this metadata — ``fit_results.json`` holds the
-        numbers a fit produced, not the settings it was given.
-
-        Returns ``(use_quad, fit_type, ran_individually)``.
-        """
-        config = _fit_runcard(path)
-        if config is None:
-            log.warning(
-                "No input/runcard.yaml found for '%s': assuming a linear, joint "
-                "fit of unknown type. Consumers that depend on it (e.g. the "
-                "contour style of plots) may need it set explicitly.",
-                path,
-            )
-            return False, None, False
-
-        for action in _runcard_actions(config):
-            if action in _FIT_ACTIONS:
-                fit_type, ran_individually = _FIT_ACTIONS[action]
-                break
-        else:
-            log.warning(
-                "The runcard of '%s' runs no known fit action: its fit type is "
-                "left unset.",
-                path,
-            )
-            fit_type, ran_individually = None, False
-
-        return bool(config.get("use_quad", False)), fit_type, ran_individually
 
 
 class FitResultGroup:
-    """A collection of Fit objects from individual parameter fits.
+    """A collection of FitResult objects from individual parameter fits.
 
     Every member was fitted with the other coefficients held at their baseline,
     so the group holds independent 1D posteriors — there is no joint posterior
     over the coefficients and no joint likelihood.
     """
 
-    def __init__(self, results: List[Fit]):
+    def __init__(self, results: List[FitResult]):
         self.results = results
 
     @classmethod
     def from_json(cls, path) -> "FitResultGroup":
         """Load a FitResultGroup from the summary written by write_summary.
 
-        Rebuilds one Fit per coefficient, keeping the per-coefficient chi2 and
-        evidence that :meth:`Fit.from_json` collapses to NaN and None on the
-        same directory.
+        Rebuilds one FitResult per coefficient, keeping the per-coefficient
+        chi2 and evidence that :meth:`Fit.from_json` collapses to NaN and None
+        on the same directory.
         """
         path = pathlib.Path(path)
         with (path / "fit_results.json").open() as f:
@@ -468,13 +452,12 @@ class FitResultGroup:
         logz = d.get("logz") or {}
         samples = d.get("samples") or {}
         prior_specs = d.get("prior_specs") or {}
-        use_quad, fit_type, _ = Fit._metadata_from_runcard(path)
 
         results = []
         for name in d["free_parameters"]:
             chi2_val = chi2.get(name)
             results.append(
-                Fit(
+                FitResult(
                     free_parameters=[name],
                     best_fit_point={name: d["best_fit_point"][name]},
                     max_loglikelihood=(
@@ -489,9 +472,6 @@ class FitResultGroup:
                         {name: prior_specs[name]} if name in prior_specs else None
                     ),
                     whitening_active=bool(d.get("whitening_active", False)),
-                    fit_name=name,
-                    fit_type=fit_type,
-                    use_quad=use_quad,
                 )
             )
         return cls(results)
@@ -533,7 +513,7 @@ class FitResultGroup:
         console.rule(style="dim")
 
     def write_results(self, output_path) -> None:
-        """Write each Fit to its own subdirectory and a combined summary."""
+        """Write each FitResult to its own subdirectory and a combined summary."""
         base = pathlib.Path(output_path) / "individual_fits"
         for result in self.results:
             name = result.free_parameters[0]

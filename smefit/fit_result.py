@@ -265,6 +265,7 @@ class FitResult:
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
+        unc = self.std
         payload = {
             "free_parameters": self.free_parameters,
             "num_data": self.num_data,
@@ -275,7 +276,7 @@ class FitResult:
             "chi2_ndof": self.chi2_ndof,
             "logz": self.logz,
             "best_fit_point": self.best_fit_point,
-            "std": self.std,
+            "std": unc,
             "bic": self.bic,
             "aic": self.aic,
             "samples": (
@@ -312,6 +313,7 @@ class FitResult:
         inspected the payload — :meth:`Fit.from_json` — can hand it straight
         over instead of decoding the file twice.
         """
+        free_parameters = d["free_parameters"]
         samples = (
             {name: jnp.array(vals) for name, vals in d["samples"].items()}
             if d.get("samples")
@@ -323,7 +325,7 @@ class FitResult:
             else None
         )
         return cls(
-            free_parameters=d["free_parameters"],
+            free_parameters=free_parameters,
             best_fit_point=d["best_fit_point"],
             max_loglikelihood=d["max_loglikelihood"],
             num_data=d["num_data"],

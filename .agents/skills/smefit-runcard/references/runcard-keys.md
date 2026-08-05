@@ -318,6 +318,7 @@ which runcard keys each action ultimately needs.
 - `eft_model`(theory, coefficients, use_quad, rge_matrix) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.
 - `fit_covmat`(data, theory, use_t0, use_theory_covmat) — Produce the covariance matrix to be used in the fit.
+- `fit_objects`(fits) — Produce the :class:`Fit` of every entry of ``fits``, loaded from disk.
 - `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
 - `individual_coefficients`(coefficients, individual_fit_coefficient) — Produce a single-free-parameter coefficient group for individual fits.
 - `individual_eft_model`(theory, individual_coefficients, use_quad, rge_matrix) — Produce EFT model for a single-free-parameter individual fit.

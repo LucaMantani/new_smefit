@@ -17,6 +17,7 @@ from reportengine.report import Config
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
+from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
@@ -745,6 +746,25 @@ class smefitConfig(Config):
 
             parsed.append({"name": entry["name"], "path": path, "label": label})
         return parsed
+
+    def produce_fit_objects(self, fits):
+        """Produce the :class:`Fit` of every entry of ``fits``, loaded from disk.
+
+        This is what downstream consumers (plots, tables, reports) ask for: the
+        fits themselves, in the order the runcard lists them.
+        """
+        fit_objects = []
+        for entry in fits:
+            try:
+                # A label is how the runcard chooses to present the fit, not
+                # something the fit directory knows about.
+                fit = Fit.from_json(entry["path"], label=entry["label"])
+            except (KeyError, OSError, ValueError) as e:
+                raise ConfigError(
+                    f"Could not load fit '{entry['name']}' from {entry['path']}: {e}"
+                ) from e
+            fit_objects.append(fit)
+        return fit_objects
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

@@ -907,3 +907,38 @@ def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
         result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
 
     assert result[0]["path"] == fit
+
+
+# ---------------------------------------------------------------------------
+# produce_fit_objects
+# ---------------------------------------------------------------------------
+
+
+def test_produce_fit_objects_loads_every_fit(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "lin", use_quad=False)
+    _write_fit_dir(tmp_path / "quad", use_quad=True, action="run_ultranest_fit")
+    fits = cfg.parse_fits(
+        [
+            {"name": "lin", "path": str(tmp_path)},
+            {"name": "quad", "path": str(tmp_path), "label": "$Q$"},
+        ]
+    )
+
+    fit_objects = cfg.produce_fit_objects(fits)
+
+    assert [f.fit_name for f in fit_objects] == ["lin", "quad"]
+    # metadata read from each fit's own runcard
+    assert [f.use_quad for f in fit_objects] == [False, True]
+    assert [f.fit_type for f in fit_objects] == ["analytic", "ultranest"]
+    # the label of the runcard entry, None when it has none
+    assert [f.label for f in fit_objects] == [None, "$Q$"]
+    assert fit_objects[0].fit_results.free_parameters == ["OpA", "OpB"]
+
+
+def test_produce_fit_objects_reports_an_unreadable_fit(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "fit_results.json").write_text("{not json")
+    fits = cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+    with pytest.raises(ConfigError, match="Could not load fit 'broken'"):
+        cfg.produce_fit_objects(fits)

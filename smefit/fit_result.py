@@ -369,10 +369,10 @@ class Fit:
         says whether the posterior can be expected to be Gaussian.
     individual_fit : bool
         True for the summary of one-at-a-time individual fits, i.e. when the
-        runcard ran a ``run_individual_*_fits`` action. Every coefficient was
-        then fitted with the others held at their baseline, so the samples are
-        independent 1D posteriors rather than a joint one — see
-        :class:`FitResultGroup`.
+        runcard ran a ``run_individual_*_fits`` action — the only thing that
+        says so. Every coefficient was then fitted with the others held at
+        their baseline, so the samples are independent 1D posteriors rather
+        than a joint one — see :class:`FitResultGroup`.
     """
 
     fit_results: FitResult
@@ -391,19 +391,14 @@ class Fit:
 
         Both payloads written by this module are accepted: the standard one
         from :meth:`FitResult.write`, and the summary of individual fits from
-        :meth:`FitResultGroup.write_summary`. The latter has no joint
-        likelihood, so ``fit_results.max_loglikelihood`` is NaN; use
-        :meth:`FitResultGroup.from_json` to get the per-coefficient chi2 and
-        evidence back.
+        :meth:`FitResultGroup.write_summary`. The latter records one chi2 and
+        one evidence per coefficient rather than joint ones, so its
+        ``fit_results`` carries a NaN likelihood and no evidence.
         """
         path = pathlib.Path(path)
         with (path / "fit_results.json").open() as f:
             d = json.load(f)
 
-        # A summary records one chi2 and one evidence per coefficient where a
-        # joint fit records a single value: the shape of the payload is what
-        # tells them apart, and it says so whatever else is missing.
-        summary_payload = isinstance(d.get("chi2"), dict)
         use_quad, fit_type, ran_individually = _metadata_from_runcard(path)
 
         return cls(
@@ -415,68 +410,15 @@ class Fit:
             # A per-coefficient subdirectory of an individual run holds one
             # coefficient's own fit, not the merged 1D posteriors — only the
             # summary directory is the individual fit.
-            individual_fit=summary_payload
-            or (ran_individually and path.parent.name != "individual_fits"),
+            individual_fit=ran_individually and path.parent.name != "individual_fits",
         )
 
 
 class FitResultGroup:
-    """A collection of FitResult objects from individual parameter fits.
-
-    Every member was fitted with the other coefficients held at their baseline,
-    so the group holds independent 1D posteriors — there is no joint posterior
-    over the coefficients and no joint likelihood.
-    """
+    """A collection of FitResult objects from individual parameter fits."""
 
     def __init__(self, results: List[FitResult]):
         self.results = results
-
-    @classmethod
-    def from_json(cls, path) -> "FitResultGroup":
-        """Load a FitResultGroup from the summary written by write_summary.
-
-        Rebuilds one FitResult per coefficient, keeping the per-coefficient
-        chi2 and evidence that :meth:`Fit.from_json` collapses to NaN and None
-        on the same directory.
-        """
-        path = pathlib.Path(path)
-        with (path / "fit_results.json").open() as f:
-            d = json.load(f)
-        # A summary records one chi2 per coefficient where a joint fit records
-        # a single value: the shape of the payload is what tells them apart.
-        if not isinstance(d.get("chi2"), dict):
-            raise ValueError(
-                f"'{path}' holds a single joint fit, not a group of individual "
-                "fits. Load it with Fit.from_json."
-            )
-
-        chi2 = d["chi2"]
-        logz = d.get("logz") or {}
-        samples = d.get("samples") or {}
-        prior_specs = d.get("prior_specs") or {}
-
-        results = []
-        for name in d["free_parameters"]:
-            chi2_val = chi2.get(name)
-            results.append(
-                FitResult(
-                    free_parameters=[name],
-                    best_fit_point={name: d["best_fit_point"][name]},
-                    max_loglikelihood=(
-                        float("nan") if chi2_val is None else -0.5 * float(chi2_val)
-                    ),
-                    num_data=d["num_data"],
-                    logz=logz.get(name),
-                    samples=(
-                        {name: jnp.array(samples[name])} if name in samples else None
-                    ),
-                    prior_specs=(
-                        {name: prior_specs[name]} if name in prior_specs else None
-                    ),
-                    whitening_active=bool(d.get("whitening_active", False)),
-                )
-            )
-        return cls(results)
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
@@ -553,10 +495,6 @@ class FitResultGroup:
             if result.prior_specs:
                 prior_specs.update(result.prior_specs)
 
-        # One chi2 and one evidence per coefficient rather than a single joint
-        # value: that shape is what marks the payload as a summary of individual
-        # fits. Nothing else is recorded about how the fits were configured —
-        # see :class:`Fit`.
         payload = {
             "free_parameters": free_parameters,
             "num_data": num_data,

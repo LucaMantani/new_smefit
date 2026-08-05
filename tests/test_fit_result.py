@@ -386,44 +386,14 @@ def test_fit_from_json_on_an_individual_fit_summary(tmp_path):
     assert recovered.fit_results.free_parameters == ["OpA", "OpB"]
 
 
-def test_a_summary_payload_is_individual_even_without_a_runcard(tmp_path):
-    """Per-coefficient chi2 is an individual fit whatever else is missing.
+def test_a_summary_without_a_runcard_is_not_known_to_be_individual(tmp_path):
+    """The runcard action is the only thing that says a fit ran individually.
 
-    Without this, plotting such a fit would silently draw 2D contours over
-    posteriors that were never sampled jointly.
+    The payload of a summary is never asked: nothing about how a fit was run is
+    written to or read from ``fit_results.json``.
     """
     r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
     r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
     FitResultGroup([r1, r2]).write_summary(tmp_path)
 
-    assert Fit.from_json(tmp_path).individual_fit is True
-
-
-# ---------------------------------------------------------------------------
-# FitResultGroup.from_json
-# ---------------------------------------------------------------------------
-
-
-def test_group_from_json_rebuilds_one_result_per_coefficient(tmp_path):
-    r1 = _make_individual_result(
-        "OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2], max_loglikelihood=-3.0
-    )
-    r2 = _make_individual_result(
-        "OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2], max_loglikelihood=-7.0
-    )
-    FitResultGroup([r1, r2]).write_summary(tmp_path)
-
-    group = FitResultGroup.from_json(tmp_path)
-
-    assert all(isinstance(r, FitResult) for r in group.results)
-    assert [r.free_parameters[0] for r in group.results] == ["OpA", "OpB"]
-    # the per-coefficient chi2 that Fit.from_json collapses to NaN
-    assert group.results[0].max_loglikelihood == pytest.approx(-3.0)
-    assert group.results[1].max_loglikelihood == pytest.approx(-7.0)
-    assert list(group.results[0].samples["OpA"]) == pytest.approx([0.8, 1.0, 1.2])
-
-
-def test_group_from_json_rejects_a_joint_fit(tmp_path):
-    _make_written_result().write(tmp_path)
-    with pytest.raises(ValueError, match="not a group of individual"):
-        FitResultGroup.from_json(tmp_path)
+    assert Fit.from_json(tmp_path).individual_fit is False

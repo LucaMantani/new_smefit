@@ -326,6 +326,18 @@ def test_fit_type_ignores_the_arguments_of_an_action(tmp_path):
     assert Fit.from_json(out).fit_type == "analytic"
 
 
+def test_fit_type_looks_past_a_nested_namespace_entry(tmp_path):
+    """An ``actions_`` entry that nests actions under a namespace is a mapping."""
+    out = tmp_path / "my_fit"
+    (out / "input").mkdir(parents=True)
+    (out / "input" / "runcard.yaml").write_text(
+        yaml.dump({"actions_": [{"scan": ["plot_chi2"]}, "run_hessian_fit"]})
+    )
+    _make_written_result().write(out)
+
+    assert Fit.from_json(out).fit_type == "hessian"
+
+
 def test_fit_type_is_unset_when_no_fit_action_ran(tmp_path, caplog):
     out = _write_runcard(tmp_path / "my_fit", action="report")
     _make_written_result().write(out)

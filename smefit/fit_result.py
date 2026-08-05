@@ -299,9 +299,9 @@ class FitResult:
 
     @classmethod
     def from_json(cls, path) -> "FitResult":
-        """Load a FitResult from a directory containing ``fit_results.json``."""
-        path = pathlib.Path(path)
-        with (path / "fit_results.json").open() as f:
+        """Load a FitResult from a directory containing fit_results.json."""
+        p = pathlib.Path(path) / "fit_results.json"
+        with p.open() as f:
             d = json.load(f)
         return cls.from_payload(d)
 

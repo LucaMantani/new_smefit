@@ -296,9 +296,9 @@ def test_use_quad_ignores_a_stale_payload_entry(tmp_path):
         ("run_analytic_fit", "analytic"),
         ("run_hessian_fit", "hessian"),
         ("run_ultranest_fit", "ultranest"),
-        ("run_blackjax_fit", "blackjax_NS"),
+        ("run_blackjax_fit", "blackjax"),
         ("run_individual_analytic_fits", "analytic"),
-        ("run_individual_blackjax_fits", "blackjax_NS"),
+        ("run_individual_blackjax_fits", "blackjax"),
     ],
 )
 def test_fit_type_comes_from_the_runcard_action(tmp_path, action, fit_type):

@@ -21,6 +21,7 @@ New attributes describing a fit belong on :class:`Fit`, which is meant to grow;
 import json
 import logging
 import pathlib
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional
 
@@ -36,18 +37,25 @@ from smefit.whitening import WhitenTransform
 log = logging.getLogger(__name__)
 
 
-# Fit action -> (fit type, is it a one-at-a-time individual fit?). The action a
-# runcard ran is what says which sampler produced a fit and how it was driven.
-_FIT_ACTIONS = {
-    "run_analytic_fit": ("analytic", False),
-    "run_hessian_fit": ("hessian", False),
-    "run_ultranest_fit": ("ultranest", False),
-    "run_blackjax_fit": ("blackjax_NS", False),
-    "run_individual_analytic_fits": ("analytic", True),
-    "run_individual_hessian_fits": ("hessian", True),
-    "run_individual_ultranest_fits": ("ultranest", True),
-    "run_individual_blackjax_fits": ("blackjax_NS", True),
-}
+# Fit actions are named "run_<fit type>_fit", or "run_individual_<fit
+# type>_fits" when the fit is run one coefficient at a time.
+_FIT_ACTION_RE = re.compile(r"^run_(individual_)?(?P<fit_type>.+?)_fits?$")
+
+
+def _parse_fit_action(action: str):
+    """``(fit type, ran individually)`` for a fit action, ``None`` for anything else.
+
+    The action a runcard ran is what says which sampler produced a fit and how
+    it was driven, and its name spells both out. It is looked up in
+    :mod:`smefit.fit_actions` too, so that an action which merely reads like a
+    fit is not taken for one.
+    """
+    from smefit import fit_actions  # imported here: fit_actions imports this module
+
+    match = _FIT_ACTION_RE.match(action)
+    if match is None or not callable(getattr(fit_actions, action, None)):
+        return None
+    return match["fit_type"], action.startswith("run_individual_")
 
 
 def _fit_runcard(path: pathlib.Path) -> Optional[Dict]:
@@ -117,8 +125,9 @@ def _metadata_from_runcard(path: pathlib.Path):
         return False, None, False
 
     for action in _runcard_actions(config):
-        if action in _FIT_ACTIONS:
-            fit_type, ran_individually = _FIT_ACTIONS[action]
+        parsed = _parse_fit_action(action)
+        if parsed is not None:
+            fit_type, ran_individually = parsed
             break
     else:
         log.warning(
@@ -361,7 +370,7 @@ class Fit:
         which is what users refer to it by.
     fit_type : str or None
         Which routine produced the fit — ``analytic``, ``hessian``,
-        ``ultranest`` or ``blackjax_NS`` — from the fit action the runcard ran.
+        ``ultranest`` or ``blackjax`` — from the fit action the runcard ran.
         None when the runcard cannot be found.
     use_quad : bool
         Whether the fit included quadratic EFT corrections, from ``use_quad``

@@ -29,35 +29,16 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _name_after_coefficient(fit, coefficient):
-    """Name a member of an individual fit after the coefficient it fitted.
-
-    That is the subdirectory it is written to — ``individual_fits/<coefficient>``
-    — so it is the name the member is loaded back under.
-    """
-    fit.fit_name = coefficient
-    return fit
-
-
 def individual_analytic_fit(
-    individual_eft_model,
-    data,
-    fit_covmat,
-    individual_chi2,
-    individual_fit_coefficient,
-    n_samples=10000,
-    seed=42,
+    individual_eft_model, data, fit_covmat, individual_chi2, n_samples=10000, seed=42
 ):
     """Analytic fit for a single free coefficient.
 
     Pure pass-through to ``analytic_fit`` — the DAG has already built an
     ``individual_eft_model`` and ``individual_chi2`` scoped to one free parameter.
     """
-    return _name_after_coefficient(
-        analytic_fit(
-            individual_eft_model, data, fit_covmat, individual_chi2, n_samples, seed
-        ),
-        individual_fit_coefficient,
+    return analytic_fit(
+        individual_eft_model, data, fit_covmat, individual_chi2, n_samples, seed
     )
 
 
@@ -67,7 +48,6 @@ def individual_ultranest_fit(
     individual_coefficients,
     ultranest_settings,
     individual_fit_coefficient,
-    use_quad=False,
 ):
     """UltraNest fit for a single free coefficient.
 
@@ -81,15 +61,8 @@ def individual_ultranest_fit(
     )
     settings["ReactiveNS_settings"]["resume"] = "overwrite"
 
-    return _name_after_coefficient(
-        ultranest_fit(
-            individual_prior,
-            individual_chi2,
-            individual_coefficients,
-            settings,
-            use_quad=use_quad,
-        ),
-        individual_fit_coefficient,
+    return ultranest_fit(
+        individual_prior, individual_chi2, individual_coefficients, settings
     )
 
 
@@ -99,7 +72,6 @@ def individual_blackjax_fit(
     individual_coefficients,
     blackjax_settings,
     individual_fit_coefficient,
-    use_quad=False,
 ):
     """BlackJAX fit for a single free coefficient.
 
@@ -110,15 +82,11 @@ def individual_blackjax_fit(
     settings["log_dir"] = str(
         pathlib.Path(settings["log_dir"]) / individual_fit_coefficient
     )
-    return _name_after_coefficient(
-        blackjax_fit(
-            individual_prior,
-            individual_chi2,
-            individual_coefficients,
-            settings,
-            use_quad=use_quad,
-        ),
-        individual_fit_coefficient,
+    return blackjax_fit(
+        individual_prior,
+        individual_chi2,
+        individual_coefficients,
+        settings,
     )
 
 
@@ -132,11 +100,7 @@ def individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings
 
 
 def individual_hessian_fit(
-    individual_eft_model,
-    individual_chi2,
-    individual_gd_best_fit,
-    hessian_settings,
-    individual_fit_coefficient,
+    individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
 ):
     """Hessian fit for a single free coefficient.
 
@@ -144,14 +108,8 @@ def individual_hessian_fit(
     ``individual_eft_model``, ``individual_chi2``, and ``individual_gd_best_fit``
     scoped to one free parameter.
     """
-    return _name_after_coefficient(
-        hessian_fit(
-            individual_eft_model,
-            individual_chi2,
-            individual_gd_best_fit,
-            hessian_settings,
-        ),
-        individual_fit_coefficient,
+    return hessian_fit(
+        individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
     )
 
 

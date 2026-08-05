@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from smefit.fit_result import Fit
+from smefit.fit_result import FitResult
 from smefit.ultranest_fit import ultranest_fit
 from smefit.whitening import WhitenTransform
 
@@ -42,7 +42,7 @@ _MOCK_BEST = {"OpA": 0.1, "OpB": 2.0, "OpC": 0.01}
 
 
 def test_ultranest_fit_happy_path(minimal_prior, minimal_chi2, coeff_group):
-    """Non-whitening path: verify Fit fields are populated correctly."""
+    """Non-whitening path: verify FitResult fields are populated correctly."""
     mock_sampler = MagicMock()
     mock_sampler.run.return_value = _FAKE_RESULT
 
@@ -64,9 +64,7 @@ def test_ultranest_fit_happy_path(minimal_prior, minimal_chi2, coeff_group):
             whitening_transformation=None,
         )
 
-    assert isinstance(result, Fit)
-    assert result.fit_type == "ultranest"
-    assert result.fit_name == "ultranest"
+    assert isinstance(result, FitResult)
     assert result.logz == pytest.approx(-3.0)
     assert result.max_loglikelihood == pytest.approx(-1.5)
     assert result.num_data == 10
@@ -130,7 +128,7 @@ def test_ultranest_fit_vectorized_mode(minimal_prior, minimal_chi2, coeff_group)
             ultranest_settings=settings,
         )
 
-    assert isinstance(result, Fit)
+    assert isinstance(result, FitResult)
 
 
 def test_ultranest_fit_slice_sampler(minimal_prior, minimal_chi2, coeff_group):

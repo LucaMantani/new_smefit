@@ -127,7 +127,7 @@ protection against misspelling it.
    (`smefit/fit_result.py`), mapping it to `(fit_type, individual)`. That table
    is how a fit loaded from disk knows which sampler produced it and whether it
    was run one coefficient at a time — the action in `input/runcard.yaml` is the
-   only record. Set the matching `fit_type=` on the `Fit` the sampler returns.
+   only record.
 
 ## Coefficients, priors, external chi2
 

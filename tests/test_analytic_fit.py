@@ -12,7 +12,7 @@ from smefit.core import (
     Dataset,
     Theory,
 )
-from smefit.fit_result import Fit
+from smefit.fit_result import FitResult
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -123,29 +123,10 @@ def test_analytic_fit_returns_fit_result():
 
     result = analytic_fit(model, data, fit_covmat, chi2)
 
-    assert isinstance(result, Fit)
-    assert result.fit_type == "analytic"
-    # no output directory given: the fit is known by its type
-    assert result.fit_name == "analytic"
+    assert isinstance(result, FitResult)
     assert "OpA" in result.best_fit_point
     assert result.max_loglikelihood <= 0.0 or True  # just check it's a float
     assert isinstance(result.max_loglikelihood, float)
-
-
-def test_analytic_fit_is_named_after_its_output_directory(tmp_path):
-    """The name a fit is written under is the one it carries while it runs."""
-    theory = _make_theory("DS_A", sm=[0.0, 0.0], lin_op=[1.0, 0.0])
-    cg = CoefficientGroup([_free("OpA")])
-    model = EFTModel(theory, cg, use_quad=False)
-    data = DataGroup([_make_dataset("DS_A", [1.0, 0.0])])
-    fit_covmat = jnp.eye(2)
-    chi2 = Chi2(build_chi2(model, data, fit_covmat), ["OpA"], num_data=2)
-
-    result = analytic_fit(
-        model, data, fit_covmat, chi2, output_path=tmp_path / "my_fit"
-    )
-
-    assert result.fit_name == "my_fit"
 
 
 def test_analytic_fit_sample_shape():

@@ -1,7 +1,7 @@
 """
 smefit.ultranest_fit
 
-UltraNest nested-sampling fitting routine, returning a Fit node.
+UltraNest nested-sampling fitting routine, returning a FitResult node.
 """
 
 import logging
@@ -13,7 +13,7 @@ import numpy as np
 import ultranest
 import ultranest.stepsampler as ustepsampler
 
-from smefit.fit_result import Fit, name_from_output_path
+from smefit.fit_result import FitResult
 from smefit.utils import resolve_posterior
 from smefit.whitening import apply_whitening
 
@@ -27,10 +27,8 @@ def ultranest_fit(
     ultranest_settings,
     whitening_transformation=None,
     n_samples=10000,
-    use_quad=False,
-    output_path=None,
 ):
-    """Run UltraNest nested sampling and return a Fit.
+    """Run UltraNest nested sampling and return a FitResult.
 
     Reportengine provider node: arguments resolved by name from the DAG.
 
@@ -49,17 +47,10 @@ def ultranest_fit(
         whitened space c_w and evaluates chi2(transform.to_physical(c_w)).
     n_samples : int, optional
         Number of posterior samples to draw from the full set of UltraNest samples.
-    use_quad : bool, optional
-        Whether the EFT model includes quadratic corrections. Recorded on the
-        Fit; not used by the sampler itself.
-    output_path : pathlib.Path, optional
-        Directory the fit will be written to. Its name becomes the fit's name,
-        so a fit is known by the same identity while it runs as when it is
-        loaded back; without it the fit falls back to its type.
 
     Returns
     -------
-    Fit
+    FitResult
     """
     if whitening_transformation is not None:
         log.info("Using whitening transformation in UltraNest fit.")
@@ -146,7 +137,7 @@ def ultranest_fit(
         resolve_coeffs, posterior_free, best_free
     )
 
-    return Fit(
+    return FitResult(
         free_parameters=resolve_coeffs.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_logl,
@@ -156,7 +147,4 @@ def ultranest_fit(
         prior_specs=prior.prior_specs,
         whitening_transformation=whitening_transformation,
         whitening_active=whitening_transformation is not None,
-        fit_name=name_from_output_path(output_path),
-        fit_type="ultranest",
-        use_quad=use_quad,
     )

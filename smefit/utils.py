@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import yaml
 from reportengine.configparser import ConfigError
 
-from smefit.fit_result import Fit
+from smefit.fit_result import FitResult
 from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)
@@ -169,7 +169,7 @@ def build_exact_posterior_prior(
     log_prob = log_prior_1 + log_likelihood_1.
     """
     # --- Load previous fit result ---
-    prev = Fit.from_json(bayesian_update_path)
+    prev = FitResult.from_json(bayesian_update_path)
 
     if prev.free_parameters != coefficients.free_names:
         raise ConfigError(

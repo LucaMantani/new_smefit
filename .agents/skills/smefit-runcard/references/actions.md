@@ -94,7 +94,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.analytic_fit`
 
-- `analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42, output_path=None)`
+- `analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42)`
   - Compute the analytic best-fit point and Gaussian uncertainty for a linear EFT model.
 
 ### `smefit.gradient_descent`
@@ -106,30 +106,30 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.hessian_fit`
 
-- `hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings, output_path=None)`
+- `hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings)`
   - Approximate the posterior with a Gaussian around the chi2 minimum.
 
 ### `smefit.ultranest_fit`
 
-- `ultranest_fit(prior, chi2, coefficients, ultranest_settings, whitening_transformation=None, n_samples=10000, use_quad=False, output_path=None)`
-  - Run UltraNest nested sampling and return a Fit.
+- `ultranest_fit(prior, chi2, coefficients, ultranest_settings, whitening_transformation=None, n_samples=10000)`
+  - Run UltraNest nested sampling and return a FitResult.
 
 ### `smefit.blackjax_fit`
 
-- `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_transformation=None, n_samples=10000, use_quad=False, output_path=None)`
-  - Run BlackJAX nested sampling and return a Fit.
+- `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_transformation=None, n_samples=10000)`
+  - Run BlackJAX nested sampling and return a FitResult.
 
 ### `smefit.individual_fit`
 
-- `individual_analytic_fit(individual_eft_model, data, fit_covmat, individual_chi2, individual_fit_coefficient, n_samples=10000, seed=42)`
+- `individual_analytic_fit(individual_eft_model, data, fit_covmat, individual_chi2, n_samples=10000, seed=42)`
   - Analytic fit for a single free coefficient.
-- `individual_blackjax_fit(individual_prior, individual_chi2, individual_coefficients, blackjax_settings, individual_fit_coefficient, use_quad=False)`
+- `individual_blackjax_fit(individual_prior, individual_chi2, individual_coefficients, blackjax_settings, individual_fit_coefficient)`
   - BlackJAX fit for a single free coefficient.
 - `individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings)`
   - Best-fit point for a single free coefficient.
-- `individual_hessian_fit(individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings, individual_fit_coefficient)`
+- `individual_hessian_fit(individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings)`
   - Hessian fit for a single free coefficient.
-- `individual_ultranest_fit(individual_prior, individual_chi2, individual_coefficients, ultranest_settings, individual_fit_coefficient, use_quad=False)`
+- `individual_ultranest_fit(individual_prior, individual_chi2, individual_coefficients, ultranest_settings, individual_fit_coefficient)`
   - UltraNest fit for a single free coefficient.
 
 ### `smefit.fisher`

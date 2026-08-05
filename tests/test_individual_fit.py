@@ -136,16 +136,12 @@ def test_individual_analytic_fit_delegates(coeff_group):
     ) as mock_fn:
         from smefit.individual_fit import individual_analytic_fit
 
-        result = individual_analytic_fit(
-            mock_model, mock_data, mock_covmat, mock_chi2, "OpA"
-        )
+        result = individual_analytic_fit(mock_model, mock_data, mock_covmat, mock_chi2)
 
     mock_fn.assert_called_once_with(
         mock_model, mock_data, mock_covmat, mock_chi2, 10000, 42
     )
     assert result is mock_result
-    # named after the subdirectory it is written to
-    assert result.fit_name == "OpA"
 
 
 # ---------------------------------------------------------------------------
@@ -172,11 +168,10 @@ def test_individual_hessian_fit_delegates():
         from smefit.individual_fit import individual_hessian_fit
 
         result = individual_hessian_fit(
-            mock_model, mock_chi2, mock_optimizer, mock_settings, "OpA"
+            mock_model, mock_chi2, mock_optimizer, mock_settings
         )
 
     mock_fn.assert_called_once_with(
         mock_model, mock_chi2, mock_optimizer, mock_settings
     )
     assert result is mock_result
-    assert result.fit_name == "OpA"

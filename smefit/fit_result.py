@@ -368,6 +368,12 @@ class Fit:
     fit_name : str
         Identity of the fit: the name of the directory it was loaded from,
         which is what users refer to it by.
+    label : str or None
+        Legend label, from the ``label`` key of the fit's ``fits`` entry. It is
+        used verbatim, so it may be raw LaTeX; when unset, consumers fall back
+        to ``fit_name``. How the fit is presented in a given plot, not a
+        property of the fit itself, so it comes from the runcard that loads the
+        fit rather than from the fit directory.
     fit_type : str or None
         Which routine produced the fit — ``analytic``, ``hessian``,
         ``ultranest`` or ``blackjax`` — from the fit action the runcard ran.
@@ -386,6 +392,7 @@ class Fit:
 
     fit_results: FitResult
     fit_name: str
+    label: Optional[str] = None
     fit_type: Optional[str] = None
     use_quad: bool = False
     individual_fit: bool = False
@@ -395,7 +402,7 @@ class Fit:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_json(cls, path) -> "Fit":
+    def from_json(cls, path, label: Optional[str] = None) -> "Fit":
         """Load a Fit from a directory containing ``fit_results.json``.
 
         Both payloads written by this module are accepted: the standard one
@@ -403,6 +410,10 @@ class Fit:
         :meth:`FitResultGroup.write_summary`. The latter records one chi2 and
         one evidence per coefficient rather than joint ones, so its
         ``fit_results`` carries a NaN likelihood and no evidence.
+
+        ``label`` is how the caller chooses to present the fit; the directory
+        knows nothing about it, so it is the one piece of metadata passed in
+        rather than read back.
         """
         path = pathlib.Path(path)
         with (path / "fit_results.json").open() as f:
@@ -414,6 +425,7 @@ class Fit:
             fit_results=FitResult.from_payload(_as_joint_payload(d)),
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
+            label=label,
             fit_type=fit_type,
             use_quad=use_quad,
             # A per-coefficient subdirectory of an individual run holds one

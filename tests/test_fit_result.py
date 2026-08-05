@@ -226,6 +226,17 @@ def test_fit_metadata_defaults():
     assert fit.individual_fit is False
 
 
+def test_label_is_given_by_the_caller_not_the_fit_directory(tmp_path):
+    """A label is how a runcard presents a fit; nothing on disk records it."""
+    out = _write_runcard(tmp_path / "my_fit")
+    _make_written_result().write(out)
+
+    assert Fit.from_json(out).label is None
+    assert (
+        Fit.from_json(out, label=r"$\mathrm{My\ fit}$").label == r"$\mathrm{My\ fit}$"
+    )
+
+
 def _write_runcard(path, use_quad=False, action="run_analytic_fit"):
     """The runcard copy a smefit run leaves in the fit directory."""
     (path / "input").mkdir(parents=True, exist_ok=True)

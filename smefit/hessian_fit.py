@@ -1,7 +1,7 @@
 """
 smefit.hessian_fit.py
 
-Hessian-based fitting routine returning a FitResult node.
+Hessian-based fitting routine returning a Fit node.
 
 The best-fit point is supplied by the ``gd_best_fit`` node (defined in
 ``smefit.gradient_descent``).  The posterior is then approximated as a
@@ -14,17 +14,17 @@ import logging
 import jax
 import jax.numpy as jnp
 
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit, name_from_output_path
 from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
 
-def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
+def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings, output_path=None):
     """Approximate the posterior with a Gaussian around the chi2 minimum.
 
     This function is a reportengine provider node: its arguments are resolved
-    by name from the dependency graph and its return value (``FitResult``) is
+    by name from the dependency graph and its return value (``Fit``) is
     available as ``hessian_fit`` to downstream nodes and actions.
 
     Parameters
@@ -37,10 +37,14 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
         Best-fit coefficient vector produced by the ``gd_best_fit`` node.
     hessian_settings : dict
         Settings dict produced by ``parse_hessian_settings``.
+    output_path : pathlib.Path, optional
+        Directory the fit will be written to. Its name becomes the fit's name,
+        so a fit is known by the same identity while it runs as when it is
+        loaded back; without it the fit falls back to its type.
 
     Returns
     -------
-    FitResult
+    Fit
     """
     n_samples = hessian_settings.get("n_samples")
     seed = hessian_settings.get("seed")
@@ -67,10 +71,13 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
         eft_model.coefficients, samples_free, c_best
     )
 
-    return FitResult(
+    return Fit(
         free_parameters=eft_model.coefficients.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_loglikelihood,
         num_data=chi2.num_data,
         samples=samples,
+        fit_name=name_from_output_path(output_path),
+        fit_type="hessian",
+        use_quad=eft_model.use_quad,
     )

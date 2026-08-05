@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import pytest
 
 from smefit.blackjax_fit import blackjax_fit
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit
 from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
@@ -93,11 +93,13 @@ def _run_blackjax_fit(
 
 
 def test_blackjax_fit_happy_path(minimal_prior, minimal_chi2, coeff_group, tmp_path):
-    """Non-whitening path: FitResult fields are populated correctly."""
+    """Non-whitening path: Fit fields are populated correctly."""
     settings = _blackjax_settings(tmp_path / "bj_logs")
     result, _ = _run_blackjax_fit(minimal_prior, minimal_chi2, coeff_group, settings)
 
-    assert isinstance(result, FitResult)
+    assert isinstance(result, Fit)
+    assert result.fit_type == "blackjax_NS"
+    assert result.fit_name == "blackjax_NS"
     assert result.num_data == 10
     assert result.whitening_active is False
     assert result.samples is _MOCK_SAMPLES

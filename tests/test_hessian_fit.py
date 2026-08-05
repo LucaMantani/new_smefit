@@ -12,7 +12,7 @@ from smefit.core import (
     Dataset,
     Theory,
 )
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit
 from smefit.gradient_descent import gd_best_fit
 from smefit.hessian_fit import hessian_fit
 from smefit.model import EFTModel
@@ -168,7 +168,7 @@ def test_hessian_fit_gd_lower_chi2_than_sm():
 
 
 # ---------------------------------------------------------------------------
-# FitResult structure
+# Fit structure
 # ---------------------------------------------------------------------------
 
 
@@ -176,7 +176,9 @@ def test_hessian_fit_returns_fit_result():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
     result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
-    assert isinstance(result, FitResult)
+    assert isinstance(result, Fit)
+    assert result.fit_type == "hessian"
+    assert result.fit_name == "hessian"
 
 
 def test_hessian_fit_sample_shape():

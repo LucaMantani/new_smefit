@@ -123,6 +123,11 @@ protection against misspelling it.
    conventions must be added to `EXTRA_ACTION_NAMES` in
    `scripts/generate_skill_reference.py`, or it will be documented as
    "never write this under `actions_:`".
+5. **A new fit action** also needs an entry in `_FIT_ACTIONS`
+   (`smefit/fit_result.py`), mapping it to `(fit_type, individual)`. That table
+   is how a fit loaded from disk knows which sampler produced it and whether it
+   was run one coefficient at a time — the action in `input/runcard.yaml` is the
+   only record. Set the matching `fit_type=` on the `Fit` the sampler returns.
 
 ## Coefficients, priors, external chi2
 

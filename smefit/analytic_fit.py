@@ -1,7 +1,7 @@
 """
 smefit.analytic_fit.py
 
-Analytic (linear-theory) fitting routine returning a FitResult node.
+Analytic (linear-theory) fitting routine returning a Fit node.
 """
 
 import logging
@@ -9,17 +9,19 @@ import logging
 import jax
 import jax.numpy as jnp
 
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit, name_from_output_path
 from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
 
-def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
+def analytic_fit(
+    eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42, output_path=None
+):
     """Compute the analytic best-fit point and Gaussian uncertainty for a linear EFT model.
 
     This function is a reportengine provider node: its arguments are resolved by
-    name from the dependency graph and its return value (``FitResult``) is
+    name from the dependency graph and its return value (``Fit``) is
     available as ``analytic_fit`` to downstream nodes and actions.
 
     Parameters
@@ -36,10 +38,14 @@ def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
         Number of Gaussian samples to draw around the best-fit point (default 10000).
     seed : int, optional
         Random seed for sample generation (default 42).
+    output_path : pathlib.Path, optional
+        Directory the fit will be written to. Its name becomes the fit's name,
+        so a fit is known by the same identity while it runs as when it is
+        loaded back; without it the fit falls back to its type.
 
     Returns
     -------
-    FitResult
+    Fit
     """
     if chi2.has_external:
         raise ValueError(
@@ -91,10 +97,13 @@ def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
         eft_model.coefficients, samples_free, c_best
     )
 
-    return FitResult(
+    return Fit(
         free_parameters=eft_model.coefficients.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_loglikelihood,
         num_data=data.num_data,
         samples=samples,
+        fit_name=name_from_output_path(output_path),
+        fit_type="analytic",
+        use_quad=eft_model.use_quad,
     )

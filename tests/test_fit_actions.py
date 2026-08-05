@@ -15,12 +15,12 @@ from smefit.fit_actions import (
     run_individual_ultranest_fits,
     run_ultranest_fit,
 )
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit
 
 
 def _make_mock_result(name):
-    """Return a MagicMock that looks enough like FitResult for fit_actions."""
-    result = MagicMock(spec=FitResult)
+    """Return a MagicMock that looks enough like Fit for fit_actions."""
+    result = MagicMock(spec=Fit)
     result.free_parameters = [name]
     return result
 

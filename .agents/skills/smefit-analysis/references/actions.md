@@ -65,6 +65,18 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.figures`
 
+- `corner_plot(fit_results, confidence_level=95, dofs_show=None, subplot_size=4, kde=None, double_solution=None, labels=None, show_sm=True, show_best_fit=False)`
+  - Plot the 2D marginalised confidence contours of one or more fits.
+- `plot_corner(fit_results, corner_settings=None)`
+  - Corner plot of the fits declared in the ``fits`` runcard key.
+- `plot_corner_analytic(analytic_fit, corner_settings=None)`
+  - Corner plot of the analytic fit run in this runcard.
+- `plot_corner_blackjax(blackjax_fit, corner_settings=None)`
+  - Corner plot of the BlackJAX fit run in this runcard.
+- `plot_corner_hessian(hessian_fit, corner_settings=None)`
+  - Corner plot of the Hessian fit run in this runcard.
+- `plot_corner_ultranest(ultranest_fit, corner_settings=None)`
+  - Corner plot of the UltraNest fit run in this runcard.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
   - Plot the Fisher diagonals matrix as a heatmap.
 

@@ -21,6 +21,7 @@
     "eft_model",
     "ext_chi2_func",
     "fit_covmat",
+    "fit_results",
     "individual_chi2",
     "individual_coefficients",
     "individual_eft_model",
@@ -57,10 +58,18 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "confidence_level",
+    "dofs_show",
+    "double_solution",
+    "kde",
+    "labels",
     "n_eval",
     "n_samples",
     "n_steps",
     "seed",
+    "show_best_fit",
+    "show_sm",
+    "subplot_size",
     "tol"
   ],
   "raw_keys": {
@@ -124,6 +133,19 @@
       "defaults": {},
       "known_keys": null
     },
+    "corner_settings": {
+      "defaults": {},
+      "known_keys": [
+        "confidence_level",
+        "dofs_show",
+        "double_solution",
+        "kde",
+        "labels",
+        "show_best_fit",
+        "show_sm",
+        "subplot_size"
+      ]
+    },
     "data_path": {
       "defaults": {},
       "known_keys": null
@@ -133,6 +155,17 @@
         "group": "(no default)"
       },
       "known_keys": null
+    },
+    "fits": {
+      "defaults": {
+        "label": "(no default)",
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "label",
+        "name",
+        "path"
+      ]
     },
     "gradient_descent_settings": {
       "defaults": {
@@ -234,11 +267,18 @@
     "bayesian_update_path",
     "blackjax_settings",
     "coefficients",
+    "confidence_level",
+    "corner_settings",
     "data_path",
     "datasets",
+    "dofs_show",
+    "double_solution",
     "external_chi2",
+    "fits",
     "gradient_descent_settings",
     "hessian_settings",
+    "kde",
+    "labels",
     "meta",
     "n_eval",
     "n_samples",
@@ -247,6 +287,9 @@
     "pseudodata_settings",
     "rge",
     "seed",
+    "show_best_fit",
+    "show_sm",
+    "subplot_size",
     "template_text",
     "theory_path",
     "tol",

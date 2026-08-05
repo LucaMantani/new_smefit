@@ -17,10 +17,12 @@ from reportengine.report import Config
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
+from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
     fetch_fit_if_missing,
+    resolve_fit_dir,
     resolve_path,
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
@@ -696,6 +698,113 @@ class smefitConfig(Config):
             use_theory_covmat=use_theory_covmat,
             eft_model=eft_model,
         ).build_data_group()
+
+    # ------------------------------------------------------------------
+    # Plotting previously run fits
+    # ------------------------------------------------------------------
+
+    def parse_fits(self, fits):
+        """Parse the list of previously run fits to be plotted.
+
+        Each entry is the name of a fit, or a mapping
+
+            - name: my_fit                     # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+              label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet. ``path`` is resolved
+        through ``.config/paths.yaml`` like any other path.
+
+        The name is how the fit is referred to everywhere downstream: it is the
+        key of the per-fit plot settings, and the legend label when no ``label``
+        is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+        LaTeX (quote it in YAML to keep the backslashes).
+        """
+        parsed = []
+        for entry in fits:
+            if isinstance(entry, str):
+                entry = {"name": entry}
+            if "name" not in entry:
+                raise ConfigError(f"Each fits entry requires a 'name': {entry}")
+
+            known_keys = {"name", "path", "label"}
+            for k in set(entry.keys()) - known_keys:
+                log.warning("Unknown key '%s' in fits entry.", k)
+
+            label = entry.get("label")
+            if label is not None and not isinstance(label, str):
+                raise ConfigError(
+                    f"The 'label' of fit '{entry['name']}' must be a string, "
+                    f"got {label!r}."
+                )
+
+            try:
+                path = resolve_fit_dir(entry["name"], entry.get("path"))
+            except (FileNotFoundError, ValueError) as e:
+                raise ConfigError(str(e)) from e
+
+            parsed.append({"name": entry["name"], "path": path, "label": label})
+        return parsed
+
+    def produce_fit_results(self, fits):
+        """Produce the Fit of every fit to be plotted."""
+        results = []
+        for entry in fits:
+            try:
+                fit = Fit.from_json(entry["path"])
+            except (KeyError, OSError, ValueError) as e:
+                raise ConfigError(
+                    f"Could not load fit '{entry['name']}' from {entry['path']}: {e}"
+                ) from e
+            # A label is how the runcard chooses to present the fit, not
+            # something the fit directory knows about.
+            fit.label = entry["label"]
+            results.append(fit)
+        return results
+
+    def parse_corner_settings(self, settings):
+        """Parse the settings of the corner (2D contours) plot.
+
+        Options describing a single fit rather than the plot as a whole (``kde``,
+        ``double_solution``, ``labels``) take either one value applied to every
+        fit or a dict keyed by the fit name.
+
+        Keys
+        ----
+        confidence_level : float or list of float, default 95
+            Confidence level in percent. A list of two values draws the first
+            one dashed and the second one filled.
+        dofs_show : list of str, optional
+            Coefficients to display, all common ones by default.
+        subplot_size : float, default 4
+            Size in inches of a single panel.
+        kde : bool or dict, optional
+            Draw kernel density contours instead of Gaussian ellipses. Defaults
+            to the ``use_quad`` of each fit.
+        double_solution : list or dict, optional
+            Coefficients with a double (disjoint) solution.
+        labels : str or dict, optional
+            Legend label per fit, overriding the ``label`` of its ``fits``
+            entry. Defaults to that label, or to the fit name without one.
+        show_sm : bool, default True
+            Mark the SM point at the origin.
+        show_best_fit : bool, default False
+            Mark the best-fit point of every fit.
+        """
+        known_keys = {
+            "confidence_level",
+            "dofs_show",
+            "subplot_size",
+            "kde",
+            "double_solution",
+            "labels",
+            "show_sm",
+            "show_best_fit",
+        }
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in corner_settings.", k)
+        return {k: v for k, v in settings.items() if k in known_keys}
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

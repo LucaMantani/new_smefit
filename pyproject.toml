@@ -19,6 +19,7 @@ h5py = "*"
 
 reportengine = "*"
 jax = "*"
+scipy = "*"
 ultranest = "*"
 optax = "*"
 flax = "*"

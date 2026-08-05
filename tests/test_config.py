@@ -802,3 +802,155 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     assert (
         result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# parse_fits / produce_fit_results / parse_corner_settings
+# ---------------------------------------------------------------------------
+
+
+def _write_fit_dir(path, use_quad=False, action="run_analytic_fit"):
+    """Minimal fit directory, as written by a smefit run."""
+    import json
+
+    import yaml
+
+    (path / "input").mkdir(parents=True)
+    (path / "fit_results.json").write_text(
+        json.dumps(
+            {
+                "free_parameters": ["OpA", "OpB"],
+                "best_fit_point": {"OpA": 0.0, "OpB": 1.0},
+                "max_loglikelihood": -1.0,
+                "num_data": 5,
+                "samples": {"OpA": [0.0], "OpB": [1.0]},
+            }
+        )
+    )
+    (path / "input" / "runcard.yaml").write_text(
+        yaml.dump({"use_quad": use_quad, "actions_": [action]})
+    )
+    return path
+
+
+def test_parse_fits_accepts_plain_names(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "fits" / "fit_a")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits(["fit_a"])
+
+    assert result == [{"name": "fit_a", "path": fit, "label": None}]
+
+
+def test_parse_fits_accepts_mappings(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": "$A$"}]
+    )
+
+    assert result[0]["path"] == fit
+    assert result[0]["label"] == "$A$"
+
+
+def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
+    """A label is passed to matplotlib as given, backslashes and all."""
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    label = r"$\mathrm{FCC}\textnormal{-}\mathrm{ee\ descoped}$"
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": label}]
+    )
+
+    assert result[0]["label"] == label
+
+
+def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with pytest.raises(ConfigError, match="must be a string"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
+        )
+
+
+def test_parse_fits_requires_a_name(cfg):
+    with pytest.raises(ConfigError, match="requires a .name."):
+        cfg.parse_fits([{"label": "$A$"}])
+
+
+def test_parse_fits_missing_fit_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="not found"):
+        cfg.parse_fits([{"name": "does_not_exist", "path": str(tmp_path)}])
+
+
+def test_parse_fits_unknown_key_warns(cfg, tmp_path, caplog):
+    import logging
+
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "unknown_key": 1}]
+        )
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "my_fits" / "my_fit")
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
+    assert result[0]["path"] == fit
+
+
+def test_produce_fit_results_loads_every_fit(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "lin", use_quad=False)
+    _write_fit_dir(tmp_path / "quad", use_quad=True, action="run_ultranest_fit")
+    fits = cfg.parse_fits(
+        [
+            {"name": "lin", "path": str(tmp_path)},
+            {"name": "quad", "path": str(tmp_path), "label": "$Q$"},
+        ]
+    )
+
+    results = cfg.produce_fit_results(fits)
+
+    assert [r.fit_name for r in results] == ["lin", "quad"]
+    # metadata read from each fit's own runcard
+    assert [r.use_quad for r in results] == [False, True]
+    assert [r.fit_type for r in results] == ["analytic", "ultranest"]
+    # the label of the runcard entry, None when it has none
+    assert [r.label for r in results] == [None, "$Q$"]
+    assert results[0].free_parameters == ["OpA", "OpB"]
+
+
+def test_parse_corner_settings_keeps_known_keys(cfg):
+    settings = {
+        "confidence_level": [68, 95],
+        "dofs_show": ["OpA"],
+        "subplot_size": 3,
+        "double_solution": ["OpA"],
+    }
+
+    assert cfg.parse_corner_settings(settings) == settings
+
+
+def test_parse_corner_settings_drops_unknown_keys(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        result = cfg.parse_corner_settings({"confidence_level": 95, "bogus": 1})
+
+    assert result == {"confidence_level": 95}
+    assert any("bogus" in r.message for r in caplog.records)
+
+
+def test_parse_corner_settings_keeps_marker_toggles(cfg):
+    settings = {"show_sm": False, "show_best_fit": True}
+
+    assert cfg.parse_corner_settings(settings) == settings

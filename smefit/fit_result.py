@@ -21,9 +21,12 @@ import json
 import logging
 import pathlib
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Dict, List, Mapping, Optional
 
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 import yaml
 from rich import box
 from rich.console import Console
@@ -319,7 +322,13 @@ class Fit(FitResult):
         is also what it is loaded back under, and the coefficient name for a
         member of a :class:`FitResultGroup`. Falls back to ``fit_type`` for a
         fit that is not headed for a directory, e.g. one produced by calling a
-        fitting routine directly from a notebook.
+        fitting routine directly from a notebook. Used by plotting routines as
+        the default legend label and as the key of per-fit plot settings.
+    label : str or None
+        Legend label, from the ``label`` key of the fit's ``fits`` entry. It is
+        used verbatim, so it may be raw LaTeX; when unset, plotting routines
+        fall back to the LaTeX-escaped ``fit_name``. How the fit is presented in a
+        given plot, not a property of the fit itself.
     fit_type : str or None
         Which routine produced the fit — ``analytic``, ``hessian``,
         ``ultranest`` or ``blackjax_NS`` — from the fit action the runcard ran.
@@ -327,7 +336,8 @@ class Fit(FitResult):
     use_quad : bool
         Whether the fit included quadratic EFT corrections, from ``use_quad``
         in the runcard. Downstream consumers need it after the run: it is what
-        says whether the posterior can be expected to be Gaussian.
+        says whether the posterior can be expected to be Gaussian, so plotting
+        routines default to KDE contours when it is set.
     individual_fit : bool
         True for the summary of one-at-a-time individual fits, i.e. when the
         runcard ran a ``run_individual_*_fits`` action. Every coefficient was
@@ -337,6 +347,7 @@ class Fit(FitResult):
     """
 
     fit_name: Optional[str] = None
+    label: Optional[str] = None
     fit_type: Optional[str] = None
     use_quad: bool = False
     individual_fit: bool = False
@@ -346,6 +357,19 @@ class Fit(FitResult):
         # routine that produced it is then the only identity it has.
         if self.fit_name is None:
             self.fit_name = self.fit_type
+
+    @cached_property
+    def samples_frame(self) -> pd.DataFrame:
+        """Posterior samples as a float DataFrame, one column per coefficient.
+
+        The form every plotting routine consumes. Empty when the fit carries no
+        samples.
+        """
+        if self.samples is None:
+            return pd.DataFrame()
+        return pd.DataFrame(
+            {name: np.asarray(vals, dtype=float) for name, vals in self.samples.items()}
+        )
 
     # ------------------------------------------------------------------
     # I/O

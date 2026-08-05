@@ -240,6 +240,19 @@ def test_name_from_output_path(tmp_path):
     assert name_from_output_path(None) is None
 
 
+def test_samples_frame_columns_and_values():
+    fit = _make_fit(
+        samples={"OpA": jnp.array([1.0, 2.0]), "OpB": jnp.array([0.0, 1.0])}
+    )
+    frame = fit.samples_frame
+    assert list(frame.columns) == ["OpA", "OpB"]
+    assert frame["OpA"].tolist() == pytest.approx([1.0, 2.0])
+
+
+def test_samples_frame_empty_without_samples():
+    assert _make_fit(samples=None).samples_frame.empty
+
+
 def _write_runcard(path, use_quad=False, action="run_analytic_fit"):
     """The runcard copy a smefit run leaves in the fit directory."""
     (path / "input").mkdir(parents=True, exist_ok=True)

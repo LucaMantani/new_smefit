@@ -123,6 +123,47 @@ Which combination is legal depends on the coefficient kind (free / fixed /
 expression-constrained) — the invariants are enforced in
 `Coefficient.__post_init__` and spelled out in `coefficients.md`.
 
+### `corner_settings`
+
+Parse the settings of the corner (2D contours) plot.
+
+Options describing a single fit rather than the plot as a whole (``kde``,
+``double_solution``, ``labels``) take either one value applied to every
+fit or a dict keyed by the fit name.
+
+Keys
+----
+confidence_level : float or list of float, default 95
+    Confidence level in percent. A list of two values draws the first
+    one dashed and the second one filled.
+dofs_show : list of str, optional
+    Coefficients to display, all common ones by default.
+subplot_size : float, default 4
+    Size in inches of a single panel.
+kde : bool or dict, optional
+    Draw kernel density contours instead of Gaussian ellipses. Defaults
+    to the ``use_quad`` of each fit.
+double_solution : list or dict, optional
+    Coefficients with a double (disjoint) solution.
+labels : str or dict, optional
+    Legend label per fit, overriding the ``label`` of its ``fits``
+    entry. Defaults to that label, or to the fit name without one.
+show_sm : bool, default True
+    Mark the SM point at the origin.
+show_best_fit : bool, default False
+    Mark the best-fit point of every fit.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `confidence_level`
+- `dofs_show`
+- `double_solution`
+- `kde`
+- `labels`
+- `show_best_fit`
+- `show_sm`
+- `subplot_size`
+
 ### `data_path`
 
 Parse `data_path`, the commondata directory holding `<dataset>.yaml`.
@@ -147,6 +188,31 @@ report/Fisher aggregation rather than forwarded.
 
 A runcard may define `external_chi2` with no `datasets:` at all, in
 which case the fit runs on the external likelihoods alone.
+
+### `fits`
+
+Parse the list of previously run fits to be plotted.
+
+Each entry is the name of a fit, or a mapping
+
+    - name: my_fit                     # mandatory, the fit directory name
+      path: smefit_results/fits        # optional, where to look for it
+      label: '$\mathrm{My\ fit}$'      # optional, the legend label
+
+Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+downloaded from the server if it is not there yet. ``path`` is resolved
+through ``.config/paths.yaml`` like any other path.
+
+The name is how the fit is referred to everywhere downstream: it is the
+key of the per-fit plot settings, and the legend label when no ``label``
+is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+LaTeX (quote it in YAML to keep the backslashes).
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `label` — default: `(no default)`
+- `name`
+- `path` — default: `(no default)`
 
 ### `gradient_descent_settings`
 
@@ -293,6 +359,7 @@ which runcard keys each action ultimately needs.
 - `eft_model`(theory, coefficients, use_quad, rge_matrix) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.
 - `fit_covmat`(data, theory, use_t0, use_theory_covmat) — Produce the covariance matrix to be used in the fit.
+- `fit_results`(fits) — Produce the Fit of every fit to be plotted.
 - `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
 - `individual_coefficients`(coefficients, individual_fit_coefficient) — Produce a single-free-parameter coefficient group for individual fits.
 - `individual_eft_model`(theory, individual_coefficients, use_quad, rge_matrix) — Produce EFT model for a single-free-parameter individual fit.

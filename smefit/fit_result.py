@@ -65,31 +65,6 @@ def _parse_fit_action(action: str):
     return match["fit_type"], action.startswith("run_individual_")
 
 
-def _fit_runcard(path: pathlib.Path) -> Dict:
-    """The runcard a fit was run with, empty when it cannot be found.
-
-    A fit directory always keeps a copy of it in ``input/runcard.yaml``. It is
-    the authoritative record of how a fit was configured, so it is the only
-    source of that: ``fit_results.json`` holds the numbers a fit produced, not
-    the settings it was given.
-
-    A missing runcard is reported here, once, rather than by every accessor
-    that then falls back to its default.
-    """
-    runcard = path / "input" / "runcard.yaml"
-    if not runcard.exists():
-        log.warning(
-            "No input/runcard.yaml found for '%s': nothing is known about how "
-            "it was configured, so it is taken to be a linear, joint fit of "
-            "unknown type. Consumers that depend on it (e.g. the contour style "
-            "of plots) may need it set explicitly.",
-            path,
-        )
-        return {}
-    with runcard.open() as f:
-        return yaml.safe_load(f) or {}
-
-
 def _runcard_actions(config: Mapping) -> List[str]:
     """Action names listed under ``actions_``, without their arguments."""
     actions = config.get("actions_") or []
@@ -380,9 +355,10 @@ class Fit:
         property of the fit itself, so it comes from the runcard that loads the
         fit rather than from the fit directory.
     fit_runcard : dict
-        The runcard the fit was run with, as read from
-        ``input/runcard.yaml``. Empty when it cannot be found, so that the
-        properties below simply fall back to their defaults.
+        The runcard the fit was run with, read from ``input/runcard.yaml``.
+        :meth:`from_folder` requires it: a fit whose configuration is unknown
+        cannot be loaded. It defaults to empty only for a ``Fit`` built by
+        hand, in which case every property below falls back to its default.
     """
 
     fit_results: Union[FitResult, "FitResultGroup"]
@@ -417,8 +393,7 @@ class Fit:
         """Which routine produced the fit.
 
         ``analytic``, ``hessian``, ``ultranest`` or ``blackjax``, from the fit
-        action the runcard ran. None when the runcard cannot be found, or runs
-        no fit action at all.
+        action the runcard ran. None when it runs no fit action at all.
         """
         return self._fit_action[0]
 
@@ -446,8 +421,9 @@ class Fit:
             if parsed is not None:
                 return parsed
 
-        # An empty runcard has already been reported by _fit_runcard; warning
-        # again here would only repeat it.
+        # An empty runcard means a Fit built by hand rather than loaded — it
+        # was never given a runcard to run an action from, so there is nothing
+        # to report.
         if self.fit_runcard:
             log.warning(
                 "The runcard of '%s' runs no known fit action: its fit type is "
@@ -477,25 +453,42 @@ class Fit:
         ``label`` is how the caller chooses to present the fit; the directory
         knows nothing about it, so it is the one piece of metadata passed in
         rather than read back.
+
+        Raises
+        ------
+        FileNotFoundError
+            If either file is missing. Both are written by every smefit run, so
+            a directory without them is not a fit: either the run never
+            finished, or this is not a fit directory at all. Loading it half
+            way — numbers without the runcard that says how they were produced
+            — would only push the failure to whichever consumer needs the
+            metadata.
         """
         path = pathlib.Path(path)
+
+        # The numbers the fit produced.
         with (path / "fit_results.json").open() as f:
-            d = json.load(f)
+            fit_results_payload = json.load(f)
+
+        # How it was configured: the runcard is the authoritative record of
+        # that, and the only source of it.
+        with (path / "input" / "runcard.yaml").open() as f:
+            fit_runcard = yaml.safe_load(f) or {}
 
         # A summary records a chi2 per coefficient rather than a single joint
         # one: that is what tells the two payloads apart.
-        is_summary = isinstance(d.get("chi2"), dict)
+        is_summary = isinstance(fit_results_payload.get("chi2"), dict)
 
         return cls(
             fit_results=(
-                FitResultGroup(_individual_results(d))
+                FitResultGroup(_individual_results(fit_results_payload))
                 if is_summary
-                else FitResult.from_payload(d)
+                else FitResult.from_payload(fit_results_payload)
             ),
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,
-            fit_runcard=_fit_runcard(path),
+            fit_runcard=fit_runcard,
         )
 
 

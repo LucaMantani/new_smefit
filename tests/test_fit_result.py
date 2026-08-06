@@ -360,16 +360,20 @@ def test_a_joint_action_is_not_an_individual_fit(tmp_path):
     assert Fit.from_folder(out).individual_fit is False
 
 
-def test_metadata_without_a_runcard_warns_and_falls_back(tmp_path, caplog):
+def test_a_fit_without_a_runcard_cannot_be_loaded(tmp_path):
+    """Numbers alone are not a fit: how they were produced is required."""
     out = tmp_path / "no_runcard"
     _make_written_result().write(out)
 
-    recovered = Fit.from_folder(out)
+    with pytest.raises(FileNotFoundError, match="runcard.yaml"):
+        Fit.from_folder(out)
 
-    assert recovered.use_quad is False
-    assert recovered.fit_type is None
-    assert recovered.individual_fit is False
-    assert "No input/runcard.yaml" in caplog.text
+
+def test_a_fit_without_results_cannot_be_loaded(tmp_path):
+    out = _write_runcard(tmp_path / "no_results")
+
+    with pytest.raises(FileNotFoundError, match="fit_results.json"):
+        Fit.from_folder(out)
 
 
 def test_fit_from_folder_on_an_individual_fit_summary(tmp_path):
@@ -419,12 +423,14 @@ def test_an_individual_fit_keeps_every_coefficient_its_own_numbers(tmp_path):
     assert first.ndof == r1.ndof
 
 
-def test_a_summary_without_a_runcard_is_not_known_to_be_individual(tmp_path):
-    """The runcard action is the only thing that says a fit ran individually.
+def test_only_the_runcard_action_says_a_fit_ran_individually(tmp_path):
+    """The payload of a summary is never asked whether it is one.
 
-    The payload of a summary is never asked: nothing about how a fit was run is
-    written to or read from ``fit_results.json``.
+    Nothing about how a fit was run is written to or read from
+    ``fit_results.json``, so a summary payload under a joint runcard action is
+    read as a joint fit.
     """
+    _write_runcard(tmp_path, action="run_analytic_fit")
     r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
     r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
     FitResultGroup([r1, r2]).write_summary(tmp_path)

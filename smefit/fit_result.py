@@ -49,16 +49,20 @@ log = logging.getLogger(__name__)
 _FIT_ACTION_RE = re.compile(r"^run_(individual_)?(?P<fit_type>.+?)_fits?$")
 
 
-def _parse_fit_action(action: str):
-    """``(fit type, ran individually)`` for a fit action, ``None`` for anything else.
+def _parse_fit_action(action: str) -> Optional[Dict]:
+    """What a fit action's name says about the fit, ``None`` for anything else.
 
     Fit actions are named to a convention that spells out both which sampler
     they run and whether they drive it one coefficient at a time, so the name
     of the action a runcard ran is what says how a fit was produced::
 
-        run_analytic_fit              ->  ("analytic", False)
-        run_individual_blackjax_fits  ->  ("blackjax", True)
+        run_analytic_fit              ->  {"fit_type": "analytic", "is_individual_fit": False}
+        run_individual_blackjax_fits  ->  {"fit_type": "blackjax", "is_individual_fit": True}
         report                        ->  None
+
+    The keys name the :class:`Fit` properties they answer, so that what is
+    being read stays legible at every hop between here and them, with ``is_``
+    marking the one that is a flag.
 
     A name that matches the convention is looked up in
     :mod:`smefit.fit_actions` as well, so that an action which merely reads
@@ -69,7 +73,10 @@ def _parse_fit_action(action: str):
     match = _FIT_ACTION_RE.match(action)
     if match is None or not callable(getattr(fit_actions, action, None)):
         return None
-    return match["fit_type"], action.startswith("run_individual_")
+    return {
+        "fit_type": match["fit_type"],
+        "is_individual_fit": action.startswith("run_individual_"),
+    }
 
 
 def _runcard_actions(config: Mapping) -> List[str]:
@@ -98,8 +105,8 @@ def _runcard_actions(config: Mapping) -> List[str]:
     return names
 
 
-def _runcard_fit_action(config: Mapping):
-    """``(fit type, ran individually)`` of the fit a runcard ran.
+def _runcard_fit_action(config: Mapping) -> Optional[Dict]:
+    """What the fit action a runcard ran says about the fit.
 
     The first fit action of the list is the one that produced the fit: a
     runcard runs a single fit, whatever else it lists alongside it. Everything
@@ -435,7 +442,7 @@ class Fit:
         ``analytic``, ``hessian``, ``ultranest`` or ``blackjax``, from the fit
         action the runcard ran. None when it runs no fit action at all.
         """
-        return self._fit_action[0]
+        return self._fit_action["fit_type"]
 
     @property
     def individual_fit(self) -> bool:
@@ -446,17 +453,21 @@ class Fit:
         others held at their baseline, so the samples are independent 1D
         posteriors rather than a joint one — see :class:`FitResultGroup`.
         """
-        return self._fit_action[1]
+        return self._fit_action["is_individual_fit"]
 
     @cached_property
-    def _fit_action(self):
-        """``(fit type, ran individually)`` of the fit action the runcard ran.
+    def _fit_action(self) -> Dict:
+        """What the fit action the runcard ran says about this fit.
 
-        Cached: :attr:`fit_type` and :attr:`individual_fit` are two halves of
-        the same answer. A runcard that ran no fit action leaves both at their
-        default; :meth:`from_folder` is what reports that.
+        Keyed by the property that answers it, so that a property is one
+        lookup. Cached: :attr:`fit_type` and :attr:`individual_fit` are two
+        halves of the same answer. A runcard that ran no fit action leaves both
+        at their default; :meth:`from_folder` is what reports that.
         """
-        return _runcard_fit_action(self.fit_runcard) or (None, False)
+        return _runcard_fit_action(self.fit_runcard) or {
+            "fit_type": None,
+            "is_individual_fit": False,
+        }
 
     # ------------------------------------------------------------------
     # I/O
@@ -512,7 +523,7 @@ class Fit:
                 "left unset, and it is read as a joint fit.",
                 path.name,
             )
-        ran_individually = fit_action is not None and fit_action[1]
+        ran_individually = fit_action is not None and fit_action["is_individual_fit"]
 
         # The action decides how the payload is read; this only turns a
         # directory whose two files disagree into a clear error rather than a

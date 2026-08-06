@@ -18,17 +18,19 @@ Three classes live here:
   how it was run. It is built only by loading, never by a fitting routine, and
   it is what downstream consumers (plotting, reports) work with.
 
-New attributes describing a fit belong on :class:`Fit`, which is meant to grow;
-the result classes stay the minimal numerical record and own the
-``fit_results.json`` schemas on their own.
+Anything new describing how a fit was run belongs on :class:`Fit`, which is
+meant to grow, and as a property derived from the runcard it holds rather than
+as a field of its own — see its docstring. The result classes stay the minimal
+numerical record and own the ``fit_results.json`` schemas on their own.
 """
 
 import json
 import logging
 import pathlib
 import re
-from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional, Union
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 import jax.numpy as jnp
 import yaml
@@ -63,14 +65,27 @@ def _parse_fit_action(action: str):
     return match["fit_type"], action.startswith("run_individual_")
 
 
-def _fit_runcard(path: pathlib.Path) -> Optional[Dict]:
-    """The runcard a fit was run with, or None when it cannot be found.
+def _fit_runcard(path: pathlib.Path) -> Dict:
+    """The runcard a fit was run with, empty when it cannot be found.
 
-    A fit directory always keeps a copy of it in ``input/runcard.yaml``.
+    A fit directory always keeps a copy of it in ``input/runcard.yaml``. It is
+    the authoritative record of how a fit was configured, so it is the only
+    source of that: ``fit_results.json`` holds the numbers a fit produced, not
+    the settings it was given.
+
+    A missing runcard is reported here, once, rather than by every accessor
+    that then falls back to its default.
     """
     runcard = path / "input" / "runcard.yaml"
     if not runcard.exists():
-        return None
+        log.warning(
+            "No input/runcard.yaml found for '%s': nothing is known about how "
+            "it was configured, so it is taken to be a linear, joint fit of "
+            "unknown type. Consumers that depend on it (e.g. the contour style "
+            "of plots) may need it set explicitly.",
+            path,
+        )
+        return {}
     with runcard.open() as f:
         return yaml.safe_load(f) or {}
 
@@ -119,41 +134,6 @@ def _individual_results(d: Mapping) -> List[FitResult]:
             )
         )
     return results
-
-
-def _metadata_from_runcard(path: pathlib.Path):
-    """How a fit was configured, read from the runcard it was run with.
-
-    The runcard is the authoritative record of a fit's configuration, so it is
-    the only source of this metadata — ``fit_results.json`` holds the numbers a
-    fit produced, not the settings it was given.
-
-    Returns ``(use_quad, fit_type, ran_individually)``.
-    """
-    config = _fit_runcard(path)
-    if config is None:
-        log.warning(
-            "No input/runcard.yaml found for '%s': assuming a linear, joint "
-            "fit of unknown type. Consumers that depend on it (e.g. the "
-            "contour style of plots) may need it set explicitly.",
-            path,
-        )
-        return False, None, False
-
-    for action in _runcard_actions(config):
-        parsed = _parse_fit_action(action)
-        if parsed is not None:
-            fit_type, ran_individually = parsed
-            break
-    else:
-        log.warning(
-            "The runcard of '%s' runs no known fit action: its fit type is "
-            "left unset.",
-            path,
-        )
-        fit_type, ran_individually = None, False
-
-    return bool(config.get("use_quad", False)), fit_type, ran_individually
 
 
 def _format_prior(spec: Optional[Mapping]) -> str:
@@ -335,7 +315,7 @@ class FitResult:
         """Rebuild a FitResult from a decoded ``fit_results.json`` payload.
 
         Split out of :meth:`from_json` so that a reader which has already
-        inspected the payload — :meth:`Fit.from_json` — can hand it straight
+        inspected the payload — :meth:`Fit.from_folder` — can hand it straight
         over instead of decoding the file twice.
         """
         free_parameters = d["free_parameters"]
@@ -366,16 +346,22 @@ class FitResult:
 class Fit:
     """A fit that exists on disk: what it produced, and how it was run.
 
-    A ``Fit`` is built only by loading — :meth:`from_json` — never by a fitting
+    A ``Fit`` is built only by loading — :meth:`from_folder` — never by a fitting
     routine, which returns the bare :class:`FitResult` it computed and knows
     nothing of the directory it will be written to. This is the class to extend
     when a fit needs to carry something new about itself; ``FitResult`` stays
     the numerical record.
 
-    None of this metadata is serialised: a fit's numbers live in
-    ``fit_results.json``, while how it was configured is read back from the
-    runcard it was run with (``input/runcard.yaml`` in the fit directory), the
-    authoritative record of that.
+    How the fit was configured is held as the whole runcard it was run with
+    (:attr:`fit_runcard`), never copied out key by key into fields of its own.
+    Everything derived from it — :attr:`use_quad`, :attr:`fit_type`, … — is a
+    property computed on demand, so a consumer that needs something new about a
+    fit gets a new property here and no signature anywhere changes. Reach for
+    :meth:`setting` for a runcard key that has no property yet.
+
+    None of this is serialised: a fit's numbers live in ``fit_results.json``,
+    while how it was configured is read back from ``input/runcard.yaml`` in the
+    fit directory, the authoritative record of that.
 
     Attributes
     ----------
@@ -393,36 +379,94 @@ class Fit:
         to ``fit_name``. How the fit is presented in a given plot, not a
         property of the fit itself, so it comes from the runcard that loads the
         fit rather than from the fit directory.
-    fit_type : str or None
-        Which routine produced the fit — ``analytic``, ``hessian``,
-        ``ultranest`` or ``blackjax`` — from the fit action the runcard ran.
-        None when the runcard cannot be found.
-    use_quad : bool
-        Whether the fit included quadratic EFT corrections, from ``use_quad``
-        in the runcard. Downstream consumers need it after the run: it is what
-        says whether the posterior can be expected to be Gaussian.
-    individual_fit : bool
-        True for the summary of one-at-a-time individual fits, i.e. when the
-        runcard ran a ``run_individual_*_fits`` action — the only thing that
-        says so. Every coefficient was then fitted with the others held at
-        their baseline, so the samples are independent 1D posteriors rather
-        than a joint one — see :class:`FitResultGroup`.
+    fit_runcard : dict
+        The runcard the fit was run with, as read from
+        ``input/runcard.yaml``. Empty when it cannot be found, so that the
+        properties below simply fall back to their defaults.
     """
 
     fit_results: Union[FitResult, "FitResultGroup"]
     fit_name: str
     label: Optional[str] = None
-    fit_type: Optional[str] = None
-    use_quad: bool = False
-    individual_fit: bool = False
+    fit_runcard: Dict = field(default_factory=dict)
+
+    # ------------------------------------------------------------------
+    # How the fit was configured — derived from the runcard
+    # ------------------------------------------------------------------
+
+    def setting(self, key: str, default: Any = None) -> Any:
+        """The value of a runcard key, or *default* when it is not set.
+
+        The escape hatch for a setting that has no property of its own (yet):
+        it keeps consumers from reaching into :attr:`fit_runcard` directly, so
+        that giving the key a property later changes nothing for them.
+        """
+        return self.fit_runcard.get(key, default)
+
+    @property
+    def use_quad(self) -> bool:
+        """Whether the fit included quadratic EFT corrections.
+
+        Downstream consumers need it after the run: it is what says whether the
+        posterior can be expected to be Gaussian.
+        """
+        return bool(self.setting("use_quad", False))
+
+    @property
+    def fit_type(self) -> Optional[str]:
+        """Which routine produced the fit.
+
+        ``analytic``, ``hessian``, ``ultranest`` or ``blackjax``, from the fit
+        action the runcard ran. None when the runcard cannot be found, or runs
+        no fit action at all.
+        """
+        return self._fit_action[0]
+
+    @property
+    def individual_fit(self) -> bool:
+        """True for the summary of one-at-a-time individual fits.
+
+        That is, when the runcard ran a ``run_individual_*_fits`` action — the
+        only thing that says so. Every coefficient was then fitted with the
+        others held at their baseline, so the samples are independent 1D
+        posteriors rather than a joint one — see :class:`FitResultGroup`.
+        """
+        return self._fit_action[1]
+
+    @cached_property
+    def _fit_action(self):
+        """``(fit type, ran individually)`` of the fit action the runcard ran.
+
+        Cached: :attr:`fit_type` and :attr:`individual_fit` are two halves of
+        the same answer, and a runcard that runs no fit action should say so
+        once rather than at every lookup.
+        """
+        for action in _runcard_actions(self.fit_runcard):
+            parsed = _parse_fit_action(action)
+            if parsed is not None:
+                return parsed
+
+        # An empty runcard has already been reported by _fit_runcard; warning
+        # again here would only repeat it.
+        if self.fit_runcard:
+            log.warning(
+                "The runcard of '%s' runs no known fit action: its fit type is "
+                "left unset.",
+                self.fit_name,
+            )
+        return None, False
 
     # ------------------------------------------------------------------
     # I/O
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_json(cls, path, label: Optional[str] = None) -> "Fit":
-        """Load a Fit from a directory containing ``fit_results.json``.
+    def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
+        """Load a Fit from a fit directory.
+
+        The whole directory is read, not just one file of it: the numbers come
+        from ``fit_results.json`` and how the fit was run from
+        ``input/runcard.yaml``.
 
         Both payloads written by this module are accepted: the standard one
         from :meth:`FitResult.write` becomes a :class:`FitResult`, and the
@@ -438,8 +482,6 @@ class Fit:
         with (path / "fit_results.json").open() as f:
             d = json.load(f)
 
-        use_quad, fit_type, ran_individually = _metadata_from_runcard(path)
-
         # A summary records a chi2 per coefficient rather than a single joint
         # one: that is what tells the two payloads apart.
         is_summary = isinstance(d.get("chi2"), dict)
@@ -453,9 +495,7 @@ class Fit:
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,
-            fit_type=fit_type,
-            use_quad=use_quad,
-            individual_fit=ran_individually,
+            fit_runcard=_fit_runcard(path),
         )
 
 

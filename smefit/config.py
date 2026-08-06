@@ -758,7 +758,7 @@ class smefitConfig(Config):
             try:
                 # A label is how the runcard chooses to present the fit, not
                 # something the fit directory knows about.
-                fit = Fit.from_json(entry["path"], label=entry["label"])
+                fit = Fit.from_folder(entry["path"], label=entry["label"])
             except (KeyError, OSError, ValueError) as e:
                 raise ConfigError(
                     f"Could not load fit '{entry['name']}' from {entry['path']}: {e}"

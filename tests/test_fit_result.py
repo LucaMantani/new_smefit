@@ -231,9 +231,9 @@ def test_label_is_given_by_the_caller_not_the_fit_directory(tmp_path):
     out = _write_runcard(tmp_path / "my_fit")
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).label is None
+    assert Fit.from_folder(out).label is None
     assert (
-        Fit.from_json(out, label=r"$\mathrm{My\ fit}$").label == r"$\mathrm{My\ fit}$"
+        Fit.from_folder(out, label=r"$\mathrm{My\ fit}$").label == r"$\mathrm{My\ fit}$"
     )
 
 
@@ -260,13 +260,13 @@ def test_written_payload_carries_no_metadata(tmp_path):
     assert payload["max_loglikelihood"] == pytest.approx(-3.0)
 
 
-def test_fit_from_json_roundtrip(tmp_path):
+def test_fit_from_folder_roundtrip(tmp_path):
     out = _write_runcard(tmp_path / "my_fit", use_quad=True)
     _make_written_result(
         samples={"OpA": jnp.array([1.0, 2.0]), "OpB": jnp.array([0.0, 1.0])}
     ).write(out)
 
-    recovered = Fit.from_json(out)
+    recovered = Fit.from_folder(out)
 
     assert isinstance(recovered, Fit)
     # the directory name is the identity of a fit on disk
@@ -286,7 +286,7 @@ def test_use_quad_comes_from_the_runcard(tmp_path, use_quad):
     out = _write_runcard(tmp_path / "my_fit", use_quad=use_quad)
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).use_quad is use_quad
+    assert Fit.from_folder(out).use_quad is use_quad
 
 
 def test_use_quad_ignores_a_stale_payload_entry(tmp_path):
@@ -298,7 +298,7 @@ def test_use_quad_ignores_a_stale_payload_entry(tmp_path):
     payload["use_quad"] = False
     (out / "fit_results.json").write_text(json.dumps(payload))
 
-    assert Fit.from_json(out).use_quad is True
+    assert Fit.from_folder(out).use_quad is True
 
 
 @pytest.mark.parametrize(
@@ -316,14 +316,14 @@ def test_fit_type_comes_from_the_runcard_action(tmp_path, action, fit_type):
     out = _write_runcard(tmp_path / "my_fit", action=action)
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).fit_type == fit_type
+    assert Fit.from_folder(out).fit_type == fit_type
 
 
 def test_fit_type_ignores_the_arguments_of_an_action(tmp_path):
     out = _write_runcard(tmp_path / "my_fit", action="run_analytic_fit(main=True)")
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).fit_type == "analytic"
+    assert Fit.from_folder(out).fit_type == "analytic"
 
 
 def test_fit_type_looks_past_a_nested_namespace_entry(tmp_path):
@@ -335,14 +335,14 @@ def test_fit_type_looks_past_a_nested_namespace_entry(tmp_path):
     )
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).fit_type == "hessian"
+    assert Fit.from_folder(out).fit_type == "hessian"
 
 
 def test_fit_type_is_unset_when_no_fit_action_ran(tmp_path, caplog):
     out = _write_runcard(tmp_path / "my_fit", action="report")
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).fit_type is None
+    assert Fit.from_folder(out).fit_type is None
     assert "no known fit action" in caplog.text
 
 
@@ -350,21 +350,21 @@ def test_individual_fit_comes_from_the_runcard_action(tmp_path):
     out = _write_runcard(tmp_path / "my_fit", action="run_individual_ultranest_fits")
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).individual_fit is True
+    assert Fit.from_folder(out).individual_fit is True
 
 
 def test_a_joint_action_is_not_an_individual_fit(tmp_path):
     out = _write_runcard(tmp_path / "my_fit", action="run_ultranest_fit")
     _make_written_result().write(out)
 
-    assert Fit.from_json(out).individual_fit is False
+    assert Fit.from_folder(out).individual_fit is False
 
 
 def test_metadata_without_a_runcard_warns_and_falls_back(tmp_path, caplog):
     out = tmp_path / "no_runcard"
     _make_written_result().write(out)
 
-    recovered = Fit.from_json(out)
+    recovered = Fit.from_folder(out)
 
     assert recovered.use_quad is False
     assert recovered.fit_type is None
@@ -372,7 +372,7 @@ def test_metadata_without_a_runcard_warns_and_falls_back(tmp_path, caplog):
     assert "No input/runcard.yaml" in caplog.text
 
 
-def test_fit_from_json_on_an_individual_fit_summary(tmp_path):
+def test_fit_from_folder_on_an_individual_fit_summary(tmp_path):
     """A summary is read back as the group of single-parameter fits it is."""
     _write_runcard(tmp_path, action="run_individual_analytic_fits")
     r1 = _make_individual_result(
@@ -383,7 +383,7 @@ def test_fit_from_json_on_an_individual_fit_summary(tmp_path):
     )
     FitResultGroup([r1, r2]).write_summary(tmp_path)
 
-    recovered = Fit.from_json(tmp_path)
+    recovered = Fit.from_folder(tmp_path)
 
     assert recovered.individual_fit is True
     assert recovered.fit_type == "analytic"
@@ -407,7 +407,7 @@ def test_an_individual_fit_keeps_every_coefficient_its_own_numbers(tmp_path):
     r2.logz = -9.0
     FitResultGroup([r1, r2]).write_summary(tmp_path)
 
-    first, second = Fit.from_json(tmp_path).fit_results.results
+    first, second = Fit.from_folder(tmp_path).fit_results.results
 
     assert first.chi2_val == pytest.approx(6.0)
     assert second.chi2_val == pytest.approx(14.0)
@@ -429,4 +429,4 @@ def test_a_summary_without_a_runcard_is_not_known_to_be_individual(tmp_path):
     r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
     FitResultGroup([r1, r2]).write_summary(tmp_path)
 
-    assert Fit.from_json(tmp_path).individual_fit is False
+    assert Fit.from_folder(tmp_path).individual_fit is False

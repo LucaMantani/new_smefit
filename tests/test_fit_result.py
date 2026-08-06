@@ -237,6 +237,26 @@ def test_label_is_given_by_the_caller_not_the_fit_directory(tmp_path):
     )
 
 
+def _write_summary(path):
+    """The ``fit_results.json`` a ``run_individual_*_fits`` run leaves behind."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
+    FitResultGroup([r1, r2]).write_summary(path)
+    return path
+
+
+def _write_payload_of(action, path):
+    """The payload *action* would have written: a summary when it ran individually.
+
+    A fit directory whose runcard and results disagree is rejected, so a test
+    that is not about that must write the payload its action implies.
+    """
+    if action.startswith("run_individual_"):
+        return _write_summary(path)
+    _make_written_result().write(path)
+    return path
+
+
 def _write_runcard(path, use_quad=False, action="run_analytic_fit"):
     """The runcard copy a smefit run leaves in the fit directory."""
     (path / "input").mkdir(parents=True, exist_ok=True)
@@ -314,7 +334,7 @@ def test_use_quad_ignores_a_stale_payload_entry(tmp_path):
 )
 def test_fit_type_comes_from_the_runcard_action(tmp_path, action, fit_type):
     out = _write_runcard(tmp_path / "my_fit", action=action)
-    _make_written_result().write(out)
+    _write_payload_of(action, out)
 
     assert Fit.from_folder(out).fit_type == fit_type
 
@@ -348,7 +368,7 @@ def test_fit_type_is_unset_when_no_fit_action_ran(tmp_path, caplog):
 
 def test_individual_fit_comes_from_the_runcard_action(tmp_path):
     out = _write_runcard(tmp_path / "my_fit", action="run_individual_ultranest_fits")
-    _make_written_result().write(out)
+    _write_summary(out)
 
     assert Fit.from_folder(out).individual_fit is True
 
@@ -423,16 +443,22 @@ def test_an_individual_fit_keeps_every_coefficient_its_own_numbers(tmp_path):
     assert first.ndof == r1.ndof
 
 
-def test_only_the_runcard_action_says_a_fit_ran_individually(tmp_path):
-    """The payload of a summary is never asked whether it is one.
+def test_a_summary_payload_under_a_joint_action_is_rejected(tmp_path):
+    """The action says how to read the payload; a payload that disagrees is an error.
 
-    Nothing about how a fit was run is written to or read from
-    ``fit_results.json``, so a summary payload under a joint runcard action is
-    read as a joint fit.
+    Nothing about how a fit was run is written to ``fit_results.json``, so its
+    shape is never what decides — it is only checked against the action.
     """
     _write_runcard(tmp_path, action="run_analytic_fit")
-    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
-    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
-    FitResultGroup([r1, r2]).write_summary(tmp_path)
+    _write_summary(tmp_path)
 
-    assert Fit.from_folder(tmp_path).individual_fit is False
+    with pytest.raises(ValueError, match="inconsistent"):
+        Fit.from_folder(tmp_path)
+
+
+def test_a_joint_payload_under_an_individual_action_is_rejected(tmp_path):
+    _write_runcard(tmp_path, action="run_individual_analytic_fits")
+    _make_written_result().write(tmp_path)
+
+    with pytest.raises(ValueError, match="inconsistent"):
+        Fit.from_folder(tmp_path)

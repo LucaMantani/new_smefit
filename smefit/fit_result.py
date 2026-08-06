@@ -52,10 +52,17 @@ _FIT_ACTION_RE = re.compile(r"^run_(individual_)?(?P<fit_type>.+?)_fits?$")
 def _parse_fit_action(action: str):
     """``(fit type, ran individually)`` for a fit action, ``None`` for anything else.
 
-    The action a runcard ran is what says which sampler produced a fit and how
-    it was driven, and its name spells both out. It is looked up in
-    :mod:`smefit.fit_actions` too, so that an action which merely reads like a
-    fit is not taken for one.
+    Fit actions are named to a convention that spells out both which sampler
+    they run and whether they drive it one coefficient at a time, so the name
+    of the action a runcard ran is what says how a fit was produced::
+
+        run_analytic_fit              ->  ("analytic", False)
+        run_individual_blackjax_fits  ->  ("blackjax", True)
+        report                        ->  None
+
+    A name that matches the convention is looked up in
+    :mod:`smefit.fit_actions` as well, so that an action which merely reads
+    like a fit is not taken for one.
     """
     from smefit import fit_actions  # imported here: fit_actions imports this module
 
@@ -66,7 +73,21 @@ def _parse_fit_action(action: str):
 
 
 def _runcard_actions(config: Mapping) -> List[str]:
-    """Action names listed under ``actions_``, without their arguments."""
+    """The names of the actions a runcard's ``actions_`` list runs.
+
+    Entries come in three shapes, and this reduces them to bare names::
+
+        actions_:
+          - run_analytic_fit      # a plain action    ->  "run_analytic_fit"
+          - report(main=True)     # with arguments    ->  "report"
+          - scan:                 # a namespace, i.e. a mapping of actions
+              - plot_chi2         #                   ->  skipped
+
+    Arguments are dropped: they configure an action, they do not change which
+    one ran. A namespace entry is a mapping rather than an action itself, so it
+    is stepped over and not descended into — an action nested under one is not
+    reported here.
+    """
     actions = config.get("actions_") or []
     names = []
     for action in actions:
@@ -75,6 +96,25 @@ def _runcard_actions(config: Mapping) -> List[str]:
             continue
         names.append(action.split("(", 1)[0].strip())
     return names
+
+
+def _runcard_fit_action(config: Mapping):
+    """``(fit type, ran individually)`` of the fit a runcard ran.
+
+    The first fit action of the list is the one that produced the fit: a
+    runcard runs a single fit, whatever else it lists alongside it. Everything
+    known about how a fit was produced is read from that one name, through
+    :func:`_parse_fit_action`.
+
+    None when the runcard runs no fit action at all — a report-only runcard,
+    say. Saying so is left to the caller, so that it is said once, when the fit
+    is loaded, rather than at every lookup: see :meth:`Fit.from_folder`.
+    """
+    for action in _runcard_actions(config):
+        parsed = _parse_fit_action(action)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _individual_results(d: Mapping) -> List[FitResult]:
@@ -413,24 +453,10 @@ class Fit:
         """``(fit type, ran individually)`` of the fit action the runcard ran.
 
         Cached: :attr:`fit_type` and :attr:`individual_fit` are two halves of
-        the same answer, and a runcard that runs no fit action should say so
-        once rather than at every lookup.
+        the same answer. A runcard that ran no fit action leaves both at their
+        default; :meth:`from_folder` is what reports that.
         """
-        for action in _runcard_actions(self.fit_runcard):
-            parsed = _parse_fit_action(action)
-            if parsed is not None:
-                return parsed
-
-        # An empty runcard means a Fit built by hand rather than loaded — it
-        # was never given a runcard to run an action from, so there is nothing
-        # to report.
-        if self.fit_runcard:
-            log.warning(
-                "The runcard of '%s' runs no known fit action: its fit type is "
-                "left unset.",
-                self.fit_name,
-            )
-        return None, False
+        return _runcard_fit_action(self.fit_runcard) or (None, False)
 
     # ------------------------------------------------------------------
     # I/O
@@ -444,11 +470,12 @@ class Fit:
         from ``fit_results.json`` and how the fit was run from
         ``input/runcard.yaml``.
 
-        Both payloads written by this module are accepted: the standard one
-        from :meth:`FitResult.write` becomes a :class:`FitResult`, and the
-        summary of individual fits from :meth:`FitResultGroup.write_summary`
-        becomes the :class:`FitResultGroup` it was aggregated from, so that
-        every coefficient keeps its own chi2 and evidence.
+        Both payloads written by this module are accepted, and the runcard
+        action says which one to expect: a ``run_individual_*_fits`` action
+        wrote the summary of :meth:`FitResultGroup.write_summary`, which is
+        read back as the :class:`FitResultGroup` it was aggregated from so that
+        every coefficient keeps its own chi2 and evidence; any other fit action
+        wrote the standard payload of :meth:`FitResult.write`.
 
         ``label`` is how the caller chooses to present the fit; the directory
         knows nothing about it, so it is the one piece of metadata passed in
@@ -475,14 +502,37 @@ class Fit:
         with (path / "input" / "runcard.yaml").open() as f:
             fit_runcard = yaml.safe_load(f) or {}
 
-        # A summary records a chi2 per coefficient rather than a single joint
-        # one: that is what tells the two payloads apart.
-        is_summary = isinstance(fit_results_payload.get("chi2"), dict)
+        # Whether a fit was run one coefficient at a time is something about
+        # how it was run, so the action it ran is what says so — never the
+        # shape of the payload, which is only a consequence of it.
+        fit_action = _runcard_fit_action(fit_runcard)
+        if fit_action is None:
+            log.warning(
+                "The runcard of '%s' runs no known fit action: its fit type is "
+                "left unset, and it is read as a joint fit.",
+                path.name,
+            )
+        ran_individually = fit_action is not None and fit_action[1]
+
+        # The action decides how the payload is read; this only turns a
+        # directory whose two files disagree into a clear error rather than a
+        # confusing one from the reader that is picked.
+        payload_is_summary = isinstance(fit_results_payload.get("chi2"), dict)
+        if payload_is_summary != ran_individually:
+            wrote, holds = (
+                ("an individual fit", "a single joint chi2")
+                if ran_individually
+                else ("a joint fit", "a chi2 per coefficient")
+            )
+            raise ValueError(
+                f"'{path}' is inconsistent: its runcard ran {wrote}, but its "
+                f"fit_results.json holds {holds}."
+            )
 
         return cls(
             fit_results=(
                 FitResultGroup(_individual_results(fit_results_payload))
-                if is_summary
+                if ran_individually
                 else FitResult.from_payload(fit_results_payload)
             ),
             # The directory name is the identity users refer to in runcards.

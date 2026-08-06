@@ -44,6 +44,40 @@ from smefit.whitening import WhitenTransform
 log = logging.getLogger(__name__)
 
 
+def _load_json(path) -> Dict:
+    """Decode a JSON file, naming it when it will not parse.
+
+    A decoder locates a fault *within* a file but never names the file itself,
+    and a fit is read from two of them — so "line 1 column 2" on its own says
+    nothing about which one to go and look at. Every reader here goes through
+    this, so that reading a fit fails the same way wherever it is read from.
+
+    A missing file raises :class:`FileNotFoundError` untouched: that is not a
+    malformed fit, it is an absent one.
+    """
+    path = pathlib.Path(path)
+    try:
+        with path.open() as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"'{path}' is not valid JSON: {e}") from e
+
+
+def _load_yaml(path) -> Dict:
+    """Decode a YAML file, naming it when it will not parse.
+
+    The counterpart of :func:`_load_json`, and it fails the same way. An empty
+    file reads as an empty mapping: a runcard that sets nothing is still a
+    runcard, and every :class:`Fit` property falls back to its default.
+    """
+    path = pathlib.Path(path)
+    try:
+        with path.open() as f:
+            return yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"'{path}' is not valid YAML: {e}") from e
+
+
 # Fit actions are named "run_<fit type>_fit", or "run_individual_<fit
 # type>_fits" when the fit is run one coefficient at a time.
 _FIT_ACTION_RE = re.compile(r"^run_(individual_)?(?P<fit_type>.+?)_fits?$")
@@ -293,10 +327,7 @@ class FitResult:
     @classmethod
     def from_json(cls, path) -> "FitResult":
         """Load a FitResult from a directory containing fit_results.json."""
-        p = pathlib.Path(path) / "fit_results.json"
-        with p.open() as f:
-            d = json.load(f)
-        return cls.from_payload(d)
+        return cls.from_payload(_load_json(pathlib.Path(path) / "fit_results.json"))
 
     @classmethod
     def from_payload(cls, d: Mapping) -> "FitResult":
@@ -431,39 +462,43 @@ class FitResultGroup:
         with out_file.open("w") as f:
             json.dump(payload, f, indent=2)
 
+    @classmethod
+    def from_payload(cls, d: Mapping) -> "FitResultGroup":
+        """Rebuild the group a summary payload was aggregated from.
 
-def _individual_results(d: Mapping) -> List["FitResult"]:
-    """The single-coefficient results a summary payload was aggregated from.
+        The counterpart of :meth:`write_summary`, and the reader of the schema
+        that method owns — so the two stay side by side, as
+        :meth:`FitResult.write` and :meth:`FitResult.from_payload` do.
 
-    :meth:`FitResultGroup.write_summary` records per coefficient everything a
-    :class:`FitResult` needs, so each coefficient's slice of the summary is
-    itself a single-fit payload and is read back through
-    :meth:`FitResult.from_payload` — the one place that knows that schema.
-    """
-    chi2 = d.get("chi2") or {}
-    logz = d.get("logz") or {}
-    samples = d.get("samples") or {}
-    prior_specs = d.get("prior_specs") or {}
+        :meth:`write_summary` records per coefficient everything a
+        :class:`FitResult` needs, so each coefficient's slice of the summary is
+        itself a single-fit payload and is read back through
+        :meth:`FitResult.from_payload` — the one place that knows that schema.
+        """
+        chi2 = d.get("chi2") or {}
+        logz = d.get("logz") or {}
+        samples = d.get("samples") or {}
+        prior_specs = d.get("prior_specs") or {}
 
-    results = []
-    for name in d["free_parameters"]:
-        spec = prior_specs.get(name)
-        results.append(
-            FitResult.from_payload(
-                {
-                    "free_parameters": [name],
-                    "best_fit_point": {name: d["best_fit_point"][name]},
-                    # the likelihood of this coefficient's own fit
-                    "max_loglikelihood": -0.5 * float(chi2[name]),
-                    "num_data": d["num_data"],
-                    "logz": logz.get(name),
-                    "samples": {name: samples[name]} if name in samples else None,
-                    "prior_specs": {name: spec} if spec is not None else None,
-                    "whitening_active": d.get("whitening_active", False),
-                }
+        results = []
+        for name in d["free_parameters"]:
+            spec = prior_specs.get(name)
+            results.append(
+                FitResult.from_payload(
+                    {
+                        "free_parameters": [name],
+                        "best_fit_point": {name: d["best_fit_point"][name]},
+                        # the likelihood of this coefficient's own fit
+                        "max_loglikelihood": -0.5 * float(chi2[name]),
+                        "num_data": d["num_data"],
+                        "logz": logz.get(name),
+                        "samples": {name: samples[name]} if name in samples else None,
+                        "prior_specs": {name: spec} if spec is not None else None,
+                        "whitening_active": d.get("whitening_active", False),
+                    }
+                )
             )
-        )
-    return results
+        return cls(results)
 
 
 @dataclass
@@ -606,33 +641,17 @@ class Fit:
         ValueError
             If either file is present but cannot be read as a fit: unparsable
             JSON or YAML, or a runcard and a payload that disagree about
-            whether the fit was run one coefficient at a time. Both decoders
-            are caught here rather than left to the caller, so that reading a
-            fit has one failure type whichever file is at fault, and so that
-            the message names the file — see the comment below.
+            whether the fit was run one coefficient at a time. Reading a fit
+            fails the same way whichever of its files is at fault; naming that
+            file is left to :func:`_load_json` and :func:`_load_yaml`.
         """
         path = pathlib.Path(path)
 
-        # Two files are read below, so a parse error says which one failed:
-        # the decoder's own message locates the fault within a file, never the
-        # file itself, and "line 1 column 2" of an unnamed one helps nobody.
-        results_file = path / "fit_results.json"
-        runcard_file = path / "input" / "runcard.yaml"
-
-        # The numbers the fit produced.
-        try:
-            with results_file.open() as f:
-                fit_results_payload = json.load(f)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"'{results_file}' is not valid JSON: {e}") from e
-
-        # How it was configured: the runcard is the authoritative record of
-        # that, and the only source of it.
-        try:
-            with runcard_file.open() as f:
-                fit_runcard = yaml.safe_load(f) or {}
-        except yaml.YAMLError as e:
-            raise ValueError(f"'{runcard_file}' is not valid YAML: {e}") from e
+        # The numbers the fit produced, and — from the runcard, the
+        # authoritative record of it and the only source — how it was
+        # configured. Each is decoded once and dispatched on below.
+        fit_results_payload = _load_json(path / "fit_results.json")
+        fit_runcard = _load_yaml(path / "input" / "runcard.yaml")
 
         # Whether a fit was run one coefficient at a time is something about
         # how it was run, so the action it ran is what says so — never the
@@ -661,12 +680,11 @@ class Fit:
                 f"fit_results.json holds {holds}."
             )
 
+        # Each class reads the schema it writes; the action picks which.
+        reader = FitResultGroup if ran_individually else FitResult
+
         return cls(
-            fit_results=(
-                FitResultGroup(_individual_results(fit_results_payload))
-                if ran_individually
-                else FitResult.from_payload(fit_results_payload)
-            ),
+            fit_results=reader.from_payload(fit_results_payload),
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,

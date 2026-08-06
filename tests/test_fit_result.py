@@ -128,6 +128,15 @@ def test_write_json_roundtrip(tmp_path):
     assert payload["samples"]["OpA"] == pytest.approx([1.0, 2.0, 3.0])
 
 
+def test_from_json_names_an_unparsable_file(tmp_path):
+    """from_json is also called on its own, by smefit.utils for a Bayesian
+    update, so it must fail as informatively as Fit.from_folder does."""
+    (tmp_path / "fit_results.json").write_text("{not json")
+
+    with pytest.raises(ValueError, match=r"fit_results\.json' is not valid JSON"):
+        FitResult.from_json(tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # FitResultGroup.write_summary
 # ---------------------------------------------------------------------------
@@ -188,6 +197,26 @@ def test_write_summary_metadata(tmp_path):
     assert payload["num_data"] == 10
     assert payload["chi2"]["OpA"] == pytest.approx(6.0)
     assert payload["chi2"]["OpB"] == pytest.approx(14.0)
+
+
+def test_write_summary_round_trips_through_from_payload(tmp_path):
+    """The group reads back the schema it writes, without going through Fit."""
+    r1 = _make_individual_result(
+        "OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2], max_loglikelihood=-3.0
+    )
+    r2 = _make_individual_result(
+        "OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2], max_loglikelihood=-7.0
+    )
+    FitResultGroup([r1, r2]).write_summary(tmp_path)
+
+    with (tmp_path / "fit_results.json").open() as f:
+        payload = json.load(f)
+    recovered = FitResultGroup.from_payload(payload)
+
+    assert isinstance(recovered, FitResultGroup)
+    assert [r.free_parameters[0] for r in recovered.results] == ["OpA", "OpB"]
+    assert [r.chi2_val for r in recovered.results] == pytest.approx([6.0, 14.0])
+    assert recovered.results[0].best_fit_point["OpA"] == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------

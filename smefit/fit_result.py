@@ -603,17 +603,36 @@ class Fit:
             way — numbers without the runcard that says how they were produced
             — would only push the failure to whichever consumer needs the
             metadata.
+        ValueError
+            If either file is present but cannot be read as a fit: unparsable
+            JSON or YAML, or a runcard and a payload that disagree about
+            whether the fit was run one coefficient at a time. Both decoders
+            are caught here rather than left to the caller, so that reading a
+            fit has one failure type whichever file is at fault, and so that
+            the message names the file — see the comment below.
         """
         path = pathlib.Path(path)
 
+        # Two files are read below, so a parse error says which one failed:
+        # the decoder's own message locates the fault within a file, never the
+        # file itself, and "line 1 column 2" of an unnamed one helps nobody.
+        results_file = path / "fit_results.json"
+        runcard_file = path / "input" / "runcard.yaml"
+
         # The numbers the fit produced.
-        with (path / "fit_results.json").open() as f:
-            fit_results_payload = json.load(f)
+        try:
+            with results_file.open() as f:
+                fit_results_payload = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"'{results_file}' is not valid JSON: {e}") from e
 
         # How it was configured: the runcard is the authoritative record of
         # that, and the only source of it.
-        with (path / "input" / "runcard.yaml").open() as f:
-            fit_runcard = yaml.safe_load(f) or {}
+        try:
+            with runcard_file.open() as f:
+                fit_runcard = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"'{runcard_file}' is not valid YAML: {e}") from e
 
         # Whether a fit was run one coefficient at a time is something about
         # how it was run, so the action it ran is what says so — never the

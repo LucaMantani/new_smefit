@@ -396,6 +396,30 @@ def test_a_fit_without_results_cannot_be_loaded(tmp_path):
         Fit.from_folder(out)
 
 
+def test_an_unparsable_payload_names_the_file_at_fault(tmp_path):
+    """A decoder locates the fault within a file; from_folder names the file.
+
+    Two are read, so a bare "line 1 column 2" would not say which.
+    """
+    out = _write_runcard(tmp_path / "bad_json")
+    (out / "fit_results.json").write_text("{not json")
+
+    with pytest.raises(ValueError, match=r"fit_results\.json' is not valid JSON"):
+        Fit.from_folder(out)
+
+
+def test_an_unparsable_runcard_names_the_file_at_fault(tmp_path):
+    """A truncated runcard is a broken fit directory, not a PyYAML traceback."""
+    out = _write_runcard(tmp_path / "bad_yaml")
+    _make_written_result().write(out)
+    (out / "input" / "runcard.yaml").write_text(
+        "actions_: [run_analytic_fit\n bad: : :"
+    )
+
+    with pytest.raises(ValueError, match=r"runcard\.yaml' is not valid YAML"):
+        Fit.from_folder(out)
+
+
 def test_fit_from_folder_on_an_individual_fit_summary(tmp_path):
     """A summary is read back as the group of single-parameter fits it is."""
     _write_runcard(tmp_path, action="run_individual_analytic_fits")

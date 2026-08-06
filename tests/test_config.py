@@ -942,3 +942,21 @@ def test_produce_fit_objects_reports_an_unreadable_fit(cfg, tmp_path):
 
     with pytest.raises(ConfigError, match="Could not load fit 'broken'"):
         cfg.produce_fit_objects(fits)
+
+
+def test_produce_fit_objects_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_path):
+    """A broken runcard is reported like any other unloadable fit.
+
+    from_folder raises the same ValueError whichever of its two files fails to
+    parse, so this needs nothing here beyond what the json case already needs.
+    """
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "input" / "runcard.yaml").write_text(
+        "actions_: [run_analytic_fit\n bad: : :"
+    )
+    fits = cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+    with pytest.raises(
+        ConfigError, match="Could not load fit 'broken'.*not valid YAML"
+    ):
+        cfg.produce_fit_objects(fits)

@@ -3,19 +3,24 @@ smefit.fit_result.py
 
 Fit containers shared across fitting routines.
 
-Two classes live here:
+Three classes live here:
 
 - :class:`FitResult`, the bare numerical outcome of a fit — free parameters,
   best-fit point, likelihood, samples — and its ``fit_results.json`` schema.
   This is what the fitting routines return and write.
-- :class:`Fit`, a fit that already exists on disk: the :class:`FitResult` it
-  produced, held as an attribute, plus the metadata describing how it was run.
-  It is built only by loading, never by a fitting routine, and it is what
-  downstream consumers (plotting, reports) work with.
+- :class:`FitResultGroup`, the outcome of fitting each coefficient on its own:
+  one :class:`FitResult` per coefficient, each a genuine single-parameter fit
+  with its own likelihood and evidence. It writes those results to their
+  subdirectories and aggregates them into the summary ``fit_results.json``.
+- :class:`Fit`, a fit that already exists on disk: the result it produced —
+  a :class:`FitResult`, or a :class:`FitResultGroup` when it was run one
+  coefficient at a time — held as an attribute, plus the metadata describing
+  how it was run. It is built only by loading, never by a fitting routine, and
+  it is what downstream consumers (plotting, reports) work with.
 
 New attributes describing a fit belong on :class:`Fit`, which is meant to grow;
-``FitResult`` stays the minimal numerical record and owns the
-``fit_results.json`` schema on its own.
+the result classes stay the minimal numerical record and own the
+``fit_results.json`` schemas on their own.
 """
 
 import json

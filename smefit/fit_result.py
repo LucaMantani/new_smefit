@@ -61,19 +61,13 @@ def _parse_fit_action(action: str):
 def _fit_runcard(path: pathlib.Path) -> Optional[Dict]:
     """The runcard a fit was run with, or None when it cannot be found.
 
-    A fit directory keeps a copy in ``input/runcard.yaml``. The per-coefficient
-    subdirectories of an individual fit do not, so for those the runcard of the
-    parent fit — the one that ran them — is used instead.
+    A fit directory always keeps a copy of it in ``input/runcard.yaml``.
     """
-    candidates = [path / "input" / "runcard.yaml"]
-    if path.parent.name == "individual_fits":
-        candidates.append(path.parent.parent / "input" / "runcard.yaml")
-
-    for runcard in candidates:
-        if runcard.exists():
-            with runcard.open() as f:
-                return yaml.safe_load(f) or {}
-    return None
+    runcard = path / "input" / "runcard.yaml"
+    if not runcard.exists():
+        return None
+    with runcard.open() as f:
+        return yaml.safe_load(f) or {}
 
 
 def _runcard_actions(config: Mapping) -> List[str]:
@@ -428,10 +422,7 @@ class Fit:
             label=label,
             fit_type=fit_type,
             use_quad=use_quad,
-            # A per-coefficient subdirectory of an individual run holds one
-            # coefficient's own fit, not the merged 1D posteriors — only the
-            # summary directory is the individual fit.
-            individual_fit=ran_individually and path.parent.name != "individual_fits",
+            individual_fit=ran_individually,
         )
 
 

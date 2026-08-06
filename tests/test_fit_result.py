@@ -360,27 +360,6 @@ def test_a_joint_action_is_not_an_individual_fit(tmp_path):
     assert Fit.from_json(out).individual_fit is False
 
 
-def test_a_per_coefficient_subdirectory_is_not_an_individual_fit(tmp_path):
-    """Its own posterior is a genuine joint one — of a single coefficient.
-
-    It also has no runcard of its own, so the parent fit's is used.
-    """
-    base = _write_runcard(
-        tmp_path / "my_fit", use_quad=True, action="run_individual_hessian_fits"
-    )
-    sub = base / "individual_fits" / "OpA"
-    _make_written_result(free_parameters=["OpA"], best_fit_point={"OpA": 1.0}).write(
-        sub
-    )
-
-    recovered = Fit.from_json(sub)
-
-    assert recovered.individual_fit is False
-    # the parent runcard still describes how it was run
-    assert recovered.use_quad is True
-    assert recovered.fit_type == "hessian"
-
-
 def test_metadata_without_a_runcard_warns_and_falls_back(tmp_path, caplog):
     out = tmp_path / "no_runcard"
     _make_written_result().write(out)

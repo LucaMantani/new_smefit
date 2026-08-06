@@ -124,40 +124,6 @@ def _runcard_fit_action(config: Mapping) -> Optional[Dict]:
     return None
 
 
-def _individual_results(d: Mapping) -> List[FitResult]:
-    """The single-coefficient results a summary payload was aggregated from.
-
-    :meth:`FitResultGroup.write_summary` records per coefficient everything a
-    :class:`FitResult` needs, so each coefficient's slice of the summary is
-    itself a single-fit payload and is read back through
-    :meth:`FitResult.from_payload` — the one place that knows that schema.
-    """
-    chi2 = d.get("chi2") or {}
-    logz = d.get("logz") or {}
-    samples = d.get("samples") or {}
-    prior_specs = d.get("prior_specs") or {}
-
-    results = []
-    for name in d["free_parameters"]:
-        spec = prior_specs.get(name)
-        results.append(
-            FitResult.from_payload(
-                {
-                    "free_parameters": [name],
-                    "best_fit_point": {name: d["best_fit_point"][name]},
-                    # the likelihood of this coefficient's own fit
-                    "max_loglikelihood": -0.5 * float(chi2[name]),
-                    "num_data": d["num_data"],
-                    "logz": logz.get(name),
-                    "samples": {name: samples[name]} if name in samples else None,
-                    "prior_specs": {name: spec} if spec is not None else None,
-                    "whitening_active": d.get("whitening_active", False),
-                }
-            )
-        )
-    return results
-
-
 def _format_prior(spec: Optional[Mapping]) -> str:
     if spec is None:
         return "-"
@@ -364,6 +330,142 @@ class FitResult:
         )
 
 
+class FitResultGroup:
+    """A collection of FitResult objects from individual parameter fits."""
+
+    def __init__(self, results: List[FitResult]):
+        self.results = results
+
+    def print_summary(self) -> None:
+        """Print a combined summary table with one row per fit."""
+        console = Console()
+        console.rule("[bold cyan]Individual Parameter Fits[/bold cyan]")
+
+        table = Table(
+            box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
+        )
+        show_prior = any(r.prior_specs for r in self.results)
+        table.add_column("Coefficient", style="cyan", no_wrap=True)
+        table.add_column("Best fit", justify="right")
+        table.add_column("Std", justify="right")
+        table.add_column("chi2", justify="right")
+        table.add_column("chi2/dof", justify="right")
+        if show_prior:
+            table.add_column("Prior", justify="left", style="dim")
+
+        for result in self.results:
+            name = result.free_parameters[0]
+            val = result.best_fit_point.get(name, float("nan"))
+            std = result.std.get(name, float("nan"))
+            row = [
+                name,
+                f"{val:.6f}",
+                f"{std:.6f}",
+                f"{result.chi2_val:.4f}",
+                f"{result.chi2_ndof:.4f}",
+            ]
+            if show_prior:
+                spec = result.prior_specs.get(name) if result.prior_specs else None
+                row.append(_format_prior(spec))
+            table.add_row(*row)
+
+        console.print(table)
+        console.rule(style="dim")
+
+    def write_results(self, output_path) -> None:
+        """Write each FitResult to its own subdirectory and a combined summary."""
+        base = pathlib.Path(output_path) / "individual_fits"
+        for result in self.results:
+            name = result.free_parameters[0]
+            result.write(base / name)
+        self.write_summary(output_path)
+
+    def write_summary(self, output_path) -> None:
+        """Write a combined fit_results.json aggregating all individual fits."""
+        output_path = pathlib.Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        free_parameters = [r.free_parameters[0] for r in self.results]
+        num_data = self.results[0].num_data if self.results else 0
+
+        merged_best_fit: Dict[str, float] = {}
+        merged_std: Dict[str, float] = {}
+        merged_samples: Dict[str, list] = {}
+        chi2_per_coeff: Dict[str, float] = {}
+        chi2_ndof_per_coeff: Dict[str, float] = {}
+        logz_per_coeff: Dict[str, Optional[float]] = {}
+        prior_specs: Dict = {}
+
+        for result in self.results:
+            name = result.free_parameters[0]
+            merged_best_fit[name] = result.best_fit_point[name]
+            merged_std[name] = result.std.get(name, float("nan"))
+            chi2_per_coeff[name] = result.chi2_val
+            chi2_ndof_per_coeff[name] = result.chi2_ndof
+            logz_per_coeff[name] = result.logz
+            if result.samples is not None and name in result.samples:
+                vals = result.samples[name]
+                merged_samples[name] = (
+                    vals.tolist() if hasattr(vals, "tolist") else list(vals)
+                )
+            if result.prior_specs:
+                prior_specs.update(result.prior_specs)
+
+        payload = {
+            "free_parameters": free_parameters,
+            "num_data": num_data,
+            "n_free": len(free_parameters),
+            "best_fit_point": merged_best_fit,
+            "std": merged_std,
+            "chi2": chi2_per_coeff,
+            "chi2_ndof": chi2_ndof_per_coeff,
+            "logz": logz_per_coeff,
+            "samples": merged_samples if merged_samples else None,
+            "prior_specs": prior_specs if prior_specs else None,
+            "whitening_active": (
+                self.results[0].whitening_active if self.results else False
+            ),
+        }
+
+        out_file = output_path / "fit_results.json"
+        with out_file.open("w") as f:
+            json.dump(payload, f, indent=2)
+
+
+def _individual_results(d: Mapping) -> List["FitResult"]:
+    """The single-coefficient results a summary payload was aggregated from.
+
+    :meth:`FitResultGroup.write_summary` records per coefficient everything a
+    :class:`FitResult` needs, so each coefficient's slice of the summary is
+    itself a single-fit payload and is read back through
+    :meth:`FitResult.from_payload` — the one place that knows that schema.
+    """
+    chi2 = d.get("chi2") or {}
+    logz = d.get("logz") or {}
+    samples = d.get("samples") or {}
+    prior_specs = d.get("prior_specs") or {}
+
+    results = []
+    for name in d["free_parameters"]:
+        spec = prior_specs.get(name)
+        results.append(
+            FitResult.from_payload(
+                {
+                    "free_parameters": [name],
+                    "best_fit_point": {name: d["best_fit_point"][name]},
+                    # the likelihood of this coefficient's own fit
+                    "max_loglikelihood": -0.5 * float(chi2[name]),
+                    "num_data": d["num_data"],
+                    "logz": logz.get(name),
+                    "samples": {name: samples[name]} if name in samples else None,
+                    "prior_specs": {name: spec} if spec is not None else None,
+                    "whitening_active": d.get("whitening_active", False),
+                }
+            )
+        )
+    return results
+
+
 @dataclass
 class Fit:
     """A fit that exists on disk: what it produced, and how it was run.
@@ -551,105 +653,3 @@ class Fit:
             label=label,
             fit_runcard=fit_runcard,
         )
-
-
-class FitResultGroup:
-    """A collection of FitResult objects from individual parameter fits."""
-
-    def __init__(self, results: List[FitResult]):
-        self.results = results
-
-    def print_summary(self) -> None:
-        """Print a combined summary table with one row per fit."""
-        console = Console()
-        console.rule("[bold cyan]Individual Parameter Fits[/bold cyan]")
-
-        table = Table(
-            box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
-        )
-        show_prior = any(r.prior_specs for r in self.results)
-        table.add_column("Coefficient", style="cyan", no_wrap=True)
-        table.add_column("Best fit", justify="right")
-        table.add_column("Std", justify="right")
-        table.add_column("chi2", justify="right")
-        table.add_column("chi2/dof", justify="right")
-        if show_prior:
-            table.add_column("Prior", justify="left", style="dim")
-
-        for result in self.results:
-            name = result.free_parameters[0]
-            val = result.best_fit_point.get(name, float("nan"))
-            std = result.std.get(name, float("nan"))
-            row = [
-                name,
-                f"{val:.6f}",
-                f"{std:.6f}",
-                f"{result.chi2_val:.4f}",
-                f"{result.chi2_ndof:.4f}",
-            ]
-            if show_prior:
-                spec = result.prior_specs.get(name) if result.prior_specs else None
-                row.append(_format_prior(spec))
-            table.add_row(*row)
-
-        console.print(table)
-        console.rule(style="dim")
-
-    def write_results(self, output_path) -> None:
-        """Write each FitResult to its own subdirectory and a combined summary."""
-        base = pathlib.Path(output_path) / "individual_fits"
-        for result in self.results:
-            name = result.free_parameters[0]
-            result.write(base / name)
-        self.write_summary(output_path)
-
-    def write_summary(self, output_path) -> None:
-        """Write a combined fit_results.json aggregating all individual fits."""
-        output_path = pathlib.Path(output_path)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        free_parameters = [r.free_parameters[0] for r in self.results]
-        num_data = self.results[0].num_data if self.results else 0
-
-        merged_best_fit: Dict[str, float] = {}
-        merged_std: Dict[str, float] = {}
-        merged_samples: Dict[str, list] = {}
-        chi2_per_coeff: Dict[str, float] = {}
-        chi2_ndof_per_coeff: Dict[str, float] = {}
-        logz_per_coeff: Dict[str, Optional[float]] = {}
-        prior_specs: Dict = {}
-
-        for result in self.results:
-            name = result.free_parameters[0]
-            merged_best_fit[name] = result.best_fit_point[name]
-            merged_std[name] = result.std.get(name, float("nan"))
-            chi2_per_coeff[name] = result.chi2_val
-            chi2_ndof_per_coeff[name] = result.chi2_ndof
-            logz_per_coeff[name] = result.logz
-            if result.samples is not None and name in result.samples:
-                vals = result.samples[name]
-                merged_samples[name] = (
-                    vals.tolist() if hasattr(vals, "tolist") else list(vals)
-                )
-            if result.prior_specs:
-                prior_specs.update(result.prior_specs)
-
-        payload = {
-            "free_parameters": free_parameters,
-            "num_data": num_data,
-            "n_free": len(free_parameters),
-            "best_fit_point": merged_best_fit,
-            "std": merged_std,
-            "chi2": chi2_per_coeff,
-            "chi2_ndof": chi2_ndof_per_coeff,
-            "logz": logz_per_coeff,
-            "samples": merged_samples if merged_samples else None,
-            "prior_specs": prior_specs if prior_specs else None,
-            "whitening_active": (
-                self.results[0].whitening_active if self.results else False
-            ),
-        }
-
-        out_file = output_path / "fit_results.json"
-        with out_file.open("w") as f:
-            json.dump(payload, f, indent=2)

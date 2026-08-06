@@ -6,6 +6,15 @@ from smefit.constants import cw, sw
 # need to be switched on in the Warsaw basis and the corresponding values.
 # These are basically the equations between operators.
 # O_{SMEFiT} = sum_i value_i * O_{Warsaw, i}
+
+# Note on index ordering for same field 4-fermion operators (uu, dd, qq1, qq3, etc):
+# these are "class 4" in wilson.util.smeftutil.C_symm_keys, whose symmetrize_4
+# hard-codes e.g. a[1,1,0,0] = a[0,0,1,1] -- i.e. it takes the smaller-index-first
+# pair ("_1122") as the canonical/independent slot and overwrites the swapped
+# ordering ("_2211") from it. So for these four fields, only the smaller-index-first
+# spelling may be used here; writing e.g. "uu_2211" instead of "uu_1122" would be
+# silently zeroed out by wilson's symmetrisation.
+
 wcxf_translate = {
     # Bosonic
     "OWWW": {"wc": ["W"], "value": [-1.0]},

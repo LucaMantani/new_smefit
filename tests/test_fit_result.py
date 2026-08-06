@@ -373,19 +373,50 @@ def test_metadata_without_a_runcard_warns_and_falls_back(tmp_path, caplog):
 
 
 def test_fit_from_json_on_an_individual_fit_summary(tmp_path):
-    """The summary of individual fits has no joint likelihood or evidence."""
+    """A summary is read back as the group of single-parameter fits it is."""
     _write_runcard(tmp_path, action="run_individual_analytic_fits")
-    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])
-    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2])
+    r1 = _make_individual_result(
+        "OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2], max_loglikelihood=-3.0
+    )
+    r2 = _make_individual_result(
+        "OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2], max_loglikelihood=-7.0
+    )
     FitResultGroup([r1, r2]).write_summary(tmp_path)
 
     recovered = Fit.from_json(tmp_path)
 
     assert recovered.individual_fit is True
     assert recovered.fit_type == "analytic"
-    assert math.isnan(recovered.fit_results.max_loglikelihood)
-    assert recovered.fit_results.logz is None
-    assert recovered.fit_results.free_parameters == ["OpA", "OpB"]
+    assert isinstance(recovered.fit_results, FitResultGroup)
+    assert [r.free_parameters[0] for r in recovered.fit_results.results] == [
+        "OpA",
+        "OpB",
+    ]
+
+
+def test_an_individual_fit_keeps_every_coefficient_its_own_numbers(tmp_path):
+    """Each result is a genuine one-parameter fit, not a slice of a joint one."""
+    _write_runcard(tmp_path, action="run_individual_ultranest_fits")
+    r1 = _make_individual_result(
+        "OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2], max_loglikelihood=-3.0
+    )
+    r1.logz = -8.0
+    r2 = _make_individual_result(
+        "OpB", best_val=2.0, samples_vals=[1.8, 2.0, 2.2], max_loglikelihood=-7.0
+    )
+    r2.logz = -9.0
+    FitResultGroup([r1, r2]).write_summary(tmp_path)
+
+    first, second = Fit.from_json(tmp_path).fit_results.results
+
+    assert first.chi2_val == pytest.approx(6.0)
+    assert second.chi2_val == pytest.approx(14.0)
+    assert (first.logz, second.logz) == (-8.0, -9.0)
+    assert first.best_fit_point["OpA"] == pytest.approx(1.0)
+    assert first.samples["OpA"] == pytest.approx([0.8, 1.0, 1.2])
+    # one free parameter each: the ndof of a one-at-a-time fit, not of a joint one
+    assert first.n_free == 1
+    assert first.ndof == r1.ndof
 
 
 def test_a_summary_without_a_runcard_is_not_known_to_be_individual(tmp_path):

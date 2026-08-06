@@ -23,7 +23,7 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional
+from typing import Dict, List, Mapping, Optional, Union
 
 import jax.numpy as jnp
 import yaml
@@ -82,21 +82,38 @@ def _runcard_actions(config: Mapping) -> List[str]:
     return names
 
 
-def _as_joint_payload(d: Mapping) -> Dict:
-    """A payload normalised to the single-fit schema :class:`FitResult` reads.
+def _individual_results(d: Mapping) -> List[FitResult]:
+    """The single-coefficient results a summary payload was aggregated from.
 
-    The summary of individual fits records one chi2 and one evidence per
-    coefficient rather than a single joint value; there is no joint likelihood
-    to report, so it becomes NaN and the evidence is dropped.
+    :meth:`FitResultGroup.write_summary` records per coefficient everything a
+    :class:`FitResult` needs, so each coefficient's slice of the summary is
+    itself a single-fit payload and is read back through
+    :meth:`FitResult.from_payload` — the one place that knows that schema.
     """
-    d = dict(d)
-    max_loglikelihood = d.get("max_loglikelihood")
-    d["max_loglikelihood"] = (
-        float("nan") if max_loglikelihood is None else float(max_loglikelihood)
-    )
-    if isinstance(d.get("logz"), dict):
-        d["logz"] = None
-    return d
+    chi2 = d.get("chi2") or {}
+    logz = d.get("logz") or {}
+    samples = d.get("samples") or {}
+    prior_specs = d.get("prior_specs") or {}
+
+    results = []
+    for name in d["free_parameters"]:
+        spec = prior_specs.get(name)
+        results.append(
+            FitResult.from_payload(
+                {
+                    "free_parameters": [name],
+                    "best_fit_point": {name: d["best_fit_point"][name]},
+                    # the likelihood of this coefficient's own fit
+                    "max_loglikelihood": -0.5 * float(chi2[name]),
+                    "num_data": d["num_data"],
+                    "logz": logz.get(name),
+                    "samples": {name: samples[name]} if name in samples else None,
+                    "prior_specs": {name: spec} if spec is not None else None,
+                    "whitening_active": d.get("whitening_active", False),
+                }
+            )
+        )
+    return results
 
 
 def _metadata_from_runcard(path: pathlib.Path):
@@ -357,8 +374,11 @@ class Fit:
 
     Attributes
     ----------
-    fit_results : FitResult
-        The numbers the fit produced — best-fit point, likelihood, samples.
+    fit_results : FitResult or FitResultGroup
+        The numbers the fit produced — best-fit point, likelihood, samples. A
+        :class:`FitResultGroup` when the fit was run one coefficient at a time
+        (:attr:`individual_fit`): there is no joint likelihood to hold then,
+        only the single-parameter result of every coefficient.
     fit_name : str
         Identity of the fit: the name of the directory it was loaded from,
         which is what users refer to it by.
@@ -384,7 +404,7 @@ class Fit:
         than a joint one — see :class:`FitResultGroup`.
     """
 
-    fit_results: FitResult
+    fit_results: Union[FitResult, "FitResultGroup"]
     fit_name: str
     label: Optional[str] = None
     fit_type: Optional[str] = None
@@ -400,10 +420,10 @@ class Fit:
         """Load a Fit from a directory containing ``fit_results.json``.
 
         Both payloads written by this module are accepted: the standard one
-        from :meth:`FitResult.write`, and the summary of individual fits from
-        :meth:`FitResultGroup.write_summary`. The latter records one chi2 and
-        one evidence per coefficient rather than joint ones, so its
-        ``fit_results`` carries a NaN likelihood and no evidence.
+        from :meth:`FitResult.write` becomes a :class:`FitResult`, and the
+        summary of individual fits from :meth:`FitResultGroup.write_summary`
+        becomes the :class:`FitResultGroup` it was aggregated from, so that
+        every coefficient keeps its own chi2 and evidence.
 
         ``label`` is how the caller chooses to present the fit; the directory
         knows nothing about it, so it is the one piece of metadata passed in
@@ -415,8 +435,16 @@ class Fit:
 
         use_quad, fit_type, ran_individually = _metadata_from_runcard(path)
 
+        # A summary records a chi2 per coefficient rather than a single joint
+        # one: that is what tells the two payloads apart.
+        is_summary = isinstance(d.get("chi2"), dict)
+
         return cls(
-            fit_results=FitResult.from_payload(_as_joint_payload(d)),
+            fit_results=(
+                FitResultGroup(_individual_results(d))
+                if is_summary
+                else FitResult.from_payload(d)
+            ),
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,

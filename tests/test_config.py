@@ -169,6 +169,58 @@ def test_parse_rge_fixed_obs_scale_ok(cfg):
 
 
 # ---------------------------------------------------------------------------
+# produce_rge_matrix / rge_matrix as a required dependency
+#
+# output_path is a reportengine *environment* attribute, supplied by the CLI's
+# -o flag and absent under smefitAPI. It used to be a required parameter of
+# produce_rge_matrix (for a disk-cache side effect only), so under the API the
+# node could not resolve -- and produce_eft_model's `rge_matrix=None` default
+# let reportengine swallow that failure, silently building a chi2 with no RGE
+# running. These tests pin both halves of the fix.
+# ---------------------------------------------------------------------------
+
+
+def test_produce_rge_matrix_none_without_rge_block(cfg):
+    """No `rge:` in the runcard is the one legitimate reason for an empty matrix."""
+    assert cfg.produce_rge_matrix(MagicMock(), MagicMock()) is None
+
+
+def test_produce_rge_matrix_output_path_is_optional():
+    """output_path only drives the disk cache, so it must not be required."""
+    params = inspect.signature(smefitConfig.produce_rge_matrix).parameters
+    assert params["output_path"].default is None
+    assert params["rge"].default is None
+    # the physics inputs stay required, so a real failure there is still loud
+    assert params["coefficients"].default is inspect.Parameter.empty
+    assert params["theory"].default is inspect.Parameter.empty
+
+
+@pytest.mark.parametrize(
+    "method", ["produce_eft_model", "produce_individual_eft_model"]
+)
+def test_eft_model_requires_rge_matrix(method):
+    """A default here would let reportengine swallow a failed rge_matrix build."""
+    param = inspect.signature(getattr(smefitConfig, method)).parameters["rge_matrix"]
+    assert param.default is inspect.Parameter.empty
+
+
+def test_produce_rge_matrix_skips_save_without_output_path(cfg):
+    """With no output folder the matrix is computed but not cached to disk."""
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+    with patch("smefit.config.load_rge_matrix") as mock_load:
+        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=None)
+    assert mock_load.call_args.kwargs["save_path"] is None
+
+
+def test_produce_rge_matrix_saves_with_output_path(cfg, tmp_path):
+    """The CLI contract -- <output>/rge_matrix.pkl -- is unchanged."""
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+    with patch("smefit.config.load_rge_matrix") as mock_load:
+        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
+    assert mock_load.call_args.kwargs["save_path"] == tmp_path
+
+
+# ---------------------------------------------------------------------------
 # parse_ultranest_settings
 # ---------------------------------------------------------------------------
 
@@ -203,6 +255,24 @@ def test_parse_ultranest_resume_missing_dir_raises(cfg, tmp_path):
         cfg.parse_ultranest_settings(settings, tmp_path)
 
 
+def test_parse_ultranest_no_output_path_still_parses(cfg):
+    """Under the smefit API there is no output folder: parsing must still resolve.
+
+    log_dir has nothing to be derived from and is left as None, so a runcard
+    that actually runs the sampler this way has to set it explicitly.
+    """
+    result = cfg.parse_ultranest_settings({}, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] is None
+    assert result["ReactiveNS_settings"]["resume"] == "overwrite"
+
+
+def test_parse_ultranest_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    settings = {"ReactiveNS_settings": {"log_dir": log_dir}}
+    result = cfg.parse_ultranest_settings(settings, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] == log_dir
+
+
 # ---------------------------------------------------------------------------
 # parse_blackjax_settings
 # ---------------------------------------------------------------------------
@@ -223,6 +293,27 @@ def test_parse_blackjax_custom_values(cfg, tmp_path):
     assert result["n_live"] == 200
     assert result["seed"] == 42
     assert result["n_posterior_samples"] == 1000  # still default
+
+
+def test_parse_blackjax_no_output_path_still_parses(cfg):
+    """Same as ultranest: no output folder means log_dir is left as None."""
+    result = cfg.parse_blackjax_settings({}, output_path=None)
+    assert result["log_dir"] is None
+    assert result["n_live"] == 500  # the rest of the block still parses
+
+
+def test_parse_blackjax_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    result = cfg.parse_blackjax_settings({"log_dir": log_dir}, output_path=None)
+    assert result["log_dir"] == log_dir
+
+
+def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
+    """log_dir is the escape hatch when there is no output folder, so it must
+    not be reported as an unknown key."""
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"log_dir": str(tmp_path)}, tmp_path)
+    assert "not known" not in caplog.text
 
 
 # ---------------------------------------------------------------------------

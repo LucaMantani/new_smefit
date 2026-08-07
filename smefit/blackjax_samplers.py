@@ -337,8 +337,12 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
             inference_algorithm=kernel,
             num_steps=num_draws,
             initial_state=adapt.state,
+            # state.logdensity is the target the kernel already evaluated at
+            # this position; keeping it costs one float per draw and saves
+            # re-running the chi2 over every draw afterwards.
             transform=lambda state, info: (
                 state.position,
+                state.logdensity,
                 info.is_divergent,
                 info.acceptance_rate,
             ),
@@ -356,37 +360,64 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
     t0 = time.time()
     # If vmap over the warmup ever breaks, a Python loop over chains is
     # numerically identical at num_chains times the wall clock.
-    positions, is_divergent, acceptance, step_sizes = jax.vmap(_run_chain)(
-        jax.random.split(rng_key, num_chains), u0
+    positions, logdensity_draws, is_divergent, acceptance, step_sizes = jax.vmap(
+        _run_chain
+    )(jax.random.split(rng_key, num_chains), u0)
+    # JAX dispatches asynchronously: without this barrier the call above returns
+    # lazy arrays as soon as compilation finishes, the timing below reports the
+    # compile time only, and the real sampling cost silently lands on whichever
+    # step first reads the values (the diagnostics).
+    positions, logdensity_draws, is_divergent, acceptance, step_sizes = (
+        jax.block_until_ready(
+            (positions, logdensity_draws, is_divergent, acceptance, step_sizes)
+        )
     )
-    log.info("NUTS sampling finished in %.2f minutes.", (time.time() - t0) / 60.0)
+    log.info(
+        "NUTS warmup + sampling finished in %.2f minutes (%d warmup + %d draws "
+        "x %d chains).",
+        (time.time() - t0) / 60.0,
+        num_warmup,
+        num_draws,
+        num_chains,
+    )
 
+    t0 = time.time()
     diagnostics = _nuts_diagnostics(
         prior, positions, is_divergent, acceptance, step_sizes
     )
+    log.info("NUTS: diagnostics computed in %.1f s.", time.time() - t0)
 
-    posterior_free = jax.vmap(prior.from_unconstrained)(
-        _thin_chains(positions, n_samples)
+    t0 = time.time()
+    posterior_free = jax.block_until_ready(
+        jax.vmap(prior.from_unconstrained)(_thin_chains(positions, n_samples))
     )
+    log.info("NUTS: posterior draws mapped in %.1f s.", time.time() - t0)
 
     # Best point over the FULL chains, not just the thinned draws — nested
     # sampling likewise maximises over all its live and dead points.
-    all_x = jax.vmap(prior.from_unconstrained)(positions.reshape(-1, n_dims))
-    logl = jax.vmap(log_likelihood)(all_x)
+    t0 = time.time()
+    all_u = positions.reshape(-1, n_dims)
+    logl = jax.block_until_ready(
+        logdensity_draws.reshape(-1) - jax.vmap(prior.log_prob_unconstrained)(all_u)
+    )
     best_index = int(jnp.argmax(logl))
+    best_point = jax.block_until_ready(prior.from_unconstrained(all_u[best_index]))
+    log.info("NUTS: best-fit point located in %.1f s.", time.time() - t0)
 
+    t0 = time.time()
     log_dir = settings["log_dir"]
     pd.DataFrame(posterior_free, columns=prior.param_names).to_csv(
         os.path.join(log_dir, "nuts_samples.csv"), index=False
     )
     with open(os.path.join(log_dir, "nuts_diagnostics.json"), "w") as f:
         json.dump(diagnostics, f, indent=2)
+    log.info("NUTS: log_dir written in %.1f s.", time.time() - t0)
 
     log.info("NUTS provides no evidence estimate; FitResult.logz is None.")
 
     return SamplerOutput(
         samples=posterior_free,
-        best_point=all_x[best_index],
+        best_point=best_point,
         max_loglikelihood=float(logl[best_index]),
         logz=None,
         diagnostics=diagnostics,

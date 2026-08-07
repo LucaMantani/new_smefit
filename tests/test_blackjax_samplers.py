@@ -149,6 +149,15 @@ def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
 
     log_likelihood = lambda x: -jnp.sum(x**2) / 2.0
 
+    # The real kernel records logdensity = log_prior_unconstrained + loglik at
+    # each draw, and _run_nuts recovers the likelihood by subtracting the prior
+    # back off. Build it consistently here so that subtraction is exercised
+    # rather than papered over.
+    logdensity = _real_vmap(
+        lambda u: prior.log_prob_unconstrained(u)
+        + log_likelihood(prior.from_unconstrained(u))
+    )(positions.reshape(-1, N_DIMS)).reshape(N_CHAINS, N_DRAWS)
+
     with (
         patch(
             "smefit.blackjax_samplers.blackjax.window_adaptation",
@@ -157,12 +166,20 @@ def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
         patch("smefit.blackjax_samplers.blackjax.nuts", return_value=MagicMock()),
         patch(
             "smefit.blackjax_samplers.run_inference_algorithm",
-            return_value=(None, (positions, is_divergent, acceptance)),
+            return_value=(None, (positions, logdensity, is_divergent, acceptance)),
         ),
         patch(
             "smefit.blackjax_samplers.jax.vmap",
             side_effect=lambda fn, *a, **k: (
-                (lambda *args: (positions, is_divergent, acceptance, step_sizes))
+                (
+                    lambda *args: (
+                        positions,
+                        logdensity,
+                        is_divergent,
+                        acceptance,
+                        step_sizes,
+                    )
+                )
                 if fn.__name__ == "_run_chain"
                 else _real_vmap(fn, *a, **k)
             ),
@@ -250,12 +267,18 @@ def test_run_nuts_warns_on_divergences(uniform_prior, nuts_settings, caplog):
 def test_run_nuts_max_loglikelihood_is_likelihood_not_posterior(
     uniform_prior, nuts_settings
 ):
-    """FitResult.chi2_val is -2 * max_loglikelihood, so the prior must not leak in."""
-    positions = _ramp_positions() * 0.001
+    """FitResult.chi2_val is -2 * max_loglikelihood, so the prior must not leak in.
+
+    _run_nuts recovers the likelihood as ``logdensity - log_prior_unconstrained``.
+    The draws are offset away from the origin on purpose: with draws at u ~ 0 the
+    likelihood here is O(1e-7) against an O(1) prior, and the subtraction is then
+    pure float32 cancellation noise rather than a test of anything.
+    """
+    positions = 0.5 + _ramp_positions() * 0.001
     out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
 
     expected = -float(jnp.sum(out.best_point**2)) / 2.0
-    assert out.max_loglikelihood == pytest.approx(expected, rel=1e-5)
+    assert out.max_loglikelihood == pytest.approx(expected, rel=1e-4)
 
 
 def test_run_nuts_rejects_prior_without_bijectors(nuts_settings):

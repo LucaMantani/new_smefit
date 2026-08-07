@@ -16,6 +16,7 @@ import either of them back.
 import dataclasses
 import json
 import logging
+import math
 import os
 import time
 from typing import Optional
@@ -185,13 +186,36 @@ def _nuts_initial_points(rng_key, prior, settings, init_point, num_chains, n_dim
     return u_base + 0.1 * jax.random.normal(rng_key, (num_chains, n_dims))
 
 
-def _nuts_diagnostics(prior, positions, is_divergent, acceptance, step_sizes):
-    """Convergence summary for a (C, S, d) block of NUTS draws, and its warnings."""
+#: A step size at or below this means the chain never moved.
+_STEP_SIZE_COLLAPSE = 1e-12
+
+
+def _nuts_diagnostics(
+    prior,
+    positions,
+    leapfrogs,
+    tree_depth,
+    is_divergent,
+    acceptance,
+    step_sizes,
+    max_num_doublings,
+    sampling_seconds=None,
+    warmup_seconds=None,
+):
+    """Convergence and cost summary for a (C, S, d) block of NUTS draws.
+
+    Also decides whether the run is usable at all: ``diagnostics["converged"]``
+    is False when the sampler failed outright, as opposed to merely mixing
+    poorly. Those cases warrant an error rather than a warning, because the
+    posterior that comes out is meaningless rather than imprecise.
+    """
     rhat = potential_scale_reduction(positions, chain_axis=0, sample_axis=1)
     n_eff = effective_sample_size(positions, chain_axis=0, sample_axis=1)
     num_chains, num_draws, _ = positions.shape
     total = num_chains * num_draws
     n_div = int(jnp.sum(is_divergent))
+    total_grads = int(jnp.sum(leapfrogs))
+    min_step = min(float(s) for s in step_sizes)
 
     diagnostics = {
         "algorithm": "nuts",
@@ -205,8 +229,75 @@ def _nuts_diagnostics(prior, positions, is_divergent, acceptance, step_sizes):
         "divergence_rate": n_div / total,
         "mean_acceptance_rate": float(jnp.mean(acceptance)),
         "step_size": [float(s) for s in step_sizes],
+        # Cost model: runtime = draws x leapfrogs_per_draw x ms_per_gradient.
+        "leapfrogs_per_draw_mean": float(jnp.mean(leapfrogs)),
+        "leapfrogs_per_draw_median": float(jnp.median(leapfrogs)),
+        "leapfrogs_per_draw_max": int(jnp.max(leapfrogs)),
+        "tree_depth_mean": float(jnp.mean(tree_depth)),
+        "tree_depth_max": int(jnp.max(tree_depth)),
+        "treedepth_saturation": float(jnp.mean(tree_depth >= max_num_doublings)),
+        "total_gradient_evaluations": total_grads,
     }
+    if warmup_seconds is not None:
+        diagnostics["warmup_seconds"] = float(warmup_seconds)
+    if sampling_seconds is not None and total_grads:
+        diagnostics["sampling_seconds"] = float(sampling_seconds)
+        # Sampling phase only, matching total_gradient_evaluations. Warmup
+        # gradients are not observable (blackjax discards the per-step info),
+        # so folding warmup time in here would inflate this by ~num_warmup/num_draws.
+        diagnostics["ms_per_gradient"] = 1e3 * sampling_seconds / total_grads
 
+    # --- outright failure: the posterior is unusable ------------------------
+    failures = []
+    if not math.isfinite(min_step) or min_step < _STEP_SIZE_COLLAPSE:
+        failures.append("step-size collapse")
+        log.error(
+            "NUTS step size collapsed to %.3e: the chains never moved. This "
+            "usually means the log-density or its gradient returned NaN/inf "
+            "somewhere in the prior's support. Check the `whitening:` block "
+            "(a near-singular Hessian makes the whitened prior box span a huge "
+            "physical range), lower `sigma_prior`, or use "
+            "`blackjax_settings.algorithm: nested_sampling`, which does not "
+            "need gradients.",
+            min_step,
+        )
+    if diagnostics["divergence_rate"] > 0.5:
+        failures.append("universal divergence")
+        log.error(
+            "NUTS diverged on %.0f%% of draws. The posterior geometry is beyond "
+            "what the sampler can integrate; the draws are not from the target "
+            "distribution. Raise target_acceptance_rate towards 0.95, reduce "
+            "`whitening.sigma_prior`, or switch to "
+            "`blackjax_settings.algorithm: nested_sampling`.",
+            100 * diagnostics["divergence_rate"],
+        )
+    if diagnostics["mean_acceptance_rate"] < 0.01:
+        failures.append("zero acceptance")
+        log.error(
+            "NUTS mean acceptance rate is %.4f: essentially every proposal was "
+            "rejected, so the chains are stuck at their starting points.",
+            diagnostics["mean_acceptance_rate"],
+        )
+    if diagnostics["max_rhat"] > 1.1:
+        # A sampler can look healthy by every per-step measure — target
+        # acceptance met, no divergences — and still not have explored the
+        # posterior, which is what tree-depth saturation produces. R-hat this
+        # far from 1 is not "imprecise", it is "the chains sampled different
+        # distributions".
+        failures.append("chains did not mix")
+        log.error(
+            "NUTS max R-hat is %.3f (min ESS %.0f): the chains did not explore "
+            "the same distribution, so the combined draws are not a posterior "
+            "sample. With %.0f%% of draws at the maximum tree depth this means "
+            "the step size is far too small for the posterior's extent — the "
+            "geometry, not the sampler settings, is the limit.",
+            diagnostics["max_rhat"],
+            diagnostics["min_ess"],
+            100 * diagnostics["treedepth_saturation"],
+        )
+    diagnostics["converged"] = not failures
+
+    # --- poor but not fatal --------------------------------------------------
     if diagnostics["max_rhat"] > 1.01:
         worst = max(diagnostics["rhat"], key=diagnostics["rhat"].get)
         log.warning(
@@ -222,21 +313,57 @@ def _nuts_diagnostics(prior, positions, is_divergent, acceptance, step_sizes):
             diagnostics["min_ess"],
             num_chains,
         )
-    if n_div > 0:
+    if 0 < n_div and diagnostics["divergence_rate"] <= 0.5:
         log.warning(
             "NUTS reported %d divergent transitions (%.2f%% of draws). Raise "
             "target_acceptance_rate towards 0.95, or enable `whitening:`.",
             n_div,
             100 * diagnostics["divergence_rate"],
         )
+    if diagnostics["treedepth_saturation"] > 0.2:
+        log.warning(
+            "NUTS hit the maximum tree depth (%d, i.e. %d leapfrog steps) on "
+            "%.0f%% of draws. Each draw then costs the maximum, which is usually "
+            "the dominant term in the runtime. This signals a poorly conditioned "
+            "posterior rather than a bug; enable/raise `whitening:`, or lower "
+            "max_num_doublings to cap the cost per draw.",
+            max_num_doublings,
+            2**max_num_doublings,
+            100 * diagnostics["treedepth_saturation"],
+        )
+
     log.info(
         "NUTS diagnostics: max R-hat = %.4f, min ESS = %.0f, mean acceptance = %.3f, "
-        "divergences = %d.",
+        "divergences = %d, step size = %.3e.",
         diagnostics["max_rhat"],
         diagnostics["min_ess"],
         diagnostics["mean_acceptance_rate"],
         n_div,
+        min_step,
     )
+    cost = (
+        f", {diagnostics['ms_per_gradient']:.2f} ms/gradient"
+        if "ms_per_gradient" in diagnostics
+        else ""
+    )
+    log.info(
+        "NUTS cost: %.0f leapfrog steps per draw (max %d, tree depth %.1f/%d, "
+        "%.0f%% saturating), %d gradient evaluations total%s.",
+        diagnostics["leapfrogs_per_draw_mean"],
+        diagnostics["leapfrogs_per_draw_max"],
+        diagnostics["tree_depth_mean"],
+        max_num_doublings,
+        100 * diagnostics["treedepth_saturation"],
+        total_grads,
+        cost,
+    )
+    if failures:
+        log.error(
+            "NUTS run FAILED (%s) — do not use this posterior. The draws and "
+            "diagnostics have still been written to the log directory for "
+            "debugging.",
+            ", ".join(failures),
+        )
     return diagnostics
 
 
@@ -326,28 +453,49 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
         max_num_doublings=int(settings["max_num_doublings"]),
     )
 
-    def _run_chain(key, u_init):
-        warmup_key, sample_key = jax.random.split(key)
-        adapt, _ = warmup.run(warmup_key, u_init, num_steps=num_warmup)
-        kernel = blackjax.nuts(logdensity, **adapt.parameters)
+    max_doublings = int(settings["max_num_doublings"])
+
+    def _run_warmup(key, u_init):
+        adapt, _ = warmup.run(key, u_init, num_steps=num_warmup)
+        # Only the array-valued parameters may cross the vmap boundary:
+        # adapt.parameters also carries max_num_doublings as a Python int, and
+        # vmap would turn it into a traced array that blackjax.nuts needs as a
+        # static trajectory bound.
+        return (
+            adapt.state,
+            adapt.parameters["step_size"],
+            adapt.parameters["inverse_mass_matrix"],
+        )
+
+    def _run_sampling(key, state, step_size, inverse_mass_matrix):
+        kernel = blackjax.nuts(
+            logdensity,
+            step_size=step_size,
+            inverse_mass_matrix=inverse_mass_matrix,
+            max_num_doublings=max_doublings,
+        )
         # The custom transform is what keeps memory bounded: the default keeps
         # whole NUTSState/NUTSInfo trees, momenta included, for every step.
         _, history = run_inference_algorithm(
-            rng_key=sample_key,
+            rng_key=key,
             inference_algorithm=kernel,
             num_steps=num_draws,
-            initial_state=adapt.state,
+            initial_state=state,
             # state.logdensity is the target the kernel already evaluated at
             # this position; keeping it costs one float per draw and saves
-            # re-running the chi2 over every draw afterwards.
+            # re-running the chi2 over every draw afterwards. The two counters
+            # are what make the runtime explicable: total cost is
+            # num_integration_steps x cost of one gradient.
             transform=lambda state, info: (
                 state.position,
                 state.logdensity,
+                info.num_integration_steps,
+                info.num_trajectory_expansions,
                 info.is_divergent,
                 info.acceptance_rate,
             ),
         )
-        return (*history, adapt.parameters["step_size"])
+        return history
 
     log.info(
         "Compiling and running %d NUTS chains (%d warmup + %d samples each) over "
@@ -357,33 +505,68 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
         num_draws,
         n_dims,
     )
+    # Warmup and sampling are dispatched separately so their costs can be
+    # attributed: warmup is usually the larger share, and dividing the combined
+    # time by the sampling-phase gradient count (the only one we can observe)
+    # would silently inflate ms_per_gradient by the warmup factor.
+    #
+    # JAX dispatches asynchronously, so each stage needs a barrier before its
+    # timer is read — otherwise the timing reports compilation only and the real
+    # work lands on whichever step first reads the values.
+    warmup_key, sample_key = jax.random.split(rng_key)
+
     t0 = time.time()
     # If vmap over the warmup ever breaks, a Python loop over chains is
     # numerically identical at num_chains times the wall clock.
-    positions, logdensity_draws, is_divergent, acceptance, step_sizes = jax.vmap(
-        _run_chain
-    )(jax.random.split(rng_key, num_chains), u0)
-    # JAX dispatches asynchronously: without this barrier the call above returns
-    # lazy arrays as soon as compilation finishes, the timing below reports the
-    # compile time only, and the real sampling cost silently lands on whichever
-    # step first reads the values (the diagnostics).
-    positions, logdensity_draws, is_divergent, acceptance, step_sizes = (
-        jax.block_until_ready(
-            (positions, logdensity_draws, is_divergent, acceptance, step_sizes)
+    warm_states, step_sizes, inverse_mass_matrices = jax.block_until_ready(
+        jax.vmap(_run_warmup)(jax.random.split(warmup_key, num_chains), u0)
+    )
+    warmup_seconds = time.time() - t0
+    log.info(
+        "NUTS warmup finished in %.2f minutes (%d steps x %d chains); adapted "
+        "step size %.3e.",
+        warmup_seconds / 60.0,
+        num_warmup,
+        num_chains,
+        min(float(s) for s in step_sizes),
+    )
+
+    t0 = time.time()
+    (
+        positions,
+        logdensity_draws,
+        leapfrogs,
+        tree_depth,
+        is_divergent,
+        acceptance,
+    ) = jax.block_until_ready(
+        jax.vmap(_run_sampling)(
+            jax.random.split(sample_key, num_chains),
+            warm_states,
+            step_sizes,
+            inverse_mass_matrices,
         )
     )
+    sampling_seconds = time.time() - t0
     log.info(
-        "NUTS warmup + sampling finished in %.2f minutes (%d warmup + %d draws "
-        "x %d chains).",
-        (time.time() - t0) / 60.0,
-        num_warmup,
+        "NUTS sampling finished in %.2f minutes (%d draws x %d chains).",
+        sampling_seconds / 60.0,
         num_draws,
         num_chains,
     )
 
     t0 = time.time()
     diagnostics = _nuts_diagnostics(
-        prior, positions, is_divergent, acceptance, step_sizes
+        prior,
+        positions,
+        leapfrogs,
+        tree_depth,
+        is_divergent,
+        acceptance,
+        step_sizes,
+        int(settings["max_num_doublings"]),
+        sampling_seconds=sampling_seconds,
+        warmup_seconds=warmup_seconds,
     )
     log.info("NUTS: diagnostics computed in %.1f s.", time.time() - t0)
 

@@ -7,6 +7,7 @@ tests/test_bayes_update_blackjax.py (slow).
 import json
 from unittest.mock import MagicMock, patch
 
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -63,11 +64,20 @@ def test_get_sampler_unknown_raises():
 
 
 def _ramp_positions():
-    """(C, S, d) block whose values encode (chain, draw) for identity checks."""
+    """(C, S, d) block whose values encode (chain, draw) for identity checks.
+
+    Note the chains are separated by construction, so this block always has a
+    large R-hat — use `_mixed_positions` for anything asserting a healthy run.
+    """
     chain = jnp.arange(N_CHAINS)[:, None, None]
     draw = jnp.arange(N_DRAWS)[None, :, None]
     dim = jnp.arange(N_DIMS)[None, None, :]
     return chain * 1000.0 + draw * 10.0 + dim
+
+
+def _mixed_positions(scale=0.3):
+    """(C, S, d) draws from one common distribution, so R-hat sits near 1."""
+    return scale * jax.random.normal(jax.random.PRNGKey(0), (N_CHAINS, N_DRAWS, N_DIMS))
 
 
 def test_thin_chains_keeps_everything_when_it_fits():
@@ -133,7 +143,17 @@ def uniform_prior():
     )
 
 
-def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
+def _run_mocked_nuts(
+    prior,
+    settings,
+    n_samples,
+    positions,
+    is_divergent=None,
+    acceptance=None,
+    step_sizes=None,
+    leapfrogs=None,
+    tree_depth=None,
+):
     """Call _run_nuts with window_adaptation/run_inference_algorithm mocked.
 
     The mock bypasses jax.vmap by returning the whole (C, S, d) block from the
@@ -141,8 +161,14 @@ def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
     """
     if is_divergent is None:
         is_divergent = jnp.zeros((N_CHAINS, N_DRAWS), dtype=bool)
-    acceptance = jnp.full((N_CHAINS, N_DRAWS), 0.9)
-    step_sizes = jnp.full((N_CHAINS,), 0.5)
+    if acceptance is None:
+        acceptance = jnp.full((N_CHAINS, N_DRAWS), 0.9)
+    if step_sizes is None:
+        step_sizes = jnp.full((N_CHAINS,), 0.5)
+    if leapfrogs is None:
+        leapfrogs = jnp.full((N_CHAINS, N_DRAWS), 7, dtype=jnp.int32)
+    if tree_depth is None:
+        tree_depth = jnp.full((N_CHAINS, N_DRAWS), 3, dtype=jnp.int32)
 
     mock_warmup = MagicMock()
     mock_warmup.run.return_value = (MagicMock(parameters={}, state=MagicMock()), None)
@@ -166,22 +192,31 @@ def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
         patch("smefit.blackjax_samplers.blackjax.nuts", return_value=MagicMock()),
         patch(
             "smefit.blackjax_samplers.run_inference_algorithm",
-            return_value=(None, (positions, logdensity, is_divergent, acceptance)),
+            return_value=(
+                None,
+                (
+                    positions,
+                    logdensity,
+                    leapfrogs,
+                    tree_depth,
+                    is_divergent,
+                    acceptance,
+                ),
+            ),
         ),
         patch(
             "smefit.blackjax_samplers.jax.vmap",
-            side_effect=lambda fn, *a, **k: (
-                (
-                    lambda *args: (
-                        positions,
-                        logdensity,
-                        is_divergent,
-                        acceptance,
-                        step_sizes,
-                    )
-                )
-                if fn.__name__ == "_run_chain"
-                else _real_vmap(fn, *a, **k)
+            side_effect=lambda fn, *a, **k: _mocked_vmap(
+                fn,
+                positions,
+                logdensity,
+                leapfrogs,
+                tree_depth,
+                is_divergent,
+                acceptance,
+                step_sizes,
+                *a,
+                **k,
             ),
         ),
     ):
@@ -197,6 +232,42 @@ def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
 
 # captured before the patch so the mock can delegate for every other vmap call
 _real_vmap = __import__("jax").vmap
+
+
+def _mocked_vmap(
+    fn,
+    positions,
+    logdensity,
+    leapfrogs,
+    tree_depth,
+    is_divergent,
+    acceptance,
+    step_sizes,
+    *args,
+    **kwargs,
+):
+    """Stand in for jax.vmap over the two per-chain stages of _run_nuts.
+
+    Returns the whole (C, ...) block that vmap would have stacked, and delegates
+    every other vmap call (the bijector maps) to the real implementation.
+    """
+    if fn.__name__ == "_run_warmup":
+        dummy_state = jnp.zeros((N_CHAINS, N_DIMS))
+        return lambda *_: (
+            dummy_state,
+            step_sizes,
+            jnp.ones((N_CHAINS, N_DIMS)),
+        )
+    if fn.__name__ == "_run_sampling":
+        return lambda *_: (
+            positions,
+            logdensity,
+            leapfrogs,
+            tree_depth,
+            is_divergent,
+            acceptance,
+        )
+    return _real_vmap(fn, *args, **kwargs)
 
 
 def test_run_nuts_output_shape_and_no_logz(uniform_prior, nuts_settings):
@@ -300,3 +371,101 @@ def test_run_nuts_rejects_prior_without_bijectors(nuts_settings):
             nuts_settings,
             jnp.zeros(N_DIMS),
         )
+
+
+# ---------------------------------------------------------------------------
+# Cost model and health verdict
+# ---------------------------------------------------------------------------
+
+
+def test_run_nuts_reports_cost_model(uniform_prior, nuts_settings, tmp_path):
+    """Runtime = draws x leapfrogs/draw x ms/gradient — all three must be
+    readable off a single run, which is what makes 'is this speed reasonable?'
+    answerable without a bespoke probe."""
+    positions = _mixed_positions()
+    out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    d = out.diagnostics
+    assert d["leapfrogs_per_draw_mean"] == pytest.approx(7.0)
+    assert d["leapfrogs_per_draw_max"] == 7
+    assert d["tree_depth_mean"] == pytest.approx(3.0)
+    assert d["tree_depth_max"] == 3
+    assert d["treedepth_saturation"] == 0.0
+    assert d["total_gradient_evaluations"] == 7 * N_CHAINS * N_DRAWS
+    assert d["ms_per_gradient"] > 0
+    assert d["converged"] is True
+
+    written = json.loads((tmp_path / "nuts_diagnostics.json").read_text())
+    assert written["total_gradient_evaluations"] == d["total_gradient_evaluations"]
+
+
+def test_run_nuts_healthy_run_logs_no_error(uniform_prior, nuts_settings, caplog):
+    positions = _mixed_positions()
+    with caplog.at_level("ERROR"):
+        out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+    assert out.diagnostics["converged"] is True
+    assert not caplog.messages
+
+
+def test_run_nuts_flags_step_size_collapse(uniform_prior, nuts_settings, caplog):
+    """The failure mode that looks like 'slow' but is actually 'stuck'."""
+    positions = _ramp_positions() * 0.001
+    with caplog.at_level("ERROR"):
+        out = _run_mocked_nuts(
+            uniform_prior,
+            nuts_settings,
+            12,
+            positions,
+            step_sizes=jnp.full((N_CHAINS,), 1e-200),
+        )
+    assert out.diagnostics["converged"] is False
+    assert any("step size collapsed" in m for m in caplog.messages)
+    assert any("do not use this posterior" in m for m in caplog.messages)
+
+
+def test_run_nuts_flags_universal_divergence(uniform_prior, nuts_settings, caplog):
+    positions = _ramp_positions() * 0.001
+    with caplog.at_level("ERROR"):
+        out = _run_mocked_nuts(
+            uniform_prior,
+            nuts_settings,
+            12,
+            positions,
+            is_divergent=jnp.ones((N_CHAINS, N_DRAWS), dtype=bool),
+        )
+    assert out.diagnostics["converged"] is False
+    assert out.diagnostics["divergence_rate"] == 1.0
+    assert any("diverged on" in m for m in caplog.messages)
+
+
+def test_run_nuts_flags_zero_acceptance(uniform_prior, nuts_settings, caplog):
+    positions = _ramp_positions() * 0.001
+    with caplog.at_level("ERROR"):
+        out = _run_mocked_nuts(
+            uniform_prior,
+            nuts_settings,
+            12,
+            positions,
+            acceptance=jnp.zeros((N_CHAINS, N_DRAWS)),
+        )
+    assert out.diagnostics["converged"] is False
+    assert any("acceptance rate" in m for m in caplog.messages)
+
+
+def test_run_nuts_warns_on_treedepth_saturation(uniform_prior, nuts_settings, caplog):
+    """Saturation is not a failure, but it is the dominant runtime term and the
+    reason a fit takes hours rather than minutes."""
+    cap = nuts_settings["max_num_doublings"]
+    positions = _mixed_positions()
+    with caplog.at_level("WARNING"):
+        out = _run_mocked_nuts(
+            uniform_prior,
+            nuts_settings,
+            12,
+            positions,
+            tree_depth=jnp.full((N_CHAINS, N_DRAWS), cap, dtype=jnp.int32),
+            leapfrogs=jnp.full((N_CHAINS, N_DRAWS), 2**cap, dtype=jnp.int32),
+        )
+    assert out.diagnostics["treedepth_saturation"] == 1.0
+    assert out.diagnostics["converged"] is True  # slow, but not broken
+    assert any("maximum tree depth" in m for m in caplog.messages)

@@ -81,7 +81,10 @@ Uniform priors — including the `uniform[-sigma_prior, sigma_prior]` that
 `whitening:` imposes — are sampled through a logit bijector, so prior bounds
 never stall the sampler at a wall. No runcard change is needed for that.
 
-After a `nuts` run, read `<output>/blackjax_logs/nuts_diagnostics.json`:
+After a `nuts` run, read `<output>/blackjax_logs/nuts_diagnostics.json`. Start
+with `converged`: when it is `false` the run failed outright and the posterior
+is meaningless — the log carries an `ERROR` naming which check tripped
+(step-size collapse, >50% divergences, or ~zero acceptance). Otherwise:
 - `max_rhat` >= 1.01 → chains have not mixed. Raise `num_warmup`/`num_samples`,
   or enable `whitening:`.
 - `divergences` > 0 → the step size is too large for the posterior's curvature.
@@ -89,6 +92,26 @@ After a `nuts` run, read `<output>/blackjax_logs/nuts_diagnostics.json`:
 - `min_ess` below ~100 per chain → correlated draws; same remedies. A posterior
   pressed against a prior bound also shows up here, and is fixed by widening the
   prior (or `sigma_prior`).
+
+**Why a NUTS fit takes as long as it does.** The runtime is essentially
+
+    time  =  draws  x  leapfrogs_per_draw  x  ms_per_gradient
+
+and all three are reported. `ms_per_gradient` is a property of your likelihood
+(dataset count, `use_quad`, RGE, external chi2) and is not something the sampler
+can improve. `leapfrogs_per_draw_mean` is the multiplier that decides whether a
+fit takes minutes or hours: a well-conditioned posterior needs 8-64 steps, while
+`treedepth_saturation` near 1 means every draw is paying the
+`2**max_num_doublings` maximum. Saturation is a statement about the posterior's
+geometry, not a bug — enable or strengthen `whitening:`, or lower
+`max_num_doublings` to cap the cost per draw at the price of shorter moves.
+
+A whitening block on a badly conditioned Hessian is the usual culprit: watch for
+the "regularised Hessian is ill-conditioned" warning and the count of
+unconstrained directions in the `Hessian whitening:` line. Directions the data
+does not constrain get their scale from `whitening.eps` rather than from the
+fit, which is exactly the geometry gradient samplers handle worst. Nested
+sampling is the more robust choice there.
 
 ## Sequential Bayesian updating
 

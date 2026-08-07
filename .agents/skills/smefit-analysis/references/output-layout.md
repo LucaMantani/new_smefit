@@ -18,7 +18,11 @@
   blackjax_logs/          # BlackJAX log dir
     nested_samples.csv    #  algorithm: nested_sampling — anesthetic NestedSamples
     nuts_samples.csv      #  algorithm: nuts — thinned draws, one column per parameter
-    nuts_diagnostics.json #  algorithm: nuts — R-hat, ESS, divergences, step sizes
+    nuts_diagnostics.json #  algorithm: nuts — `converged` verdict first, then
+                          #  R-hat, ESS, divergences, step sizes, and the cost
+                          #  model (leapfrogs_per_draw_*, tree_depth_*,
+                          #  treedepth_saturation, total_gradient_evaluations,
+                          #  ms_per_gradient)
   rge_matrix.pkl          # RGE matrices per scale, saved when an rge block ran;
                           #  reusable via rge.rg_matrix in later runcards
   pseudodata/             # written by the write_pseudodata action

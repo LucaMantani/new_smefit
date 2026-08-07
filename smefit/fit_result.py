@@ -545,7 +545,7 @@ class Fit:
         hand, in which case every property below falls back to its default.
     """
 
-    fit_results: Union[FitResult, "FitResultGroup"]
+    fit_results: Union[FitResult, FitResultGroup]
     fit_name: str
     label: Optional[str] = None
     fit_runcard: Dict = field(default_factory=dict)

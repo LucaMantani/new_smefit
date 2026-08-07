@@ -104,7 +104,7 @@
         "algorithm": "'nested_sampling'",
         "delete_fraction": "0.5",
         "init": "'prior'",
-        "log_dir": "str(output_path / 'blackjax_logs')",
+        "log_dir": "str(output_path / 'blackjax_logs') if output_path is not None else None",
         "log_precision": "-2",
         "max_num_doublings": "10",
         "n_live": "500",
@@ -144,6 +144,17 @@
         "group": "(no default)"
       },
       "known_keys": null
+    },
+    "fits": {
+      "defaults": {
+        "label": "(no default)",
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "label",
+        "name",
+        "path"
+      ]
     },
     "gradient_descent_settings": {
       "defaults": {
@@ -248,6 +259,7 @@
     "data_path",
     "datasets",
     "external_chi2",
+    "fits",
     "gradient_descent_settings",
     "hessian_settings",
     "meta",

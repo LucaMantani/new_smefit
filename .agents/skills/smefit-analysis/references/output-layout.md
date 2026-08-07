@@ -46,17 +46,37 @@ Written by `FitResult.write` (`smefit/fit_result.py`):
 | `bic`, `aic` | information criteria |
 | `samples` | `{coefficient: [posterior samples]}` — null for pure best-fit runs |
 | `prior_specs` | the prior each free coefficient used |
-| `whitening_matrix`, `whitening_active` | set when the fit ran in whitened space |
+| `whitening_transformation`, `whitening_active` | set when the fit ran in whitened space |
 
-Load it back in Python with `FitResult.from_json("<output>")` (takes the
-directory, not the file), or plain `json.load` for quick lookups.
+Load a fit back in Python with `Fit.from_folder("<output>")` (takes the
+directory, not the file): it reads this file *and* `input/runcard.yaml`, so the
+fit comes back with how it was configured — `use_quad`, `fit_type`,
+`individual_fit` — alongside its numbers, under `.fit_results`.
+`FitResult.from_json("<output>")` reads this file alone, and plain `json.load`
+does for quick lookups.
 
-## Individual fits
+## fit_results.json schema (individual fits)
 
 `run_individual_*_fits` writes one subdirectory per free coefficient under
-`individual_fits/`, each with the full schema above, plus a merged top-level
-`fit_results.json` marked `"individual_fit": true` where `chi2`, `chi2_ndof`,
-and `logz` become per-coefficient dictionaries.
+`individual_fits/`, each a single-coefficient result with the full schema
+above, plus a merged top-level `fit_results.json` written by
+`FitResultGroup.write_summary`:
+
+| Field | Meaning |
+|---|---|
+| `free_parameters` | the coefficients fitted, each on its own |
+| `num_data`, `n_free` | data points, and how many coefficients were fitted |
+| `best_fit_point` | `{coefficient: value}` |
+| `std` | `{coefficient: standard deviation}` |
+| `chi2`, `chi2_ndof`, `logz` | per-coefficient dictionaries here, not scalars |
+| `samples` | `{coefficient: [posterior samples]}` — null for pure best-fit runs |
+| `prior_specs` | the prior each coefficient used |
+| `whitening_active` | whether the fits ran in whitened space |
+
+Nothing in the payload records that the fit was run one coefficient at a time —
+that is read off the `run_individual_*_fits` action in `input/runcard.yaml`,
+which is why `Fit.from_folder` needs the whole directory. It hands back a
+`FitResultGroup`, one genuine single-parameter `FitResult` per coefficient.
 
 ## Reading constraints from samples
 

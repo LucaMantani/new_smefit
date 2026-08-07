@@ -216,8 +216,12 @@ def collect_config_surface():
             continue  # inherited reportengine machinery is not smefit surface
         doc = inspect.getdoc(method) or ""
         fn_ast = method_asts[name]
+        # An @element_of parser is written in the singular (parse_fit) while the
+        # runcard key is the plural it generates (fits). The generated method
+        # has no source-level def, so it is skipped above and this is the only
+        # place the key can come from.
         entry = {
-            "key": name.split("_", 1)[1],
+            "key": getattr(method, "_element_of", None) or name.split("_", 1)[1],
             "doc": doc,
             "known_keys": _extract_known_keys(fn_ast),
             "defaults": _extract_get_defaults(fn_ast),

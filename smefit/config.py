@@ -7,10 +7,11 @@ Config module of smefit
 import logging
 import os
 import pathlib
+from collections.abc import Mapping
 
 import jax.numpy as jnp
 import optax
-from reportengine.configparser import ConfigError, explicit_node
+from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
@@ -23,10 +24,12 @@ from smefit.blackjax_samplers import (
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
+from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
     fetch_fit_if_missing,
+    resolve_fit_dir,
     resolve_path,
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
@@ -129,8 +132,19 @@ class smefitConfig(Config):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, rge, coefficients, theory, output_path):
-        """Produce the stacked RGE matrix for all data points."""
+    def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
+        """Produce the stacked RGE matrix for all data points.
+
+        Returns ``None`` when the runcard has no ``rge:`` block.
+
+        ``output_path`` is only used to cache the matrix to disk, so it is
+        optional: under the `smefit` API there is no output folder (it is a
+        reportengine environment attribute, supplied by the CLI's ``-o`` flag)
+        and the matrix is simply not cached.
+        """
+        if rge is None:
+            return None
+
         if hasattr(self, "_cached_rge_matrix"):
             return self._cached_rge_matrix
 
@@ -276,8 +290,14 @@ class smefitConfig(Config):
         log.info("Whitening: centering on the coefficients' baseline point.")
         return _whitening_baseline_shift
 
-    def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
-        """Produce EFT model mapping coefficients to theory predictions."""
+    def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+        """Produce EFT model mapping coefficients to theory predictions.
+
+        ``rge_matrix`` is deliberately required: giving it a ``None`` default
+        would let reportengine swallow any failure to build it (it catches
+        ``KeyError`` and substitutes the default) and hand back a model with no
+        RGE running, silently.
+        """
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
@@ -421,10 +441,14 @@ class smefitConfig(Config):
     def parse_ultranest_settings(
         self,
         settings,
-        output_path,
+        output_path=None,
     ):
         """For a Nested Sampling fit, parses the ultranest_settings namespace from the runcard,
         and ensures the choice of settings is valid.
+
+        ``output_path`` is optional because it is a reportengine environment
+        attribute that only the CLI supplies; without it there is no folder to
+        derive ``log_dir`` from, so the user must set it explicitly.
         """
 
         # Warn about unknown keys
@@ -444,7 +468,9 @@ class smefitConfig(Config):
 
         # Defaults for ReactiveNS_settings (log_dir depends on output_path)
         reactive_defaults = {
-            "log_dir": str(output_path / "ultranest_logs"),
+            "log_dir": (
+                str(output_path / "ultranest_logs") if output_path is not None else None
+            ),
             "resume": False,
             "vectorized": False,
         }
@@ -472,7 +498,11 @@ class smefitConfig(Config):
 
         return ultranest_settings
 
-    def parse_blackjax_settings(self, settings, output_path):
+    def parse_blackjax_settings(
+        self,
+        settings,
+        output_path=None,
+    ):
         """Parse optional settings for a BlackJAX fit.
 
         The sampling algorithm is selected with ``algorithm``; every other key
@@ -526,6 +556,10 @@ class smefitConfig(Config):
 
         Bounded (uniform) priors are sampled through a logit bijector, so NUTS
         always explores an unconstrained space; gaussian priors are used as-is.
+
+        ``output_path`` is optional because it is a reportengine environment
+        attribute that only the CLI supplies; without it there is no folder to
+        derive ``log_dir`` from, so the user must set it explicitly.
         """
         settings = dict(settings)
 
@@ -585,7 +619,8 @@ class smefitConfig(Config):
         blackjax_settings["seed"] = int(settings.get("seed", 0))
         # Set directory where blackjax_logs will be saved
         blackjax_settings["log_dir"] = settings.get(
-            "log_dir", str(output_path / "blackjax_logs")
+            "log_dir",
+            str(output_path / "blackjax_logs") if output_path is not None else None,
         )
         # nested_sampling
         blackjax_settings["n_live"] = int(settings.get("n_live", 500))
@@ -796,6 +831,63 @@ class smefitConfig(Config):
         ).build_data_group()
 
     # ------------------------------------------------------------------
+    # Previously run fits
+    # ------------------------------------------------------------------
+
+    @element_of("fits")
+    def parse_fit(self, fit: str | Mapping) -> Fit:
+        """Load one previously run fit from disk into a :class:`Fit`.
+
+        ``fits`` is the list form of this key, generated by ``element_of``, and
+        is what a runcard writes: a list of the entries below, each loaded into
+        a :class:`Fit`. It is a namespace list, so a provider can take a single
+        ``fit`` and be collected over ``("fits",)``.
+
+        Each entry is the name of a fit, or a mapping
+
+            - name: my_fit                     # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+              label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet. ``path`` is resolved
+        through ``.config/paths.yaml`` like any other path.
+
+        The name is how the fit is referred to everywhere downstream: it is the
+        key of the per-fit plot settings, and the legend label when no ``label``
+        is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+        LaTeX (quote it in YAML to keep the backslashes).
+        """
+        entry = {"name": fit} if isinstance(fit, str) else dict(fit)
+        if "name" not in entry:
+            raise ConfigError(f"Each fits entry requires a 'name': {entry}")
+
+        known_keys = {"name", "path", "label"}
+        for k in set(entry.keys()) - known_keys:
+            log.warning("Unknown key '%s' in fits entry.", k)
+
+        label = entry.get("label")
+        if label is not None and not isinstance(label, str):
+            raise ConfigError(
+                f"The 'label' of fit '{entry['name']}' must be a string, "
+                f"got {label!r}."
+            )
+
+        try:
+            path = resolve_fit_dir(entry["name"], entry.get("path"))
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(str(e)) from e
+
+        try:
+            # A label is how the runcard chooses to present the fit, not
+            # something the fit directory knows about.
+            return Fit.from_folder(path, label=label)
+        except (KeyError, OSError, ValueError) as e:
+            raise ConfigError(
+                f"Could not load fit '{entry['name']}' from {path}: {e}"
+            ) from e
+
+    # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time
     # ------------------------------------------------------------------
 
@@ -808,9 +900,13 @@ class smefitConfig(Config):
         return coefficients.single_free(individual_fit_coefficient)
 
     def produce_individual_eft_model(
-        self, theory, individual_coefficients, use_quad=False, rge_matrix=None
+        self, theory, individual_coefficients, rge_matrix, use_quad=False
     ):
-        """Produce EFT model for a single-free-parameter individual fit."""
+        """Produce EFT model for a single-free-parameter individual fit.
+
+        ``rge_matrix`` is required for the same reason as in
+        ``produce_eft_model``.
+        """
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(

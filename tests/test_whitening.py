@@ -1,5 +1,7 @@
 """Unit tests for smefit.whitening — WhitenTransform and its dispatch workers."""
 
+import logging
+
 import jax.numpy as jnp
 import pytest
 
@@ -66,16 +68,65 @@ def test_build_matrix_matches_hand_computed_cholesky():
     assert jnp.allclose(matrix, expected, atol=1e-5)
 
 
-def test_build_matrix_raises_on_negative_curvature():
-    """Genuine negative curvature means the centre is a saddle, not a minimum.
-
-    eps regularises flat directions, not negative ones, so the message must
-    point at re-centring rather than at raising eps.
-    """
+def test_build_matrix_raises_on_non_positive_definite_hessian():
+    """Negative curvature -> ValueError, attributed to a saddle centre."""
     chi2 = Chi2(lambda c: -jnp.sum(c**2), ["OpA", "OpB"], num_data=1)
     center = jnp.zeros(2)
-    with pytest.raises(ValueError, match="saddle point, not a minimum"):
+    with pytest.raises(ValueError, match="not positive definite") as excinfo:
         _build_matrix(chi2, _WHITENING, center)
+    assert "saddle point" in str(excinfo.value)
+
+
+def test_build_matrix_tiny_negative_eigenvalue_is_not_called_a_saddle():
+    """A flat direction rounding slightly negative is noise, not a saddle.
+
+    H = diag(2, -1e-14): lam_min is below -eps, so H + eps*I is still
+    indefinite, but it sits well inside the 100*machine_eps*lam_max noise floor
+    in either precision (4e-14 in float64, 2e-5 in float32). H is diagonal, so
+    eigvalsh recovers the tiny eigenvalue exactly even in float32.
+    """
+    chi2 = Chi2(lambda c: c[0] ** 2 - 5e-15 * c[1] ** 2, ["OpA", "OpB"], num_data=1)
+    whitening = {**_WHITENING, "eps": 1e-15}
+    with pytest.raises(ValueError, match="numerically negative") as excinfo:
+        _build_matrix(chi2, whitening, jnp.zeros(2))
+    assert "saddle" not in str(excinfo.value)
+
+
+def test_build_matrix_regularises_flat_direction_with_eps():
+    """A rank-deficient Hessian still builds, with the flat scale set by eps.
+
+    chi2 = c0**2 leaves OpB flat: H + eps*I = diag(2, eps), so the whitened
+    unit step along OpB reaches 1/sqrt(eps) in physical units — the quantity
+    the flat-direction warning reports as sigma_prior/sqrt(eps).
+    """
+    chi2 = Chi2(lambda c: c[0] ** 2, ["OpA", "OpB"], num_data=1)
+    matrix = _build_matrix(chi2, _WHITENING, jnp.zeros(2))
+    expected = jnp.diag(jnp.array([1.0 / jnp.sqrt(2.0), _WHITENING["eps"] ** -0.5]))
+    assert jnp.allclose(matrix, expected, rtol=1e-3)
+
+
+def test_build_matrix_warns_and_counts_flat_directions(caplog):
+    """Flat directions promote the single log record to WARNING."""
+    chi2 = Chi2(lambda c: c[0] ** 2, ["OpA", "OpB"], num_data=1)
+    with caplog.at_level(logging.INFO, logger="smefit.whitening"):
+        _build_matrix(chi2, _WHITENING, jnp.zeros(2))
+
+    (record,) = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "1/2 below eps=1.0e-08" in record.getMessage()
+
+
+def test_build_matrix_logs_spectrum_at_info_when_well_conditioned(caplog):
+    """Nothing flat -> one INFO record, no warning."""
+    chi2 = Chi2(lambda c: c[0] ** 2 + 0.5 * c[1] ** 2, ["OpA", "OpB"], num_data=1)
+    with caplog.at_level(logging.INFO, logger="smefit.whitening"):
+        _build_matrix(chi2, _WHITENING, jnp.zeros(2))
+
+    (record,) = caplog.records
+    assert record.levelno == logging.INFO
+    # Eigenvalues 1 and 2, so cond(H + eps*I) = 2.
+    assert "eigenvalues of H in [1.000e+00, 2.000e+00]" in record.getMessage()
+    assert "cond(H + eps*I) = 2.000e+00" in record.getMessage()
 
     with pytest.raises(ValueError, match="gradient_descent"):
         _build_matrix(chi2, _WHITENING, center)

@@ -1,13 +1,17 @@
 """Unit tests for smefit/config.py."""
 
 import inspect
+import json
+import logging
 import os
 import pathlib
 from unittest.mock import MagicMock, patch
 
 import jax.numpy as jnp
 import pytest
-from reportengine.configparser import ConfigError, ExplicitNode
+import yaml
+from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
+from reportengine.namespaces import NSList
 
 from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
@@ -166,6 +170,58 @@ def test_parse_rge_fixed_obs_scale_ok(cfg):
 
 
 # ---------------------------------------------------------------------------
+# produce_rge_matrix / rge_matrix as a required dependency
+#
+# output_path is a reportengine *environment* attribute, supplied by the CLI's
+# -o flag and absent under smefitAPI. It used to be a required parameter of
+# produce_rge_matrix (for a disk-cache side effect only), so under the API the
+# node could not resolve -- and produce_eft_model's `rge_matrix=None` default
+# let reportengine swallow that failure, silently building a chi2 with no RGE
+# running. These tests pin both halves of the fix.
+# ---------------------------------------------------------------------------
+
+
+def test_produce_rge_matrix_none_without_rge_block(cfg):
+    """No `rge:` in the runcard is the one legitimate reason for an empty matrix."""
+    assert cfg.produce_rge_matrix(MagicMock(), MagicMock()) is None
+
+
+def test_produce_rge_matrix_output_path_is_optional():
+    """output_path only drives the disk cache, so it must not be required."""
+    params = inspect.signature(smefitConfig.produce_rge_matrix).parameters
+    assert params["output_path"].default is None
+    assert params["rge"].default is None
+    # the physics inputs stay required, so a real failure there is still loud
+    assert params["coefficients"].default is inspect.Parameter.empty
+    assert params["theory"].default is inspect.Parameter.empty
+
+
+@pytest.mark.parametrize(
+    "method", ["produce_eft_model", "produce_individual_eft_model"]
+)
+def test_eft_model_requires_rge_matrix(method):
+    """A default here would let reportengine swallow a failed rge_matrix build."""
+    param = inspect.signature(getattr(smefitConfig, method)).parameters["rge_matrix"]
+    assert param.default is inspect.Parameter.empty
+
+
+def test_produce_rge_matrix_skips_save_without_output_path(cfg):
+    """With no output folder the matrix is computed but not cached to disk."""
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+    with patch("smefit.config.load_rge_matrix") as mock_load:
+        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=None)
+    assert mock_load.call_args.kwargs["save_path"] is None
+
+
+def test_produce_rge_matrix_saves_with_output_path(cfg, tmp_path):
+    """The CLI contract -- <output>/rge_matrix.pkl -- is unchanged."""
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+    with patch("smefit.config.load_rge_matrix") as mock_load:
+        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
+    assert mock_load.call_args.kwargs["save_path"] == tmp_path
+
+
+# ---------------------------------------------------------------------------
 # parse_ultranest_settings
 # ---------------------------------------------------------------------------
 
@@ -198,6 +254,24 @@ def test_parse_ultranest_resume_missing_dir_raises(cfg, tmp_path):
     settings = {"ReactiveNS_settings": {"log_dir": missing_dir, "resume": True}}
     with pytest.raises(FileNotFoundError):
         cfg.parse_ultranest_settings(settings, tmp_path)
+
+
+def test_parse_ultranest_no_output_path_still_parses(cfg):
+    """Under the smefit API there is no output folder: parsing must still resolve.
+
+    log_dir has nothing to be derived from and is left as None, so a runcard
+    that actually runs the sampler this way has to set it explicitly.
+    """
+    result = cfg.parse_ultranest_settings({}, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] is None
+    assert result["ReactiveNS_settings"]["resume"] == "overwrite"
+
+
+def test_parse_ultranest_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    settings = {"ReactiveNS_settings": {"log_dir": log_dir}}
+    result = cfg.parse_ultranest_settings(settings, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] == log_dir
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +357,27 @@ def test_parse_blackjax_known_keys_cover_all_algorithm_settings(cfg, tmp_path, c
         cfg.parse_blackjax_settings(settings, tmp_path)
 
     assert not any("not known" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_no_output_path_still_parses(cfg):
+    """Same as ultranest: no output folder means log_dir is left as None."""
+    result = cfg.parse_blackjax_settings({}, output_path=None)
+    assert result["log_dir"] is None
+    assert result["n_live"] == 500  # the rest of the block still parses
+
+
+def test_parse_blackjax_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    result = cfg.parse_blackjax_settings({"log_dir": log_dir}, output_path=None)
+    assert result["log_dir"] == log_dir
+
+
+def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
+    """log_dir is the escape hatch when there is no output folder, so it must
+    not be reported as an unknown key."""
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"log_dir": str(tmp_path)}, tmp_path)
+    assert "not known" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -866,3 +961,187 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     assert (
         result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# parse_fit / the fits key it generates
+# ---------------------------------------------------------------------------
+
+
+def _write_fit_dir(path, use_quad=False, action="run_analytic_fit"):
+    """Minimal fit directory, as written by a smefit run."""
+    (path / "input").mkdir(parents=True)
+    (path / "fit_results.json").write_text(
+        json.dumps(
+            {
+                "free_parameters": ["OpA", "OpB"],
+                "best_fit_point": {"OpA": 0.0, "OpB": 1.0},
+                "max_loglikelihood": -1.0,
+                "num_data": 5,
+                "samples": {"OpA": [0.0], "OpB": [1.0]},
+            }
+        )
+    )
+    (path / "input" / "runcard.yaml").write_text(
+        yaml.dump({"use_quad": use_quad, "actions_": [action]})
+    )
+    return path
+
+
+def test_parse_fits_accepts_plain_names(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "fits" / "fit_a")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits(["fit_a"])
+
+    assert [f.fit_name for f in result] == ["fit_a"]
+    assert result[0].label is None
+
+
+def test_parse_fits_accepts_mappings(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": "$A$"}]
+    )
+
+    assert result[0].fit_name == "fit_a"
+    assert result[0].label == "$A$"
+
+
+def test_parse_fits_is_a_namespace_list(cfg, tmp_path):
+    """``fits`` is an NSList, so providers can be collected over ("fits",).
+
+    The nskey is what a provider taking a single ``fit`` is resolved against,
+    so downstream per-fit figures and tables depend on it.
+    """
+    _write_fit_dir(tmp_path / "fit_a")
+
+    result = cfg.parse_fits([{"name": "fit_a", "path": str(tmp_path)}])
+
+    assert isinstance(result, NSList)
+    assert result.nskey == "fit"
+    assert result.as_namespace() == [{"fit": result[0]}]
+
+
+def test_parse_fits_rejects_a_bare_string(cfg):
+    """``fits: my_fit`` is a list key; without the dash it used to iterate
+    the characters of the string and complain about a fit called 'm'."""
+    with pytest.raises(BadInputType, match="not of type list"):
+        cfg.parse_fits("my_fit")
+
+
+def test_parse_fit_rejects_a_non_string_entry(cfg):
+    with pytest.raises(BadInputType, match="not of type"):
+        cfg.parse_fits([3])
+
+
+def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
+    """A label is passed to matplotlib as given, backslashes and all."""
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    label = r"$\mathrm{FCC}\textnormal{-}\mathrm{ee\ descoped}$"
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": label}]
+    )
+
+    assert result[0].label == label
+
+
+def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with pytest.raises(ConfigError, match="must be a string"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
+        )
+
+
+def test_parse_fits_requires_a_name(cfg):
+    with pytest.raises(ConfigError, match="requires a .name."):
+        cfg.parse_fits([{"label": "$A$"}])
+
+
+def test_parse_fits_missing_fit_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="not found"):
+        cfg.parse_fits([{"name": "does_not_exist", "path": str(tmp_path)}])
+
+
+def test_parse_fits_unknown_key_warns(cfg, tmp_path, caplog):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "unknown_key": 1}]
+        )
+
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "my_fits" / "my_fit")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
+
+    assert result[0].fit_name == "my_fit"
+
+
+def test_parse_fits_loads_every_fit(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "lin", use_quad=False)
+    _write_fit_dir(tmp_path / "quad", use_quad=True, action="run_ultranest_fit")
+
+    fits = cfg.parse_fits(
+        [
+            {"name": "lin", "path": str(tmp_path)},
+            {"name": "quad", "path": str(tmp_path), "label": "$Q$"},
+        ]
+    )
+
+    assert [f.fit_name for f in fits] == ["lin", "quad"]
+    # metadata read from each fit's own runcard
+    assert [f.use_quad for f in fits] == [False, True]
+    assert [f.fit_type for f in fits] == ["analytic", "ultranest"]
+    # the label of the runcard entry, None when it has none
+    assert [f.label for f in fits] == [None, "$Q$"]
+    assert fits[0].fit_results.free_parameters == ["OpA", "OpB"]
+
+
+def test_parse_fits_reports_an_unreadable_fit(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "fit_results.json").write_text("{not json")
+
+    with pytest.raises(ConfigError, match="Could not load fit 'broken'"):
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+
+def test_parse_fits_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_path):
+    """A broken runcard is reported like any other unloadable fit.
+
+    from_folder raises the same ValueError whichever of its two files fails to
+    parse, so this needs nothing here beyond what the json case already needs.
+    """
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "input" / "runcard.yaml").write_text(
+        "actions_: [run_analytic_fit\n bad: : :"
+    )
+
+    with pytest.raises(
+        ConfigError, match="Could not load fit 'broken'.*not valid YAML"
+    ):
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+
+def test_parse_fit_loads_a_single_fit(cfg, tmp_path):
+    """``fit:`` works on its own — the singular key element_of gives us."""
+    _write_fit_dir(tmp_path / "fit_a")
+
+    fit = cfg.parse_fit({"name": "fit_a", "path": str(tmp_path)})
+
+    assert fit.fit_name == "fit_a"

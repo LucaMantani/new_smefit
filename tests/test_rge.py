@@ -133,3 +133,31 @@ def test_load_rge_matrix_shape(theory_a):
     # The actual number of unique scales may collapse to 1 since all are 100.0
     n_unique_scales = result.stacked_mats.shape[0]
     assert n_unique_scales >= 1
+
+
+@pytest.mark.slow
+def test_load_rge_matrix_no_save_path_writes_nothing(theory_a, tmp_path, monkeypatch):
+    """save_path=None (no output folder, e.g. under smefitAPI) must not write."""
+    from smefit.core import TheoryGroup
+    from smefit.rge import load_rge_matrix
+
+    monkeypatch.chdir(tmp_path)
+    tg = TheoryGroup([theory_a])
+    rge_dict = {"init_scale": 1000, "obs_scale": "dynamic"}
+    result = load_rge_matrix(rge_dict, ["OpBox"], tg, save_path=None)
+
+    assert isinstance(result, RGEMatrix)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.slow
+def test_load_rge_matrix_save_path_writes_pickle(theory_a, tmp_path):
+    """The on-disk contract used by `rge: {rg_matrix: ...}` is unchanged."""
+    from smefit.core import TheoryGroup
+    from smefit.rge import load_rge_matrix
+
+    tg = TheoryGroup([theory_a])
+    rge_dict = {"init_scale": 1000, "obs_scale": "dynamic"}
+    load_rge_matrix(rge_dict, ["OpBox"], tg, save_path=tmp_path / "out")
+
+    assert (tmp_path / "out" / "rge_matrix.pkl").is_file()

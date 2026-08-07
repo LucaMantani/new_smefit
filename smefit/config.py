@@ -167,7 +167,8 @@ class smefitConfig(Config):
             rge_matrix.obs_operators,
         )
         # Write RGE matrix to disk for future reuse
-        rge_matrix.write(output_path)
+        if output_path is not None:
+            rge_matrix.write(output_path)
         self._cached_rge_matrix = rge_matrix
         return rge_matrix
 

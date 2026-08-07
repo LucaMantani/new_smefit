@@ -80,7 +80,9 @@ def _load_yaml(path) -> Dict:
 
 # Fit actions are named "run_<fit type>_fit", or "run_individual_<fit
 # type>_fits" when the fit is run one coefficient at a time.
-_FIT_ACTION_RE = re.compile(r"^run_(individual_)?(?P<fit_type>.+?)_fits?$")
+_FIT_ACTION_RE = re.compile(
+    r"^run_(?P<individual>individual_)?(?P<fit_type>.+?)_fits?$"
+)
 
 
 def _parse_fit_action(action: str) -> Optional[Dict]:
@@ -109,7 +111,7 @@ def _parse_fit_action(action: str) -> Optional[Dict]:
         return None
     return {
         "fit_type": match["fit_type"],
-        "is_individual_fit": action.startswith("run_individual_"),
+        "is_individual_fit": match["individual"] is not None,
     }
 
 

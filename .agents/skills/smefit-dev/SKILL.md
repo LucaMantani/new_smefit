@@ -16,6 +16,7 @@ ad-hoc plumbing between modules does not.
 | Kind | Where | Contract |
 |---|---|---|
 | `parse_<key>` | `smefit/config.py` | Turns the raw YAML value of runcard key `<key>` into a validated object. Called only when `<key>` is present. |
+| `@element_of("<keys>")` on `parse_<key>` | `smefit/config.py` | Turns **one entry** of the list-valued runcard key `<keys>` into an object. reportengine generates `parse_<keys>` from it. |
 | `produce_<name>` | `smefit/config.py` | Builds a derived resource `<name>` from other resources (its own arguments). Never written in a runcard. |
 | provider function | a module listed in `smefit_providers` (`smefit/app.py`) | Its parameters are resource names; reportengine resolves them. Public ones can be used as actions. |
 
@@ -79,6 +80,56 @@ Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
 `reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
 → `_make_node((name, val.value))` → `_make_callspec`.
 
+## List-valued runcard keys: `element_of`
+
+A runcard key that is a **list of independent things** must never be parsed by
+a hand-rolled loop. Write the rule for *one* entry and let reportengine
+generate the plural:
+
+```python
+@element_of("fits")
+def parse_fit(self, fit: (str, Mapping)):
+    ...
+    return Fit.from_folder(path, label=label)
+```
+
+`ElementOfResolver` (`reportengine/configparser.py:197`) then synthesises
+`parse_fits`, which loops the list and calls `parse_fit` on each element.
+Three things come with it that a loop inside a `parse_`/`produce_` pair cannot
+have:
+
+- **`fits` becomes a namespace list** — `NSList(..., nskey="fit")`. A provider
+  can take a single `fit` and be collected over `("fits",)`
+  (`collect("fit_plot", ("fits",))`), one output per fit, instead of every
+  consumer taking the whole list and looping internally.
+- **Type checking, free** — the generated plural is annotated `param: list`, so
+  `fits: my_fit` (missing dash) raises `BadInputType` instead of iterating the
+  characters of the string. The singular's own annotation checks each element.
+- **Per-element traps** — an entry can be `{from_: ...}`, and the singular key
+  (`fit:`) works on its own.
+
+Rules:
+
+- **It goes on the singular `parse_`, never on a `produce_`.** A `produce_X`
+  only runs when `X` is *absent* from the runcard (`_resolve_key`,
+  `reportengine/configparser.py:471`), so a `produce_` named after a key the
+  user writes is dead code. Needing a second name for it (`fit_objects`) is the
+  symptom that the entry-level work belongs in a parser.
+- **What the singular returns is what providers receive.** Return the finished
+  object when one entry maps to exactly one thing (`fits` → a `Fit`); return a
+  validated spec when several derived resources are built from the same entry,
+  and add per-namespace `produce_`s on top.
+- **The reference generator keys off `_element_of`.** `collect_config_surface`
+  (`scripts/generate_skill_reference.py`) skips names with no source-level
+  `def`, so the generated `parse_fits` is invisible to it; the documented key
+  comes from `getattr(method, "_element_of", ...)`. Without that the key
+  vanishes from `runcard-keys.json` and `validate_runcard.py` reports it as
+  unknown in every valid runcard.
+
+Not every list-valued key wants it: `parse_coefficients` stays a whole-dict
+parser because `CoefficientGroup` is a cohesive object (ordering, `free_names`,
+cross-coefficient constraints), not a bag of independent entries.
+
 ## Adding a runcard key
 
 1. **A settings block** (`<thing>_settings:`) → add `parse_<thing>_settings`
@@ -123,6 +174,13 @@ protection against misspelling it.
    conventions must be added to `EXTRA_ACTION_NAMES` in
    `scripts/generate_skill_reference.py`, or it will be documented as
    "never write this under `actions_:`".
+5. **A new fit action** must be named `run_<fit type>_fit`, or
+   `run_individual_<fit type>_fits` when it fits one coefficient at a time:
+   `_parse_fit_action` (`smefit/fit_result.py`) reads the fit type and
+   individual-ness straight off the name. That is how a fit loaded from disk
+   knows which sampler produced it and how it was driven — the action in
+   `input/runcard.yaml` is the only record — so a name outside the convention
+   silently leaves `fit_type` unset.
 
 ## Coefficients, priors, external chi2
 

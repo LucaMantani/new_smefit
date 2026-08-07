@@ -16,6 +16,7 @@ ad-hoc plumbing between modules does not.
 | Kind | Where | Contract |
 |---|---|---|
 | `parse_<key>` | `smefit/config.py` | Turns the raw YAML value of runcard key `<key>` into a validated object. Called only when `<key>` is present. |
+| `@element_of("<keys>")` on `parse_<key>` | `smefit/config.py` | Turns **one entry** of the list-valued runcard key `<keys>` into an object. reportengine generates `parse_<keys>` from it. |
 | `produce_<name>` | `smefit/config.py` | Builds a derived resource `<name>` from other resources (its own arguments). Never written in a runcard. |
 | provider function | a module listed in `smefit_providers` (`smefit/app.py`) | Its parameters are resource names; reportengine resolves them. Public ones can be used as actions. |
 
@@ -27,6 +28,81 @@ as a `NameError`.
 
 A `produce_` can also be decorated with `@explicit_node`, which changes what it
 returns and lets it pick its *own* dependencies — see below.
+
+## `=None` defaults turn failures silent
+
+`resolve_signature_params` (`reportengine/configparser.py`) resolves each
+parameter and **catches `KeyError`** — and `InputNotFoundError` is a `KeyError`
+subclass. So when a parameter has a default, *any* failure to resolve it,
+including a genuine error deep inside its own `produce_`, is swallowed and the
+default substituted. The only trace is `log.debug("Can't satisfy production rule
+for X")`.
+
+The rule that follows:
+
+> A `=None` default belongs only on something that may **legitimately be
+> absent** — a runcard key the user need not write, or an environment value that
+> genuinely may not exist. Never on a derived node.
+
+Push the default down to the single place where "absent" is a valid state, and
+let every consumer above it require the resource:
+
+```python
+# rge: is optional in a runcard -> the default lives HERE, and only here
+def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
+    if rge is None:
+        return None
+    ...
+
+
+# ...so eft_model can require it, and a broken RGE build raises
+def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+    return EFTModel(theory, coefficients, use_quad, rge_matrix)
+```
+
+Written the other way round (`produce_eft_model(..., rge_matrix=None)`), a
+runcard *with* an `rge:` block whose matrix failed to build silently yields a
+chi2 with no RGE running — a wrong likelihood, no error. That was a real bug.
+Guard the invariant with a signature test: `tests/test_config.py` pins
+`rge_matrix` as having no default for exactly this reason.
+
+`produce_chi2`'s `eft_model=None` / `data=None` is the deliberate exception: an
+external-`chi2`-only runcard has no `datasets:`, so `eft_model` genuinely cannot
+resolve. It pays for that with an explicit check in `_build_chi2_impl` that
+raises when data *is* present but `eft_model` is `None`.
+
+## `output_path` is an environment value, not a node
+
+`output_path` is a reportengine **`Environment` attribute** — not a runcard key
+and not a `produce_`. `smefitApp` sets it from `-o/--output`, but `smefitAPI`
+(`smefit/api.py`) constructs `smefitEnvironment()` with no output folder, and
+`Environment.ns_dump()` exports only non-`None` attributes, so under the API the
+name is **absent from the namespace entirely** and can never be resolved.
+
+Consequences for a `produce_`/`parse_` that takes it:
+
+- Declare it `output_path=None`. Otherwise the node is unresolvable under the
+  API and — per the section above — its failure is swallowed by whichever
+  consumer has a default.
+- If it only drives a **write**, skip the write when it is `None`
+  (`produce_rge_matrix` passes `save_path=output_path`, and `load_rge_matrix`
+  treats `None` as "do not cache").
+- If it only supplies a **default for another key**, fall back to `None` so the
+  node still resolves, and say in the docstring that the user must then set that
+  key explicitly. Both sampler blocks do this for `log_dir`:
+
+  ```python
+  reactive_defaults = {
+      "log_dir": (
+          str(output_path / "ultranest_logs") if output_path is not None else None
+      ),
+      "resume": False,
+      "vectorized": False,
+  }
+  ```
+
+Actions listed under `actions_:` always run through the CLI, so they may keep
+`output_path` required.
 
 ## Dynamic dependencies: `@explicit_node`
 
@@ -128,6 +204,55 @@ Rules:
 - Fan-out plus `@figuregen` (`smefit/figures.py`) is the natural pairing for
   per-element plots: yield `(fig, name)` and reportengine writes
   `figures/<action>_<name>.png`.
+## List-valued runcard keys: `element_of`
+
+A runcard key that is a **list of independent things** must never be parsed by
+a hand-rolled loop. Write the rule for *one* entry and let reportengine
+generate the plural:
+
+```python
+@element_of("fits")
+def parse_fit(self, fit: (str, Mapping)):
+    ...
+    return Fit.from_folder(path, label=label)
+```
+
+`ElementOfResolver` (`reportengine/configparser.py:197`) then synthesises
+`parse_fits`, which loops the list and calls `parse_fit` on each element.
+Three things come with it that a loop inside a `parse_`/`produce_` pair cannot
+have:
+
+- **`fits` becomes a namespace list** — `NSList(..., nskey="fit")`. A provider
+  can take a single `fit` and be collected over `("fits",)`
+  (`collect("fit_plot", ("fits",))`), one output per fit, instead of every
+  consumer taking the whole list and looping internally.
+- **Type checking, free** — the generated plural is annotated `param: list`, so
+  `fits: my_fit` (missing dash) raises `BadInputType` instead of iterating the
+  characters of the string. The singular's own annotation checks each element.
+- **Per-element traps** — an entry can be `{from_: ...}`, and the singular key
+  (`fit:`) works on its own.
+
+Rules:
+
+- **It goes on the singular `parse_`, never on a `produce_`.** A `produce_X`
+  only runs when `X` is *absent* from the runcard (`_resolve_key`,
+  `reportengine/configparser.py:471`), so a `produce_` named after a key the
+  user writes is dead code. Needing a second name for it (`fit_objects`) is the
+  symptom that the entry-level work belongs in a parser.
+- **What the singular returns is what providers receive.** Return the finished
+  object when one entry maps to exactly one thing (`fits` → a `Fit`); return a
+  validated spec when several derived resources are built from the same entry,
+  and add per-namespace `produce_`s on top.
+- **The reference generator keys off `_element_of`.** `collect_config_surface`
+  (`scripts/generate_skill_reference.py`) skips names with no source-level
+  `def`, so the generated `parse_fits` is invisible to it; the documented key
+  comes from `getattr(method, "_element_of", ...)`. Without that the key
+  vanishes from `runcard-keys.json` and `validate_runcard.py` reports it as
+  unknown in every valid runcard.
+
+Not every list-valued key wants it: `parse_coefficients` stays a whole-dict
+parser because `CoefficientGroup` is a cohesive object (ordering, `free_names`,
+cross-coefficient constraints), not a bag of independent entries.
 
 ## Adding a runcard key
 
@@ -165,7 +290,9 @@ protection against misspelling it.
    the action print and write (`run_ultranest_fit` is the model).
 2. If the module is new, add it to `smefit_providers` in `smefit/app.py`.
 3. Take `output_path` as a parameter if you write files — never construct
-   output paths yourself.
+   output paths yourself. An action may require it; a `produce_`/`parse_` that
+   takes it must default it to `None` (see "`output_path` is an environment
+   value, not a node" above).
 4. Name it so the generated reference classifies it correctly: the generator
    treats `run_*`, `write_*`, `plot_*`, anything in `smefit.tables` /
    `smefit.figures`, and an explicit allowlist as *runnable actions*, and
@@ -173,6 +300,13 @@ protection against misspelling it.
    conventions must be added to `EXTRA_ACTION_NAMES` in
    `scripts/generate_skill_reference.py`, or it will be documented as
    "never write this under `actions_:`".
+5. **A new fit action** must be named `run_<fit type>_fit`, or
+   `run_individual_<fit type>_fits` when it fits one coefficient at a time:
+   `_parse_fit_action` (`smefit/fit_result.py`) reads the fit type and
+   individual-ness straight off the name. That is how a fit loaded from disk
+   knows which sampler produced it and how it was driven — the action in
+   `input/runcard.yaml` is the only record — so a name outside the convention
+   silently leaves `fit_type` unset.
 
 ## Coefficients, priors, external chi2
 
@@ -237,6 +371,10 @@ mutation. Precision is set once at startup by `smefitEnvironment`
 - *A resource is demanded that the runcard never asked for* (e.g. a fit without
   `gradient_descent_settings` complaining about it) — follow the
   `@explicit_node` dispatch: the branch taken decides the dependencies.
+- *A runcard key appears to be ignored, with no error* — a consumer's `=None`
+  default swallowed the resolution failure. Re-run at debug log level and look
+  for `Can't satisfy production rule for X`, then fix the signature rather than
+  the symptom (see "`=None` defaults turn failures silent").
 - Runtime symptoms of a *user's* fit (not the code) belong to the
   `smefit-analysis` skill's `references/troubleshooting.md` and the
   `smefit-fit-doctor` agent.

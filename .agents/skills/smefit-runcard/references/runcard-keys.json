@@ -21,7 +21,6 @@
     "eft_model",
     "ext_chi2_func",
     "fit_covmat",
-    "fit_objects",
     "individual_chi2",
     "individual_coefficients",
     "individual_eft_model",

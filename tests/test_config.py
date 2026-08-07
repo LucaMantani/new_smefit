@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import jax.numpy as jnp
 import pytest
 import yaml
-from reportengine.configparser import ConfigError, ExplicitNode
+from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
+from reportengine.namespaces import NSList
 
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
@@ -808,7 +809,7 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
 
 
 # ---------------------------------------------------------------------------
-# parse_fits
+# parse_fit / the fits key it generates
 # ---------------------------------------------------------------------------
 
 
@@ -833,7 +834,7 @@ def _write_fit_dir(path, use_quad=False, action="run_analytic_fit"):
 
 
 def test_parse_fits_accepts_plain_names(cfg, tmp_path):
-    fit = _write_fit_dir(tmp_path / "fits" / "fit_a")
+    _write_fit_dir(tmp_path / "fits" / "fit_a")
 
     with patch(
         "smefit.paths.load_user_paths",
@@ -841,18 +842,46 @@ def test_parse_fits_accepts_plain_names(cfg, tmp_path):
     ):
         result = cfg.parse_fits(["fit_a"])
 
-    assert result == [{"name": "fit_a", "path": fit, "label": None}]
+    assert [f.fit_name for f in result] == ["fit_a"]
+    assert result[0].label is None
 
 
 def test_parse_fits_accepts_mappings(cfg, tmp_path):
-    fit = _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
 
     result = cfg.parse_fits(
         [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": "$A$"}]
     )
 
-    assert result[0]["path"] == fit
-    assert result[0]["label"] == "$A$"
+    assert result[0].fit_name == "fit_a"
+    assert result[0].label == "$A$"
+
+
+def test_parse_fits_is_a_namespace_list(cfg, tmp_path):
+    """``fits`` is an NSList, so providers can be collected over ("fits",).
+
+    The nskey is what a provider taking a single ``fit`` is resolved against,
+    so downstream per-fit figures and tables depend on it.
+    """
+    _write_fit_dir(tmp_path / "fit_a")
+
+    result = cfg.parse_fits([{"name": "fit_a", "path": str(tmp_path)}])
+
+    assert isinstance(result, NSList)
+    assert result.nskey == "fit"
+    assert result.as_namespace() == [{"fit": result[0]}]
+
+
+def test_parse_fits_rejects_a_bare_string(cfg):
+    """``fits: my_fit`` is a list key; without the dash it used to iterate
+    the characters of the string and complain about a fit called 'm'."""
+    with pytest.raises(BadInputType, match="not of type list"):
+        cfg.parse_fits("my_fit")
+
+
+def test_parse_fit_rejects_a_non_string_entry(cfg):
+    with pytest.raises(BadInputType, match="not of type"):
+        cfg.parse_fits([3])
 
 
 def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
@@ -864,7 +893,7 @@ def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
         [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": label}]
     )
 
-    assert result[0]["label"] == label
+    assert result[0].label == label
 
 
 def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
@@ -898,7 +927,7 @@ def test_parse_fits_unknown_key_warns(cfg, tmp_path, caplog):
 
 
 def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
-    fit = _write_fit_dir(tmp_path / "my_fits" / "my_fit")
+    _write_fit_dir(tmp_path / "my_fits" / "my_fit")
 
     with patch(
         "smefit.paths.load_user_paths",
@@ -906,17 +935,13 @@ def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
     ):
         result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
 
-    assert result[0]["path"] == fit
+    assert result[0].fit_name == "my_fit"
 
 
-# ---------------------------------------------------------------------------
-# produce_fit_objects
-# ---------------------------------------------------------------------------
-
-
-def test_produce_fit_objects_loads_every_fit(cfg, tmp_path):
+def test_parse_fits_loads_every_fit(cfg, tmp_path):
     _write_fit_dir(tmp_path / "lin", use_quad=False)
     _write_fit_dir(tmp_path / "quad", use_quad=True, action="run_ultranest_fit")
+
     fits = cfg.parse_fits(
         [
             {"name": "lin", "path": str(tmp_path)},
@@ -924,27 +949,24 @@ def test_produce_fit_objects_loads_every_fit(cfg, tmp_path):
         ]
     )
 
-    fit_objects = cfg.produce_fit_objects(fits)
-
-    assert [f.fit_name for f in fit_objects] == ["lin", "quad"]
+    assert [f.fit_name for f in fits] == ["lin", "quad"]
     # metadata read from each fit's own runcard
-    assert [f.use_quad for f in fit_objects] == [False, True]
-    assert [f.fit_type for f in fit_objects] == ["analytic", "ultranest"]
+    assert [f.use_quad for f in fits] == [False, True]
+    assert [f.fit_type for f in fits] == ["analytic", "ultranest"]
     # the label of the runcard entry, None when it has none
-    assert [f.label for f in fit_objects] == [None, "$Q$"]
-    assert fit_objects[0].fit_results.free_parameters == ["OpA", "OpB"]
+    assert [f.label for f in fits] == [None, "$Q$"]
+    assert fits[0].fit_results.free_parameters == ["OpA", "OpB"]
 
 
-def test_produce_fit_objects_reports_an_unreadable_fit(cfg, tmp_path):
+def test_parse_fits_reports_an_unreadable_fit(cfg, tmp_path):
     fit = _write_fit_dir(tmp_path / "broken")
     (fit / "fit_results.json").write_text("{not json")
-    fits = cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
 
     with pytest.raises(ConfigError, match="Could not load fit 'broken'"):
-        cfg.produce_fit_objects(fits)
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
 
 
-def test_produce_fit_objects_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_path):
+def test_parse_fits_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_path):
     """A broken runcard is reported like any other unloadable fit.
 
     from_folder raises the same ValueError whichever of its two files fails to
@@ -954,9 +976,17 @@ def test_produce_fit_objects_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_p
     (fit / "input" / "runcard.yaml").write_text(
         "actions_: [run_analytic_fit\n bad: : :"
     )
-    fits = cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
 
     with pytest.raises(
         ConfigError, match="Could not load fit 'broken'.*not valid YAML"
     ):
-        cfg.produce_fit_objects(fits)
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+
+def test_parse_fit_loads_a_single_fit(cfg, tmp_path):
+    """``fit:`` works on its own — the singular key element_of gives us."""
+    _write_fit_dir(tmp_path / "fit_a")
+
+    fit = cfg.parse_fit({"name": "fit_a", "path": str(tmp_path)})
+
+    assert fit.fit_name == "fit_a"

@@ -26,6 +26,13 @@ user-facing surface changes (runcard keys, actions, priors, template_runcards/).
 CI (`.github/workflows/skills.yml`) fails if they are stale; the scripts the
 skills bundle are covered by `tests/test_skill_scripts.py` in the normal suite.
 
+The handwritten reference docs are not regenerated, so where one describes
+something only the code knows the shape of, a test pins it: the
+`fit_results.json` schema tables in `smefit-analysis/references/output-layout.md`
+are checked against the payloads `FitResult.write` and
+`FitResultGroup.write_summary` actually write by `tests/test_skill_docs.py`.
+Change a payload key and that test tells you which doc to update.
+
 ## Agents (Claude Code only)
 
 Custom subagents live under `.claude/agents/` — see `.claude/agents/README.md`.

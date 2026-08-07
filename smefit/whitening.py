@@ -52,18 +52,50 @@ class WhitenTransform:
 def _build_matrix(chi2, whitening, center):
     """Hessian-of-chi2 whitening matrix, evaluated at *center*.
 
-    H = d²chi2/dc² |_{center} + eps*I = L L^T (Cholesky); returns W = L^{-T}.
+    H = d²chi2/dc² |_{center} + eps*I = L L^T (Cholesky); returns W = L^{-T},
+    so that the curvature seen in whitened space, W^T H W, is the identity.
     """
     eps = whitening["eps"]
-    H = jax.hessian(chi2)(center) + eps * jnp.eye(chi2.nparam)
-    log.info("Hessian whitening: cond(H) = %.3e", float(jnp.linalg.cond(H)))
-    L = jnp.linalg.cholesky(H)
-    if bool(jnp.isnan(L).any()):
-        raise ValueError(
-            "Whitening: chi2 Hessian at the requested centre is not positive "
-            "definite (cond(H) = %.3e). Increase whitening.eps, or check that "
-            "gradient descent converged if applicable." % float(jnp.linalg.cond(H))
+    H = jax.hessian(chi2)(center)
+
+    eigvals = jnp.linalg.eigvalsh(H)
+    lam_min, lam_max = float(eigvals[0]), float(eigvals[-1])
+
+    if lam_min + eps <= 0:
+        # An exactly flat direction only comes out as O(machine_eps * lam_max)
+        # from the AD Hessian, so a slightly negative eigenvalue is noise; one
+        # far below that floor is real negative curvature, i.e. a saddle.
+        cause = (
+            "the centre is a saddle point, not a minimum"
+            if lam_min < -100 * float(jnp.finfo(H.dtype).eps) * abs(lam_max)
+            else "a flat direction came out numerically negative"
         )
+        raise ValueError(
+            f"Whitening: H + eps*I is not positive definite (smallest eigenvalue "
+            f"{lam_min:.3e}, whitening.eps = {eps:.1e}): {cause}. Raising eps above "
+            f"{abs(lam_min):.1e} makes the factorisation succeed, but then eps "
+            f"rather than the data sets that direction's scale; prefer centring on "
+            f"the fitted minimum with 'whitening: {{shift: gradient_descent}}'."
+        )
+
+    # eps floors the curvature of any flat direction, so it, and not the data,
+    # sets how far the whitened prior reaches there: sigma_prior/sqrt(eps).
+    n_flat = int(jnp.sum(eigvals < eps))
+    log.log(
+        logging.WARNING if n_flat else logging.INFO,
+        "Whitening: eigenvalues of H in [%.3e, %.3e], cond(H + eps*I) = %.3e%s",
+        lam_min,
+        lam_max,
+        (lam_max + eps) / (lam_min + eps),
+        (
+            f", {n_flat}/{chi2.nparam} below eps={eps:.1e} — unconstrained, with "
+            f"the prior reaching ~{whitening['sigma_prior'] / eps**0.5:.1e}"
+            if n_flat
+            else ""
+        ),
+    )
+
+    L = jnp.linalg.cholesky(H + eps * jnp.eye(chi2.nparam))
     return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))
 
 

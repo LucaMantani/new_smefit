@@ -127,6 +127,36 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
         ) from e
 
 
+def resolve_fit_dir(name: str, path=None) -> pathlib.Path:
+    """Locate the directory of a fit called *name*, downloading it if missing.
+
+    Parameters
+    ----------
+    name : str
+        Name of the fit — also the name of its directory.
+    path : str or pathlib.Path, optional
+        Directory *containing* the fit, prefix-relative like any other path.
+        Defaults to ``smefit_results/fits``, so a fit that is not there yet is
+        downloaded from the server by :func:`fetch_fit_if_missing`.
+
+    Returns
+    -------
+    pathlib.Path
+        Existing directory of the fit.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the fit is neither present locally nor downloadable.
+    """
+    base = "smefit_results/fits" if path is None else str(path)
+    fit_dir = pathlib.Path(resolve_path(base)) / name
+    fetch_fit_if_missing(fit_dir)
+    if not fit_dir.exists():
+        raise FileNotFoundError(f"Fit '{name}' not found at {fit_dir}")
+    return fit_dir
+
+
 def resolve_path(path_str: str) -> str:
     """Resolve a prefix-relative path using the user paths config.
 

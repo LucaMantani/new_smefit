@@ -26,6 +26,11 @@
     "individual_eft_model",
     "individual_ext_chi2_func",
     "individual_fit_coefficients",
+    "individual_mass_chi2",
+    "individual_mass_eft_model",
+    "individual_mass_ext_chi2_func",
+    "individual_mass_rge_matrix",
+    "individual_mass_scales",
     "individual_prior",
     "init_scale",
     "optimizer",
@@ -77,7 +82,8 @@
       "default": "False",
       "used_by": [
         "eft_model",
-        "individual_eft_model"
+        "individual_eft_model",
+        "individual_mass_eft_model"
       ]
     },
     "use_t0": {
@@ -118,6 +124,14 @@
         "posterior_resampling_seed",
         "repeats",
         "seed"
+      ]
+    },
+    "chi2_scan_settings": {
+      "defaults": {
+        "n_points": "50"
+      },
+      "known_keys": [
+        "n_points"
       ]
     },
     "coefficients": {
@@ -233,6 +247,7 @@
     "batch_sample_sizes",
     "bayesian_update_path",
     "blackjax_settings",
+    "chi2_scan_settings",
     "coefficients",
     "data_path",
     "datasets",

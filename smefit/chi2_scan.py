@@ -23,7 +23,8 @@ def individual_chi2_scan(
     """Scan the chi2 along one free coefficient, holding all others at zero.
 
     Returns a dict ``{coeff_name: {"points": [...], "chi2": [...]}}`` to be
-    collected by ``individual_chi2_scans`` and written by ``run_chi2_scan``.
+    collected by ``individual_chi2_scans`` and rendered by ``chi2_scan_table``
+    / ``plot_chi2_scan``.
     """
     n_points = chi2_scan_settings.get("n_points")
     spec = individual_coefficients.prior_specs().get(individual_fit_coefficient)

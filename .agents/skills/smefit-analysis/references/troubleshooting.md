@@ -24,6 +24,7 @@ of the actual exceptions raised by the code.
 | `fit_results.json not found at <path>` / `input/runcard.yaml not found` | `bayesian_update_path` must point at a *completed* smefit output directory. |
 | reportengine `ConfigError` about an unknown action | Action name not in `references/actions.md` (typo, or the runcard predates a rename). |
 | `whitening is not compatible with bayesian_update_path` | Exactly that — remove one of the two. |
+| `mass_scan requires exactly one free coefficient, got N: [...]` | `mass_scan_table` scans a single mass parameter; every Wilson coefficient must be tied to it with `expr:`/`vars:`, i.e. `free: False`. |
 
 ## Silent misbehavior (no crash)
 
@@ -36,6 +37,14 @@ of the actual exceptions raised by the code.
 - **chi2/dof ≫ 1**: dataset tension or covariance misconfiguration — typical
   culprits are `use_t0: False` with multiplicative systematics, or missing
   `use_theory_covmat: True`.
+- **A chi2/mass scan covers the wrong range**: the grid endpoints come from the
+  scanned coefficient's `uniform` prior. Anything else logs
+  `does not have a uniform prior with 'low'/'high'` / `lacks a uniform prior`
+  and silently falls back to `[-1, 1]` — grep for it, and give the coefficient
+  a `prior: {dist: uniform, low: …, high: …}` spanning the range you want.
+- **A run produced no `fit_results.json`**: expected when `actions_:` contains
+  only table/figure actions (Fisher, `chi2_scan_table`, `mass_scan_table`) —
+  results are under `tables/` and `figures/`, not in a fit result file.
 
 ## Performance / resources
 
@@ -43,6 +52,10 @@ of the actual exceptions raised by the code.
   (per-datapoint scales). Reuse `<output>/rge_matrix.pkl` via `rge.rg_matrix:`
   in subsequent runs — e.g. `rg_matrix: smefit_results/fits/<fit>/rge_matrix.pkl`
   (auto-downloaded from the server if the fit is not local).
+- **Mass scan is `n_points` times slower than expected**: by design — the
+  scanned scale *is* `rge.init_scale`, so the RGE matrix (and any external
+  chi2) is rebuilt at every point and no cached `rg_matrix` can be reused.
+  Lower `chi2_scan_settings.n_points` for exploratory runs.
 - **Out of memory with `use_quad: True`**: quadratic predictions are
   `[ndata, n_ops, n_ops]` arrays — reduce coefficients/datasets or run `-f32`.
 - **Sampler runs forever**: lower `min_num_live_points`/`min_ess` (UltraNest)

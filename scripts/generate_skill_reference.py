@@ -48,10 +48,6 @@ REPORTENGINE_KEYS = {
     "meta": "Optional metadata block (title, author, keywords) used by reportengine reports.",
 }
 
-# Raw params that look like runcard keys but are internal reportengine namespace
-# entries (produced via NSList nskey), never written by users.
-IGNORED_RAW_PARAMS = {"individual_fit_coefficient"}
-
 # Runnable actions vs internal providers. reportengine will happily accept any
 # provider under `actions_:`, but only these are meaningful entry points; the
 # rest are intermediate nodes it resolves on demand.
@@ -90,6 +86,16 @@ FIT_TYPE_MAP = [
         "Individual (one free coefficient at a time)",
         "run_individual_<analytic|ultranest|blackjax|hessian>_fits",
         "same blocks as the joint variant",
+    ),
+    (
+        "1D chi2 scan, one free coefficient at a time",
+        "chi2_scan_table, plot_chi2_scan",
+        "chi2_scan_settings",
+    ),
+    (
+        "Mass scan (one free mass parameter, others constrained to it)",
+        "mass_scan_table",
+        "chi2_scan_settings (+ `rge`, re-run per scan point)",
     ),
     ("Pseudodata / projections", "write_pseudodata", "pseudodata_settings"),
     ("Likelihood timing benchmark", "chi2_timing", "none"),
@@ -169,6 +175,29 @@ def _extract_dict_defaults(fn_ast):
     return found
 
 
+def _extract_nskeys(config_source):
+    """Every `nskey=` passed to an NSList: reportengine namespace entries.
+
+    These look exactly like raw runcard keys to `collect_config_surface` — a
+    `produce_` parameter that no `parse_`/`produce_` supplies — because the
+    plural-producer -> singular-parameter hop lives in reportengine's namespace
+    machinery, not in any signature the AST can see. Left unexcluded they get
+    documented as user-writable keys, and `validate_runcard.py` (which reads
+    `top_level_keys` from the generated JSON) stops warning about them.
+
+    Only string literals are detected, and only in `smefit/config.py` — so
+    always pass `nskey=` as a literal there.
+    """
+    tree = ast.parse(config_source)
+    keys = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "NSList":
+            for kw in node.keywords:
+                if kw.arg == "nskey" and isinstance(kw.value, ast.Constant):
+                    keys.add(kw.value.value)
+    return keys
+
+
 def _extract_error_constraints(fn_ast):
     """Collect string messages from `raise ConfigError(...)` / ValueError / FileNotFoundError."""
     messages = []
@@ -199,6 +228,7 @@ def collect_config_surface():
 
     config_source = inspect.getsource(sys.modules["smefit.config"])
     method_asts = _method_asts(config_source)
+    nskeys = _extract_nskeys(config_source)
 
     parse_entries = []
     produce_entries = []
@@ -237,8 +267,10 @@ def collect_config_surface():
             produce_keys.add(entry["key"])
 
     # Raw runcard keys: produce_* parameters that are neither parsed nor produced
-    # resources — reportengine feeds them straight from the runcard.
-    special = {"output_path"} | IGNORED_RAW_PARAMS
+    # resources — reportengine feeds them straight from the runcard. NSList
+    # nskeys satisfy that description but come from the namespace, not the
+    # runcard, so they are excluded (see _extract_nskeys).
+    special = {"output_path"} | nskeys
     raw_keys = {}
     for entry in produce_entries:
         for pname, pdefault in entry["params"]:
@@ -251,6 +283,7 @@ def collect_config_surface():
         "parse": parse_entries,
         "produce": produce_entries,
         "raw": {k: raw_keys[k] for k in sorted(raw_keys)},
+        "nskeys": nskeys,
     }
 
 
@@ -584,7 +617,7 @@ def collect_provider_arg_keys(action_modules, surface):
         | {e["key"] for e in surface["produce"]}
         | set(surface["raw"])
         | {"output_path"}
-        | IGNORED_RAW_PARAMS
+        | set(surface["nskeys"])
     )
     keys = set()
     for mod in action_modules:

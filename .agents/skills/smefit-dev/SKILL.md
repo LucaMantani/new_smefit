@@ -79,6 +79,56 @@ Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
 `reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
 → `_make_node((name, val.value))` → `_make_callspec`.
 
+## Fanning a node out over a list: `NSList` + `collect`
+
+The other way to make the graph depend on the runcard is to build *many* copies
+of a subgraph, one per element of a list. A `produce_` returns an `NSList`
+(`reportengine.namespaces`) carrying an `nskey`; reportengine then runs the
+dependent nodes once per element, with `nskey` bound to that element in the
+namespace. A `collect(...)` at module level gathers the per-element results
+back into a plain list.
+
+Two instances, both in `smefit/config.py` + `smefit/chi2_scan.py`:
+
+```python
+# config.py — the fan-out point
+def produce_individual_fit_coefficients(self, coefficients):
+    return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
+
+
+# chi2_scan.py — the fan-in point
+individual_chi2_scans = collect(
+    "individual_chi2_scan", ("individual_fit_coefficients",)
+)
+```
+
+Rules:
+
+- **The `nskey` becomes a resolvable resource name.** Any node under the
+  fan-out may take `individual_fit_coefficient` (singular) as a parameter and
+  receives the current element. Nodes *outside* the fan-out cannot — asking for
+  it there is the "cannot find a way to compute" case.
+- **Pass `nskey` as a string literal, in `config.py`.**
+  `scripts/generate_skill_reference.py` AST-scans that file for
+  `NSList(..., nskey="...")` and excludes the names it finds
+  (`_extract_nskeys`) — a computed or imported `nskey`, or one created in
+  another module, is invisible to it. This matters because an nskey looks
+  exactly like a raw runcard key to the generator (a `produce_` parameter
+  satisfied by neither a `parse_` nor a `produce_` — the plural-producer →
+  singular-parameter hop happens inside reportengine, not in any signature).
+  Missed, it gets published in `runcard-keys.md` as a user-writable key, and
+  `validate_runcard.py` stops warning when someone writes it in a runcard.
+- **Everything downstream is duplicated, including the expensive parts.** The
+  mass scan re-derives `individual_mass_rge_matrix` per scan point on purpose
+  (each point *is* a different `init_scale`); make sure that is what you want
+  before hanging a node off a fan-out, and say so in the docstring.
+- **Name the collected result plural** (`individual_chi2_scans`) and let the
+  consuming table/figure action take that. Merging per-element dicts belongs in
+  the consumer, not in a shared mutable accumulator.
+- Fan-out plus `@figuregen` (`smefit/figures.py`) is the natural pairing for
+  per-element plots: yield `(fig, name)` and reportengine writes
+  `figures/<action>_<name>.png`.
+
 ## Adding a runcard key
 
 1. **A settings block** (`<thing>_settings:`) → add `parse_<thing>_settings`

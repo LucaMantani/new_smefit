@@ -1,6 +1,6 @@
 # path to data and theory
-data_path: ../commondata
-theory_path: ../theory
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -115,7 +115,7 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
@@ -123,7 +123,7 @@ external_chi2:
       use_projection_L0: True
 
   OptimalttFCCee365:
-      path: ../external_chi2/optimal_observables/interface_oos_fccee.py
+      path: new_smefit/external_chi2/optimal_observables/interface_oos_fccee.py
 
 chi2_scan_settings:
   n_points: 10

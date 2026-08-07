@@ -87,6 +87,64 @@ the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,
 and `param_names`. A runcard may have `external_chi2` with no `datasets:` at
 all — then the fit runs on external likelihoods alone.
 
+## chi2 scans
+
+Two different scans share one settings block, `chi2_scan_settings:
+{n_points: 50}` — the number of points per scanned direction. Neither is a
+fit: nothing is sampled or optimized, the chi2 is simply evaluated on a grid,
+so no `prior` is consumed as a prior. **The scan range is read from the
+coefficient's `prior:` block** — it must be `dist: uniform`, whose `low`/`high`
+become the grid endpoints. Any other distribution (or no prior at all) falls
+back to `[-1, 1]` with a warning, which is almost never what you want.
+
+### 1D chi2 scan per coefficient (`chi2_scan.yaml`)
+
+```yaml
+coefficients:
+  OpWB: {free: True, prior: {dist: uniform, low: -0.5, high: 0.5}}
+  OpD:  {free: True, prior: {dist: uniform, low: -0.5, high: 0.5}}
+chi2_scan_settings:
+  n_points: 10
+actions_:
+  - chi2_scan_table       # and/or plot_chi2_scan
+```
+
+Scans **each free coefficient in turn**, holding the other free ones at zero
+(fixed-value coefficients keep their values) — the same one-at-a-time
+`single_free` machinery as `run_individual_*_fits`, so the cost is
+`n_free × n_points` chi2 evaluations. `chi2_scan_table` writes a table with
+`(coefficient, {value, chi2})` columns; `plot_chi2_scan` writes one figure per
+coefficient. Both work as `{@…@}` tags in a report `template_text`.
+
+### Mass scan (`mass_scan.yaml`)
+
+```yaml
+rge:
+  init_scale: 10000.0      # overridden per scan point
+  obs_scale: 91.0
+coefficients:
+  OtG:  {free: False, vars: [m], expr: "1/m**2"}
+  OpWB: {free: False, vars: [m], expr: "1/m**2"}
+  m:    {free: True, prior: {dist: uniform, low: 1000, high: 10000}}
+chi2_scan_settings:
+  n_points: 10
+actions_:
+  - mass_scan_table
+```
+
+Scans the chi2 as a function of a new-physics **mass scale**: exactly one free
+coefficient (the mass), with every Wilson coefficient tied to it through an
+`expr:` constraint. Requirements and costs, none of them obvious:
+
+- **Exactly one free coefficient**, or the run fails at config time with
+  `mass_scan requires exactly one free coefficient`.
+- The scanned value is also used as `rge.init_scale` at each point, so the
+  RGE matrix (and any external chi2's) is **recomputed per scan point** — the
+  scan is genuinely `n_points` × the startup cost of one fit. Keep `n_points`
+  small at first. A cached `rge.rg_matrix:` is *not* reused here, since the
+  whole point is a different matching scale per point.
+- The prior range is a mass range in GeV, not a Wilson-coefficient range.
+
 ## Pseudodata / projections
 
 ```yaml

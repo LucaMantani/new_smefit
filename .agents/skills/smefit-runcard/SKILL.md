@@ -1,6 +1,6 @@
 ---
 name: smefit-runcard
-description: Use this skill when creating, editing, or validating a smefit runcard — the YAML configuration for a SMEFT fit. Covers choosing the fit action (analytic, ultranest, blackjax, hessian, individual fits, projections, reports), defining Wilson coefficients and priors, RGE running, covariance flags (use_t0, use_theory_covmat, use_quad), external chi2, whitening, and every settings block (ultranest_settings, blackjax_settings, optimizer_settings, gradient_descent_settings, hessian_settings, pseudodata_settings).
+description: Use this skill when creating, editing, or validating a smefit runcard — the YAML configuration for a SMEFT fit. Covers choosing the fit action (analytic, ultranest, blackjax, hessian, individual fits, chi2/mass scans, projections, reports), defining Wilson coefficients and priors, RGE running, covariance flags (use_t0, use_theory_covmat, use_quad), external chi2, whitening, and every settings block (ultranest_settings, blackjax_settings, optimizer_settings, gradient_descent_settings, hessian_settings, pseudodata_settings, chi2_scan_settings).
 ---
 
 # smefit runcard authoring
@@ -25,7 +25,8 @@ code and kept in sync by CI:
 1. **Start from a template** in `templates/` — one per fit type
    (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
    `blackjax_individual_fit.yaml`, `hessian_fit.yaml`, `projections.yaml`,
-   `time_likelihood.yaml`, `report.yaml`). Do not write a runcard from scratch.
+   `time_likelihood.yaml`, `chi2_scan.yaml`, `mass_scan.yaml`,
+   `report.yaml`). Do not write a runcard from scratch.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test

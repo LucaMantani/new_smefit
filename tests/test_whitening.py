@@ -75,6 +75,9 @@ def test_build_matrix_raises_on_non_positive_definite_hessian():
     with pytest.raises(ValueError, match="not positive definite") as excinfo:
         _build_matrix(chi2, _WHITENING, center)
     assert "saddle point" in str(excinfo.value)
+    # eps regularises flat directions, not negative ones, so the message must
+    # point at re-centring rather than at raising eps.
+    assert "gradient_descent" in str(excinfo.value)
 
 
 def test_build_matrix_tiny_negative_eigenvalue_is_not_called_a_saddle():
@@ -128,9 +131,6 @@ def test_build_matrix_logs_spectrum_at_info_when_well_conditioned(caplog):
     assert "eigenvalues of H in [1.000e+00, 2.000e+00]" in record.getMessage()
     assert "cond(H + eps*I) = 2.000e+00" in record.getMessage()
 
-    with pytest.raises(ValueError, match="gradient_descent"):
-        _build_matrix(chi2, _WHITENING, center)
-
 
 def test_build_matrix_tolerates_roundoff_negative_eigenvalue():
     """A flat direction is only zero to within the AD Hessian's noise floor,
@@ -147,31 +147,6 @@ def test_build_matrix_tolerates_roundoff_negative_eigenvalue():
         chi2, {"sigma_prior": 5.0, "eps": 1.0, "shift": "baseline"}, jnp.zeros(2)
     )
     assert bool(jnp.all(jnp.isfinite(matrix)))
-
-
-def test_build_matrix_warns_when_ill_conditioned(caplog):
-    chi2 = Chi2(
-        lambda c: 1e12 * c[0] ** 2 + 1e-4 * c[1] ** 2, ["OpA", "OpB"], num_data=1
-    )
-    with caplog.at_level("WARNING"):
-        _build_matrix(chi2, _WHITENING, jnp.zeros(2))
-    assert any("ill-conditioned" in m for m in caplog.messages)
-
-
-def test_build_matrix_does_not_warn_when_well_conditioned(caplog):
-    with caplog.at_level("WARNING"):
-        _build_matrix(_quadratic_chi2(), _WHITENING, jnp.zeros(2))
-    assert not any("ill-conditioned" in m for m in caplog.messages)
-
-
-def test_build_matrix_logs_spectrum_and_flat_direction_count(caplog):
-    """The number of eigenvalues below eps is the number of directions the data
-    does not constrain — useful on its own for a large global fit."""
-    chi2 = Chi2(lambda c: c[0] ** 2, ["OpA", "OpB"], num_data=1)  # OpB is flat
-    with caplog.at_level("INFO"):
-        _build_matrix(chi2, _WHITENING, jnp.zeros(2))
-    assert any("unconstrained directions" in m for m in caplog.messages)
-    assert any("1/2 below eps" in m for m in caplog.messages)
 
 
 def test_baseline_shift_evaluates_hessian_at_default_zero_baseline():

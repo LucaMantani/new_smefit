@@ -31,7 +31,7 @@ from blackjax.ns.utils import ess, finalise, log_weights, sample
 from blackjax.util import run_inference_algorithm
 from jax.scipy.special import logsumexp
 
-from smefit.priors import UnconstrainedPrior
+from smefit.priors import Prior
 
 log = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ def _run_nested_sampling(
 # ---------------------------------------------------------------------------
 
 
-def _nuts_initial_points(rng_key, uprior, settings, init_point, num_chains, n_dims):
+def _nuts_initial_points(rng_key, prior, settings, init_point, num_chains, n_dims):
     """Starting positions for the chains, in unconstrained space, shape (C, d).
 
     ``init: prior`` draws one over-dispersed prior sample per chain, which is
@@ -180,8 +180,8 @@ def _nuts_initial_points(rng_key, uprior, settings, init_point, num_chains, n_di
     astronomically large chi2.
     """
     if settings.get("init", "prior") == "prior":
-        return uprior.sample_unconstrained(rng_key, num_chains)
-    u_base = uprior.to_unconstrained(jnp.asarray(init_point))
+        return prior.sample_unconstrained(rng_key, num_chains)
+    u_base = prior.to_unconstrained(jnp.asarray(init_point))
     return u_base + 0.1 * jax.random.normal(rng_key, (num_chains, n_dims))
 
 
@@ -271,13 +271,23 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
 
     Runs ``num_chains`` chains in parallel under ``jax.vmap``, each preceded by
     a ``window_adaptation`` warmup that tunes the step size and a diagonal mass
-    matrix. Sampling happens in an unconstrained space (see `UnconstrainedPrior`),
-    so bounded priors do not stall the integrator at their walls.
+    matrix. Sampling happens in the prior's unconstrained reparametrisation
+    (see `Prior.log_prob_unconstrained`), so bounded priors do not stall the
+    integrator at their walls.
 
     Returns ``logz=None``: NUTS provides no evidence estimate.
     """
-    # Raised before anything is compiled, so a bad runcard fails in under a second.
-    uprior = UnconstrainedPrior(prior)
+    # Checked before anything is compiled, so a bad runcard fails in under a
+    # second. Only `Prior` carries the per-parameter bijectors; the joint-only
+    # priors (ExactPosteriorPrior, from bayesian_update_path) cannot provide them.
+    if not isinstance(prior, Prior):
+        raise ValueError(
+            f"Gradient-based sampling needs a prior with per-parameter bijectors "
+            f"(smefit.priors.Prior), but got {type(prior).__name__}, which only "
+            f"knows a joint log_prob. This happens with 'bayesian_update_path:'. "
+            f"Use blackjax_settings.algorithm: nested_sampling (or "
+            f"run_ultranest_fit) instead."
+        )
 
     n_dims = len(prior.param_names)
     num_chains = int(settings["num_chains"])
@@ -301,14 +311,12 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
 
     @jax.jit
     def logdensity(u):
-        return uprior.log_prob_unconstrained(u) + log_likelihood(
-            uprior.from_unconstrained(u)
+        return prior.log_prob_unconstrained(u) + log_likelihood(
+            prior.from_unconstrained(u)
         )
 
     rng_key, init_key = jax.random.split(rng_key)
-    u0 = _nuts_initial_points(
-        init_key, uprior, settings, init_point, num_chains, n_dims
-    )
+    u0 = _nuts_initial_points(init_key, prior, settings, init_point, num_chains, n_dims)
 
     warmup = blackjax.window_adaptation(
         blackjax.nuts,
@@ -357,13 +365,13 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
         prior, positions, is_divergent, acceptance, step_sizes
     )
 
-    posterior_free = jax.vmap(uprior.from_unconstrained)(
+    posterior_free = jax.vmap(prior.from_unconstrained)(
         _thin_chains(positions, n_samples)
     )
 
     # Best point over the FULL chains, not just the thinned draws — nested
     # sampling likewise maximises over all its live and dead points.
-    all_x = jax.vmap(uprior.from_unconstrained)(positions.reshape(-1, n_dims))
+    all_x = jax.vmap(prior.from_unconstrained)(positions.reshape(-1, n_dims))
     logl = jax.vmap(log_likelihood)(all_x)
     best_index = int(jnp.argmax(logl))
 

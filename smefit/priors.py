@@ -1,5 +1,5 @@
 """
-smefit.priors — Prior distributions for nested sampling.
+smefit.priors — Prior distributions for the sampler-based fits.
 """
 
 import logging
@@ -149,7 +149,9 @@ def _build_dist(spec):
 class Prior:
     """Joint prior over all free coefficients.
 
-    Compatible with both ultranest (prior_transform) and BlackJax (log_prob, sample).
+    Compatible with ultranest (prior_transform), BlackJax nested sampling
+    (log_prob, sample), and gradient-based samplers, which work in the
+    unconstrained reparametrisation below rather than in coefficient space.
     """
 
     def __init__(self, dists, param_names, specs={}):
@@ -174,48 +176,25 @@ class Prior:
             [d.sample(keys[i], (n_samples,)) for i, d in enumerate(self.dists)], axis=-1
         )
 
-
-class UnconstrainedPrior:
-    """Reparametrise a `Prior` onto R^n with per-parameter bijectors.
-
-    Gradient-based samplers (NUTS) need an unbounded, differentiable target: a
-    uniform prior evaluated outside its box returns -inf, which stalls the
-    integrator at the walls and biases the boundary. Each free parameter is
-    therefore mapped through its distribution's bijector — uniform through a
-    logit, gaussian through the identity — so the sampler explores all of R:
-
-        x = from_unconstrained(u)
-        log p_u(u) = log p_x(x) + sum_i log|dx_i/du_i|
-
-    Requires a prior exposing per-parameter ``dists`` (i.e. `Prior`).
-    `ExactPosteriorPrior` and `_WhitenedToPhysicalPrior` expose only
-    ``log_prob`` and are rejected.
-    """
-
-    def __init__(self, prior):
-        dists = getattr(prior, "dists", None)
-        if dists is None:
-            raise ValueError(
-                f"Gradient-based sampling needs a prior with per-parameter bijectors "
-                f"(smefit.priors.Prior), but got {type(prior).__name__}, which exposes "
-                f"no '.dists'. This happens with 'bayesian_update_path:', whose prior is "
-                f"an ExactPosteriorPrior. Use blackjax_settings.algorithm: "
-                f"nested_sampling (or run_ultranest_fit) instead."
-            )
-        self.prior = prior
-        self.dists = list(dists)
-        self.param_names = list(prior.param_names)
+    # --- Unconstrained reparametrisation (gradient-based samplers) ---
+    #
+    # NUTS and friends need an unbounded, differentiable target: a uniform
+    # prior evaluated outside its box returns -inf, which stalls the integrator
+    # at the walls and biases the boundary.
 
     @jax.jit(static_argnames=("self",))
     def from_unconstrained(self, u):
+        """Map unconstrained coordinates u to coefficient values."""
         return jnp.array([d.from_unconstrained(u[i]) for i, d in enumerate(self.dists)])
 
     @jax.jit(static_argnames=("self",))
     def to_unconstrained(self, x):
+        """Map coefficient values to unconstrained coordinates."""
         return jnp.array([d.to_unconstrained(x[i]) for i, d in enumerate(self.dists)])
 
     @jax.jit(static_argnames=("self",))
     def log_det_jacobian(self, u):
+        """log|dx/du| of the reparametrisation, summed over parameters."""
         return jnp.sum(
             jnp.array([d.log_det_jacobian(u[i]) for i, d in enumerate(self.dists)])
         )
@@ -223,13 +202,11 @@ class UnconstrainedPrior:
     @jax.jit(static_argnames=("self",))
     def log_prob_unconstrained(self, u):
         """Log prior density in the unconstrained space."""
-        return self.prior.log_prob(self.from_unconstrained(u)) + self.log_det_jacobian(
-            u
-        )
+        return self.log_prob(self.from_unconstrained(u)) + self.log_det_jacobian(u)
 
     def sample_unconstrained(self, rng_key, n_samples):
         """Prior draws mapped to u-space, shape (n_samples, n_params)."""
-        return jax.vmap(self.to_unconstrained)(self.prior.sample(rng_key, n_samples))
+        return jax.vmap(self.to_unconstrained)(self.sample(rng_key, n_samples))
 
 
 class _WhitenedToPhysicalPrior:

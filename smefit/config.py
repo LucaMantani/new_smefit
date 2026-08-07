@@ -14,6 +14,12 @@ from reportengine.configparser import ConfigError, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
+from smefit.blackjax_samplers import (
+    BJ_ALGORITHM_SETTINGS,
+    BJ_ALGORITHMS,
+    BJ_INIT_MODES,
+    BJ_SHARED_SETTINGS,
+)
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
@@ -467,19 +473,77 @@ class smefitConfig(Config):
         return ultranest_settings
 
     def parse_blackjax_settings(self, settings, output_path):
-        """For a BlackJAX fit, parses the blackjax_settings namespace from the runcard,
-        and ensures the choice of settings is valid.
+        """Parse optional settings for a BlackJAX fit.
+
+        The sampling algorithm is selected with ``algorithm``; every other key
+        belongs to exactly one algorithm and is ignored (with a warning) by the
+        other. The number of posterior samples stored in the FitResult is NOT
+        set here — it is the top-level ``n_samples`` key (default 10000).
+
+        Keys
+        ----
+        algorithm : str, default "nested_sampling"
+            Sampler to run: "nested_sampling" (BlackJAX nested sampling, the
+            default and the only algorithm that estimates the log evidence) or
+            "nuts" (No-U-Turn Hamiltonian Monte Carlo). "nuts" is incompatible
+            with ``bayesian_update_path``.
+        seed : int, default 0
+            PRNG seed for the whole run. Shared by both algorithms.
+        log_dir : str, default "<output>/blackjax_logs"
+            Directory for sampler logs. Nested sampling writes
+            ``nested_samples.csv``; NUTS writes ``nuts_samples.csv`` and
+            ``nuts_diagnostics.json``. Shared by both algorithms.
+
+        Keys for ``algorithm: nested_sampling``
+        ---------------------------------------
+        n_live : int, default 500
+            Number of live points.
+        repeats : int, default 3
+            Inner MCMC steps per dimension for the slice sampler.
+        delete_fraction : float, default 0.5
+            Fraction of live points killed per nested-sampling iteration.
+        log_precision : float, default -2
+            Termination criterion on ``logZ_live - logZ``.
+
+        Keys for ``algorithm: nuts``
+        ----------------------------
+        num_chains : int, default 4
+            Independent chains, run in parallel with ``jax.vmap``.
+        num_warmup : int, default 1000
+            Window-adaptation steps per chain, tuning the step size and a
+            diagonal mass matrix; these draws are discarded.
+        num_samples : int, default 2500
+            Post-warmup draws PER CHAIN. ``num_chains * num_samples`` draws are
+            produced and then thinned down to the top-level ``n_samples``.
+        target_acceptance_rate : float, default 0.8
+            Dual-averaging target. Raise towards 0.95 if divergences appear.
+        max_num_doublings : int, default 10
+            Maximum trajectory doublings per NUTS step.
+        init : str, default "prior"
+            Chain starting points: "prior" draws one over-dispersed prior
+            sample per chain (needed for a meaningful R-hat), "baseline" starts
+            every chain at the coefficients' baseline point plus a small jitter.
+
+        Bounded (uniform) priors are sampled through a logit bijector, so NUTS
+        always explores an unconstrained space; gaussian priors are used as-is.
         """
+        settings = dict(settings)
 
         # Begin by checking that the user-supplied keys are known; warn the user otherwise.
         known_keys = {
-            "n_posterior_samples",
+            "algorithm",
+            "seed",
+            "log_dir",
             "n_live",
             "repeats",
             "delete_fraction",
             "log_precision",
-            "posterior_resampling_seed",
-            "seed",
+            "num_chains",
+            "num_warmup",
+            "num_samples",
+            "target_acceptance_rate",
+            "max_num_doublings",
+            "init",
         }
 
         kdiff = settings.keys() - known_keys
@@ -488,25 +552,59 @@ class smefitConfig(Config):
                 ConfigError(f"Key '{k}' in blackjax_settings not known.", k, known_keys)
             )
 
+        algorithm = settings.get("algorithm", "nested_sampling")
+        if algorithm not in BJ_ALGORITHMS:
+            raise ConfigError(
+                "blackjax_settings.algorithm is not a known BlackJAX algorithm.",
+                algorithm,
+                sorted(BJ_ALGORITHMS),
+            )
+
+        init = settings.get("init", "prior")
+        if init not in BJ_INIT_MODES:
+            raise ConfigError(
+                "blackjax_settings.init must name a chain initialisation mode.",
+                init,
+                sorted(BJ_INIT_MODES),
+            )
+
+        # Keys that are known, but owned by the algorithm the user did not pick.
+        relevant = BJ_SHARED_SETTINGS | BJ_ALGORITHM_SETTINGS[algorithm]
+        for k in sorted((settings.keys() & known_keys) - relevant):
+            log.warning(
+                "blackjax_settings.%s is not used by algorithm '%s' and will be ignored.",
+                k,
+                algorithm,
+            )
+
         # Now construct the blackjax_settings dictionary
         blackjax_settings = {}
 
         # Extract settings and set default values
-        blackjax_settings["n_posterior_samples"] = settings.get(
-            "n_posterior_samples", 1000
-        )
-        blackjax_settings["n_live"] = settings.get("n_live", 500)
-        blackjax_settings["repeats"] = settings.get("repeats", 3)
-        blackjax_settings["delete_fraction"] = settings.get("delete_fraction", 0.5)
-        blackjax_settings["log_precision"] = settings.get("log_precision", -2)
-        blackjax_settings["seed"] = settings.get("seed", 0)
-        blackjax_settings["posterior_resampling_seed"] = settings.get(
-            "posterior_resampling_seed", 123456
-        )
+        blackjax_settings["algorithm"] = algorithm
+        blackjax_settings["seed"] = int(settings.get("seed", 0))
         # Set directory where blackjax_logs will be saved
         blackjax_settings["log_dir"] = settings.get(
             "log_dir", str(output_path / "blackjax_logs")
         )
+        # nested_sampling
+        blackjax_settings["n_live"] = int(settings.get("n_live", 500))
+        blackjax_settings["repeats"] = int(settings.get("repeats", 3))
+        blackjax_settings["delete_fraction"] = float(
+            settings.get("delete_fraction", 0.5)
+        )
+        blackjax_settings["log_precision"] = float(settings.get("log_precision", -2))
+        # nuts
+        blackjax_settings["num_chains"] = int(settings.get("num_chains", 4))
+        blackjax_settings["num_warmup"] = int(settings.get("num_warmup", 1000))
+        blackjax_settings["num_samples"] = int(settings.get("num_samples", 2500))
+        blackjax_settings["target_acceptance_rate"] = float(
+            settings.get("target_acceptance_rate", 0.8)
+        )
+        blackjax_settings["max_num_doublings"] = int(
+            settings.get("max_num_doublings", 10)
+        )
+        blackjax_settings["init"] = init
 
         return blackjax_settings
 

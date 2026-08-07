@@ -10,6 +10,16 @@ import jax.numpy as jnp
 
 log = logging.getLogger(__name__)
 
+
+def _logit_eps(z):
+    """Smallest offset from 0/1 that survives z's dtype.
+
+    Must be dtype-aware: a hardcoded 1e-12 rounds away entirely in float32
+    (``1 - 1e-12 == 1``), so the clip below would not actually guard log(0).
+    """
+    return jnp.finfo(jnp.asarray(z).dtype).eps
+
+
 # --- Internal 1D distribution classes ---
 
 
@@ -25,6 +35,17 @@ class _Distribution(ABC):
 
     @abstractmethod
     def __str__(self) -> str: ...  # short human-readable label, e.g. "U[-1, 1]"
+
+    # --- Bijector to an unconstrained space, used by gradient-based samplers ---
+
+    @abstractmethod
+    def to_unconstrained(self, x): ...  # constrained x -> u in R
+
+    @abstractmethod
+    def from_unconstrained(self, u): ...  # u in R -> constrained x
+
+    @abstractmethod
+    def log_det_jacobian(self, u): ...  # log |dx/du| at u
 
 
 class _UniformDist(_Distribution):
@@ -43,6 +64,35 @@ class _UniformDist(_Distribution):
 
     def __str__(self) -> str:
         return f"U[{self.low}, {self.high}]"
+
+    def from_unconstrained(self, u):
+        """Logit bijector: x = low + (high - low) * sigmoid(u).
+
+        Large |u| saturates x to exactly low/high. That is safe because
+        ``log_prob`` uses inclusive bounds, so the boundary is finite.
+        """
+        return self.low + (self.high - self.low) * jax.nn.sigmoid(u)
+
+    def to_unconstrained(self, x):
+        """Inverse logit. The clip keeps x exactly on a bound from giving log(0),
+        which would seed a gradient sampler with NaN gradients."""
+        z = (x - self.low) / (self.high - self.low)
+        eps = _logit_eps(z)
+        z = jnp.clip(z, eps, 1.0 - eps)
+        return jnp.log(z) - jnp.log1p(-z)
+
+    def log_det_jacobian(self, u):
+        """log |dx/du| = log(high - low) + log sigmoid(u) + log sigmoid(-u).
+
+        Written with ``log_sigmoid`` rather than ``log(s) + log(1 - s)``: the
+        latter underflows to -inf (and NaN gradients) for |u| >~ 37, while this
+        form is exact and asymptotically -|u|.
+        """
+        return (
+            jnp.log(self.high - self.low)
+            + jax.nn.log_sigmoid(u)
+            + jax.nn.log_sigmoid(-u)
+        )
 
 
 class _GaussianDist(_Distribution):
@@ -64,6 +114,16 @@ class _GaussianDist(_Distribution):
 
     def __str__(self) -> str:
         return f"N(mu={self.mean}, sigma={self.std})"
+
+    def from_unconstrained(self, u):
+        """Identity: the support is already all of R."""
+        return u
+
+    def to_unconstrained(self, x):
+        return x
+
+    def log_det_jacobian(self, u):
+        return jnp.zeros_like(jnp.asarray(u, dtype=jnp.result_type(float)))
 
 
 _DIST_REGISTRY = {
@@ -113,6 +173,63 @@ class Prior:
         return jnp.stack(
             [d.sample(keys[i], (n_samples,)) for i, d in enumerate(self.dists)], axis=-1
         )
+
+
+class UnconstrainedPrior:
+    """Reparametrise a `Prior` onto R^n with per-parameter bijectors.
+
+    Gradient-based samplers (NUTS) need an unbounded, differentiable target: a
+    uniform prior evaluated outside its box returns -inf, which stalls the
+    integrator at the walls and biases the boundary. Each free parameter is
+    therefore mapped through its distribution's bijector — uniform through a
+    logit, gaussian through the identity — so the sampler explores all of R:
+
+        x = from_unconstrained(u)
+        log p_u(u) = log p_x(x) + sum_i log|dx_i/du_i|
+
+    Requires a prior exposing per-parameter ``dists`` (i.e. `Prior`).
+    `ExactPosteriorPrior` and `_WhitenedToPhysicalPrior` expose only
+    ``log_prob`` and are rejected.
+    """
+
+    def __init__(self, prior):
+        dists = getattr(prior, "dists", None)
+        if dists is None:
+            raise ValueError(
+                f"Gradient-based sampling needs a prior with per-parameter bijectors "
+                f"(smefit.priors.Prior), but got {type(prior).__name__}, which exposes "
+                f"no '.dists'. This happens with 'bayesian_update_path:', whose prior is "
+                f"an ExactPosteriorPrior. Use blackjax_settings.algorithm: "
+                f"nested_sampling (or run_ultranest_fit) instead."
+            )
+        self.prior = prior
+        self.dists = list(dists)
+        self.param_names = list(prior.param_names)
+
+    @jax.jit(static_argnames=("self",))
+    def from_unconstrained(self, u):
+        return jnp.array([d.from_unconstrained(u[i]) for i, d in enumerate(self.dists)])
+
+    @jax.jit(static_argnames=("self",))
+    def to_unconstrained(self, x):
+        return jnp.array([d.to_unconstrained(x[i]) for i, d in enumerate(self.dists)])
+
+    @jax.jit(static_argnames=("self",))
+    def log_det_jacobian(self, u):
+        return jnp.sum(
+            jnp.array([d.log_det_jacobian(u[i]) for i, d in enumerate(self.dists)])
+        )
+
+    @jax.jit(static_argnames=("self",))
+    def log_prob_unconstrained(self, u):
+        """Log prior density in the unconstrained space."""
+        return self.prior.log_prob(self.from_unconstrained(u)) + self.log_det_jacobian(
+            u
+        )
+
+    def sample_unconstrained(self, rng_key, n_samples):
+        """Prior draws mapped to u-space, shape (n_samples, n_params)."""
+        return jax.vmap(self.to_unconstrained)(self.prior.sample(rng_key, n_samples))
 
 
 class _WhitenedToPhysicalPrior:

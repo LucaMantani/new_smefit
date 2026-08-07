@@ -153,7 +153,8 @@ class Coefficient:
 
     Invariants
     ----------
-    - If free is True: prior must be provided; value and expr must be None.
+    - If free is True: value and expr must be None. prior is optional here —
+      it is not read by this class at all.
     - If free is False: exactly one of (value, expr) must be provided; prior must be None.
     """
 

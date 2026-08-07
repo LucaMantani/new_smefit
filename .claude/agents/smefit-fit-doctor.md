@@ -87,7 +87,13 @@ Work through these in order; stop as soon as you have a confident root cause.
      identical to the prior means that coefficient isn't constrained by the
      chosen data (see step 4 to confirm whether that's expected).
    - `ultranest_logs/` / `blackjax_logs/` — sampler-specific logs, live-point
-     / ESS behavior, resume-state files.
+     / ESS behavior, resume-state files. For `blackjax_settings.algorithm: nuts`,
+     `blackjax_logs/nuts_diagnostics.json` is the first thing to read: `max_rhat`
+     >= 1.01 means the chains never mixed (raise `num_warmup`/`num_samples`, or
+     enable `whitening:`), and `divergences` > 0 means the step size is too large
+     for the posterior's curvature (raise `target_acceptance_rate` towards 0.95,
+     or enable `whitening:`). A `nuts` fit legitimately reports `"logz": null` —
+     that is not a bug; only nested sampling estimates the evidence.
    - Grep every captured log for `Unknown key` — misspelled runcard keys
      only warn, they never crash, so this is easy to miss and must be
      searched for actively.

@@ -51,6 +51,45 @@ Incompatible with `bayesian_update_path`.
   requires a `gradient_descent_settings` block in the runcard, since it makes
   the graph depend on `gd_best_fit`.
 
+## Choosing a BlackJAX algorithm
+
+`run_blackjax_fit` names the backend, not the algorithm. Which sampler runs is
+`blackjax_settings.algorithm`:
+
+```yaml
+blackjax_settings:
+  algorithm: nuts            # nested_sampling (default) or nuts
+  num_chains: 4
+  num_warmup: 1000
+  num_samples: 2500          # PER CHAIN; thinned down to the top-level n_samples
+  target_acceptance_rate: 0.8
+```
+
+Pick `nested_sampling` when you need the log evidence for model comparison,
+when the posterior may be multimodal, or when the runcard uses
+`bayesian_update_path` (whose exact-posterior prior has no per-parameter
+bijectors, so `nuts` refuses it).
+
+Pick `nuts` for smooth, unimodal, high-dimensional posteriors: it exploits the
+JAX gradient of the chi2 and typically reaches a given effective sample size far
+faster than nested sampling. It writes `"logz": null` — use `bic`/`aic` for
+model comparison instead. Pair it with `whitening:` (the posterior it explores
+is then decorrelated and unit-scale) and keep the default float64 precision;
+gradient MCMC under `-f32` is prone to divergences.
+
+Uniform priors — including the `uniform[-sigma_prior, sigma_prior]` that
+`whitening:` imposes — are sampled through a logit bijector, so prior bounds
+never stall the sampler at a wall. No runcard change is needed for that.
+
+After a `nuts` run, read `<output>/blackjax_logs/nuts_diagnostics.json`:
+- `max_rhat` >= 1.01 → chains have not mixed. Raise `num_warmup`/`num_samples`,
+  or enable `whitening:`.
+- `divergences` > 0 → the step size is too large for the posterior's curvature.
+  Raise `target_acceptance_rate` towards 0.95, or enable `whitening:`.
+- `min_ess` below ~100 per chain → correlated draws; same remedies. A posterior
+  pressed against a prior bound also shows up here, and is fixed by widening the
+  prior (or `sigma_prior`).
+
 ## Sequential Bayesian updating
 
 ```yaml

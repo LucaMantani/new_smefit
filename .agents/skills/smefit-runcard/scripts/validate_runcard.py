@@ -362,6 +362,39 @@ def check_settings_blocks(runcard, keys, rep):
             rep.warn(f"{block}: unknown sub-key '{k}' (known: {info['known_keys']})")
 
 
+BLACKJAX_ALGORITHMS = ("nested_sampling", "nuts")
+
+
+def check_blackjax_algorithm(runcard, rep):
+    """Validate blackjax_settings.algorithm and its incompatibilities.
+
+    check_settings_blocks only checks that sub-keys are known, not that their
+    values are legal, so the enum needs its own check here.
+    """
+    settings = runcard.get("blackjax_settings")
+    if not isinstance(settings, dict):
+        return
+    algorithm = settings.get("algorithm", "nested_sampling")
+    if algorithm not in BLACKJAX_ALGORITHMS:
+        rep.error(
+            f"blackjax_settings.algorithm: '{algorithm}' is not a known algorithm "
+            f"(allowed: {list(BLACKJAX_ALGORITHMS)})"
+        )
+        return
+    if algorithm == "nuts" and "bayesian_update_path" in runcard:
+        rep.error(
+            "blackjax_settings.algorithm: 'nuts' is incompatible with "
+            "'bayesian_update_path' — the exact-posterior prior has no "
+            "per-parameter bijectors. Use algorithm: nested_sampling."
+        )
+    init = settings.get("init", "prior")
+    if init not in ("prior", "baseline"):
+        rep.error(
+            f"blackjax_settings.init: '{init}' is not valid "
+            "(allowed: ['prior', 'baseline'])"
+        )
+
+
 def check_rg_matrix(value, label, resolver, rep):
     """Check an rg_matrix path. Missing files under smefit_results/ are only a
     warning: smefit auto-downloads the fit from the server before failing."""
@@ -535,6 +568,7 @@ def main():
     if isinstance(coefficients, dict) and not ("rge" in runcard or external):
         check_coefficients_against_theory(coefficients, operators, rep)
     check_settings_blocks(runcard, keys, rep)
+    check_blackjax_algorithm(runcard, rep)
     check_actions(runcard, rep, nonlinear_exprs)
     check_top_level(runcard, keys, rep)
     # Only relevant once a path in this runcard actually needed the config: a

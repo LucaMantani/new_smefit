@@ -16,6 +16,9 @@
       fit_results.json    # single-coefficient result, same schema
   ultranest_logs/         # UltraNest working dir (resume data, diagnostics)
   blackjax_logs/          # BlackJAX log dir
+    nested_samples.csv    #  algorithm: nested_sampling — anesthetic NestedSamples
+    nuts_samples.csv      #  algorithm: nuts — thinned draws, one column per parameter
+    nuts_diagnostics.json #  algorithm: nuts — R-hat, ESS, divergences, step sizes
   rge_matrix.pkl          # RGE matrices per scale, saved when an rge block ran;
                           #  reusable via rge.rg_matrix in later runcards
   pseudodata/             # written by the write_pseudodata action

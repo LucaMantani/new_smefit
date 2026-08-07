@@ -91,11 +91,12 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`data_utils.py`**: Covariance matrix construction (handles correlated/uncorrelated systematics).
 - **`chi2.py`**: `build_chi2` returns a JAX-differentiable loss function.
 - **`fit_actions.py`**: The reportengine actions listed under `actions_:` in a runcard (`run_analytic_fit`, `run_ultranest_fit`, `run_blackjax_fit`, `run_hessian_fit`, and their `run_individual_*_fits` counterparts) — each takes its produced fit object plus `output_path` and executes/writes it.
+- **`blackjax_fit.py` / `blackjax_samplers.py`**: `blackjax_fit` is the provider node; it applies whitening, resolves the posterior and builds the `FitResult`, and dispatches the actual sampling to a runner looked up in `_SAMPLER_REGISTRY` by `blackjax_settings.algorithm` (`nested_sampling` or `nuts`). `blackjax_samplers.py` holds those runners and is deliberately **not** registered in `smefit_providers` — its functions are helpers, not DAG nodes. Adding a new algorithm means a new `_run_*` function, a registry entry, a `BJ_ALGORITHM_SETTINGS` entry, and the matching keys in the `known_keys` literal of `parse_blackjax_settings`. The `BJ_` prefix marks the constants that `config.py` imports from here, so they stay recognisable at the import site.
 - **`utils.py`**: Whitening (`apply_whitening`), posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
 
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
-`blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `gradient_descent.py`, `projections.py`,
+`hessian_fit.py`, `individual_fit.py`, `gradient_descent.py`, `projections.py`,
 `external_chi2.py`, `rge.py`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
 `tables.py`, `wcxf.py`, `op_to_latex.py`, `utils_actions.py`, `constants.py`, `api.py` (the
 `reportengine` programmatic API).

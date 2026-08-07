@@ -101,23 +101,34 @@
     },
     "blackjax_settings": {
       "defaults": {
+        "algorithm": "'nested_sampling'",
         "delete_fraction": "0.5",
+        "init": "'prior'",
         "log_dir": "str(output_path / 'blackjax_logs')",
         "log_precision": "-2",
+        "max_num_doublings": "10",
         "n_live": "500",
-        "n_posterior_samples": "1000",
-        "posterior_resampling_seed": "123456",
+        "num_chains": "4",
+        "num_samples": "2500",
+        "num_warmup": "1000",
         "repeats": "3",
-        "seed": "0"
+        "seed": "0",
+        "target_acceptance_rate": "0.8"
       },
       "known_keys": [
+        "algorithm",
         "delete_fraction",
+        "init",
+        "log_dir",
         "log_precision",
+        "max_num_doublings",
         "n_live",
-        "n_posterior_samples",
-        "posterior_resampling_seed",
+        "num_chains",
+        "num_samples",
+        "num_warmup",
         "repeats",
-        "seed"
+        "seed",
+        "target_acceptance_rate"
       ]
     },
     "coefficients": {

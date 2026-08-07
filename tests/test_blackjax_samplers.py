@@ -1,0 +1,279 @@
+"""Unit tests for smefit/blackjax_samplers.py — blackjax itself is mocked.
+
+The real samplers are exercised in tests/test_blackjax_nuts.py (slow) and
+tests/test_bayes_update_blackjax.py (slow).
+"""
+
+import json
+from unittest.mock import MagicMock, patch
+
+import jax.numpy as jnp
+import pytest
+
+from smefit.blackjax_samplers import (
+    _SAMPLER_REGISTRY,
+    BJ_ALGORITHM_SETTINGS,
+    BJ_ALGORITHMS,
+    BJ_SHARED_SETTINGS,
+    _run_nuts,
+    _thin_chains,
+    get_sampler,
+)
+from smefit.priors import ExactPosteriorPrior, Prior, _UniformDist
+
+N_CHAINS = 3
+N_DRAWS = 20
+N_DIMS = 2
+PARAM_NAMES = ["OpA", "OpB"]
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
+
+def test_registry_and_settings_map_agree():
+    assert set(_SAMPLER_REGISTRY) == set(BJ_ALGORITHM_SETTINGS) == set(BJ_ALGORITHMS)
+
+
+def test_algorithm_settings_are_disjoint_from_shared():
+    for keys in BJ_ALGORITHM_SETTINGS.values():
+        assert not (keys & BJ_SHARED_SETTINGS)
+
+
+def test_get_sampler_returns_callable():
+    assert callable(get_sampler("nested_sampling"))
+    assert callable(get_sampler("nuts"))
+
+
+def test_get_sampler_unknown_raises():
+    with pytest.raises(ValueError, match="Unknown BlackJAX algorithm"):
+        get_sampler("metropolis")
+
+    try:
+        get_sampler("metropolis")
+    except ValueError as exc:  # the message must enumerate the real options
+        assert "nested_sampling" in str(exc)
+        assert "nuts" in str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Thinning
+# ---------------------------------------------------------------------------
+
+
+def _ramp_positions():
+    """(C, S, d) block whose values encode (chain, draw) for identity checks."""
+    chain = jnp.arange(N_CHAINS)[:, None, None]
+    draw = jnp.arange(N_DRAWS)[None, :, None]
+    dim = jnp.arange(N_DIMS)[None, None, :]
+    return chain * 1000.0 + draw * 10.0 + dim
+
+
+def test_thin_chains_keeps_everything_when_it_fits():
+    positions = _ramp_positions()
+    out = _thin_chains(positions, N_CHAINS * N_DRAWS)
+    assert out.shape == (N_CHAINS * N_DRAWS, N_DIMS)
+
+
+def test_thin_chains_truncates_to_n_samples():
+    positions = _ramp_positions()
+    out = _thin_chains(positions, 12)
+    assert out.shape == (12, N_DIMS)
+
+
+def test_thin_chains_interleaves_chains():
+    """Truncation must cost every chain equally, not gut the last one."""
+    positions = _ramp_positions()
+    out = _thin_chains(positions, 12)
+    chains = jnp.floor(out[:, 0] / 1000.0)
+    counts = [int(jnp.sum(chains == c)) for c in range(N_CHAINS)]
+    assert counts == [4, 4, 4]
+    # the first sweep is one draw from each chain, in order
+    assert [int(c) for c in chains[:N_CHAINS]] == list(range(N_CHAINS))
+
+
+def test_thin_chains_warns_when_fewer_draws_than_requested(caplog):
+    positions = _ramp_positions()
+    with caplog.at_level("WARNING"):
+        out = _thin_chains(positions, 10_000)
+    assert out.shape == (N_CHAINS * N_DRAWS, N_DIMS)
+    assert any("fewer than the requested" in m for m in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# _run_nuts, with blackjax mocked out
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def nuts_settings(tmp_path):
+    return {
+        "algorithm": "nuts",
+        "seed": 0,
+        "log_dir": str(tmp_path),
+        "num_chains": N_CHAINS,
+        "num_warmup": 5,
+        "num_samples": N_DRAWS,
+        "target_acceptance_rate": 0.8,
+        "max_num_doublings": 10,
+        "init": "prior",
+    }
+
+
+@pytest.fixture
+def uniform_prior():
+    return Prior(
+        [_UniformDist(-1.0, 1.0), _UniformDist(-2.0, 2.0)],
+        PARAM_NAMES,
+        specs={
+            "OpA": {"dist": "uniform", "low": -1.0, "high": 1.0},
+            "OpB": {"dist": "uniform", "low": -2.0, "high": 2.0},
+        },
+    )
+
+
+def _run_mocked_nuts(prior, settings, n_samples, positions, is_divergent=None):
+    """Call _run_nuts with window_adaptation/run_inference_algorithm mocked.
+
+    The mock bypasses jax.vmap by returning the whole (C, S, d) block from the
+    per-chain function, which is what vmap would have stacked anyway.
+    """
+    if is_divergent is None:
+        is_divergent = jnp.zeros((N_CHAINS, N_DRAWS), dtype=bool)
+    acceptance = jnp.full((N_CHAINS, N_DRAWS), 0.9)
+    step_sizes = jnp.full((N_CHAINS,), 0.5)
+
+    mock_warmup = MagicMock()
+    mock_warmup.run.return_value = (MagicMock(parameters={}, state=MagicMock()), None)
+
+    log_likelihood = lambda x: -jnp.sum(x**2) / 2.0
+
+    with (
+        patch(
+            "smefit.blackjax_samplers.blackjax.window_adaptation",
+            return_value=mock_warmup,
+        ),
+        patch("smefit.blackjax_samplers.blackjax.nuts", return_value=MagicMock()),
+        patch(
+            "smefit.blackjax_samplers.run_inference_algorithm",
+            return_value=(None, (positions, is_divergent, acceptance)),
+        ),
+        patch(
+            "smefit.blackjax_samplers.jax.vmap",
+            side_effect=lambda fn, *a, **k: (
+                (lambda *args: (positions, is_divergent, acceptance, step_sizes))
+                if fn.__name__ == "_run_chain"
+                else _real_vmap(fn, *a, **k)
+            ),
+        ),
+    ):
+        return _run_nuts(
+            jnp.zeros(2, dtype="uint32"),
+            prior,
+            log_likelihood,
+            n_samples,
+            settings,
+            jnp.zeros(N_DIMS),
+        )
+
+
+# captured before the patch so the mock can delegate for every other vmap call
+_real_vmap = __import__("jax").vmap
+
+
+def test_run_nuts_output_shape_and_no_logz(uniform_prior, nuts_settings):
+    positions = _ramp_positions() * 0.001  # keep inside a sane u-range
+    out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert out.samples.shape == (12, N_DIMS)
+    assert out.best_point.shape == (N_DIMS,)
+    assert out.logz is None, "NUTS provides no evidence estimate"
+    assert out.diagnostics["algorithm"] == "nuts"
+
+
+def test_run_nuts_samples_are_in_constrained_space(uniform_prior, nuts_settings):
+    """Draws come back as physical/sampler-space values inside the prior box."""
+    positions = _ramp_positions() * 0.001
+    out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert bool(jnp.all(out.samples[:, 0] >= -1.0))
+    assert bool(jnp.all(out.samples[:, 0] <= 1.0))
+    assert bool(jnp.all(out.samples[:, 1] >= -2.0))
+    assert bool(jnp.all(out.samples[:, 1] <= 2.0))
+
+
+def test_run_nuts_writes_diagnostics_and_samples(
+    uniform_prior, nuts_settings, tmp_path
+):
+    positions = _ramp_positions() * 0.001
+    _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert (tmp_path / "nuts_samples.csv").exists()
+    diag_file = tmp_path / "nuts_diagnostics.json"
+    assert diag_file.exists()
+
+    diag = json.loads(diag_file.read_text())
+    assert set(diag["rhat"]) == set(PARAM_NAMES)
+    assert set(diag["ess"]) == set(PARAM_NAMES)
+    assert diag["divergences"] == 0
+    assert diag["num_chains"] == N_CHAINS
+
+    header = (tmp_path / "nuts_samples.csv").read_text().splitlines()[0]
+    assert header.split(",") == PARAM_NAMES
+
+
+def test_run_nuts_warns_on_bad_rhat(uniform_prior, nuts_settings, caplog):
+    """Chains parked at wildly different places must trip the R-hat warning."""
+    offsets = jnp.array([-6.0, 0.0, 6.0])[:, None, None]
+    positions = offsets + 0.01 * _ramp_positions()
+
+    with caplog.at_level("WARNING"):
+        _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert any("R-hat" in m for m in caplog.messages)
+
+
+def test_run_nuts_warns_on_divergences(uniform_prior, nuts_settings, caplog):
+    positions = _ramp_positions() * 0.001
+    is_divergent = jnp.zeros((N_CHAINS, N_DRAWS), dtype=bool).at[0, :3].set(True)
+
+    with caplog.at_level("WARNING"):
+        out = _run_mocked_nuts(
+            uniform_prior, nuts_settings, 12, positions, is_divergent
+        )
+
+    assert out.diagnostics["divergences"] == 3
+    assert any("divergent" in m for m in caplog.messages)
+
+
+def test_run_nuts_max_loglikelihood_is_likelihood_not_posterior(
+    uniform_prior, nuts_settings
+):
+    """FitResult.chi2_val is -2 * max_loglikelihood, so the prior must not leak in."""
+    positions = _ramp_positions() * 0.001
+    out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    expected = -float(jnp.sum(out.best_point**2)) / 2.0
+    assert out.max_loglikelihood == pytest.approx(expected, rel=1e-5)
+
+
+def test_run_nuts_rejects_prior_without_bijectors(nuts_settings):
+    """A bayesian_update_path fit gets an ExactPosteriorPrior, which knows only a
+    joint log_prob. NUTS must refuse it before compiling anything."""
+    prior = ExactPosteriorPrior(
+        base_prior=Prior([_UniformDist(-1.0, 1.0)] * N_DIMS, PARAM_NAMES),
+        log_likelihood_1=lambda x: 0.0,
+        samples_dict={name: jnp.zeros(4) for name in PARAM_NAMES},
+        param_names=PARAM_NAMES,
+    )
+
+    with pytest.raises(ValueError, match="nested_sampling"):
+        _run_nuts(
+            jnp.zeros(2, dtype="uint32"),
+            prior,
+            lambda x: 0.0,
+            10,
+            nuts_settings,
+            jnp.zeros(N_DIMS),
+        )

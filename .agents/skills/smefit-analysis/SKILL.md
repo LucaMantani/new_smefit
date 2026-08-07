@@ -49,7 +49,11 @@ posterior, per coefficient — null for pure best-fit runs), `chi2`,
   `use_quad: True`.
 - `chi2_ndof` far above 1 signals tension or a mis-configured covariance
   (check `use_t0` / `use_theory_covmat`).
-- Compare models with `logz` (nested sampling) or `bic`/`aic`.
+- Compare models with `logz` (nested sampling only — it is `null` for
+  `blackjax_settings.algorithm: nuts` and for the analytic/Hessian fits) or
+  `bic`/`aic`, which every fit provides.
+- After a `nuts` fit, read `blackjax_logs/nuts_diagnostics.json` before trusting
+  the posterior: `max_rhat` should be < 1.01 and `divergences` should be 0.
 - A posterior that looks identical to the prior means the chosen data does not
   constrain that coefficient (check with the smefit-datasets skill:
   `smefit_db.py info <dataset>` shows the operators a dataset is sensitive to).

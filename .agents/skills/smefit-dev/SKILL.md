@@ -136,7 +136,38 @@ protection against misspelling it.
 - **Priors**: add the distribution class to `_DIST_REGISTRY` in
   `smefit/priors.py`; the constructor signature becomes the required prior
   parameters in the generated `priors.md` and in the validator. Implement all
-  of `ppf`, `log_prob`, `sample`, `__str__`.
+  of `ppf`, `log_prob`, `sample`, `__str__`, plus the bijector trio
+  `to_unconstrained` / `from_unconstrained` / `log_det_jacobian` that gradient
+  samplers need — identity is the right answer for any distribution already
+  supported on all of R. Keep the log-det in a form that survives the tails
+  (`_UniformDist` uses `log_sigmoid(u) + log_sigmoid(-u)` for exactly that
+  reason) and make any epsilon dtype-aware: the test suite runs float32, where
+  a hardcoded `1e-12` rounds away. The trio is deliberately `@abstractmethod`
+  and **must not** gain a default identity implementation: a bounded
+  distribution that inherited one would not crash, it would quietly return a
+  biased posterior. Add the new distribution to `_CONTRACT_SPECS` in
+  `tests/test_priors.py` — a test asserts that dict covers `_DIST_REGISTRY`
+  exactly, and the contract tests keyed off it then check round-trip, log-det
+  against autodiff, and that the bijector lands inside the support.
+  `Prior` then lifts that trio to the joint
+  distribution (`from_unconstrained`, `log_prob_unconstrained`,
+  `sample_unconstrained`) — these live on `Prior` itself rather than in a
+  wrapper class, because they are pure functions of its own `dists`.
+  `ExactPosteriorPrior` and `_WhitenedToPhysicalPrior` know only a joint
+  `log_prob`, so they have no unconstrained interface; `_run_nuts` rejects
+  them with an `isinstance(prior, Prior)` check.
+- **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
+  `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers.py` — the same registry
+  pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG
+  dependencies (this is why it is *not* an `@explicit_node`). A new algorithm
+  needs: a `_run_<name>(rng_key, prior, log_likelihood, n_samples, settings,
+  init_point)` returning a `SamplerOutput`, a registry entry, a
+  `BJ_ALGORITHM_SETTINGS` entry naming the keys it owns, and those keys added to
+  the literal `known_keys` set in `parse_blackjax_settings`. That last set must
+  stay an inline set literal (the generator AST-extracts it);
+  `tests/test_config.py::test_parse_blackjax_known_keys_cover_all_algorithm_settings`
+  is what keeps it in step with `BJ_ALGORITHM_SETTINGS`. Do not register
+  `blackjax_samplers.py` in `smefit_providers` — it holds helpers, not nodes.
 - **Expression constraints**: functions available inside `expr:` are exactly
   `_EXPR_NAMESPACE` in `smefit/core.py` (JAX-backed, so constraints stay
   differentiable). Adding one there widens the runcard language — update

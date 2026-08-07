@@ -24,8 +24,9 @@ code and kept in sync by CI:
 
 1. **Start from a template** in `templates/` — one per fit type
    (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
-   `blackjax_individual_fit.yaml`, `hessian_fit.yaml`, `projections.yaml`,
-   `time_likelihood.yaml`, `report.yaml`). Do not write a runcard from scratch.
+   `blackjax_nuts_fit.yaml`, `blackjax_individual_fit.yaml`, `hessian_fit.yaml`,
+   `projections.yaml`, `time_likelihood.yaml`, `report.yaml`). Do not write a
+   runcard from scratch.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test
@@ -119,6 +120,12 @@ systematics/theory errors are present — just say so, don't ask.
   `run_hessian_fit`, and gradient-descent fits never consume it. `whitening`/
   `bayesian_update_path` synthesize a prior automatically either way. Only
   `uniform` and `gaussian`/`normal` exist (`references/priors.md`).
+- `run_blackjax_fit` runs whichever algorithm `blackjax_settings.algorithm`
+  names: `nested_sampling` (the default, and the only one that produces a
+  `logz`) or `nuts` (gradient MCMC — faster on smooth high-dimensional
+  posteriors, writes `logz: null`, and cannot be combined with
+  `bayesian_update_path`). See "Choosing a BlackJAX algorithm" in
+  `references/recipes.md`.
 - `use_t0: True` is the statistically sound choice when multiplicative
   systematics are present; pair it with `use_theory_covmat: True` when theory
   errors matter.

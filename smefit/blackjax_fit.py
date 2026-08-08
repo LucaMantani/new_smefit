@@ -18,7 +18,6 @@ import jax
 from smefit.blackjax_samplers import get_sampler
 from smefit.fit_result import FitResult
 from smefit.utils import resolve_posterior
-from smefit.whitening import apply_whitening
 
 log = logging.getLogger(__name__)
 
@@ -57,21 +56,16 @@ def blackjax_fit(
     """
     if whitening_transformation is not None:
         log.info("Using whitening transformation in BlackJAX fit.")
-        _chi2, resolve_coeffs = apply_whitening(
-            chi2, coefficients, whitening_transformation
-        )
-        # chi2.baseline is a physical-space point; the sampler works in
-        # whitened coordinates, so it has to be mapped across.
-        init_point = whitening_transformation.to_whitened(chi2.baseline)
+        _chi2 = chi2.whitened(whitening_transformation)
+        _coeffs = coefficients.whitened(whitening_transformation)
     else:
-        _chi2 = chi2
-        resolve_coeffs = coefficients
-        init_point = chi2.baseline
+        _chi2, _coeffs = chi2, coefficients
 
+    init_point = _chi2.baseline
     algorithm = blackjax_settings.get("algorithm", "nested_sampling")
     runner = get_sampler(algorithm)
 
-    log.info("Fitting free coefficients: %s", ", ".join(resolve_coeffs.free_names))
+    log.info("Fitting free coefficients: %s", ", ".join(_coeffs.free_names))
 
     rng_key = jax.random.PRNGKey(blackjax_settings["seed"])
     log.info(f"BlackJAX initialisation seed: {rng_key}")
@@ -91,15 +85,13 @@ def blackjax_fit(
         (time.time() - t0) / 60.0,
     )
 
-    samples, best_fit_point = resolve_posterior(
-        resolve_coeffs, out.samples, out.best_point
-    )
+    samples, best_fit_point = resolve_posterior(_coeffs, out.samples, out.best_point)
 
     return FitResult(
-        free_parameters=resolve_coeffs.free_names,
+        free_parameters=_coeffs.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=out.max_loglikelihood,
-        num_data=chi2.num_data,
+        num_data=_chi2.num_data,
         logz=out.logz,
         samples=samples,
         prior_specs=prior.prior_specs,

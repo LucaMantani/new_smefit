@@ -61,7 +61,9 @@ def blackjax_fit(
     else:
         _chi2, _coeffs = chi2, coefficients
 
+    # Already in the sampler's coordinates: whitened when whitening is active.
     init_point = _chi2.baseline
+
     algorithm = blackjax_settings.get("algorithm", "nested_sampling")
     runner = get_sampler(algorithm)
 

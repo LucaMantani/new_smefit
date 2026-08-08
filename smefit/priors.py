@@ -123,7 +123,8 @@ class _GaussianDist(_Distribution):
         return x
 
     def log_det_jacobian(self, u):
-        return jnp.zeros_like(jnp.asarray(u, dtype=jnp.result_type(float)))
+        """Zero, since ``from_unconstrained`` is the identity."""
+        return jnp.zeros_like(u, dtype=jnp.result_type(float))
 
 
 _DIST_REGISTRY = {

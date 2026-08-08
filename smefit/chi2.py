@@ -7,6 +7,8 @@ Chi2 loss function for the smefit framework.
 import jax
 import jax.numpy as jnp
 
+from smefit.whitening import WhitenTransform
+
 
 class Chi2:
     """Callable chi2 with metadata about its composition.
@@ -43,6 +45,22 @@ class Chi2:
     @jax.jit(static_argnames=("self",))
     def __call__(self, coeffs):
         return self._fn(coeffs)
+
+    def whitened(self, transform: WhitenTransform) -> "Chi2":
+        """The same chi2 expressed in whitened coordinates c_w.
+
+        Mirrors ``CoefficientGroup.whitened``: everything a sampler needs — the
+        callable and the baseline it starts from — comes back in whitened
+        space, so callers never have to mix the two coordinate systems.
+        """
+        return Chi2(
+            lambda c_w: self._fn(transform.to_physical(c_w)),
+            self.param_names,
+            self.num_data,
+            has_external=self.has_external,
+            name=self.name,
+            baseline=transform.to_whitened(self.baseline),
+        )
 
 
 def build_chi2(eft_model, data, fit_covmat):

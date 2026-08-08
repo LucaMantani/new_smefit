@@ -3,11 +3,10 @@ smefit.blackjax_fit
 
 BlackJAX Bayesian fitting routine, producing a FitResult node.
 
-The sampling algorithm is chosen with ``blackjax_settings.algorithm``
-(``nested_sampling``, the default, or ``nuts``); the per-algorithm runners live
-in ``smefit.blackjax_samplers``. Everything algorithm-independent — whitening,
-resolving free coefficients back to the full set, assembling the FitResult —
-stays here.
+The sampling algorithm is chosen with ``blackjax_settings.algorithm``;
+the per-algorithm runners live in ``smefit.blackjax_samplers``.
+Everything algorithm-independent — whitening, resolving free coefficients
+back to the full set, assembling the FitResult — stays here.
 """
 
 import logging

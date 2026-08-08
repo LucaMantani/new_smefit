@@ -464,6 +464,44 @@ def test_read_cache_rejects_mismatched_settings(tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    "payload, expected",
+    [
+        (["not", "a", "dict"], "expected a dict"),
+        ({100.0: pd.DataFrame()}, "missing the 'rge_settings' entry"),
+        ({"rge_settings": "top"}, "'rge_settings' must be a dict"),
+        ({"rge_settings": SETTINGS}, "holds no matrices"),
+        (
+            {"rge_settings": SETTINGS, "obs_operators": ["Op1"]},
+            "must be a scale in GeV",
+        ),
+        (
+            {"rge_settings": SETTINGS, 100.0: [[1.0]]},
+            "must be a DataFrame",
+        ),
+    ],
+)
+def test_read_cache_rejects_a_pickle_that_is_not_an_rge_matrix(
+    tmp_path, payload, expected
+):
+    """`rg_matrix` is a user-supplied path: a wrong file must say so here, not
+    fail obscurely inside resolve_rge_matrices."""
+    target = tmp_path / RGEMatrix.FILENAME
+    with open(target, "wb") as f:
+        pickle.dump(payload, f)
+
+    with pytest.raises(ValueError, match=expected):
+        RGEMatrix.read_cache(target, SETTINGS)
+
+
+def test_read_cache_rejects_a_file_that_is_not_a_pickle(tmp_path):
+    target = tmp_path / RGEMatrix.FILENAME
+    target.write_text("name: not a pickle at all\n")
+
+    with pytest.raises(ValueError, match="not a readable pickle"):
+        RGEMatrix.read_cache(target, SETTINGS)
+
+
 def test_read_cache_resolves_prefix_path(tmp_path):
     """A prefix-relative path is resolved here, not only at config-parse time.
 

@@ -6,6 +6,7 @@ consumes it — so the format is described in exactly one module.
 """
 
 import logging
+import numbers
 import pathlib
 import pickle
 from dataclasses import dataclass
@@ -89,6 +90,45 @@ class RGEMatrix:
         _logger.info("RGE matrix written to %s.", out_file)
 
     @staticmethod
+    def _validate_payload(payload, path):
+        """Check an unpickled object against the layout :meth:`to_dump_dict` writes.
+
+        Anything can be pickled, and `rg_matrix` is a user-supplied path, so a
+        wrong file (a fit result, someone else's pickle, a truncated download)
+        would otherwise surface as a `KeyError`/`TypeError` deep inside
+        :func:`smefit.rge.build.resolve_rge_matrices`, or — for a non-numeric
+        key — as a silent cache miss that recomputes everything.
+        """
+        prefix = f"'{path}' is not a valid RGE matrix cache"
+        if not isinstance(payload, dict):
+            raise ValueError(
+                f"{prefix}: expected a dict, got {type(payload).__name__}."
+            )
+        if "rge_settings" not in payload:
+            raise ValueError(f"{prefix}: missing the 'rge_settings' entry.")
+        if not isinstance(payload["rge_settings"], dict):
+            raise ValueError(
+                f"{prefix}: 'rge_settings' must be a dict, got "
+                f"{type(payload['rge_settings']).__name__}."
+            )
+
+        scales = [k for k in payload if k != "rge_settings"]
+        if not scales:
+            raise ValueError(f"{prefix}: it holds no matrices, only 'rge_settings'.")
+        for scale in scales:
+            # _find_cached_scale does arithmetic on these keys
+            if isinstance(scale, bool) or not isinstance(scale, numbers.Real):
+                raise ValueError(
+                    f"{prefix}: every key other than 'rge_settings' must be a "
+                    f"scale in GeV, found {scale!r}."
+                )
+            if not isinstance(payload[scale], pd.DataFrame):
+                raise ValueError(
+                    f"{prefix}: the entry for scale {scale} must be a DataFrame, "
+                    f"got {type(payload[scale]).__name__}."
+                )
+
+    @staticmethod
     def read_cache(path_to_rge_mat, rge_settings):
         """
         Read a precomputed RGE matrix pickle and validate its settings.
@@ -130,7 +170,9 @@ class RGEMatrix:
         FileNotFoundError
             If the (resolved) file does not exist and could not be downloaded.
         ValueError
-            If the settings in the precomputed file do not match `rge_settings`.
+            If the file is not a readable pickle, does not have the layout
+            :meth:`to_dump_dict` writes, or its stored settings do not match
+            `rge_settings`.
         """
         path = pathlib.Path(resolve_path(str(path_to_rge_mat)))
         fetch_fit_if_missing(path)
@@ -141,8 +183,13 @@ class RGEMatrix:
                 f"RGE matrix '{path_to_rge_mat}' not found (resolved to '{path}')."
             )
 
-        with open(path, "rb") as f:
-            payload = pickle.load(f)
+        try:
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError, AttributeError, ImportError) as e:
+            raise ValueError(f"'{path}' is not a readable pickle: {e}") from e
+
+        RGEMatrix._validate_payload(payload, path)
 
         if rge_settings != payload["rge_settings"]:
             raise ValueError(

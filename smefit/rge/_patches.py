@@ -17,6 +17,7 @@ interpreter gets the patched behaviour too.
 
 from copy import deepcopy
 from functools import partial, wraps
+from typing import Any
 
 import ckmutil.ckm
 import numpy as np
@@ -40,7 +41,10 @@ ckmutil.ckm.ckm_tree = partial(ckm_tree, delta_expansion_order=0)
 original_beta = wilson.run.smeft.beta.beta
 
 
-def beta_wrapper(C, HIGHSCALE=np.inf, *args, **kwargs):
+def beta_wrapper(
+    C: dict[str, Any], HIGHSCALE: float = np.inf, *args: Any, **kwargs: Any
+) -> dict[str, Any]:
+    """``wilson.run.smeft.beta.beta`` with ``HIGHSCALE`` forced to infinity."""
     return original_beta(C, HIGHSCALE, *args, **kwargs)
 
 
@@ -71,7 +75,7 @@ original_smeftpar = wilson.run.smeft.smpar.smeftpar
 
 # Define the monkey-patched function
 @wraps(original_smeftpar)
-def patched_smeftpar(*args, **kwargs):
+def patched_smeftpar(*args: Any, **kwargs: Any) -> dict[str, Any]:
     # check if C is passed as a keyword argument
     if "C" in kwargs:
         kwargs["C"] = C_patch
@@ -91,7 +95,9 @@ wilson.run.smeft.smpar.smeftpar = patched_smeftpar
 ##################### MONKEY PATCH
 # Monkey patch flavour rotation
 # Define the new method
-def _to_wcxf_no_rotation(self, C_out, scale_out):
+def _to_wcxf_no_rotation(
+    self, C_out: dict[str, Any], scale_out: float
+) -> "wilson.wcxf.WC":
     """Return the Wilson coefficients `C_out` as a wcxf.WC instance, without rotation."""
     # Skip the self._rotate_defaultbasis line
     d = wilson.util.smeftutil.arrays2wcxf_nonred(C_out)

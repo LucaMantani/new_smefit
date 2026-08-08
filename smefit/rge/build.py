@@ -6,6 +6,8 @@ Ties the :class:`~smefit.rge.runner.RGE` runner and the
 """
 
 import logging
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -14,10 +16,15 @@ import pandas as pd
 from .matrix import RGEMatrix
 from .runner import RGE
 
+if TYPE_CHECKING:
+    from smefit.core import TheoryGroup
+
 _logger = logging.getLogger(__name__)
 
 
-def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float | None:
+def _find_cached_scale(
+    cache: Mapping[float, pd.DataFrame], scale: float, rtol: float = 1e-5
+) -> float | None:
     """Return the matching key in cache if one exists within relative tolerance, else None."""
     for key in cache:
         if abs(key - scale) <= rtol * abs(key):
@@ -25,7 +32,12 @@ def _find_cached_scale(cache: dict, scale: float, rtol: float = 1e-5) -> float |
     return None
 
 
-def resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache):
+def resolve_rge_matrices(
+    scales: Sequence[float],
+    coeff_list: Sequence[str],
+    rge_runner: RGE,
+    rge_cache: dict[float, pd.DataFrame],
+) -> list[pd.DataFrame]:
     """
     Resolve the RGE matrices for the given list of scales, from cache or by computing them.
 
@@ -41,20 +53,20 @@ def resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache):
 
     Parameters
     ----------
-    scales : iterable of float
-        Energy scales at which to fetch/compute RGE matrices.
-    coeff_list : list of str
+    scales : Sequence[float]
+        Energy scales in GeV at which to fetch/compute RGE matrices.
+    coeff_list : Sequence[str]
         Requested Wilson coefficient names (columns) to return for each matrix.
     rge_runner : RGE
         An instance of the RGE runner
-    rge_cache : dict
+    rge_cache : dict[float, pandas.DataFrame]
         Mapping scale -> pandas.DataFrame for previously computed RGE matrices.
         This dict will be updated in-place when new or extended RGE matrices are
         computed.
 
     Returns
     -------
-    list of pandas.DataFrame
+    list[pandas.DataFrame]
         List of RGE matrices (one per input scale)
     """
     # Deduplicate: compute only for unique scales, then map back
@@ -106,12 +118,25 @@ def resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache):
     return [unique_rgemats[scale].copy() for scale in scales]
 
 
-def _resolve_scales(rge_dict, theory_group):
+def _resolve_scales(
+    rge_dict: Mapping[str, Any], theory_group: "TheoryGroup"
+) -> list[float]:
     """
     Resolve observable scales from an rge_dict and a TheoryGroup.
 
-    Returns a single-element list when ``obs_scale`` is a fixed number, or
-    one entry per data point when it is ``'dynamic'`` (the default).
+    Parameters
+    ----------
+    rge_dict : Mapping[str, Any]
+        The runcard ``rge:`` block; ``obs_scale`` and ``scale_variation`` are
+        the keys read here.
+    theory_group : TheoryGroup
+        Source of the per-data-point scales used in ``'dynamic'`` mode.
+
+    Returns
+    -------
+    list[float]
+        A single-element list when ``obs_scale`` is a fixed number, or one
+        entry per data point when it is ``'dynamic'`` (the default).
     """
     obs_scale = rge_dict.get("obs_scale", "dynamic")
     if isinstance(obs_scale, (float, int)):
@@ -125,18 +150,18 @@ def _resolve_scales(rge_dict, theory_group):
 
 
 def build_rge_matrix(
-    rge_dict,
-    coeff_list,
-    theory_group,
-):
+    rge_dict: Mapping[str, Any],
+    coeff_list: Sequence[str],
+    theory_group: "TheoryGroup",
+) -> RGEMatrix:
     """
     Build the RGE matrix for the SMEFT Wilson coefficients.
 
     Parameters
     ----------
-    rge_dict: dict
+    rge_dict: Mapping[str, Any]
         dictionary with the RGE input parameter options
-    coeff_list: list
+    coeff_list: Sequence[str]
         list of Wilson coefficients to be included in the RGE matrix
     theory_group: TheoryGroup
         theory group providing per-data-point observable scales

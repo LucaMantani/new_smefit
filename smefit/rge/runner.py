@@ -5,8 +5,10 @@ before this module by :mod:`smefit.rge`), but otherwise does no file I/O.
 """
 
 import logging
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from functools import cached_property
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -61,15 +63,35 @@ QCD_only = {
 }
 
 
-def evolve_gs(scale):
-    # evolve gs from MZ to scale using 1-loop running with nf=6
+def evolve_gs(scale: float) -> float:
+    """Evolve the strong coupling from ``mz`` to *scale*.
+
+    Parameters
+    ----------
+    scale : float
+        Target scale in GeV.
+
+    Returns
+    -------
+    float
+        ``gs`` at *scale*, from 1-loop running with ``nf=6``.
+    """
     beta0 = 11 - 2 / 3 * 6
     return gs / np.sqrt(1 + 2 * beta0 * gs**2 / (4 * np.pi) ** 2 * np.log(scale / mz))
 
 
 @contextmanager
-def _wilson_params(yukawa, adm_QCD):
-    """Temporarily set wilson SM parameters, restoring originals on exit."""
+def _wilson_params(yukawa: str, adm_QCD: bool) -> Iterator[None]:
+    """Temporarily set wilson SM parameters, restoring originals on exit.
+
+    Parameters
+    ----------
+    yukawa : str
+        One of :data:`ALLOWED_YUKAWA`.
+    adm_QCD : bool
+        If True, zero the electroweak couplings so only the QCD anomalous
+        dimension contributes.
+    """
     saved = wilson.run.smeft.smpar.p.copy()
     try:
         if yukawa == "top":
@@ -96,7 +118,7 @@ class RGE:
 
     Parameters
     ----------
-    wc_names: list
+    wc_names: Sequence[str]
         list of Wilson coefficient names to be included in the RGE matrix
     init_scale: float
         initial scale of the Wilson coefficients
@@ -112,12 +134,12 @@ class RGE:
 
     def __init__(
         self,
-        wc_names,
-        init_scale,
-        accuracy="integrate",
-        adm_QCD=False,
-        yukawa="top",
-    ):
+        wc_names: Sequence[str],
+        init_scale: float,
+        accuracy: str = "integrate",
+        adm_QCD: bool = False,
+        yukawa: str = "top",
+    ) -> None:
         # order the Wilson coefficients alphabetically
         self.wc_names = sorted(wc_names)
         self.init_scale = init_scale
@@ -137,8 +159,24 @@ class RGE:
         )
 
     @classmethod
-    def from_rge_dict(cls, rge_dict, wc_names):
-        """Build a runner from a raw or parsed ``rge:`` dict."""
+    def from_rge_dict(
+        cls, rge_dict: Mapping[str, Any], wc_names: Sequence[str]
+    ) -> "RGE":
+        """Build a runner from a raw or parsed ``rge:`` dict.
+
+        Parameters
+        ----------
+        rge_dict : Mapping[str, Any]
+            The runcard ``rge:`` block. Only the four keys of :attr:`settings`
+            are read, each with the same default the runcard documents.
+        wc_names : Sequence[str]
+            Wilson coefficient names to include in the RGE matrix.
+
+        Returns
+        -------
+        RGE
+            Runner configured from *rge_dict*.
+        """
         return cls(
             wc_names,
             init_scale=float(rge_dict.get("init_scale", 1e3)),
@@ -148,7 +186,7 @@ class RGE:
         )
 
     @property
-    def settings(self):
+    def settings(self) -> dict[str, Any]:
         """The physics settings that determine the RGE matrices this runner produces.
 
         These four values, and only these four, decide whether a stored
@@ -161,6 +199,12 @@ class RGE:
         select *which* scales are requested, not how the running is done, and a
         cached matrix keyed by scale is reusable across runcards that ask for
         different scales.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``{'init_scale': float, 'smeft_accuracy': str, 'adm_QCD': bool,
+            'yukawa': str}``.
         """
         return {
             "init_scale": self.init_scale,
@@ -169,9 +213,21 @@ class RGE:
             "yukawa": self.yukawa,
         }
 
-    def RGEmatrix_dict(self, scale):
+    def RGEmatrix_dict(self, scale: float) -> dict[str, dict[str, float]]:
         """
         Compute the RGE solution at the scale `scale` and return it as a dictionary.
+
+        Parameters
+        ----------
+        scale : float
+            Observable scale in GeV to evolve down (or up) to.
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            One entry per name in :attr:`wc_names`, mapping the observable-basis
+            operators it feeds into to their coefficients. External couplings
+            map to an empty dict.
         """
         rge_matrix_dict = {}
         with _wilson_params(self.yukawa, self.adm_QCD):
@@ -207,9 +263,22 @@ class RGE:
 
         return rge_matrix_dict
 
-    def RGEmatrix(self, scale):
+    def RGEmatrix(self, scale: float) -> pd.DataFrame:
         """
         Compute the RGE solution at the scale `scale` and return it as a pandas DataFrame.
+
+        Parameters
+        ----------
+        scale : float
+            Observable scale in GeV.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Rows indexed by observable-basis operator, columns
+            :attr:`wc_names`. All-zero rows are dropped, so the index is a
+            subset of :attr:`all_ops` and varies with the requested
+            coefficients.
         """
         # compute the RGE matrix dict at the scale `scale`
         rge_matrix_dict = self.RGEmatrix_dict(scale)
@@ -228,9 +297,17 @@ class RGE:
         return rge_matrix
 
     @cached_property
-    def RGEbasis(self):
+    def RGEbasis(self) -> dict[str, dict[str, float]]:
         """
         Returns the RGE basis translated from smefit to Warsaw.
+
+        Returns
+        -------
+        dict[str, dict[str, float]]
+            One entry per name in :attr:`wc_names`, mapping Warsaw-basis names
+            to their values in GeV^-2. A coefficient absent from the WCxf
+            translation table is assumed to be an external coupling and maps to
+            an empty dict.
         """
         # computes the translation from the smefit basis to the Warsaw basis
         # as expected by the Wilson package
@@ -267,9 +344,26 @@ class RGE:
 
         return wc_basis
 
-    def map_to_smefit(self, wc_final_vals, scale):
+    def map_to_smefit(
+        self, wc_final_vals: Mapping[str, complex], scale: float
+    ) -> dict[str, float]:
         """
         Map the Wilson coefficients from the Warsaw basis to the SMEFiT basis.
+
+        Parameters
+        ----------
+        wc_final_vals : Mapping[str, complex]
+            Evolved Warsaw-basis coefficients in GeV^-2, as ``wilson`` returns
+            them. Only the real part is used.
+        scale : float
+            Scale in GeV the values were evolved to; needed for the ``1/gs``
+            coefficient of ``OtG``.
+
+        Returns
+        -------
+        dict[str, float]
+            SMEFiT-basis coefficients in TeV^-2, restricted to the operators
+            that overlap with *wc_final_vals*.
         """
         wc_dict = {}
         wc_final_keys = set(wc_final_vals.keys())
@@ -298,12 +392,26 @@ class RGE:
         return wc_dict
 
     @property
-    def all_ops(self):
+    def all_ops(self) -> tuple[str, ...]:
+        """The observable-basis operator names a matrix can have rows for."""
         return ALL_OPS
 
-    def RGEevolve(self, wcs, scale):
+    def RGEevolve(self, wcs: Mapping[str, float], scale: float) -> dict[str, float]:
         """
         Evolve the Wilson coefficients from the initial scale to the scale of interest.
+
+        Parameters
+        ----------
+        wcs : Mapping[str, float]
+            Values at :attr:`init_scale`, keyed by SMEFiT name. Must cover
+            every name in :attr:`RGEbasis`.
+        scale : float
+            Target scale in GeV.
+
+        Returns
+        -------
+        dict[str, float]
+            Evolved SMEFiT-basis coefficients at *scale*, in TeV^-2.
         """
         wc_wilson = {}
         for op, values in self.RGEbasis.items():
@@ -329,13 +437,13 @@ class RGE:
 
         return self.map_to_smefit(wc_final, scale)
 
-    def clone_runner(self, coeff_list):
+    def clone_runner(self, coeff_list: Sequence[str]) -> "RGE":
         """
         Clone the RGE runner with a different coefficient list.
 
         Parameters
         ----------
-        coeff_list: list
+        coeff_list: Sequence[str]
             list of Wilson coefficient names to be included in the RGE matrix
 
         Returns

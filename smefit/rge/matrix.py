@@ -9,7 +9,9 @@ import logging
 import numbers
 import pathlib
 import pickle
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -30,14 +32,14 @@ class RGEMatrix:
         Shape ``(n_data, n_obs_ops, n_init_coeffs)`` — one matrix per data
         point (or ``(1, …)`` when a single fixed observable scale is used and
         the matrix is broadcast downstream by ``EFTModel._apply_rge``).
-    obs_operators : list of str
+    obs_operators : list[str]
         Observable-basis operator names (alphabetically sorted).
-    init_operators : list of str
+    init_operators : list[str]
         Initial Wilson coefficient names (alphabetically sorted).
-    scales : list of float
+    scales : list[float]
         One scale per data point for dynamic mode, or a single-element list for
         a fixed observable scale.
-    settings : dict
+    settings : dict[str, Any]
         The running configuration these matrices were computed with, as
         returned by :attr:`smefit.rge.runner.RGE.settings`; stored in the pickle
         so a later run can check reusability.
@@ -51,18 +53,24 @@ class RGEMatrix:
     """
 
     stacked_mats: jnp.ndarray
-    obs_operators: list
-    init_operators: list
-    scales: list
-    settings: dict
+    obs_operators: list[str]
+    init_operators: list[str]
+    scales: list[float]
+    settings: dict[str, Any]
 
     FILENAME = "rge_matrix.pkl"
 
-    def to_dump_dict(self):
+    def to_dump_dict(self) -> dict[str | float, Any]:
         """Build the on-disk payload: ``{'rge_settings': {...}, <scale>: DataFrame}``.
 
         Duplicate scales collapse to a single entry, so a dynamic-scale fit over
         many data points sharing a scale stores one frame per unique scale.
+
+        Returns
+        -------
+        dict[str | float, Any]
+            :attr:`settings` under the ``'rge_settings'`` key, plus one
+            ``pandas.DataFrame`` per unique scale keyed by that scale.
         """
         to_dump = {"rge_settings": self.settings}
         for scale, matrix in zip(self.scales, self.stacked_mats):
@@ -73,14 +81,19 @@ class RGEMatrix:
             )
         return to_dump
 
-    def write(self, output_path, name=None):
+    def write(self, output_path: str | pathlib.Path, name: str | None = None) -> None:
         """Pickle this matrix to ``<output_path>/<name>``, defaulting to :attr:`FILENAME`.
 
-        ``name`` is a complete file name, extension included — the server layer
-        discovers these matrices by exact name, so anything other than the
-        default is invisible to it.
-
         The file can be fed back to a later runcard through ``rge.rg_matrix``.
+
+        Parameters
+        ----------
+        output_path : str or pathlib.Path
+            Destination *directory*, created if it does not exist.
+        name : str, optional
+            A complete file name, extension included — the server layer
+            discovers these matrices by exact name, so anything other than the
+            default :attr:`FILENAME` is invisible to it.
         """
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -90,7 +103,7 @@ class RGEMatrix:
         _logger.info("RGE matrix written to %s.", out_file)
 
     @staticmethod
-    def _validate_payload(payload, path):
+    def _validate_payload(payload: Any, path: pathlib.Path) -> None:
         """Check an unpickled object against the layout :meth:`to_dump_dict` writes.
 
         Anything can be pickled, and `rg_matrix` is a user-supplied path, so a
@@ -98,6 +111,18 @@ class RGEMatrix:
         would otherwise surface as a `KeyError`/`TypeError` deep inside
         :func:`smefit.rge.build.resolve_rge_matrices`, or — for a non-numeric
         key — as a silent cache miss that recomputes everything.
+
+        Parameters
+        ----------
+        payload : Any
+            Whatever ``pickle.load`` returned.
+        path : pathlib.Path
+            The file it came from, named in every error message.
+
+        Raises
+        ------
+        ValueError
+            If *payload* does not have the documented layout.
         """
         prefix = f"'{path}' is not a valid RGE matrix cache"
         if not isinstance(payload, dict):
@@ -129,7 +154,9 @@ class RGEMatrix:
                 )
 
     @staticmethod
-    def read_cache(path_to_rge_mat, rge_settings):
+    def read_cache(
+        path_to_rge_mat: str | pathlib.Path, rge_settings: Mapping[str, Any]
+    ) -> dict[float, pd.DataFrame]:
         """
         Read a precomputed RGE matrix pickle and validate its settings.
 
@@ -155,15 +182,15 @@ class RGEMatrix:
             is resolved here through :func:`smefit.paths.resolve_path`, and a
             file missing under ``smefit_results/{fits,reports}/<name>/`` is
             downloaded from the server.
-        rge_settings : dict
+        rge_settings : Mapping[str, Any]
             Expected RGE settings to validate against the stored file, as returned
             by :attr:`smefit.rge.runner.RGE.settings`.
 
         Returns
         -------
-        dict
-            A dictionary containing cached RGE matrices keyed by scale. The
-            returned dictionary excludes the `'rge_settings'` entry.
+        dict[float, pandas.DataFrame]
+            Cached RGE matrices keyed by scale in GeV, excluding the
+            ``'rge_settings'`` entry.
 
         Raises
         ------

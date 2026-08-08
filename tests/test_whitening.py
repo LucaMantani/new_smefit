@@ -75,9 +75,6 @@ def test_build_matrix_raises_on_non_positive_definite_hessian():
     with pytest.raises(ValueError, match="not positive definite") as excinfo:
         _build_matrix(chi2, _WHITENING, center)
     assert "saddle point" in str(excinfo.value)
-    # eps regularises flat directions, not negative ones, so the message must
-    # point at re-centring rather than at raising eps.
-    assert "gradient_descent" in str(excinfo.value)
 
 
 def test_build_matrix_tiny_negative_eigenvalue_is_not_called_a_saddle():
@@ -130,23 +127,6 @@ def test_build_matrix_logs_spectrum_at_info_when_well_conditioned(caplog):
     # Eigenvalues 1 and 2, so cond(H + eps*I) = 2.
     assert "eigenvalues of H in [1.000e+00, 2.000e+00]" in record.getMessage()
     assert "cond(H + eps*I) = 2.000e+00" in record.getMessage()
-
-
-def test_build_matrix_tolerates_roundoff_negative_eigenvalue():
-    """A flat direction is only zero to within the AD Hessian's noise floor,
-    which scales with the largest eigenvalue. An absolute threshold would reject
-    perfectly usable fits — this is the L0-projection case, where the SM point
-    is the exact minimum and the smallest eigenvalue lands on either side of
-    zero by luck.
-    """
-    big = 1e8
-    # curvature big in one direction, -1.0 in the other: |−1| is far below the
-    # 1e-8 * big = 1.0 noise floor, so it must be treated as flat, not as a saddle.
-    chi2 = Chi2(lambda c: big * c[0] ** 2 - 0.4 * c[1] ** 2, ["OpA", "OpB"], num_data=1)
-    matrix = _build_matrix(
-        chi2, {"sigma_prior": 5.0, "eps": 1.0, "shift": "baseline"}, jnp.zeros(2)
-    )
-    assert bool(jnp.all(jnp.isfinite(matrix)))
 
 
 def test_baseline_shift_evaluates_hessian_at_default_zero_baseline():

@@ -152,9 +152,9 @@ def build_rge_matrix(
     rge_cache = {}
     rge_runner = RGE.from_rge_dict(rge_dict, coeff_list)
 
-    # load precomputed RGE matrix if it exists. The path is already resolved and
-    # fetched by smefitConfig.parse_rge; callers outside reportengine that pass
-    # a raw path should resolve it themselves.
+    # load precomputed RGE matrix if it exists. A prefix-relative path is fine:
+    # smefitConfig.parse_rge resolves and fetches it early, and RGEMatrix.read_cache
+    # does the same for every other caller (external chi2 modules in particular).
     path_to_rge_mat = rge_dict.get("rg_matrix", None)
     if path_to_rge_mat:
         rge_cache = RGEMatrix.read_cache(path_to_rge_mat, rge_runner.settings)

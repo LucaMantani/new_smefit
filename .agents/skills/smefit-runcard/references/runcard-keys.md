@@ -10,7 +10,8 @@ with `scripts/validate_runcard.py`.
 ## Path resolution (shareable runcards)
 
 Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,
-`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,
+`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,
+`fits[*].path`) support prefix-relative form,
 resolved via the machine-specific `.config/paths.yaml` (created by
 `smefit_setup_local`). Standard prefixes: `new_smefit`, `smefit_database`, `smefit_results`.
 From `smefit.paths`:
@@ -63,6 +64,10 @@ Notes:
 ### `bayesian_update_path`
 
 Parse and validate the path to a previous fit for Bayesian updating.
+
+Accepts an absolute path or the prefix-relative form
+(`smefit_results/fits/my_fit`); a fit that is not there yet is
+downloaded from the server, as for `fits`.
 
 ### `blackjax_settings`
 
@@ -138,10 +143,12 @@ Raises if the resolved directory does not exist.
 Parse the `external_chi2:` mapping of custom likelihood modules.
 
 Each entry is `ClassName: {path: …, …}`, where `path` points at the
-Python module defining that class (prefix-relative paths are resolved
-here, as is `rg_matrix`). Every other key is forwarded verbatim to the
-class constructor, which must also accept `coefficients=` and
-`rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
+Python module defining that class; only that key is resolved here, since
+every other key is forwarded verbatim to the class constructor, which
+must also accept `coefficients=` and `rge_dict=` and expose
+`compute_chi2`, `num_data` and `param_names`. A path inside one of those
+forwarded kwargs is the consumer's business to resolve — `rg_matrix`
+accepts prefix-relative form because `RGEMatrix.read_cache` resolves it.
 
 `group` is the one exception: it is stripped here and kept aside for
 report/Fisher aggregation rather than forwarded.

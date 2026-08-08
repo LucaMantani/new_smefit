@@ -225,7 +225,10 @@ cross-coefficient constraints), not a bag of independent entries.
 
 3. **A path** → resolve it through `smefit.paths.resolve_path` so the shareable
    prefix form (`smefit_database/...`, `smefit_results/...`) keeps working; see
-   `parse_data_path`.
+   `parse_data_path`. A path the parser only forwards — an `external_chi2` entry
+   passes every key but `path` straight to a user-authored constructor — cannot
+   be resolved by name at this layer; resolve it in whatever loads the file, as
+   `RGEMatrix.read_cache` does for `rg_matrix`.
 
 **Unknown keys warn rather than raise** — that is a deliberate
 backwards-compatibility choice, and the reason `validate_runcard.py` exists.

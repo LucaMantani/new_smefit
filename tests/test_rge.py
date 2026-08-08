@@ -5,6 +5,7 @@ Slow tests (marked @pytest.mark.slow) call the real wilson package.
 """
 
 import pickle
+from unittest.mock import patch
 
 import jax.numpy as jnp
 import pandas as pd
@@ -461,6 +462,61 @@ def test_read_cache_rejects_mismatched_settings(tmp_path):
         RGEMatrix.read_cache(
             tmp_path / RGEMatrix.FILENAME, {**SETTINGS, "yukawa": "full"}
         )
+
+
+def test_read_cache_resolves_prefix_path(tmp_path):
+    """A prefix-relative path is resolved here, not only at config-parse time.
+
+    This is what lets an external chi2 module pass a runcard-style
+    `smefit_results/...` path straight through to read_cache.
+    """
+    fit_dir = tmp_path / "fits" / "my_fit"
+    mat = _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0])
+    mat.write(fit_dir)
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        cache = RGEMatrix.read_cache(
+            f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}", SETTINGS
+        )
+
+    assert cache[100.0].loc["Op1", "OpA"] == pytest.approx(1.0)
+
+
+def test_read_cache_downloads_a_missing_fit(tmp_path):
+    """A matrix missing under smefit_results/fits goes through the server fetch."""
+    fit_dir = tmp_path / "fits" / "my_fit"
+    mat = _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0])
+
+    def fake_fetch(path):
+        mat.write(path.parent)
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ), patch("smefit.rge.matrix.fetch_fit_if_missing", side_effect=fake_fetch) as fetch:
+        cache = RGEMatrix.read_cache(
+            f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}", SETTINGS
+        )
+
+    fetch.assert_called_once_with(fit_dir / RGEMatrix.FILENAME)
+    assert cache[100.0].loc["Op1", "OpA"] == pytest.approx(1.0)
+
+
+def test_read_cache_missing_file_names_both_forms(tmp_path):
+    """An unresolved prefix is diagnosable: the error shows raw and resolved."""
+    # deliberately not under smefit_results/fits, so no download is attempted
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        with pytest.raises(FileNotFoundError) as exc:
+            RGEMatrix.read_cache("smefit_results/nowhere/rge_matrix.pkl", SETTINGS)
+
+    assert "smefit_results/nowhere/rge_matrix.pkl" in str(exc.value)
+    assert str(tmp_path / "nowhere" / "rge_matrix.pkl") in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

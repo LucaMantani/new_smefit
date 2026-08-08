@@ -14,6 +14,8 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
+from smefit.paths import fetch_fit_if_missing, resolve_path
+
 _logger = logging.getLogger(__name__)
 
 
@@ -109,6 +111,10 @@ class RGEMatrix:
         ----------
         path_to_rge_mat : str or pathlib.Path
             Path to the pickle file containing the precomputed RGE matrices.
+            Prefix-relative form (``smefit_results/fits/my_fit/rge_matrix.pkl``)
+            is resolved here through :func:`smefit.paths.resolve_path`, and a
+            file missing under ``smefit_results/{fits,reports}/<name>/`` is
+            downloaded from the server.
         rge_settings : dict
             Expected RGE settings to validate against the stored file, as returned
             by :attr:`smefit.rge.runner.RGE.settings`.
@@ -121,10 +127,21 @@ class RGEMatrix:
 
         Raises
         ------
+        FileNotFoundError
+            If the (resolved) file does not exist and could not be downloaded.
         ValueError
             If the settings in the precomputed file do not match `rge_settings`.
         """
-        with open(path_to_rge_mat, "rb") as f:
+        path = pathlib.Path(resolve_path(str(path_to_rge_mat)))
+        fetch_fit_if_missing(path)
+        if not path.exists():
+            # Name both forms: an unknown prefix is returned unchanged by
+            # resolve_path, so the two differing tells the user which it was.
+            raise FileNotFoundError(
+                f"RGE matrix '{path_to_rge_mat}' not found (resolved to '{path}')."
+            )
+
+        with open(path, "rb") as f:
             payload = pickle.load(f)
 
         if rge_settings != payload["rge_settings"]:
@@ -132,5 +149,5 @@ class RGEMatrix:
                 "RGE settings do not match RGE matrix precomputed settings."
             )
 
-        _logger.info("Loaded precomputed RGE matrix from %s.", path_to_rge_mat)
+        _logger.info("Loaded precomputed RGE matrix from %s.", path)
         return {k: v for k, v in payload.items() if k != "rge_settings"}

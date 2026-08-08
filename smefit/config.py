@@ -656,14 +656,23 @@ class smefitConfig(Config):
         }
 
     def parse_bayesian_update_path(self, bayesian_update_path):
-        """Parse and validate the path to a previous fit for Bayesian updating."""
-        p = pathlib.Path(bayesian_update_path)
+        """Parse and validate the path to a previous fit for Bayesian updating.
+
+        Accepts an absolute path or the prefix-relative form
+        (`smefit_results/fits/my_fit`); a fit that is not there yet is
+        downloaded from the server, as for `fits`.
+        """
+        try:
+            p = pathlib.Path(resolve_path(str(bayesian_update_path)))
+            fetch_fit_if_missing(p)
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(str(e)) from e
         if not p.exists():
-            raise ConfigError(f"Directory not found at {bayesian_update_path}")
+            raise ConfigError(f"Directory not found at {p}")
         if not (p / "fit_results.json").exists():
-            raise ConfigError(f"fit_results.json not found at {bayesian_update_path}")
+            raise ConfigError(f"fit_results.json not found at {p}")
         if not (p / "input" / "runcard.yaml").exists():
-            raise ConfigError(f"input/runcard.yaml not found at {bayesian_update_path}")
+            raise ConfigError(f"input/runcard.yaml not found at {p}")
         return p
 
     def _build_prior_impl(self, coefficients):

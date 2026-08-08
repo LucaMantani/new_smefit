@@ -177,12 +177,6 @@ class Prior:
             [d.sample(keys[i], (n_samples,)) for i, d in enumerate(self.dists)], axis=-1
         )
 
-    # --- Unconstrained reparametrisation (gradient-based samplers) ---
-    #
-    # NUTS and friends need an unbounded, differentiable target: a uniform
-    # prior evaluated outside its box returns -inf, which stalls the integrator
-    # at the walls and biases the boundary.
-
     @jax.jit(static_argnames=("self",))
     def from_unconstrained(self, u):
         """Map unconstrained coordinates u to coefficient values."""

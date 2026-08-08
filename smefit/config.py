@@ -121,6 +121,7 @@ class smefitConfig(Config):
                 "Invalid 'smeft_accuracy' in rge settings",
                 smeft_accuracy,
                 sorted(ALLOWED_SMEFT_ACCURACY),
+                display_alternatives="all",
             )
         yukawa = rge.get("yukawa", "top")
         if yukawa not in ALLOWED_YUKAWA:
@@ -128,6 +129,7 @@ class smefitConfig(Config):
                 "Invalid 'yukawa' in rge settings",
                 yukawa,
                 sorted(ALLOWED_YUKAWA),
+                display_alternatives="all",
             )
         if "rg_matrix" in rge:
             rge["rg_matrix"] = resolve_path(rge["rg_matrix"])

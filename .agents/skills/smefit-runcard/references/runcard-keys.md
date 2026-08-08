@@ -143,12 +143,10 @@ Raises if the resolved directory does not exist.
 Parse the `external_chi2:` mapping of custom likelihood modules.
 
 Each entry is `ClassName: {path: …, …}`, where `path` points at the
-Python module defining that class; only that key is resolved here, since
-every other key is forwarded verbatim to the class constructor, which
-must also accept `coefficients=` and `rge_dict=` and expose
-`compute_chi2`, `num_data` and `param_names`. A path inside one of those
-forwarded kwargs is the consumer's business to resolve — `rg_matrix`
-accepts prefix-relative form because `RGEMatrix.read_cache` resolves it.
+Python module defining that class (prefix-relative paths are resolved
+here, as is `rg_matrix`). Every other key is forwarded verbatim to the
+class constructor, which must also accept `coefficients=` and
+`rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
 
 `group` is the one exception: it is stripped here and kept aside for
 report/Fisher aggregation rather than forwarded.

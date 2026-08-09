@@ -388,7 +388,6 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
         num_chains,
     )
 
-    t0 = time.time()
     diagnostics = _nuts_diagnostics(
         prior,
         positions,
@@ -401,13 +400,10 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
         sampling_seconds=sampling_seconds,
         warmup_seconds=warmup_seconds,
     )
-    log.info("NUTS: diagnostics computed in %.1f s.", time.time() - t0)
 
-    t0 = time.time()
     posterior_free = jax.block_until_ready(
         jax.vmap(prior.from_unconstrained)(_thin_chains(positions, n_samples))
     )
-    log.info("NUTS: posterior draws mapped in %.1f s.", time.time() - t0)
 
     # Best point over the FULL chains, not just the thinned draws — nested
     # sampling likewise maximises over all its live and dead points.

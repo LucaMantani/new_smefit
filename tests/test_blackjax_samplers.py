@@ -7,8 +7,10 @@ tests/test_bayes_update_blackjax.py (slow).
 import json
 from unittest.mock import MagicMock, patch
 
+import anesthetic
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from smefit.blackjax_samplers import (
@@ -16,6 +18,7 @@ from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
     BJ_SHARED_SETTINGS,
+    _nested_sampling_diagnostics,
     _run_nuts,
     _thin_chains,
     get_sampler,
@@ -467,3 +470,101 @@ def test_run_nuts_warns_on_treedepth_saturation(uniform_prior, nuts_settings, ca
     assert out.diagnostics["treedepth_saturation"] == 1.0
     assert out.diagnostics["converged"] is True  # slow, but not broken
     assert any("maximum tree depth" in m for m in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# Nested sampling diagnostics
+# ---------------------------------------------------------------------------
+
+
+def _nested_samples(n=4000, n_live=50):
+    """A synthetic anesthetic.NestedSamples good enough for the summary stats."""
+    rng = np.random.default_rng(0)
+    logL = np.sort(rng.normal(0.0, 3.0, n))
+    logL_birth = np.concatenate([np.full(n_live, -np.inf), logL[: n - n_live]])
+    return anesthetic.NestedSamples(
+        data=rng.normal(size=(n, 3)),
+        logL=logL,
+        logL_birth=logL_birth,
+        columns=["a", "b", "c"],
+    )
+
+
+def _ns_diagnostics(caplog=None, **overrides):
+    kwargs = {
+        "nested_samples": _nested_samples(),
+        "n_free": 2,
+        "n_live": 50,
+        "n_dead": 4000,
+        "ess_value": 2000,
+        "n_requested": 1000,
+        "n_stored": 1000,
+        "logzs": jnp.array([-6.4, -6.5, -6.6]),
+        "termination_margin": -2.5,
+        "log_precision": -2.0,
+    }
+    kwargs.update(overrides)
+    return _nested_sampling_diagnostics(**kwargs)
+
+
+def test_nested_diagnostics_healthy_run_converges(caplog):
+    with caplog.at_level("ERROR"):
+        diag = _ns_diagnostics()
+
+    assert diag["converged"] is True
+    assert caplog.messages == []
+    # Handley-Lemos statistics come through with their error bars.
+    for key in ("logz", "logz_std", "D_KL", "D_KL_std", "logL_P", "d_G", "d_G_std"):
+        assert key in diag
+    assert diag["ess_efficiency"] == pytest.approx(2000 / 4000)
+
+
+def test_nested_diagnostics_flags_unusable_ess(caplog):
+    """A posterior of a few distinct points is a failure, not an imprecision."""
+    with caplog.at_level("ERROR"):
+        diag = _ns_diagnostics(ess_value=10, n_stored=10)
+
+    assert diag["converged"] is False
+    assert any("effective sample size" in m.lower() for m in caplog.messages)
+
+
+def test_nested_diagnostics_warns_on_unconstrained_directions(caplog):
+    """d_G counts the directions the data constrains; well below n_free means
+    flat directions, the same pathology whitening reports from the Hessian."""
+    with caplog.at_level("WARNING"):
+        diag = _ns_diagnostics(n_free=6)
+
+    assert diag["d_G"] < 6
+    assert any("unconstrained" in m for m in caplog.messages)
+
+
+def test_nested_diagnostics_quiet_when_dimensionality_matches(caplog):
+    with caplog.at_level("WARNING"):
+        _ns_diagnostics(n_free=2)
+
+    assert not any("unconstrained" in m for m in caplog.messages)
+
+
+def test_nested_diagnostics_warns_when_fewer_draws_than_requested(caplog):
+    with caplog.at_level("WARNING"):
+        diag = _ns_diagnostics(ess_value=400, n_requested=1000, n_stored=400)
+
+    assert diag["n_stored"] == 400
+    assert any("posterior samples were stored" in m for m in caplog.messages)
+
+
+def test_nested_diagnostics_warns_on_early_termination(caplog):
+    """n_live * D_KL is the run length needed to compress prior to posterior."""
+    with caplog.at_level("WARNING"):
+        diag = _ns_diagnostics(n_dead=5)
+
+    assert diag["expected_n_dead"] > 5
+    assert any("well short of" in m for m in caplog.messages)
+
+
+def test_nested_diagnostics_flags_non_finite_evidence(caplog):
+    with caplog.at_level("ERROR"):
+        diag = _ns_diagnostics(logzs=jnp.array([jnp.nan, jnp.nan]))
+
+    assert diag["converged"] is False
+    assert any("non-finite" in m for m in caplog.messages)

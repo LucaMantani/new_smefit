@@ -508,8 +508,9 @@ class smefitConfig(Config):
         estimates the log evidence) or "nuts" (incompatible with
         ``bayesian_update_path``).
 
-        - shared — ``seed``; ``log_dir``, which receives ``nested_samples.csv``
-          or ``nuts_samples.csv`` plus ``nuts_diagnostics.json``.
+        - shared — ``seed``; ``log_dir``, which receives the algorithm's draws
+          (``nested_samples.csv`` / ``nuts_samples.csv``) and its diagnostics
+          (``nested_diagnostics.json`` / ``nuts_diagnostics.json``).
         - nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
           dimension); ``delete_fraction``; ``log_precision`` (stop once
           ``logZ_live - logZ`` falls below it).

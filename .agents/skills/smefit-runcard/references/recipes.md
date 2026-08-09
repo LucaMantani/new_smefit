@@ -99,6 +99,23 @@ is meaningless — the log carries an `ERROR` naming which check tripped
 2021), which is what the 1.01 threshold is calibrated for; they detect drift
 *within* a chain, which the classic Gelman-Rubin statistic cannot.
 
+A `nested_sampling` run writes `<output>/blackjax_logs/nested_diagnostics.json`,
+with the same `converged`-first layout:
+- `d_G` (Bayesian model dimensionality) counts the directions the *likelihood*
+  constrains. Well below `n_free` means flat directions — the same pathology
+  `whitening:` reports from the Hessian, measured after the fit instead of
+  before it.
+- `D_KL` is the prior→posterior compression in nats, and `n_live * D_KL`
+  (`expected_n_dead`) is how long the run should take. `n_dead` far below it
+  means the run stopped early; lower `log_precision`.
+- `logz_std` above ~1 nat means the evidence cannot support model comparison —
+  raise `n_live`, since the error scales as `sqrt(D_KL/n_live)`.
+- `ess` below the requested `n_samples` caps how many draws are stored
+  (`n_stored`); raise `n_live` or `repeats`.
+
+There is no insertion-index test (the nested-sampling analogue of R-hat):
+blackjax does not expose the insertion index of replacement live points.
+
 **Why a NUTS fit takes as long as it does.** The runtime is essentially
 
     time  =  draws  x  leapfrogs_per_draw  x  ms_per_gradient

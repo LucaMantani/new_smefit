@@ -422,10 +422,7 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
 
     def _run_warmup(key, u_init):
         adapt, _ = warmup.run(key, u_init, num_steps=num_warmup)
-        # Only the array-valued parameters may cross the vmap boundary:
-        # adapt.parameters also carries max_num_doublings as a Python int, and
-        # vmap would turn it into a traced array that blackjax.nuts needs as a
-        # static trajectory bound.
+
         return (
             adapt.state,
             adapt.parameters["step_size"],
@@ -446,11 +443,6 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
             inference_algorithm=kernel,
             num_steps=num_draws,
             initial_state=state,
-            # state.logdensity is the target the kernel already evaluated at
-            # this position; keeping it costs one float per draw and saves
-            # re-running the chi2 over every draw afterwards. The two counters
-            # are what make the runtime explicable: total cost is
-            # num_integration_steps x cost of one gradient.
             transform=lambda state, info: (
                 state.position,
                 state.logdensity,
@@ -470,19 +462,10 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
         num_draws,
         n_dims,
     )
-    # Warmup and sampling are dispatched separately so their costs can be
-    # attributed: warmup is usually the larger share, and dividing the combined
-    # time by the sampling-phase gradient count (the only one we can observe)
-    # would silently inflate ms_per_gradient by the warmup factor.
-    #
-    # JAX dispatches asynchronously, so each stage needs a barrier before its
-    # timer is read — otherwise the timing reports compilation only and the real
-    # work lands on whichever step first reads the values.
+
     warmup_key, sample_key = jax.random.split(rng_key)
 
     t0 = time.time()
-    # If vmap over the warmup ever breaks, a Python loop over chains is
-    # numerically identical at num_chains times the wall clock.
     warm_states, step_sizes, inverse_mass_matrices = jax.block_until_ready(
         jax.vmap(_run_warmup)(jax.random.split(warmup_key, num_chains), u0)
     )
@@ -543,23 +526,19 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
 
     # Best point over the FULL chains, not just the thinned draws — nested
     # sampling likewise maximises over all its live and dead points.
-    t0 = time.time()
     all_u = positions.reshape(-1, n_dims)
     logl = jax.block_until_ready(
         logdensity_draws.reshape(-1) - jax.vmap(prior.log_prob_unconstrained)(all_u)
     )
     best_index = int(jnp.argmax(logl))
     best_point = jax.block_until_ready(prior.from_unconstrained(all_u[best_index]))
-    log.info("NUTS: best-fit point located in %.1f s.", time.time() - t0)
 
-    t0 = time.time()
     log_dir = settings["log_dir"]
     pd.DataFrame(posterior_free, columns=prior.param_names).to_csv(
         os.path.join(log_dir, "nuts_samples.csv"), index=False
     )
     with open(os.path.join(log_dir, "nuts_diagnostics.json"), "w") as f:
         json.dump(diagnostics, f, indent=2)
-    log.info("NUTS: log_dir written in %.1f s.", time.time() - t0)
 
     log.info("NUTS provides no evidence estimate; FitResult.logz is None.")
 

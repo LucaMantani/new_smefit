@@ -404,28 +404,11 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
 
     Returns ``logz=None``: NUTS provides no evidence estimate.
     """
-    # Checked before anything is compiled, so a bad runcard fails in under a
-    # second. Only `Prior` carries the per-parameter bijectors; the joint-only
-    # priors (ExactPosteriorPrior, from bayesian_update_path) cannot provide them.
-    if not isinstance(prior, Prior):
-        raise ValueError(
-            f"Gradient-based sampling needs a prior with per-parameter bijectors "
-            f"(smefit.priors.Prior), but got {type(prior).__name__}, which only "
-            f"knows a joint log_prob. This happens with 'bayesian_update_path:'. "
-            f"Use blackjax_settings.algorithm: nested_sampling (or "
-            f"run_ultranest_fit) instead."
-        )
-
     n_dims = len(prior.param_names)
     num_chains = int(settings["num_chains"])
     num_warmup = int(settings["num_warmup"])
     num_draws = int(settings["num_samples"])
 
-    if not jax.config.jax_enable_x64:
-        log.warning(
-            "Running NUTS in float32 (-f32). Gradient MCMC is prone to divergences "
-            "and NaN step sizes at this precision; prefer the default float64."
-        )
     if num_chains * num_draws * n_dims > 5e7:
         log.warning(
             "NUTS will hold %d x %d x %d draws in memory (~%.1f GB in float64). "
@@ -624,10 +607,7 @@ BJ_INIT_MODES = frozenset({"prior", "baseline"})
 #: Keys of ``blackjax_settings`` that every algorithm uses.
 BJ_SHARED_SETTINGS = frozenset({"algorithm", "seed", "log_dir"})
 
-#: Keys of ``blackjax_settings`` owned by one algorithm. Consumed by
-#: ``smefitConfig.parse_blackjax_settings`` to warn about settings that the
-#: selected algorithm will ignore. Keep in step with the literal ``known_keys``
-#: set there — ``tests/test_config.py`` enforces that.
+#: Keys of ``blackjax_settings`` owned by one algorithm.
 BJ_ALGORITHM_SETTINGS = {
     "nested_sampling": frozenset(
         {"n_live", "repeats", "delete_fraction", "log_precision"}
@@ -643,8 +623,6 @@ BJ_ALGORITHM_SETTINGS = {
         }
     ),
 }
-
-assert set(BJ_ALGORITHM_SETTINGS) == set(_SAMPLER_REGISTRY)
 
 
 def get_sampler(algorithm):

@@ -27,7 +27,7 @@ import jax
 import jax.numpy as jnp
 import pandas as pd
 import tqdm
-from blackjax.diagnostics import effective_sample_size, potential_scale_reduction
+from blackjax.diagnostics import ess_bulk, ess_tail, rhat
 from blackjax.ns.utils import ess, finalise, log_weights, sample
 from blackjax.util import run_inference_algorithm
 from jax.scipy.special import logsumexp
@@ -188,8 +188,9 @@ def _nuts_diagnostics(
     poorly. Those cases warrant an error rather than a warning, because the
     posterior that comes out is meaningless rather than imprecise.
     """
-    rhat = potential_scale_reduction(positions, chain_axis=0, sample_axis=1)
-    n_eff = effective_sample_size(positions, chain_axis=0, sample_axis=1)
+    rhat_per_param = rhat(positions, chain_axis=0, sample_axis=1)
+    ess_bulk_per_param = ess_bulk(positions, chain_axis=0, sample_axis=1)
+    ess_tail_per_param = ess_tail(positions, chain_axis=0, sample_axis=1)
     num_chains, num_draws, _ = positions.shape
     total = num_chains * num_draws
     n_div = int(jnp.sum(is_divergent))
@@ -200,10 +201,20 @@ def _nuts_diagnostics(
         "algorithm": "nuts",
         "num_chains": int(num_chains),
         "num_samples": int(num_draws),
-        "rhat": {name: float(rhat[i]) for i, name in enumerate(prior.param_names)},
-        "ess": {name: float(n_eff[i]) for i, name in enumerate(prior.param_names)},
-        "max_rhat": float(jnp.max(rhat)),
-        "min_ess": float(jnp.min(n_eff)),
+        "rhat": {
+            name: float(rhat_per_param[i]) for i, name in enumerate(prior.param_names)
+        },
+        "ess": {
+            name: float(ess_bulk_per_param[i])
+            for i, name in enumerate(prior.param_names)
+        },
+        "ess_tail": {
+            name: float(ess_tail_per_param[i])
+            for i, name in enumerate(prior.param_names)
+        },
+        "max_rhat": float(jnp.max(rhat_per_param)),
+        "min_ess": float(jnp.min(ess_bulk_per_param)),
+        "min_ess_tail": float(jnp.min(ess_tail_per_param)),
         "divergences": n_div,
         "divergence_rate": n_div / total,
         "mean_acceptance_rate": float(jnp.mean(acceptance)),
@@ -285,11 +296,16 @@ def _nuts_diagnostics(
             diagnostics["max_rhat"],
             worst,
         )
-    if diagnostics["min_ess"] < 100 * num_chains:
+    if min(diagnostics["min_ess"], diagnostics["min_ess_tail"]) < 100 * num_chains:
+        # Vehtari et al. want >= 100 per chain for both: the bulk number governs
+        # the central estimate, the tail one governs the credible interval, and
+        # a posterior can pass on one while failing on the other.
         log.warning(
-            "Low effective sample size: min ESS = %.0f over %d chains (want >= 100 "
-            "per chain). Increase num_samples, or enable `whitening:`.",
+            "Low effective sample size: min bulk ESS = %.0f, min tail ESS = %.0f "
+            "over %d chains (want >= 100 per chain for both). Increase "
+            "num_samples, or enable `whitening:`.",
             diagnostics["min_ess"],
+            diagnostics["min_ess_tail"],
             num_chains,
         )
     if 0 < n_div and diagnostics["divergence_rate"] <= 0.5:

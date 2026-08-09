@@ -89,9 +89,15 @@ is meaningless — the log carries an `ERROR` naming which check tripped
   or enable `whitening:`.
 - `divergences` > 0 → the step size is too large for the posterior's curvature.
   Raise `target_acceptance_rate` towards 0.95, or enable `whitening:`.
-- `min_ess` below ~100 per chain → correlated draws; same remedies. A posterior
-  pressed against a prior bound also shows up here, and is fixed by widening the
-  prior (or `sigma_prior`).
+- `min_ess` (bulk) or `min_ess_tail` below ~100 per chain → correlated draws;
+  same remedies. Bulk governs the central estimate and tail the credible
+  interval, so a run can pass one and fail the other. A posterior pressed
+  against a prior bound also shows up here, and is fixed by widening the prior
+  (or `sigma_prior`).
+
+`rhat` and `ess` are the rank-normalised split-chain versions (Vehtari et al.
+2021), which is what the 1.01 threshold is calibrated for; they detect drift
+*within* a chain, which the classic Gelman-Rubin statistic cannot.
 
 **Why a NUTS fit takes as long as it does.** The runtime is essentially
 

@@ -320,6 +320,27 @@ def test_run_nuts_warns_on_bad_rhat(uniform_prior, nuts_settings, caplog):
     assert any("R-hat" in m for m in caplog.messages)
 
 
+def test_run_nuts_rhat_detects_within_chain_drift(uniform_prior, nuts_settings, caplog):
+    """Every chain drifting the same way is non-stationary, but the chains agree
+    with each other — the classic Gelman-Rubin statistic reads ~0.98 here and
+    sees nothing. Only the split-chain R-hat catches it, so this pins the
+    choice of `blackjax.diagnostics.rhat` over `potential_scale_reduction`.
+    """
+    drift = jnp.linspace(0.0, 5.0, N_DRAWS)[None, :, None] * jnp.ones(
+        (N_CHAINS, 1, N_DIMS)
+    )
+    positions = drift + 0.1 * jax.random.normal(
+        jax.random.PRNGKey(1), (N_CHAINS, N_DRAWS, N_DIMS)
+    )
+
+    with caplog.at_level("WARNING"):
+        out = _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert out.diagnostics["max_rhat"] > 1.1
+    assert out.diagnostics["converged"] is False
+    assert any("R-hat" in m for m in caplog.messages)
+
+
 def test_run_nuts_warns_on_divergences(uniform_prior, nuts_settings, caplog):
     positions = _ramp_positions() * 0.001
     is_divergent = jnp.zeros((N_CHAINS, N_DRAWS), dtype=bool).at[0, :3].set(True)

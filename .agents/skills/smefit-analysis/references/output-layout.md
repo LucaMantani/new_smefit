@@ -19,7 +19,8 @@
     nested_samples.csv    #  algorithm: nested_sampling — anesthetic NestedSamples
     nuts_samples.csv      #  algorithm: nuts — thinned draws, one column per parameter
     nuts_diagnostics.json #  algorithm: nuts — `converged` verdict first, then
-                          #  R-hat, ESS, divergences, step sizes, and the cost
+                          #  split R-hat, bulk + tail ESS, divergences, step
+                          #  sizes, and the cost
                           #  model (leapfrogs_per_draw_*, tree_depth_*,
                           #  treedepth_saturation, total_gradient_evaluations,
                           #  ms_per_gradient)

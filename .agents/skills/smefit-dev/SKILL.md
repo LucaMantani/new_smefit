@@ -294,17 +294,24 @@ protection against misspelling it.
   `_run_nuts` with `AttributeError: no attribute 'sample_unconstrained'`. Only
   the `smefit-runcard` validator flags the combination up front.
 - **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
-  `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers.py` — the same registry
-  pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG
-  dependencies (this is why it is *not* an `@explicit_node`). A new algorithm
-  needs: a `_run_<name>(rng_key, prior, log_likelihood, n_samples, settings)`
-  returning a `SamplerOutput`, a registry entry, a
-  `BJ_ALGORITHM_SETTINGS` entry naming the keys it owns, and those keys added to
-  the literal `known_keys` set in `parse_blackjax_settings`. That last set must
-  stay an inline set literal (the generator AST-extracts it);
+  `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers/__init__.py` — the same
+  registry pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG
+  dependencies (this is why it is *not* an `@explicit_node`). Each algorithm is
+  one module in the package, exposing exactly two names:
+  `run(rng_key, prior, log_likelihood, n_samples, settings)` returning a
+  `SamplerOutput`, and `SETTINGS`, the frozenset of `blackjax_settings` keys it
+  owns. `__init__.py` derives both `_SAMPLER_REGISTRY` and
+  `BJ_ALGORITHM_SETTINGS` from the `_ALGORITHM_MODULES` map, so a new algorithm
+  is one new module plus one entry there — the two cannot drift apart. Its keys
+  still have to be added to the literal `known_keys` set in
+  `parse_blackjax_settings`; that set must stay an inline set literal (the
+  generator AST-extracts it), and
   `tests/test_config.py::test_parse_blackjax_known_keys_cover_all_algorithm_settings`
-  is what keeps it in step with `BJ_ALGORITHM_SETTINGS`. Do not register
-  `blackjax_samplers.py` in `smefit_providers` — it holds helpers, not nodes.
+  is what keeps it in step with `BJ_ALGORITHM_SETTINGS`. Shared pieces
+  (`SamplerOutput`, the `_HealthReport` fail/warn/verdict scaffolding,
+  `_write_diagnostics`) live in `_common.py`; per-algorithm diagnostics stay
+  with their runner, because no statistic transfers between algorithms. Do not
+  register the package in `smefit_providers` — it holds helpers, not nodes.
 - **Expression constraints**: functions available inside `expr:` are exactly
   `_EXPR_NAMESPACE` in `smefit/core.py` (JAX-backed, so constraints stay
   differentiable). Adding one there widens the runcard language — update

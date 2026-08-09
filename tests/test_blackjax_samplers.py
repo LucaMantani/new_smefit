@@ -1,4 +1,4 @@
-"""Unit tests for smefit/blackjax_samplers.py — blackjax itself is mocked.
+"""Unit tests for the smefit/blackjax_samplers package — blackjax itself is mocked.
 
 The real samplers are exercised in tests/test_blackjax_nuts.py (slow) and
 tests/test_bayes_update_blackjax.py (slow).
@@ -18,12 +18,12 @@ from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
     BJ_SHARED_SETTINGS,
-    _HealthReport,
-    _nested_sampling_diagnostics,
-    _run_nuts,
-    _thin_chains,
     get_sampler,
 )
+from smefit.blackjax_samplers._common import _HealthReport
+from smefit.blackjax_samplers.nested_sampling import _nested_sampling_diagnostics
+from smefit.blackjax_samplers.nuts import _thin_chains
+from smefit.blackjax_samplers.nuts import run as _run_nuts
 from smefit.priors import Prior, _UniformDist
 
 N_CHAINS = 3
@@ -189,12 +189,12 @@ def _run_mocked_nuts(
 
     with (
         patch(
-            "smefit.blackjax_samplers.blackjax.window_adaptation",
+            "smefit.blackjax_samplers.nuts.blackjax.window_adaptation",
             return_value=mock_warmup,
         ),
-        patch("smefit.blackjax_samplers.blackjax.nuts", return_value=MagicMock()),
+        patch("smefit.blackjax_samplers.nuts.blackjax.nuts", return_value=MagicMock()),
         patch(
-            "smefit.blackjax_samplers.run_inference_algorithm",
+            "smefit.blackjax_samplers.nuts.run_inference_algorithm",
             return_value=(
                 None,
                 (
@@ -208,7 +208,7 @@ def _run_mocked_nuts(
             ),
         ),
         patch(
-            "smefit.blackjax_samplers.jax.vmap",
+            "smefit.blackjax_samplers.nuts.jax.vmap",
             side_effect=lambda fn, *a, **k: _mocked_vmap(
                 fn,
                 positions,

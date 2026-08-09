@@ -68,13 +68,25 @@ def _run_blackjax_fit(
     mock_sample_result.position = jnp.zeros((2, 1))
 
     with (
-        patch("smefit.blackjax_samplers.blackjax.nss", return_value=mock_algo),
-        patch("smefit.blackjax_samplers.finalise", return_value=final_states),
-        patch("smefit.blackjax_samplers.ess", return_value=2),
-        patch("smefit.blackjax_samplers.log_weights", return_value=jnp.zeros(3)),
-        patch("smefit.blackjax_samplers.sample", return_value=mock_sample_result),
         patch(
-            "smefit.blackjax_samplers.anesthetic.NestedSamples",
+            "smefit.blackjax_samplers.nested_sampling.blackjax.nss",
+            return_value=mock_algo,
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.finalise",
+            return_value=final_states,
+        ),
+        patch("smefit.blackjax_samplers.nested_sampling.ess", return_value=2),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.log_weights",
+            return_value=jnp.zeros(3),
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.sample",
+            return_value=mock_sample_result,
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.anesthetic.NestedSamples",
             return_value=mock_nested,
         ),
         patch(

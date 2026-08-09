@@ -18,6 +18,7 @@ from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
     BJ_SHARED_SETTINGS,
+    _HealthReport,
     _nested_sampling_diagnostics,
     _run_nuts,
     _thin_chains,
@@ -568,3 +569,40 @@ def test_nested_diagnostics_flags_non_finite_evidence(caplog):
 
     assert diag["converged"] is False
     assert any("non-finite" in m for m in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# Shared verdict scaffolding
+# ---------------------------------------------------------------------------
+
+
+def test_health_report_clean_run_converges(caplog):
+    with caplog.at_level("WARNING"):
+        diag = _HealthReport("NUTS").finish({})
+    assert diag["converged"] is True
+    assert caplog.messages == []
+
+
+def test_health_report_warning_does_not_fail_the_run(caplog):
+    """A warning says the posterior is imprecise, not unusable — the two must
+    stay distinguishable or every soft finding would invalidate a fit."""
+    report = _HealthReport("NUTS")
+    with caplog.at_level("WARNING"):
+        report.warn("something is a bit off: %d", 3)
+        diag = report.finish({})
+
+    assert diag["converged"] is True
+    assert "something is a bit off: 3" in caplog.messages
+
+
+def test_health_report_collects_every_failure_and_names_them(caplog):
+    report = _HealthReport("Nested sampling")
+    with caplog.at_level("ERROR"):
+        report.fail("first thing", "detail one")
+        report.fail("second thing", "detail two")
+        diag = report.finish({})
+
+    assert diag["converged"] is False
+    summary = caplog.messages[-1]
+    assert "Nested sampling run FAILED" in summary
+    assert "first thing, second thing" in summary

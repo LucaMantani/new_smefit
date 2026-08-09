@@ -63,6 +63,58 @@ class SamplerOutput:
 
 
 # ---------------------------------------------------------------------------
+# Shared diagnostics scaffolding
+# ---------------------------------------------------------------------------
+#
+# The per-algorithm diagnostics have almost nothing in common as *numbers* —
+# NUTS asks whether the chains explored the target, nested sampling asks
+# whether the prior was compressed onto the posterior and the evidence
+# converged, and no statistic transfers between them. What they do share is the
+# verdict machinery below: accumulate fatal and soft findings, decide
+# ``converged``, and say so once at the end.
+
+
+class _HealthReport:
+    """Collects a run's findings and turns them into a ``converged`` verdict.
+
+    ``fail`` marks the posterior unusable (an error the user must act on);
+    ``warn`` marks it imprecise but real. Keeping the two apart is the whole
+    point: "the draws are not from the target distribution" and "you could use
+    more of them" call for different reactions.
+    """
+
+    def __init__(self, label):
+        self.label = label
+        self.failures = []
+
+    def fail(self, name, msg, *args):
+        self.failures.append(name)
+        log.error(msg, *args)
+
+    def warn(self, msg, *args):
+        log.warning(msg, *args)
+
+    def finish(self, diagnostics):
+        """Stamp the verdict onto *diagnostics* and announce a failed run."""
+        diagnostics["converged"] = not self.failures
+        if self.failures:
+            log.error(
+                "%s run FAILED (%s) — do not use this posterior. The draws and "
+                "diagnostics have still been written to the log directory for "
+                "debugging.",
+                self.label,
+                ", ".join(self.failures),
+            )
+        return diagnostics
+
+
+def _write_diagnostics(log_dir, filename, diagnostics):
+    """Persist a diagnostics dict next to the algorithm's draws."""
+    with open(os.path.join(log_dir, filename), "w") as f:
+        json.dump(diagnostics, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # Nested sampling
 # ---------------------------------------------------------------------------
 
@@ -132,12 +184,15 @@ def _nested_sampling_diagnostics(
         "logL_P": logl_p,
         "d_G": d_g,
         "d_G_std": d_g_std,
-        "ess": int(ess_value),
+        # Named apart from the NUTS "ess": that one is a per-parameter dict of
+        # autocorrelation-based sample sizes, this is a single count of
+        # effective weighted particles.
+        "ess_posterior": int(ess_value),
         # Fraction of dead points that survive as independent posterior draws.
         "ess_efficiency": float(ess_value) / n_dead if n_dead else 0.0,
         "n_requested": int(n_requested),
-        # Draws actually stored: the importance resample yields only `ess`
-        # particles, so asking for more than that returns fewer.
+        # Draws actually stored: the importance resample yields only
+        # ess_posterior particles, so asking for more than that returns fewer.
         "n_stored": int(n_stored),
         # How far past the stopping rule the run went; <= log_precision means
         # the loop exited on its own terms rather than on an iteration cap.
@@ -151,10 +206,10 @@ def _nested_sampling_diagnostics(
         diagnostics["sampling_seconds"] = float(sampling_seconds)
 
     # --- outright failure: the posterior is unusable ------------------------
-    failures = []
+    report = _HealthReport("Nested sampling")
     if ess_value < _MIN_USABLE_ESS:
-        failures.append("no effective samples")
-        log.error(
+        report.fail(
+            "no effective samples",
             "Nested sampling produced an effective sample size of %d (< %d): the "
             "posterior consists of a handful of distinct points, so any interval "
             "from it is meaningless. Raise n_live, or raise `repeats` so the "
@@ -163,16 +218,16 @@ def _nested_sampling_diagnostics(
             _MIN_USABLE_ESS,
         )
     if not math.isfinite(diagnostics["logz"]):
-        failures.append("non-finite evidence")
-        log.error(
+        report.fail(
+            "non-finite evidence",
             "Nested sampling returned a non-finite log evidence: the likelihood "
             "returned NaN/inf somewhere in the prior's support.",
         )
-    diagnostics["converged"] = not failures
+    report.finish(diagnostics)
 
     # --- poor but not fatal --------------------------------------------------
     if diagnostics["logz_std"] > _LOGZ_STD_LIMIT:
-        log.warning(
+        report.warn(
             "Log evidence is uncertain: logZ = %.2f +/- %.2f nats. Model "
             "comparison needs this error well below the logZ difference of "
             "interest; raise n_live (the error scales as sqrt(D_KL/n_live)).",
@@ -180,7 +235,7 @@ def _nested_sampling_diagnostics(
             diagnostics["logz_std"],
         )
     if d_g < n_free - 1.0:
-        log.warning(
+        report.warn(
             "Bayesian model dimensionality d_G = %.1f +/- %.1f over %d free "
             "coefficients: roughly %.0f directions are unconstrained by the "
             "data. Expect a posterior that follows the prior along them.",
@@ -190,7 +245,7 @@ def _nested_sampling_diagnostics(
             n_free - d_g,
         )
     if n_stored < n_requested:
-        log.warning(
+        report.warn(
             "Effective sample size %d is below the requested n_samples = %d, so "
             "only %d posterior samples were stored. Raise n_live, or raise "
             "`repeats` so the inner MCMC decorrelates the live points.",
@@ -199,7 +254,7 @@ def _nested_sampling_diagnostics(
             n_stored,
         )
     if n_dead < 0.5 * diagnostics["expected_n_dead"]:
-        log.warning(
+        report.warn(
             "Nested sampling stopped after %d dead points, well short of the "
             "~%.0f (n_live x D_KL) expected to compress the prior to this "
             "posterior. The evidence is likely underestimated; lower "
@@ -220,13 +275,6 @@ def _nested_sampling_diagnostics(
         100 * diagnostics["ess_efficiency"],
         n_dead,
     )
-    if failures:
-        log.error(
-            "Nested sampling run FAILED (%s) — do not use this posterior. The "
-            "draws and diagnostics have still been written to the log directory "
-            "for debugging.",
-            ", ".join(failures),
-        )
     return diagnostics
 
 
@@ -320,8 +368,7 @@ def _run_nested_sampling(rng_key, prior, log_likelihood, n_samples, settings):
         log_precision=settings["log_precision"],
         sampling_seconds=sampling_seconds,
     )
-    with open(os.path.join(log_dir, "nested_diagnostics.json"), "w") as f:
-        json.dump(diagnostics, f, indent=2)
+    _write_diagnostics(log_dir, "nested_diagnostics.json", diagnostics)
 
     return SamplerOutput(
         samples=posterior_free,
@@ -410,10 +457,10 @@ def _nuts_diagnostics(
         diagnostics["ms_per_gradient"] = 1e3 * sampling_seconds / total_grads
 
     # --- outright failure: the posterior is unusable ------------------------
-    failures = []
+    report = _HealthReport("NUTS")
     if not math.isfinite(min_step) or min_step < _STEP_SIZE_COLLAPSE:
-        failures.append("step-size collapse")
-        log.error(
+        report.fail(
+            "step-size collapse",
             "NUTS step size collapsed to %.3e: the chains never moved. This "
             "usually means the log-density or its gradient returned NaN/inf "
             "somewhere in the prior's support. Check the `whitening:` block "
@@ -424,8 +471,8 @@ def _nuts_diagnostics(
             min_step,
         )
     if diagnostics["divergence_rate"] > 0.5:
-        failures.append("universal divergence")
-        log.error(
+        report.fail(
+            "universal divergence",
             "NUTS diverged on %.0f%% of draws. The posterior geometry is beyond "
             "what the sampler can integrate; the draws are not from the target "
             "distribution. Raise target_acceptance_rate towards 0.95, reduce "
@@ -434,8 +481,8 @@ def _nuts_diagnostics(
             100 * diagnostics["divergence_rate"],
         )
     if diagnostics["mean_acceptance_rate"] < 0.01:
-        failures.append("zero acceptance")
-        log.error(
+        report.fail(
+            "zero acceptance",
             "NUTS mean acceptance rate is %.4f: essentially every proposal was "
             "rejected, so the chains are stuck at their starting points.",
             diagnostics["mean_acceptance_rate"],
@@ -446,8 +493,8 @@ def _nuts_diagnostics(
         # posterior, which is what tree-depth saturation produces. R-hat this
         # far from 1 is not "imprecise", it is "the chains sampled different
         # distributions".
-        failures.append("chains did not mix")
-        log.error(
+        report.fail(
+            "chains did not mix",
             "NUTS max R-hat is %.3f (min ESS %.0f): the chains did not explore "
             "the same distribution, so the combined draws are not a posterior "
             "sample. With %.0f%% of draws at the maximum tree depth this means "
@@ -457,12 +504,12 @@ def _nuts_diagnostics(
             diagnostics["min_ess"],
             100 * diagnostics["treedepth_saturation"],
         )
-    diagnostics["converged"] = not failures
+    report.finish(diagnostics)
 
     # --- poor but not fatal --------------------------------------------------
     if diagnostics["max_rhat"] > 1.01:
         worst = max(diagnostics["rhat"], key=diagnostics["rhat"].get)
-        log.warning(
+        report.warn(
             "NUTS did not converge: max R-hat = %.4f > 1.01 (worst: %s). Increase "
             "num_warmup/num_samples, or enable `whitening:` to decorrelate the posterior.",
             diagnostics["max_rhat"],
@@ -472,7 +519,7 @@ def _nuts_diagnostics(
         # Vehtari et al. want >= 100 per chain for both: the bulk number governs
         # the central estimate, the tail one governs the credible interval, and
         # a posterior can pass on one while failing on the other.
-        log.warning(
+        report.warn(
             "Low effective sample size: min bulk ESS = %.0f, min tail ESS = %.0f "
             "over %d chains (want >= 100 per chain for both). Increase "
             "num_samples, or enable `whitening:`.",
@@ -481,14 +528,14 @@ def _nuts_diagnostics(
             num_chains,
         )
     if 0 < n_div and diagnostics["divergence_rate"] <= 0.5:
-        log.warning(
+        report.warn(
             "NUTS reported %d divergent transitions (%.2f%% of draws). Raise "
             "target_acceptance_rate towards 0.95, or enable `whitening:`.",
             n_div,
             100 * diagnostics["divergence_rate"],
         )
     if diagnostics["treedepth_saturation"] > 0.2:
-        log.warning(
+        report.warn(
             "NUTS hit the maximum tree depth (%d, i.e. %d leapfrog steps) on "
             "%.0f%% of draws. Each draw then costs the maximum, which is usually "
             "the dominant term in the runtime. This signals a poorly conditioned "
@@ -524,13 +571,6 @@ def _nuts_diagnostics(
         total_grads,
         cost,
     )
-    if failures:
-        log.error(
-            "NUTS run FAILED (%s) — do not use this posterior. The draws and "
-            "diagnostics have still been written to the log directory for "
-            "debugging.",
-            ", ".join(failures),
-        )
     return diagnostics
 
 
@@ -725,8 +765,7 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
     pd.DataFrame(posterior_free, columns=prior.param_names).to_csv(
         os.path.join(log_dir, "nuts_samples.csv"), index=False
     )
-    with open(os.path.join(log_dir, "nuts_diagnostics.json"), "w") as f:
-        json.dump(diagnostics, f, indent=2)
+    _write_diagnostics(log_dir, "nuts_diagnostics.json", diagnostics)
 
     log.info("NUTS provides no evidence estimate; FitResult.logz is None.")
 

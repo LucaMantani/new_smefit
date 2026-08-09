@@ -18,8 +18,8 @@
   blackjax_logs/          # BlackJAX log dir
     nested_samples.csv    #  algorithm: nested_sampling — anesthetic NestedSamples
     nested_diagnostics.json # algorithm: nested_sampling — `converged` verdict,
-                          #  logZ/D_KL/logL_P/d_G (with errors), ESS and its
-                          #  efficiency, termination margin
+                          #  logZ/D_KL/logL_P/d_G (with errors), ess_posterior
+                          #  and its efficiency, termination margin
     nuts_samples.csv      #  algorithm: nuts — thinned draws, one column per parameter
     nuts_diagnostics.json #  algorithm: nuts — `converged` verdict first, then
                           #  split R-hat, bulk + tail ESS, divergences, step

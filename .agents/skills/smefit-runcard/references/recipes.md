@@ -110,8 +110,10 @@ with the same `converged`-first layout:
   means the run stopped early; lower `log_precision`.
 - `logz_std` above ~1 nat means the evidence cannot support model comparison —
   raise `n_live`, since the error scales as `sqrt(D_KL/n_live)`.
-- `ess` below the requested `n_samples` caps how many draws are stored
-  (`n_stored`); raise `n_live` or `repeats`.
+- `ess_posterior` below the requested `n_samples` caps how many draws are
+  stored (`n_stored`); raise `n_live` or `repeats`. It is named apart from the
+  NUTS `ess` on purpose — that one is a per-parameter dict, this is a single
+  count of effective weighted particles.
 
 There is no insertion-index test (the nested-sampling analogue of R-hat):
 blackjax does not expose the insertion index of replacement live points.

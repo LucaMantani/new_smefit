@@ -20,7 +20,7 @@ from smefit.blackjax_samplers import (
     _thin_chains,
     get_sampler,
 )
-from smefit.priors import ExactPosteriorPrior, Prior, _UniformDist
+from smefit.priors import Prior, _UniformDist
 
 N_CHAINS = 3
 N_DRAWS = 20
@@ -127,7 +127,6 @@ def nuts_settings(tmp_path):
         "num_samples": N_DRAWS,
         "target_acceptance_rate": 0.8,
         "max_num_doublings": 10,
-        "init": "prior",
     }
 
 
@@ -226,7 +225,6 @@ def _run_mocked_nuts(
             log_likelihood,
             n_samples,
             settings,
-            jnp.zeros(N_DIMS),
         )
 
 
@@ -350,27 +348,6 @@ def test_run_nuts_max_loglikelihood_is_likelihood_not_posterior(
 
     expected = -float(jnp.sum(out.best_point**2)) / 2.0
     assert out.max_loglikelihood == pytest.approx(expected, rel=1e-4)
-
-
-def test_run_nuts_rejects_prior_without_bijectors(nuts_settings):
-    """A bayesian_update_path fit gets an ExactPosteriorPrior, which knows only a
-    joint log_prob. NUTS must refuse it before compiling anything."""
-    prior = ExactPosteriorPrior(
-        base_prior=Prior([_UniformDist(-1.0, 1.0)] * N_DIMS, PARAM_NAMES),
-        log_likelihood_1=lambda x: 0.0,
-        samples_dict={name: jnp.zeros(4) for name in PARAM_NAMES},
-        param_names=PARAM_NAMES,
-    )
-
-    with pytest.raises(ValueError, match="nested_sampling"):
-        _run_nuts(
-            jnp.zeros(2, dtype="uint32"),
-            prior,
-            lambda x: 0.0,
-            10,
-            nuts_settings,
-            jnp.zeros(N_DIMS),
-        )
 
 
 # ---------------------------------------------------------------------------

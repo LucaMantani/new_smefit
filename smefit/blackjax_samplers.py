@@ -32,8 +32,6 @@ from blackjax.ns.utils import ess, finalise, log_weights, sample
 from blackjax.util import run_inference_algorithm
 from jax.scipy.special import logsumexp
 
-from smefit.priors import Prior
-
 log = logging.getLogger(__name__)
 
 
@@ -69,13 +67,10 @@ class SamplerOutput:
 # ---------------------------------------------------------------------------
 
 
-def _run_nested_sampling(
-    rng_key, prior, log_likelihood, n_samples, settings, init_point
-):
+def _run_nested_sampling(rng_key, prior, log_likelihood, n_samples, settings):
     """BlackJAX nested sampling (``blackjax.nss``).
 
-    The only algorithm here that estimates the log evidence. ``init_point`` is
-    unused: nested sampling starts from live points drawn from the prior.
+    The only algorithm here that estimates the log evidence.
     """
     n_dims = len(prior.param_names)
     n_live = settings["n_live"]
@@ -168,22 +163,6 @@ def _run_nested_sampling(
 # ---------------------------------------------------------------------------
 # NUTS
 # ---------------------------------------------------------------------------
-
-
-def _nuts_initial_points(rng_key, prior, settings, init_point, num_chains, n_dims):
-    """Starting positions for the chains, in unconstrained space, shape (C, d).
-
-    ``init: prior`` draws one over-dispersed prior sample per chain, which is
-    what makes R-hat meaningful — chains started at a common point agree by
-    construction and hide non-convergence. ``init: baseline`` starts every
-    chain at ``init_point`` (sampler space) plus a small jitter, as an escape
-    hatch for badly-scaled un-whitened problems where a prior draw lands at an
-    astronomically large chi2.
-    """
-    if settings.get("init", "prior") == "prior":
-        return prior.sample_unconstrained(rng_key, num_chains)
-    u_base = prior.to_unconstrained(jnp.asarray(init_point))
-    return u_base + 0.1 * jax.random.normal(rng_key, (num_chains, n_dims))
 
 
 #: A step size at or below this means the chain never moved.
@@ -393,7 +372,7 @@ def _thin_chains(positions, n_samples):
     return flat[:n_samples]
 
 
-def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
+def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings):
     """No-U-Turn Hamiltonian Monte Carlo (``blackjax.nuts``).
 
     Runs ``num_chains`` chains in parallel under ``jax.vmap``, each preceded by
@@ -426,7 +405,10 @@ def _run_nuts(rng_key, prior, log_likelihood, n_samples, settings, init_point):
         )
 
     rng_key, init_key = jax.random.split(rng_key)
-    u0 = _nuts_initial_points(init_key, prior, settings, init_point, num_chains, n_dims)
+    # One over-dispersed prior draw per chain, in unconstrained space, shape
+    # (C, d). Over-dispersed starts are what make R-hat meaningful: chains
+    # started at a common point agree by construction and hide non-convergence.
+    u0 = prior.sample_unconstrained(init_key, num_chains)
 
     warmup = blackjax.window_adaptation(
         blackjax.nuts,
@@ -601,9 +583,6 @@ _SAMPLER_REGISTRY = {
 
 BJ_ALGORITHMS = tuple(_SAMPLER_REGISTRY)
 
-#: Accepted values of ``blackjax_settings.init`` — see ``_nuts_initial_points``.
-BJ_INIT_MODES = frozenset({"prior", "baseline"})
-
 #: Keys of ``blackjax_settings`` that every algorithm uses.
 BJ_SHARED_SETTINGS = frozenset({"algorithm", "seed", "log_dir"})
 
@@ -619,7 +598,6 @@ BJ_ALGORITHM_SETTINGS = {
             "num_samples",
             "target_acceptance_rate",
             "max_num_doublings",
-            "init",
         }
     ),
 }

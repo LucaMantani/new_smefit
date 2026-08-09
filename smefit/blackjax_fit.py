@@ -61,9 +61,6 @@ def blackjax_fit(
     else:
         _chi2, _coeffs = chi2, coefficients
 
-    # Already in the sampler's coordinates: whitened when whitening is active.
-    init_point = _chi2.baseline
-
     algorithm = blackjax_settings.get("algorithm", "nested_sampling")
     runner = get_sampler(algorithm)
 
@@ -78,9 +75,7 @@ def blackjax_fit(
     os.makedirs(log_dir, exist_ok=True)
 
     t0 = time.time()
-    out = runner(
-        rng_key, prior, log_likelihood, n_samples, blackjax_settings, init_point
-    )
+    out = runner(rng_key, prior, log_likelihood, n_samples, blackjax_settings)
     log.info(
         "BlackJAX '%s' fit completed in %.2f minutes.",
         algorithm,

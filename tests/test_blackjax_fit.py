@@ -9,7 +9,6 @@ import pytest
 from smefit.blackjax_fit import blackjax_fit
 from smefit.blackjax_samplers import _SAMPLER_REGISTRY, SamplerOutput
 from smefit.fit_result import FitResult
-from smefit.priors import ExactPosteriorPrior
 from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
@@ -162,14 +161,13 @@ def _patched_runner(monkeypatch, algorithm, output=None):
     """Swap one registry entry for a recording stub; returns the calls list."""
     calls = []
 
-    def _stub(rng_key, prior, log_likelihood, n_samples, settings, init_point):
+    def _stub(rng_key, prior, log_likelihood, n_samples, settings):
         calls.append(
             {
                 "prior": prior,
                 "log_likelihood": log_likelihood,
                 "n_samples": n_samples,
                 "settings": settings,
-                "init_point": init_point,
             }
         )
         return output or SamplerOutput(
@@ -234,65 +232,6 @@ def test_blackjax_fit_unknown_algorithm_raises(
     with pytest.raises(ValueError, match="Unknown BlackJAX algorithm"):
         blackjax_fit(
             prior=minimal_prior,
-            chi2=minimal_chi2,
-            coefficients=coeff_group,
-            blackjax_settings=settings,
-        )
-
-
-def test_blackjax_fit_init_point_is_whitened(
-    minimal_prior, minimal_chi2, coeff_group, tmp_path, monkeypatch
-):
-    """chi2.baseline is physical; under whitening the runner must get it in
-    whitened coordinates, or every chain starts away from the mode."""
-    calls = _patched_runner(monkeypatch, "nuts")
-    transform = WhitenTransform(matrix=jnp.array([[2.0]]), shift=jnp.array([3.0]))
-    settings = _blackjax_settings(tmp_path / "bj_logs", algorithm="nuts")
-
-    blackjax_fit(
-        prior=minimal_prior,
-        chi2=minimal_chi2,
-        coefficients=coeff_group,
-        blackjax_settings=settings,
-        whitening_transformation=transform,
-    )
-
-    expected = transform.to_whitened(minimal_chi2.baseline)
-    assert jnp.allclose(calls[0]["init_point"], expected)
-
-
-def test_blackjax_fit_init_point_is_baseline_without_whitening(
-    minimal_prior, minimal_chi2, coeff_group, tmp_path, monkeypatch
-):
-    calls = _patched_runner(monkeypatch, "nuts")
-    settings = _blackjax_settings(tmp_path / "bj_logs", algorithm="nuts")
-
-    blackjax_fit(
-        prior=minimal_prior,
-        chi2=minimal_chi2,
-        coefficients=coeff_group,
-        blackjax_settings=settings,
-    )
-
-    assert jnp.allclose(calls[0]["init_point"], minimal_chi2.baseline)
-
-
-def test_blackjax_fit_nuts_rejects_exact_posterior_prior(
-    minimal_chi2, coeff_group, tmp_path
-):
-    """bayesian_update_path builds an ExactPosteriorPrior, which has no
-    per-parameter bijectors — NUTS must refuse it with a pointer to NS."""
-    prior = ExactPosteriorPrior(
-        base_prior=MagicMock(),
-        log_likelihood_1=lambda x: 0.0,
-        samples_dict={"OpA": jnp.zeros(4)},
-        param_names=["OpA"],
-    )
-    settings = _blackjax_settings(tmp_path / "bj_logs", algorithm="nuts")
-
-    with pytest.raises(ValueError, match="nested_sampling"):
-        blackjax_fit(
-            prior=prior,
             chi2=minimal_chi2,
             coefficients=coeff_group,
             blackjax_settings=settings,

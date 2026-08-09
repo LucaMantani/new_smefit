@@ -387,12 +387,6 @@ def check_blackjax_algorithm(runcard, rep):
             "'bayesian_update_path' — the exact-posterior prior has no "
             "per-parameter bijectors. Use algorithm: nested_sampling."
         )
-    init = settings.get("init", "prior")
-    if init not in ("prior", "baseline"):
-        rep.error(
-            f"blackjax_settings.init: '{init}' is not valid "
-            "(allowed: ['prior', 'baseline'])"
-        )
 
 
 def check_rg_matrix(value, label, resolver, rep):

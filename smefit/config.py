@@ -18,7 +18,6 @@ from reportengine.report import Config
 from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
-    BJ_INIT_MODES,
     BJ_SHARED_SETTINGS,
 )
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
@@ -514,12 +513,11 @@ class smefitConfig(Config):
         - nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
           dimension); ``delete_fraction``; ``log_precision`` (stop once
           ``logZ_live - logZ`` falls below it).
-        - nuts — ``num_chains`` (run in parallel with ``jax.vmap``);
-          ``num_warmup`` (adaptation draws, discarded); ``num_samples`` PER
-          CHAIN; ``target_acceptance_rate`` (raise towards 0.95 if divergences
-          appear); ``max_num_doublings``; ``init``, either "prior" (one
-          over-dispersed prior draw per chain, needed for a meaningful R-hat)
-          or "baseline" (the baseline point plus a small jitter).
+        - nuts — ``num_chains`` (run in parallel with ``jax.vmap``, each from
+          its own over-dispersed prior draw, which is what makes R-hat
+          meaningful); ``num_warmup`` (adaptation draws, discarded);
+          ``num_samples`` PER CHAIN; ``target_acceptance_rate`` (raise towards
+          0.95 if divergences appear); ``max_num_doublings``.
 
         ``output_path`` is optional because it is a reportengine environment
         attribute that only the CLI supplies; without it there is no folder to
@@ -539,7 +537,6 @@ class smefitConfig(Config):
             "num_samples",
             "target_acceptance_rate",
             "max_num_doublings",
-            "init",
         }
 
         kdiff = settings.keys() - known_keys
@@ -554,15 +551,6 @@ class smefitConfig(Config):
                 "blackjax_settings.algorithm is not a known BlackJAX algorithm.",
                 algorithm,
                 sorted(BJ_ALGORITHMS),
-                display_alternatives="all",
-            )
-
-        init = settings.get("init", "prior")
-        if init not in BJ_INIT_MODES:
-            raise ConfigError(
-                "blackjax_settings.init must name a chain initialisation mode.",
-                init,
-                sorted(BJ_INIT_MODES),
                 display_alternatives="all",
             )
 
@@ -603,7 +591,6 @@ class smefitConfig(Config):
         blackjax_settings["max_num_doublings"] = int(
             settings.get("max_num_doublings", 10)
         )
-        blackjax_settings["init"] = init
 
         return blackjax_settings
 

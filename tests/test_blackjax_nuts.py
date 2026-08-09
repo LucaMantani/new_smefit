@@ -45,7 +45,6 @@ def _nuts_cfg(log_dir, **overrides):
         "num_samples": NUM_DRAWS,
         "target_acceptance_rate": 0.8,
         "max_num_doublings": 10,
-        "init": "prior",
     }
     cfg.update(overrides)
     return cfg
@@ -109,32 +108,6 @@ def test_nuts_with_whitening_recovers_gaussian(correlated_problem, tmp_path):
 
     assert_posterior(fr, names, Sigma)
     assert fr.whitening_active is True
-    _assert_converged(log_dir)
-
-
-@pytest.mark.slow
-def test_nuts_with_whitening_and_baseline_init(correlated_problem, tmp_path):
-    """init: baseline must start from the whitened baseline point, not the raw
-    physical one — otherwise every chain starts away from the mode."""
-    names = correlated_problem["names"]
-    chi2 = correlated_problem["chi2_D1"]
-    Sigma = correlated_problem["Sigma1"]
-    n = len(names)
-
-    transform = hessian_whitening(chi2, n)
-    prior_w = Prior([_UniformDist(-SIGMA_PRIOR, SIGMA_PRIOR)] * n, names)
-    log_dir = tmp_path / "nuts_baseline"
-
-    fr = blackjax_fit(
-        prior_w,
-        chi2,
-        _Coeffs(names),
-        _nuts_cfg(log_dir, init="baseline"),
-        whitening_transformation=transform,
-        n_samples=N_SAMPLES,
-    )
-
-    assert_posterior(fr, names, Sigma)
     _assert_converged(log_dir)
 
 

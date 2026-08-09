@@ -289,7 +289,6 @@ def test_parse_blackjax_defaults(cfg, tmp_path):
     # NUTS defaults are always present; num_chains * num_samples == the default n_samples
     assert result["num_chains"] * result["num_samples"] == 10000
     assert result["num_warmup"] == 1000
-    assert result["init"] == "prior"
 
 
 def test_parse_blackjax_custom_values(cfg, tmp_path):
@@ -311,11 +310,6 @@ def test_parse_blackjax_nuts_custom_values(cfg, tmp_path):
 def test_parse_blackjax_unknown_algorithm_raises(cfg, tmp_path):
     with pytest.raises(ConfigError):
         cfg.parse_blackjax_settings({"algorithm": "metropolis"}, tmp_path)
-
-
-def test_parse_blackjax_invalid_init_raises(cfg, tmp_path):
-    with pytest.raises(ConfigError):
-        cfg.parse_blackjax_settings({"algorithm": "nuts", "init": "midpoint"}, tmp_path)
 
 
 def test_parse_blackjax_warns_on_irrelevant_key(cfg, tmp_path, caplog):
@@ -350,7 +344,6 @@ def test_parse_blackjax_known_keys_cover_all_algorithm_settings(cfg, tmp_path, c
     every_key = set(BJ_SHARED_SETTINGS).union(*BJ_ALGORITHM_SETTINGS.values())
     settings = {k: 1 for k in every_key}
     settings["algorithm"] = "nuts"
-    settings["init"] = "prior"
     settings["log_dir"] = str(tmp_path)
 
     with caplog.at_level("WARNING"):

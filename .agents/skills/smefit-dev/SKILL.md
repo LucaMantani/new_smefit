@@ -289,14 +289,16 @@ protection against misspelling it.
   `sample_unconstrained`) — these live on `Prior` itself rather than in a
   wrapper class, because they are pure functions of its own `dists`.
   `ExactPosteriorPrior` and `_WhitenedToPhysicalPrior` know only a joint
-  `log_prob`, so they have no unconstrained interface; `_run_nuts` rejects
-  them with an `isinstance(prior, Prior)` check.
+  `log_prob`, so they have no unconstrained interface. Nothing in the fit path
+  checks this: `algorithm: nuts` with `bayesian_update_path` fails inside
+  `_run_nuts` with `AttributeError: no attribute 'sample_unconstrained'`. Only
+  the `smefit-runcard` validator flags the combination up front.
 - **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
   `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers.py` — the same registry
   pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG
   dependencies (this is why it is *not* an `@explicit_node`). A new algorithm
-  needs: a `_run_<name>(rng_key, prior, log_likelihood, n_samples, settings,
-  init_point)` returning a `SamplerOutput`, a registry entry, a
+  needs: a `_run_<name>(rng_key, prior, log_likelihood, n_samples, settings)`
+  returning a `SamplerOutput`, a registry entry, a
   `BJ_ALGORITHM_SETTINGS` entry naming the keys it owns, and those keys added to
   the literal `known_keys` set in `parse_blackjax_settings`. That last set must
   stay an inline set literal (the generator AST-extracts it);

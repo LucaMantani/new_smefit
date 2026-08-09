@@ -77,12 +77,11 @@ estimates the log evidence) or "nuts" (incompatible with
 - nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
   dimension); ``delete_fraction``; ``log_precision`` (stop once
   ``logZ_live - logZ`` falls below it).
-- nuts — ``num_chains`` (run in parallel with ``jax.vmap``);
-  ``num_warmup`` (adaptation draws, discarded); ``num_samples`` PER
-  CHAIN; ``target_acceptance_rate`` (raise towards 0.95 if divergences
-  appear); ``max_num_doublings``; ``init``, either "prior" (one
-  over-dispersed prior draw per chain, needed for a meaningful R-hat)
-  or "baseline" (the baseline point plus a small jitter).
+- nuts — ``num_chains`` (run in parallel with ``jax.vmap``, each from
+  its own over-dispersed prior draw, which is what makes R-hat
+  meaningful); ``num_warmup`` (adaptation draws, discarded);
+  ``num_samples`` PER CHAIN; ``target_acceptance_rate`` (raise towards
+  0.95 if divergences appear); ``max_num_doublings``.
 
 ``output_path`` is optional because it is a reportengine environment
 attribute that only the CLI supplies; without it there is no folder to
@@ -92,7 +91,6 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `algorithm` — default: `'nested_sampling'`
 - `delete_fraction` — default: `0.5`
-- `init` — default: `'prior'`
 - `log_dir` — default: `str(output_path / 'blackjax_logs') if output_path is not None else None`
 - `log_precision` — default: `-2`
 - `max_num_doublings` — default: `10`
@@ -107,7 +105,6 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 Validation errors raised while parsing:
 
 - blackjax_settings.algorithm is not a known BlackJAX algorithm.
-- blackjax_settings.init must name a chain initialisation mode.
 
 ### `coefficients`
 

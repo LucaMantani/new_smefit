@@ -103,7 +103,6 @@
       "defaults": {
         "algorithm": "'nested_sampling'",
         "delete_fraction": "0.5",
-        "init": "'prior'",
         "log_dir": "str(output_path / 'blackjax_logs') if output_path is not None else None",
         "log_precision": "-2",
         "max_num_doublings": "10",
@@ -118,7 +117,6 @@
       "known_keys": [
         "algorithm",
         "delete_fraction",
-        "init",
         "log_dir",
         "log_precision",
         "max_num_doublings",

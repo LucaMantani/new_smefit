@@ -25,7 +25,6 @@ def _plot_heatmap(
     cmap="Blues",
     mask_zeros=True,
     value_fmt="{:.1f}",
-    text_threshold=None,
     aspect="auto",
     colorbar=False,
     title=None,
@@ -49,9 +48,6 @@ def _plot_heatmap(
         they are the absence of a number, whatever the matrix means.
     value_fmt : str, optional
         Format string for the per-cell annotation.
-    text_threshold : float, optional
-        Magnitude above which cell text is drawn white rather than black, so
-        it stays legible on a saturated cell. Defaults to 60% of *vmax*.
     aspect : str, optional
         imshow aspect. ``"equal"`` keeps cells square, which a square matrix
         wants and a (coeffs x sources) one does not.
@@ -67,8 +63,6 @@ def _plot_heatmap(
 
     matrix = np.array(matrix, dtype=float)
     n_coeffs, n_sources = matrix.shape
-    if text_threshold is None:
-        text_threshold = vmax * 0.6
 
     fig_w = max(6, n_sources * 0.7)
     fig_h = max(3, n_coeffs * 0.45)
@@ -106,7 +100,9 @@ def _plot_heatmap(
             if blank[i, j]:
                 continue
             val = matrix[i, j]
-            color = "white" if abs(val) > text_threshold else "black"
+            red, green, blue, _ = im.cmap(im.norm(val))
+            luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+            color = "white" if luminance < 0.5 else "black"
             ax.text(
                 j,
                 i,
@@ -121,13 +117,26 @@ def _plot_heatmap(
 
 
 @figure
-def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
+def plot_fisher_diagonals_heatmap(
+    fisher_diagonals_normalised,
+    cmap="Blues",
+    value_fmt="{:.1f}",
+    colorbar=False,
+):
     """Plot the Fisher diagonals matrix as a heatmap.
 
     Parameters
     ----------
     fisher_diagonals_normalised : pd.DataFrame
         Index = coeff_names, columns = source_names.
+    cmap : str, optional
+        Colormap. Sequential by default: the values are percentage shares, so
+        they run one way from zero and a diverging map would invent a midpoint.
+    value_fmt : str, optional
+        Format of the per-cell annotation, in percent.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside. Off by default: rows sum to
+        100%, so the annotations already say what a cell is worth.
     """
     fd = fisher_diagonals_normalised
     return _plot_heatmap(
@@ -136,6 +145,9 @@ def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
         fd.columns.tolist(),
         vmin=0,
         vmax=100,
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
     )
 
 
@@ -182,7 +194,6 @@ def plot_posterior_correlations(fit, cmap="RdBu_r", value_fmt="{:.2f}", colorbar
         vmin=-1,
         vmax=1,
         mask_zeros=False,
-        text_threshold=0.6,
         aspect="equal",
         cmap=cmap,
         value_fmt=value_fmt,

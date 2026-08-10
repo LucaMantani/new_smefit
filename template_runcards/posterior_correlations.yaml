@@ -1,19 +1,36 @@
 # Correlations of the free coefficients of fits that have already been run:
 # no fit is run here, the posterior samples are read back from each fit's
-# fit_results.json. One table and one heatmap per fit listed under `fits`.
+# fit_results.json. One heatmap per fit listed under `fits`.
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
+# --- Configuring a figure ---------------------------------------------------
+#
+# There is no settings block for how a figure looks, and none is needed: an
+# action's keyword parameters are resolved by reportengine like any other
+# resource, so a runcard sets them directly. Two routes, both used below.
+#
+# (1) A TOP-LEVEL KEY sets the parameter everywhere it appears.
+#
+#     Careful, "everywhere" is literal. plot_fisher_diagonals_heatmap takes a
+#     value_fmt too, so in a runcard with both heatmaps this one key would set
+#     both. Use route (2) when they should differ.
+value_fmt: "{:.3f}"
+
+# (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
+#     when both name the same parameter. Used in the template below to give
+#     this heatmap its own colormap.
+#
 # `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
-# same name its files are given. The heatmap itself is titled with the label above.
+# same name its files are given. The heatmap itself is titled with the label.
 template_text: |
     Posterior correlations
     ======================
     {@with fits@}
     {@fit@}
     ---------
-    {@plot_posterior_correlations@}
+    {@plot_posterior_correlations(cmap="PuOr")@}
     {@endwith@}
 
 actions_:

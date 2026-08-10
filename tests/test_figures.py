@@ -56,8 +56,8 @@ def test_plot_heatmap_skips_zero_cells():
     assert [t.get_text() for t in ax.texts] == ["5.0"]
 
 
-def test_plot_heatmap_text_color_threshold():
-    """Cell text is white above 60% of vmax, black otherwise."""
+def test_plot_heatmap_text_contrasts_with_the_cell():
+    """Cell text is white on a dark cell and black on a light one."""
     matrix = np.array([[8.0, 2.0]])
     fig = _plot_heatmap(matrix, ["OpA"], ["DS_A", "DS_B"], vmin=0, vmax=10)
 
@@ -101,9 +101,11 @@ def test_plot_heatmap_can_keep_zero_cells():
     assert [t.get_text() for t in ax.texts] == ["0.0", "5.0"]
 
 
-def test_plot_heatmap_text_color_threshold_uses_the_magnitude():
-    """A strongly negative cell is as saturated as a strongly positive one, so
-    its text goes white too."""
+def test_plot_heatmap_text_contrast_follows_a_diverging_map_both_ways():
+    """On a diverging map both ends are dark, so a strongly negative cell gets
+    white text just like a strongly positive one, and the pale middle gets
+    black. A rule based on the value rather than the colour would only get one
+    end right."""
     matrix = np.array([[-0.9, 0.9, -0.1]])
     fig = _plot_heatmap(
         matrix,
@@ -111,9 +113,9 @@ def test_plot_heatmap_text_color_threshold_uses_the_magnitude():
         ["DS_A", "DS_B", "DS_C"],
         vmin=-1,
         vmax=1,
+        cmap="RdBu_r",
         mask_zeros=False,
         value_fmt="{:.2f}",
-        text_threshold=0.6,
     )
 
     ax = fig.axes[0]
@@ -121,6 +123,22 @@ def test_plot_heatmap_text_color_threshold_uses_the_magnitude():
     assert colors["-0.90"] == "white"
     assert colors["0.90"] == "white"
     assert colors["-0.10"] == "black"
+
+
+def test_plot_heatmap_text_contrast_follows_a_map_that_lightens_with_value():
+    """viridis runs dark-to-light, the opposite way to Blues: the *low* cells
+    are the dark ones, and that is where the white text has to go. This is the
+    case a value threshold got backwards, and it is reachable now that the
+    colormap is a runcard setting."""
+    matrix = np.array([[1.0, 99.0]])
+    fig = _plot_heatmap(
+        matrix, ["OpA"], ["DS_A", "DS_B"], vmin=0, vmax=100, cmap="viridis"
+    )
+
+    ax = fig.axes[0]
+    colors = {t.get_text(): t.get_color() for t in ax.texts}
+    assert colors["1.0"] == "white"
+    assert colors["99.0"] == "black"
 
 
 def test_plot_fisher_diagonals_heatmap_scales_values_to_percent():
@@ -136,6 +154,22 @@ def test_plot_fisher_diagonals_heatmap_scales_values_to_percent():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
     texts = {t.get_text() for t in ax.texts}
     assert texts == {"30.0", "70.0", "60.0", "40.0"}
+
+
+def test_plot_fisher_diagonals_heatmap_presentation_is_overridable():
+    """Same runcard-driven keywords as the correlation heatmap, so a report
+    can style both in the same idiom."""
+    fd = pd.DataFrame({"DS_A": [0.3], "DS_B": [0.7]}, index=["OpA"])
+
+    fig = plot_fisher_diagonals_heatmap(
+        fd, cmap="viridis", value_fmt="{:.2f}", colorbar=True
+    )
+
+    ax = fig.axes[0]
+    assert ax.images[0].cmap.name == "viridis"
+    assert sorted(t.get_text() for t in ax.texts) == ["30.00", "70.00"]
+    # The colorbar is an Axes of its own, so asking for it adds one
+    assert len(fig.axes) == 2
 
 
 def test_plot_heatmap_title_goes_above_the_column_labels():

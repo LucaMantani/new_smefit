@@ -123,6 +123,10 @@ actions_:
   the SM point).
 - Add `group: <label>` to dataset entries (and external chi2 blocks) to
   aggregate Fisher matrices per group instead of per dataset.
+- `plot_fisher_diagonals_heatmap` takes the same `cmap`, `value_fmt` and
+  `colorbar` as the correlation heatmap — see "Configuring an action" below.
+  `value_fmt: "{:.2f}"` is the one worth knowing: the default single decimal
+  rounds a small but non-zero share to `0.0`.
 
 ## Reporting on fits that have already been run
 
@@ -184,12 +188,17 @@ actions_:
 ```
 
 Argument values are parsed as YAML, so strings, numbers and booleans work.
-`plot_posterior_correlations` takes `cmap`, `value_fmt` and `colorbar`; the
-colour scale ([-1, 1]), square cells and drawn zeros are fixed so that two
-fits' heatmaps stay comparable, and the heading is always the fit's label so
-that every heatmap says which fit it is.
+**An action argument beats a top-level key** when both name the same
+parameter — the specific wins.
 
-Two things to know about the mechanism:
+Both heatmaps take `cmap`, `value_fmt` and `colorbar`, and they share those
+names, so one top-level `cmap:` sets both; use an action argument where they
+should differ. What is *not* settable is what would stop two plots being
+comparable: the colour scale ([-1, 1] for correlations, 0–100% for Fisher),
+square cells, and the correlation heatmap's heading, which is always the fit's
+label so that every heatmap says which fit it is.
+
+Three things to know about the mechanism:
 
 - **An argument that is not a parameter of the action is silently ignored.**
   reportengine matches arguments against the action's signature
@@ -201,6 +210,9 @@ Two things to know about the mechanism:
   (`_create_default_key`), so both calls collapse to one node and one output
   file: the first set of arguments wins, the second is dropped silently. Two
   variants of one figure need two providers.
+- **A parameter has to be a parameter.** Only what a provider declares can be
+  set this way, which is the deliberate limit on how much of a plot a runcard
+  controls — see `smefit-dev` before adding one.
 
 ## Precision and performance
 

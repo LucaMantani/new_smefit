@@ -8,20 +8,57 @@
 # chosen for the analysis at hand — do not carry them over verbatim.
 # Correlations of the free coefficients of fits that have already been run:
 # no fit is run here, the posterior samples are read back from each fit's
-# fit_results.json. One table and one heatmap per fit listed under `fits`.
+# fit_results.json. One heatmap per fit listed under `fits`.
+#
+# Run the two fit templates first — each writes its output to a directory named
+# after the runcard, so from this directory:
+#   smefit template_runcards/analytical_fit.yaml
+#   smefit template_runcards/ultranest_fit.yaml
+# and then
+#   smefit template_runcards/posterior_correlations.yaml
+
+# Previously run fits. `path` is the directory *containing* the fit; drop it to
+# look the fit up in smefit_results/fits, downloading it from the server if it
+# is not there yet. `label` is passed to matplotlib verbatim, and is what heads
+# each heatmap.
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
+# --- Configuring a figure ---------------------------------------------------
+#
+# There is no settings block for how a figure looks, and none is needed: an
+# action's keyword parameters are resolved by reportengine like any other
+# resource, so a runcard sets them directly. Two routes, both used below.
+#
+# (1) A TOP-LEVEL KEY sets the parameter everywhere it appears — the same
+#     mechanism as use_quad, n_samples or seed. Here: three decimals per cell
+#     instead of the default two.
+#
+#     Careful, "everywhere" is literal. plot_fisher_diagonals_heatmap takes a
+#     value_fmt too, so in a runcard with both heatmaps this one key would set
+#     both. Use route (2) when they should differ.
+value_fmt: "{:.3f}"
+
+# (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
+#     when both name the same parameter. Used in the template below to give
+#     this heatmap its own colormap.
+#
+#     Two things to know: an argument that is not a parameter of the action is
+#     silently ignored (check the spelling against actions.md), and the same
+#     action cannot appear twice with different arguments — both calls collapse
+#     onto one figure. `- fits plot_posterior_correlations(cmap="PuOr")` is the
+#     same thing written in actions_.
+#
 # `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
-# same name its files are given. The heatmap itself is titled with the label above.
+# same name its files are given. The heatmap itself is titled with the label.
 template_text: |
     Posterior correlations
     ======================
     {@with fits@}
     {@fit@}
     ---------
-    {@plot_posterior_correlations@}
+    {@plot_posterior_correlations(cmap="PuOr")@}
     {@endwith@}
 
 actions_:

@@ -1,0 +1,20 @@
+# Correlations of the free coefficients of fits that have already been run:
+# no fit is run here, the posterior samples are read back from each fit's
+# fit_results.json. One table and one heatmap per fit listed under `fits`.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
+# same name its files are given. The heatmap itself is titled with the label above.
+template_text: |
+    Posterior correlations
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_posterior_correlations@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

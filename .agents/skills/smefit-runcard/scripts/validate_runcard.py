@@ -457,7 +457,20 @@ def main():
     ]
     resolver = PathResolver(standard_prefixes)
 
-    if "datasets" not in runcard and "external_chi2" not in runcard:
+    # A runcard that only reads fits back off disk ('fits:') fits nothing
+    # itself: its inputs are those directories, and the data and coefficients
+    # it reports on are whatever each fit was run with. A runcard that lists
+    # 'fits:' *and* sets up a fit of its own is a fit runcard like any other,
+    # and is held to the requirements below.
+    reads_fits_only = bool(runcard.get("fits")) and not (
+        "datasets" in runcard or "external_chi2" in runcard or "coefficients" in runcard
+    )
+
+    if (
+        not reads_fits_only
+        and "datasets" not in runcard
+        and "external_chi2" not in runcard
+    ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
     if "datasets" in runcard:
         for key in ("data_path", "theory_path"):
@@ -468,7 +481,8 @@ def main():
     coefficients = runcard.get("coefficients")
     nonlinear_exprs = []
     if not coefficients:
-        rep.error("runcard needs a non-empty 'coefficients' mapping")
+        if not reads_fits_only:
+            rep.error("runcard needs a non-empty 'coefficients' mapping")
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}
         coeff_keys = keys.get("coefficient_keys") if keys else None

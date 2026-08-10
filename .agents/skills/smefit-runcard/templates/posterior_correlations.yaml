@@ -1,0 +1,41 @@
+# AUTO-COPIED from template_runcards/posterior_correlations.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Correlations of the free coefficients of fits that have already been run:
+# no fit is run here, the posterior samples are read back from each fit's
+# fit_results.json. One table and one heatmap per fit listed under `fits`.
+#
+# Run the two fit templates first — each writes its output to a directory named
+# after the runcard, so from this directory:
+#   smefit template_runcards/analytical_fit.yaml
+#   smefit template_runcards/ultranest_fit.yaml
+# and then
+#   smefit template_runcards/posterior_correlations.yaml
+
+# Previously run fits. `path` is the directory *containing* the fit; drop it to
+# look the fit up in smefit_results/fits, downloading it from the server if it
+# is not there yet. `label` is passed to matplotlib verbatim.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
+# same name its files are given. The heatmap itself is titled with the label
+# above. Every cell is annotated, so there is no table to go with it; the raw
+# numbers are in each fit's fit_results.json.
+template_text: |
+    Posterior correlations
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_posterior_correlations@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

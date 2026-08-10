@@ -67,6 +67,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_posterior_correlations(fit)`
+  - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`
 

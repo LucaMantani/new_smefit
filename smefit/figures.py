@@ -28,6 +28,7 @@ def _plot_heatmap(
     text_threshold=None,
     aspect="auto",
     colorbar=False,
+    title=None,
 ):
     """Render a (n_coeffs, n_sources) matrix as a heatmap and save to PDF.
 
@@ -56,6 +57,9 @@ def _plot_heatmap(
         wants and a (coeffs x sources) one does not.
     colorbar : bool, optional
         Whether to draw the colour scale alongside.
+    title : str, optional
+        Heading for the plot, drawn above the column labels. Passed to
+        matplotlib verbatim, so it may be raw LaTeX.
     """
     rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
     rc("text", usetex=True)
@@ -74,6 +78,8 @@ def _plot_heatmap(
     ax.xaxis.set_label_position("top")
     ax.set_xticks(range(n_sources))
     ax.set_xticklabels(source_names, rotation=90, fontsize=14)
+    if title is not None:
+        ax.set_xlabel(title, fontsize=18, labelpad=12)
 
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeff_names]
     ax.set_yticks(range(n_coeffs))
@@ -134,22 +140,36 @@ def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
 
 
 @figure
-def plot_posterior_correlations(posterior_correlations):
-    """Plot the posterior correlations of one fit as a heatmap.
+def plot_posterior_correlations(fit):
+    """Plot the posterior correlations of one fit's free coefficients.
 
-    Takes the table of a single fit, so a runcard listing several under
-    ``fits:`` gets one heatmap per fit.
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one heatmap per fit, each headed with the fit it is drawn from.
 
     Parameters
     ----------
-    posterior_correlations : pd.DataFrame
-        Square, index and columns both the free coefficients, already labelled.
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+
+    Raises
+    ------
+    ValueError
+        If the fit was run one coefficient at a time: its coefficients were
+        never sampled together, so there is no joint posterior to correlate.
     """
-    corr = posterior_correlations
+    if fit.individual_fit:
+        raise ValueError(
+            f"Fit '{fit.fit_name}' was run one coefficient at a time, so its "
+            "coefficients were never sampled together and there is no joint "
+            "posterior to correlate."
+        )
+
+    corr = fit.fit_results.correlations
+    labels = [coeff_info_latex.get(name, name) for name in corr.index]
     return _plot_heatmap(
         corr.values,
-        corr.index.tolist(),
-        corr.columns.tolist(),
+        labels,
+        labels,
         vmin=-1,
         vmax=1,
         # Correlations run either way about zero, so the colour has to say
@@ -161,4 +181,5 @@ def plot_posterior_correlations(posterior_correlations):
         text_threshold=0.6,
         aspect="equal",
         colorbar=True,
+        title=fit.plot_label,
     )

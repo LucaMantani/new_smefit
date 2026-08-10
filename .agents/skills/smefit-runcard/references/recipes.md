@@ -124,6 +124,42 @@ actions_:
 - Add `group: <label>` to dataset entries (and external chi2 blocks) to
   aggregate Fisher matrices per group instead of per dataset.
 
+## Reporting on fits that have already been run
+
+`fits:` loads finished fit directories, so a runcard can report on them without
+refitting anything — no `datasets`, `coefficients` or covariance flags needed.
+Template: `posterior_correlations.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+template_text: |
+  # Posterior correlations
+  {@with fits@}
+  ## {@fit@}
+  {@plot_posterior_correlations@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- `path` is the directory *containing* the fit; drop it to look the fit up in
+  `smefit_results/fits`, downloading it from the server if it is not there.
+- A `{@with fits@}`…`{@endwith@}` block runs everything inside it once per fit,
+  and `{@fit@}` renders that fit's name — use it for a heading, or the report
+  stacks every fit's output with nothing saying which is which. `{@fits
+  <action>@}` is the one-line form, and gives up the heading.
+- Outside a report, prefix the action with the namespace in `actions_`,
+  space-separated: `- fits plot_posterior_correlations`. Either way outputs are
+  named after the fit (`<fit_name>_plot_posterior_correlations.pdf`), and
+  heatmaps are headed with the fit's `label` (its name when it has none).
+- `plot_posterior_correlations` reads the posterior samples in each fit's
+  `fit_results.json` and correlates the **free** coefficients. Every cell is
+  annotated with its value, so there is no separate table. It rejects a fit run
+  with `run_individual_*_fits`: its coefficients were never sampled together.
+
 ## Precision and performance
 
 - `smefit <runcard> -f32` switches JAX to float32 — faster, but check

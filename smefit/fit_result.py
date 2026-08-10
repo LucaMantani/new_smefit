@@ -587,9 +587,20 @@ class Fit:
         it (``spec_to_nice_name``, ``reportengine/formattingtools.py``). Without
         this, the dataclass repr is used, is over the length reportengine
         tolerates, and every per-fit figure and table falls back to being named
-        ``fits_0``, ``fits_1``, … instead of after the fit it belongs to.
+        ``fits0``, ``fits1``, … instead of after the fit it belongs to.
         """
         return self.fit_name
+
+    @property
+    def plot_label(self) -> str:
+        """How to name this fit inside a plot.
+
+        The runcard's :attr:`label` where it gave one, and the fit's name
+        otherwise, so a plot always says which fit it is drawn from. Distinct
+        from :meth:`__str__`, which names *files* and so has to stay the plain
+        fit name: a label is presentation and may be raw LaTeX.
+        """
+        return self.label or self.fit_name
 
     # ------------------------------------------------------------------
     # How the fit was configured — derived from the runcard

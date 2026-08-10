@@ -63,6 +63,12 @@ evaluates at the gradient-descent best fit; group datasets with `group:` labels
 to aggregate rows. See the smefit-runcard skill's `recipes.md` for the runcard
 side.
 
+A report can also be run over fits that already exist on disk, refitting
+nothing: list them under `fits:` and prefix the action with `fits` to get one
+output per fit — `{@fits plot_posterior_correlations@}` for the posterior
+correlations of each fit's free coefficients. Template:
+`posterior_correlations.yaml`.
+
 ## Performance checklist
 
 1. Benchmark first: `chi2_timing` action (template `time_likelihood.yaml`).

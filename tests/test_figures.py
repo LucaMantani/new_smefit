@@ -227,6 +227,33 @@ def test_plot_posterior_correlations_is_headed_by_the_fit_it_is_drawn_from():
     assert unlabelled.axes[0].get_xlabel() == "my_fit"
 
 
+def test_plot_posterior_correlations_presentation_is_overridable():
+    """These are the parameters a runcard drives through reportengine's own
+    resolution — a top-level `cmap:` key, or
+    ``{@plot_posterior_correlations(cmap="PuOr")@}`` — so each has to be a
+    parameter, and passing one has to actually change the figure."""
+    fig = plot_posterior_correlations(
+        _fit(label=r"$\mathrm{Analytic}$"),
+        cmap="PuOr",
+        value_fmt="{:.3f}",
+        colorbar=False,
+    )
+
+    ax = fig.axes[0]
+    # The heading stays the fit's, whatever else is overridden: it is the only
+    # thing saying which fit the heatmap is drawn from.
+    assert ax.get_xlabel() == r"$\mathrm{Analytic}$"
+    assert ax.images[0].cmap.name == "PuOr"
+    assert sorted(t.get_text() for t in ax.texts) == [
+        "-1.000",
+        "-1.000",
+        "1.000",
+        "1.000",
+    ]
+    # The colorbar is an Axes of its own, so dropping it leaves just the heatmap
+    assert len(fig.axes) == 1
+
+
 def test_plot_posterior_correlations_annotates_uncorrelated_pairs_too():
     """An uncorrelated pair is a result, not a gap: zero cells are drawn and
     annotated rather than blanked as they are in the Fisher heatmap."""

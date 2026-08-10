@@ -57,11 +57,14 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "cmap",
+    "colorbar",
     "n_eval",
     "n_samples",
     "n_steps",
     "seed",
-    "tol"
+    "tol",
+    "value_fmt"
   ],
   "raw_keys": {
     "datasets": {
@@ -247,7 +250,9 @@
     "batch_sample_sizes",
     "bayesian_update_path",
     "blackjax_settings",
+    "cmap",
     "coefficients",
+    "colorbar",
     "data_path",
     "datasets",
     "external_chi2",
@@ -269,6 +274,7 @@
     "use_quad",
     "use_t0",
     "use_theory_covmat",
+    "value_fmt",
     "whitening"
   ]
 }

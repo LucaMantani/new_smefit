@@ -160,6 +160,48 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Configuring an action
+
+There is no settings block for how a figure looks, and none is needed: an
+action's keyword parameters are resolved by reportengine like any other
+resource, so a runcard sets them three ways.
+
+As a **top-level key**, applying everywhere the parameter appears — the same
+mechanism as `n_samples`, `seed` or `tol`:
+
+```yaml
+cmap: PuOr
+colorbar: False
+```
+
+As an **action argument**, in a template or in `actions_`:
+
+```yaml
+template_text: |
+  {@fits plot_posterior_correlations(cmap="PuOr", colorbar=False)@}
+actions_:
+  - fits plot_posterior_correlations(value_fmt="{:.3f}")
+```
+
+Argument values are parsed as YAML, so strings, numbers and booleans work.
+`plot_posterior_correlations` takes `cmap`, `value_fmt` and `colorbar`; the
+colour scale ([-1, 1]), square cells and drawn zeros are fixed so that two
+fits' heatmaps stay comparable, and the heading is always the fit's label so
+that every heatmap says which fit it is.
+
+Two things to know about the mechanism:
+
+- **An argument that is not a parameter of the action is silently ignored.**
+  reportengine matches arguments against the action's signature
+  (`_make_callspec`, `reportengine/resourcebuilder.py`) and drops the rest, so
+  `cmpa="PuOr"` does nothing and says nothing. Check the spelling against the
+  signature in `actions.md`.
+- **The same action cannot appear twice with different arguments.** The node's
+  namespace key is built from the action's *name* only
+  (`_create_default_key`), so both calls collapse to one node and one output
+  file: the first set of arguments wins, the second is dropped silently. Two
+  variants of one figure need two providers.
+
 ## Precision and performance
 
 - `smefit <runcard> -f32` switches JAX to float32 — faster, but check

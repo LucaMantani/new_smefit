@@ -140,7 +140,7 @@ def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
 
 
 @figure
-def plot_posterior_correlations(fit):
+def plot_posterior_correlations(fit, cmap="RdBu_r", value_fmt="{:.2f}", colorbar=True):
     """Plot the posterior correlations of one fit's free coefficients.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
@@ -150,6 +150,15 @@ def plot_posterior_correlations(fit):
     ----------
     fit : smefit.fit_result.Fit
         A previously run fit, loaded from disk.
+    cmap : str, optional
+        Colormap. Diverging by default, as correlations run either way about
+        zero; a sequential one misreads anti-correlation as "little".
+    value_fmt : str, optional
+        Format of the per-cell annotation. Widen it to read small
+        correlations, or pass a format that renders nothing to drop the
+        numbers on a matrix too large to label.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside.
 
     Raises
     ------
@@ -172,14 +181,11 @@ def plot_posterior_correlations(fit):
         labels,
         vmin=-1,
         vmax=1,
-        # Correlations run either way about zero, so the colour has to say
-        # which way: a diverging map, uncorrelated pairs at its neutral middle
-        # rather than blanked out, and the scale spelled out alongside.
-        cmap="RdBu_r",
         mask_zeros=False,
-        value_fmt="{:.2f}",
         text_threshold=0.6,
         aspect="equal",
-        colorbar=True,
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
         title=fit.plot_label,
     )

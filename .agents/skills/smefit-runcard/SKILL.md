@@ -24,8 +24,11 @@ code and kept in sync by CI:
 
 1. **Start from a template** in `templates/` — one per fit type
    (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
-   `blackjax_individual_fit.yaml`, `hessian_fit.yaml`, `projections.yaml`,
-   `time_likelihood.yaml`, `report.yaml`). Do not write a runcard from scratch.
+   `blackjax_individual_fit.yaml`, `hessian_fit.yaml`), plus the runcards that
+   fit nothing: `projections.yaml`, `time_likelihood.yaml`, `report.yaml`, and
+   `posterior_correlations.yaml` (reports on fits already on disk — it needs
+   no `datasets` or `coefficients` at all, so steps 2–5 do not apply to it).
+   Do not write a runcard from scratch.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test

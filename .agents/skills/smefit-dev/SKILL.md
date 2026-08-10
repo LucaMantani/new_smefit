@@ -85,8 +85,8 @@ Consequences for a `produce_`/`parse_` that takes it:
   API and — per the section above — its failure is swallowed by whichever
   consumer has a default.
 - If it only drives a **write**, skip the write when it is `None`
-  (`produce_rge_matrix` passes `save_path=output_path`, and `load_rge_matrix`
-  treats `None` as "do not cache").
+  (`produce_rge_matrix` builds the matrix unconditionally and only calls
+  `rge_matrix.write(output_path)` when `output_path is not None`).
 - If it only supplies a **default for another key**, fall back to `None` so the
   node still resolves, and say in the docstring that the user must then set that
   key explicitly. Both sampler blocks do this for `log_dir`:

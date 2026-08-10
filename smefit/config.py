@@ -97,6 +97,30 @@ class smefitConfig(Config):
             groups.setdefault(group, []).append(name)
         return groups if groups else None
 
+    def parse_group_latex_labels(self, group_latex_labels):
+        """Parse the optional map from data group name to LaTeX label.
+
+        Used to relabel the source axis of the Fisher heatmap, e.g.
+
+        .. code-block:: yaml
+
+            group_latex_labels:
+              LHC-top: "$\\mathrm{LHC}\\ t\\bar{t}$"
+
+        Groups without an entry keep their plain name.
+        """
+        if not isinstance(group_latex_labels, dict):
+            raise ConfigError(
+                "group_latex_labels must be a mapping of group name to LaTeX label"
+            )
+        for name, label in group_latex_labels.items():
+            if not isinstance(label, str):
+                raise ConfigError(
+                    f"LaTeX label for group '{name}' must be a string, "
+                    f"got {type(label).__name__}"
+                )
+        return dict(group_latex_labels)
+
     def parse_rge(self, rge):
         """Parse and validate RGE settings."""
         known_keys = {

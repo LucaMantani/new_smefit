@@ -846,6 +846,26 @@ def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
 
 
 # ---------------------------------------------------------------------------
+# parse_group_latex_labels
+# ---------------------------------------------------------------------------
+
+
+def test_parse_group_latex_labels_valid(cfg):
+    labels = {"LHC-top": r"$\mathrm{LHC}\ t\bar{t}$", "LEP": r"$\mathrm{LEP}$"}
+    assert cfg.parse_group_latex_labels(labels) == labels
+
+
+def test_parse_group_latex_labels_not_a_mapping(cfg):
+    with pytest.raises(ConfigError, match="mapping of group name"):
+        cfg.parse_group_latex_labels(["LHC-top"])
+
+
+def test_parse_group_latex_labels_non_string_label(cfg):
+    with pytest.raises(ConfigError, match="must be a string"):
+        cfg.parse_group_latex_labels({"LHC-top": 42})
+
+
+# ---------------------------------------------------------------------------
 # parse_external_chi2
 # ---------------------------------------------------------------------------
 

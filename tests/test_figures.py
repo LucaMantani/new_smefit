@@ -13,7 +13,11 @@ import pandas as pd
 import pytest
 
 from smefit import figures as figures_mod
-from smefit.figures import _plot_heatmap, plot_fisher_diagonals_heatmap
+from smefit.figures import (
+    _apply_group_latex_labels,
+    _plot_heatmap,
+    plot_fisher_diagonals_heatmap,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -88,3 +92,41 @@ def test_plot_fisher_diagonals_heatmap_scales_values_to_percent():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
     texts = {t.get_text() for t in ax.texts}
     assert texts == {"30.0", "70.0", "60.0", "40.0"}
+
+
+def test_apply_group_latex_labels_replaces_declared_groups():
+    labels = {"LHC-top": r"$\mathrm{LHC}\ t\bar{t}$"}
+
+    result = _apply_group_latex_labels(["LHC-top", "LEP"], labels)
+
+    assert result == [r"$\mathrm{LHC}\ t\bar{t}$", "LEP"]
+
+
+def test_apply_group_latex_labels_none_or_empty_is_identity():
+    assert _apply_group_latex_labels(["DS_A", "DS_B"], None) == ["DS_A", "DS_B"]
+    assert _apply_group_latex_labels(["DS_A", "DS_B"], {}) == ["DS_A", "DS_B"]
+
+
+def test_apply_group_latex_labels_warns_on_unmatched_group(caplog):
+    with caplog.at_level("WARNING"):
+        result = _apply_group_latex_labels(["LEP"], {"LHC-top": r"$t\bar{t}$"})
+
+    assert result == ["LEP"]
+    assert "LHC-top" in caplog.text
+
+
+def test_plot_fisher_diagonals_heatmap_uses_group_latex_labels():
+    fd = pd.DataFrame(
+        {"LHC-top": [0.3, 0.7], "LEP": [0.7, 0.3]},
+        index=["OpA", "OpZZ"],
+    )
+
+    fig = plot_fisher_diagonals_heatmap(
+        fd, group_latex_labels={"LHC-top": r"$\mathrm{LHC}\ t\bar{t}$"}
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        r"$\mathrm{LHC}\ t\bar{t}$",
+        "LEP",
+    ]

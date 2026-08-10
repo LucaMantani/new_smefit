@@ -163,11 +163,20 @@ def test_free_coefficient_needs_prior_for_sampler_action(tmp_path):
     assert "needs a prior" in out
 
 
+def _previous_fit_dir(tmp_path):
+    """The minimal layout parse_bayesian_update_path insists on."""
+    fit_dir = tmp_path / "previous_fit"
+    (fit_dir / "input").mkdir(parents=True)
+    (fit_dir / "fit_results.json").write_text("{}")
+    (fit_dir / "input" / "runcard.yaml").write_text("")
+    return fit_dir
+
+
 @pytest.mark.parametrize(
     "extra_key, extra_value",
     [
         ("whitening", {"sigma_prior": 5.0}),
-        ("bayesian_update_path", "/some/previous/fit"),
+        ("bayesian_update_path", None),  # replaced by a real fit dir below
     ],
 )
 def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_prior(
@@ -175,6 +184,8 @@ def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_pr
 ):
     """whitening/bayesian_update_path make reportengine build the `prior`
     node itself, without needing a per-coefficient spec."""
+    if extra_key == "bayesian_update_path":
+        extra_value = str(_previous_fit_dir(tmp_path))
     code, out = validate(
         tmp_path,
         coefficients={"OpA": {"free": True}},
@@ -182,6 +193,20 @@ def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_pr
         **{extra_key: extra_value},
     )
     assert code == 0, out
+
+
+def test_missing_bayesian_update_path_errors(tmp_path):
+    code, out = validate(tmp_path, bayesian_update_path=str(tmp_path / "no_such_fit"))
+    assert code == 1, out
+    assert "bayesian_update_path" in out
+
+
+def test_bayesian_update_path_without_fit_results_errors(tmp_path):
+    fit_dir = tmp_path / "previous_fit"
+    fit_dir.mkdir()
+    code, out = validate(tmp_path, bayesian_update_path=str(fit_dir))
+    assert code == 1, out
+    assert "fit_results.json not found" in out
 
 
 def test_unknown_coefficient_subkey_warns(tmp_path):

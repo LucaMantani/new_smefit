@@ -431,7 +431,8 @@ def render_runcard_keys_md(surface, paths_info, coeff_keys):
         "## Path resolution (shareable runcards)",
         "",
         "Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,",
-        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,",
+        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,",
+        "`fits[*].path`) support prefix-relative form,",
         f"resolved via the machine-specific `{paths_info['config_file']}` (created by",
         "`smefit_setup_local`). Standard prefixes: "
         + ", ".join(f"`{p}`" for p in paths_info["standard_prefixes"])

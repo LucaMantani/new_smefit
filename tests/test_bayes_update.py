@@ -363,6 +363,27 @@ def test_parse_bayesian_update_path_missing_runcard(cfg, tmp_path):
         cfg.parse_bayesian_update_path(str(fit_dir))
 
 
+def test_parse_bayesian_update_path_resolves_prefix(cfg, tmp_path):
+    fit_dir = tmp_path / "fits" / "fit1"
+    (fit_dir / "input").mkdir(parents=True)
+    (fit_dir / "fit_results.json").write_text("{}")
+    (fit_dir / "input" / "runcard.yaml").write_text("")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_bayesian_update_path("smefit_results/fits/fit1")
+
+    assert result == fit_dir
+
+
+def test_parse_bayesian_update_path_unconfigured_prefix(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
+        with pytest.raises(ConfigError, match="smefit_setup_local"):
+            cfg.parse_bayesian_update_path("smefit_results/fits/fit1")
+
+
 # ---------------------------------------------------------------------------
 # produce_prior with bayesian_update_path
 # ---------------------------------------------------------------------------

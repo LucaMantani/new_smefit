@@ -203,7 +203,9 @@
     },
     "rge": {
       "defaults": {
-        "obs_scale": "'dynamic'"
+        "obs_scale": "'dynamic'",
+        "smeft_accuracy": "'integrate'",
+        "yukawa": "'top'"
       },
       "known_keys": [
         "adm_QCD",

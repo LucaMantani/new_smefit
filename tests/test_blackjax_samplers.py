@@ -473,6 +473,30 @@ def test_run_nuts_warns_on_treedepth_saturation(uniform_prior, nuts_settings, ca
     assert any("maximum tree depth" in m for m in caplog.messages)
 
 
+def test_run_nuts_warns_when_the_draws_will_not_fit_in_memory(
+    uniform_prior, nuts_settings, caplog
+):
+    """num_chains x num_samples x n_dims floats are held at once, so an
+    over-ambitious request is worth flagging before the run rather than after
+    the OOM that ends it."""
+    positions = _ramp_positions() * 0.001
+    settings = {**nuts_settings, "num_chains": 5000, "num_samples": 5001}
+    with caplog.at_level("WARNING"):
+        _run_mocked_nuts(uniform_prior, settings, 12, positions)
+
+    assert any("5000 x 5001 x 2 draws in memory" in m for m in caplog.messages)
+
+
+def test_run_nuts_quiet_for_a_modestly_sized_request(
+    uniform_prior, nuts_settings, caplog
+):
+    positions = _ramp_positions() * 0.001
+    with caplog.at_level("WARNING"):
+        _run_mocked_nuts(uniform_prior, nuts_settings, 12, positions)
+
+    assert not any("in memory" in m for m in caplog.messages)
+
+
 # ---------------------------------------------------------------------------
 # Nested sampling diagnostics
 # ---------------------------------------------------------------------------
@@ -527,6 +551,24 @@ def test_nested_diagnostics_flags_unusable_ess(caplog):
 
     assert diag["converged"] is False
     assert any("effective sample size" in m.lower() for m in caplog.messages)
+
+
+def test_nested_diagnostics_warns_on_uncertain_evidence(caplog):
+    """logZ known to worse than a nat cannot support model comparison — but the
+    posterior draws themselves are still fine, so this is a warning."""
+    with caplog.at_level("WARNING"):
+        diag = _ns_diagnostics(logzs=jnp.array([-4.0, -6.5, -9.0]))
+
+    assert diag["logz_std"] > 1.0
+    assert diag["converged"] is True
+    assert any("Log evidence is uncertain" in m for m in caplog.messages)
+
+
+def test_nested_diagnostics_quiet_when_evidence_is_precise(caplog):
+    with caplog.at_level("WARNING"):
+        _ns_diagnostics()
+
+    assert not any("Log evidence is uncertain" in m for m in caplog.messages)
 
 
 def test_nested_diagnostics_warns_on_unconstrained_directions(caplog):

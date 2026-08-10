@@ -85,8 +85,8 @@ Consequences for a `produce_`/`parse_` that takes it:
   API and — per the section above — its failure is swallowed by whichever
   consumer has a default.
 - If it only drives a **write**, skip the write when it is `None`
-  (`produce_rge_matrix` passes `save_path=output_path`, and `load_rge_matrix`
-  treats `None` as "do not cache").
+  (`produce_rge_matrix` builds the matrix unconditionally and only calls
+  `rge_matrix.write(output_path)` when `output_path is not None`).
 - If it only supplies a **default for another key**, fall back to `None` so the
   node still resolves, and say in the docstring that the user must then set that
   key explicitly. Both sampler blocks do this for `log_dir`:
@@ -225,7 +225,10 @@ cross-coefficient constraints), not a bag of independent entries.
 
 3. **A path** → resolve it through `smefit.paths.resolve_path` so the shareable
    prefix form (`smefit_database/...`, `smefit_results/...`) keeps working; see
-   `parse_data_path`.
+   `parse_data_path`. A path the parser only forwards — an `external_chi2` entry
+   passes every key but `path` straight to a user-authored constructor — cannot
+   be resolved by name at this layer; resolve it in whatever loads the file, as
+   `RGEMatrix.read_cache` does for `rg_matrix`.
 
 **Unknown keys warn rather than raise** — that is a deliberate
 backwards-compatibility choice, and the reason `validate_runcard.py` exists.

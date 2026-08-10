@@ -28,7 +28,7 @@ from smefit.paths import (
 )
 from smefit.priors import Prior, _build_dist, _UniformDist
 from smefit.projections import Projection
-from smefit.rge import load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
@@ -111,11 +111,25 @@ class smefitConfig(Config):
         for k in set(rge.keys()) - known_keys:
             log.warning("Unknown key '%s' in rge settings.", k)
         if "init_scale" not in rge:
-            raise ConfigError("rge", rge, "rge block requires 'init_scale'")
+            raise ConfigError("rge block requires 'init_scale'", "init_scale")
         obs_scale = rge.get("obs_scale", "dynamic")
         if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
+            raise ConfigError("obs_scale must be a float/int or 'dynamic'", obs_scale)
+        smeft_accuracy = rge.get("smeft_accuracy", "integrate")
+        if smeft_accuracy not in ALLOWED_SMEFT_ACCURACY:
             raise ConfigError(
-                "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
+                "Invalid 'smeft_accuracy' in rge settings",
+                smeft_accuracy,
+                sorted(ALLOWED_SMEFT_ACCURACY),
+                display_alternatives="all",
+            )
+        yukawa = rge.get("yukawa", "top")
+        if yukawa not in ALLOWED_YUKAWA:
+            raise ConfigError(
+                "Invalid 'yukawa' in rge settings",
+                yukawa,
+                sorted(ALLOWED_YUKAWA),
+                display_alternatives="all",
             )
         if "rg_matrix" in rge:
             rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
@@ -144,17 +158,19 @@ class smefitConfig(Config):
 
         coeff_list = sorted(coefficients.names)
 
-        rge_matrix = load_rge_matrix(
+        rge_matrix = build_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
             theory_group=theory,
-            save_path=output_path,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
+        # Write RGE matrix to disk for future reuse
+        if output_path is not None:
+            rge_matrix.write(output_path)
         self._cached_rge_matrix = rge_matrix
         return rge_matrix
 
@@ -642,14 +658,23 @@ class smefitConfig(Config):
         }
 
     def parse_bayesian_update_path(self, bayesian_update_path):
-        """Parse and validate the path to a previous fit for Bayesian updating."""
-        p = pathlib.Path(bayesian_update_path)
+        """Parse and validate the path to a previous fit for Bayesian updating.
+
+        Accepts an absolute path or the prefix-relative form
+        (`smefit_results/fits/my_fit`); a fit that is not there yet is
+        downloaded from the server, as for `fits`.
+        """
+        try:
+            p = pathlib.Path(resolve_path(str(bayesian_update_path)))
+            fetch_fit_if_missing(p)
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(str(e)) from e
         if not p.exists():
-            raise ConfigError(f"Directory not found at {bayesian_update_path}")
+            raise ConfigError(f"Directory not found at {p}")
         if not (p / "fit_results.json").exists():
-            raise ConfigError(f"fit_results.json not found at {bayesian_update_path}")
+            raise ConfigError(f"fit_results.json not found at {p}")
         if not (p / "input" / "runcard.yaml").exists():
-            raise ConfigError(f"input/runcard.yaml not found at {bayesian_update_path}")
+            raise ConfigError(f"input/runcard.yaml not found at {p}")
         return p
 
     def _build_prior_impl(self, coefficients):

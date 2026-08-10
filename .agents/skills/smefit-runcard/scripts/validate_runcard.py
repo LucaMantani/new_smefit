@@ -528,6 +528,24 @@ def main():
                         cfg["rg_matrix"], f"{label}.rg_matrix", resolver, rep
                     )
 
+    update_path = runcard.get("bayesian_update_path")
+    if update_path is not None:
+        # Same auto-download rule as rg_matrix: a fit missing under
+        # smefit_results/ is fetched from the server at run time.
+        resolved = resolver.resolve(update_path, rep, "bayesian_update_path")
+        if resolved is not None and not Path(resolved).exists():
+            if resolver.has_prefix(str(update_path), "smefit_results"):
+                rep.warn(
+                    f"bayesian_update_path: {resolved} not found locally — smefit "
+                    "will try to download the fit from the server at run time"
+                )
+            else:
+                rep.error(f"bayesian_update_path: directory not found: {resolved}")
+        elif (
+            resolved is not None and not (Path(resolved) / "fit_results.json").exists()
+        ):
+            rep.error(f"bayesian_update_path: fit_results.json not found in {resolved}")
+
     operators = check_datasets(runcard, keys, rep, resolver)
     # An `rge` block evolves coefficients from a different scale, and external
     # chi2 modules bring their own parameters: in both cases a coefficient can

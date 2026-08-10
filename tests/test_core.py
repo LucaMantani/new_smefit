@@ -235,6 +235,34 @@ def test_coeff_group_whitened_resolve_with_shift():
     assert jnp.allclose(result, jnp.array([2.5, 2.0]))
 
 
+def test_coeff_group_whitened_baseline_free():
+    """baseline_free is whitened too, so resolve(baseline_free) is the baseline point."""
+    c1 = Coefficient(
+        name="OpA",
+        free=True,
+        prior={"dist": "uniform", "low": -1.0, "high": 1.0},
+        baseline_value=0.5,
+    )
+    c2 = Coefficient(
+        name="OpB",
+        free=True,
+        prior={"dist": "uniform", "low": -1.0, "high": 1.0},
+        baseline_value=-1.0,
+    )
+    cg = CoefficientGroup([c1, c2])
+    transform = WhitenTransform(
+        matrix=jnp.array([[2.0, 0.0], [0.0, 3.0]]), shift=jnp.array([0.5, -1.0])
+    )
+    wcg = cg.whitened(transform)
+
+    # centred on the baseline → whitened baseline is the origin
+    assert jnp.allclose(wcg.baseline_free, jnp.zeros(2))
+    # and resolving it lands back on the physical baseline
+    assert jnp.allclose(wcg.resolve(wcg.baseline_free), cg.resolve(cg.baseline_free))
+    # the original group is untouched
+    assert jnp.allclose(cg.baseline_free, jnp.array([0.5, -1.0]))
+
+
 def test_coeff_group_single_free():
     c1 = Coefficient(
         name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}

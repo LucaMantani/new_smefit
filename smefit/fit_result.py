@@ -33,6 +33,7 @@ from functools import cached_property
 from typing import Any, Dict, List, Mapping, Optional, Union
 
 import jax.numpy as jnp
+import pandas as pd
 import yaml
 from rich import box
 from rich.console import Console
@@ -228,6 +229,32 @@ class FitResult:
         if self.samples is None:
             return {}
         return {name: float(jnp.std(vals)) for name, vals in self.samples.items()}
+
+    @property
+    def correlations(self) -> pd.DataFrame:
+        """Pearson correlations of the posterior samples, as a square frame.
+
+        Free parameters only, in :attr:`free_parameters` order: a derived
+        coefficient is a function of them, so its correlations carry nothing the
+        free ones do not already.
+
+        A parameter whose samples never moved has no correlation with anything,
+        and gets a row and a column of ``nan`` rather than an error — a fit that
+        left one parameter unexplored is still worth looking at.
+        """
+        if self.samples is None:
+            raise ValueError(
+                "This fit stored no posterior samples, so it has no "
+                "correlations to report."
+            )
+        posterior = jnp.stack([self.samples[name] for name in self.free_parameters])
+        return pd.DataFrame(
+            # A single free parameter correlates only with itself, and corrcoef
+            # returns that as a scalar rather than as the 1x1 matrix it is.
+            jnp.atleast_2d(jnp.corrcoef(posterior)),
+            index=self.free_parameters,
+            columns=self.free_parameters,
+        )
 
     @property
     def bic(self) -> float:
@@ -551,6 +578,18 @@ class Fit:
     fit_name: str
     label: Optional[str] = None
     fit_runcard: Dict = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        """The fit's name — not cosmetic, it ends up in file names.
+
+        reportengine names the output of a provider run once per fit after the
+        namespace element it was run for, and it does so by calling ``str`` on
+        it (``spec_to_nice_name``, ``reportengine/formattingtools.py``). Without
+        this, the dataclass repr is used, is over the length reportengine
+        tolerates, and every per-fit figure and table falls back to being named
+        ``fits_0``, ``fits_1``, … instead of after the fit it belongs to.
+        """
+        return self.fit_name
 
     # ------------------------------------------------------------------
     # How the fit was configured — derived from the runcard

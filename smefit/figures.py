@@ -16,7 +16,19 @@ from smefit.op_to_latex import coeff_info_latex
 log = logging.getLogger(__name__)
 
 
-def _plot_heatmap(matrix, coeff_names, source_names, vmin=None, vmax=None):
+def _plot_heatmap(
+    matrix,
+    coeff_names,
+    source_names,
+    vmin=None,
+    vmax=None,
+    cmap="Blues",
+    mask_zeros=True,
+    value_fmt="{:.1f}",
+    text_threshold=None,
+    aspect="auto",
+    colorbar=False,
+):
     """Render a (n_coeffs, n_sources) matrix as a heatmap and save to PDF.
 
     Parameters
@@ -24,16 +36,35 @@ def _plot_heatmap(matrix, coeff_names, source_names, vmin=None, vmax=None):
     matrix : array-like, shape (n_coeffs, n_sources)
     coeff_names : list of str
     source_names : list of str
-    save_path : pathlib.Path
     vmin, vmax : float, optional
         Colour scale limits passed to imshow.
+    cmap : str, optional
+        Colormap name. The default suits a matrix of one sign; a matrix that
+        spans zero wants a diverging one.
+    mask_zeros : bool, optional
+        Whether an exactly zero cell is left blank. True where a zero means
+        "this source does not enter" (the default), False where zero is a
+        value like any other. Cells that are not finite are always blank —
+        they are the absence of a number, whatever the matrix means.
+    value_fmt : str, optional
+        Format string for the per-cell annotation.
+    text_threshold : float, optional
+        Magnitude above which cell text is drawn white rather than black, so
+        it stays legible on a saturated cell. Defaults to 60% of *vmax*.
+    aspect : str, optional
+        imshow aspect. ``"equal"`` keeps cells square, which a square matrix
+        wants and a (coeffs x sources) one does not.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside.
     """
     rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
     rc("text", usetex=True)
     rc("text.latex", preamble=r"\usepackage{amssymb}")
 
-    matrix = np.array(matrix)
+    matrix = np.array(matrix, dtype=float)
     n_coeffs, n_sources = matrix.shape
+    if text_threshold is None:
+        text_threshold = vmax * 0.6
 
     fig_w = max(6, n_sources * 0.7)
     fig_h = max(3, n_coeffs * 0.45)
@@ -48,26 +79,36 @@ def _plot_heatmap(matrix, coeff_names, source_names, vmin=None, vmax=None):
     ax.set_yticks(range(n_coeffs))
     ax.set_yticklabels(coeff_labels, fontsize=14)
 
-    cmap = plt.get_cmap("Blues").copy()
+    masked = np.ma.masked_invalid(matrix)
+    if mask_zeros:
+        masked = np.ma.masked_equal(masked, 0.0)
+
+    cmap = plt.get_cmap(cmap).copy()
     cmap.set_bad("white")
-    ax.imshow(
-        np.ma.masked_equal(matrix, 0.0), aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax
-    )
+    im = ax.imshow(masked, aspect=aspect, cmap=cmap, vmin=vmin, vmax=vmax)
+    if colorbar:
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
     ax.set_xticks(np.arange(-0.5, n_sources, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, n_coeffs, 1), minor=True)
     ax.grid(which="minor", color="gray", linewidth=1)
     ax.tick_params(which="minor", bottom=False, left=False)
 
-    color_threshold = vmax * 0.6
+    blank = np.ma.getmaskarray(masked)
     for i in range(n_coeffs):
         for j in range(n_sources):
-            val = matrix[i, j]
-            if val == 0.0:
+            if blank[i, j]:
                 continue
-            color = "white" if val > color_threshold else "black"
+            val = matrix[i, j]
+            color = "white" if abs(val) > text_threshold else "black"
             ax.text(
-                j, i, f"{val:.1f}", ha="center", va="center", fontsize=10, color=color
+                j,
+                i,
+                value_fmt.format(val),
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=color,
             )
 
     return fig
@@ -89,4 +130,35 @@ def plot_fisher_diagonals_heatmap(fisher_diagonals_normalised):
         fd.columns.tolist(),
         vmin=0,
         vmax=100,
+    )
+
+
+@figure
+def plot_posterior_correlations(posterior_correlations):
+    """Plot the posterior correlations of one fit as a heatmap.
+
+    Takes the table of a single fit, so a runcard listing several under
+    ``fits:`` gets one heatmap per fit.
+
+    Parameters
+    ----------
+    posterior_correlations : pd.DataFrame
+        Square, index and columns both the free coefficients, already labelled.
+    """
+    corr = posterior_correlations
+    return _plot_heatmap(
+        corr.values,
+        corr.index.tolist(),
+        corr.columns.tolist(),
+        vmin=-1,
+        vmax=1,
+        # Correlations run either way about zero, so the colour has to say
+        # which way: a diverging map, uncorrelated pairs at its neutral middle
+        # rather than blanked out, and the scale spelled out alongside.
+        cmap="RdBu_r",
+        mask_zeros=False,
+        value_fmt="{:.2f}",
+        text_threshold=0.6,
+        aspect="equal",
+        colorbar=True,
     )

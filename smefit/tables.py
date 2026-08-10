@@ -31,3 +31,33 @@ def fisher_diagonals_normalised(aggregate_fisher_information_matrices):
         index=[coeff_info_latex.get(name, name) for name in coeff_names],
     )
     return raw.div(raw.sum(axis=1), axis=0)
+
+
+@table
+def posterior_correlations(fit):
+    """Posterior correlations of one fit's free coefficients.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one table per fit.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+
+    Returns
+    -------
+    pd.DataFrame
+        Square, index and columns both the free coefficients, labelled in
+        LaTeX where the operator is known.
+    """
+    if fit.individual_fit:
+        raise ValueError(
+            f"Fit '{fit.fit_name}' was run one coefficient at a time, so its "
+            "coefficients were never sampled together and there is no joint "
+            "posterior to correlate."
+        )
+
+    corr = fit.fit_results.correlations
+    labels = [coeff_info_latex.get(name, name) for name in corr.index]
+    return corr.set_axis(labels, axis=0).set_axis(labels, axis=1)

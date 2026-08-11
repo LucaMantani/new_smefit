@@ -26,6 +26,10 @@ fits:
 #     both. Use route (2) when they should differ.
 value_fmt: "{:.3f}"
 
+# `params_to_plot`:
+# every routine that takes it restricts itself to these coefficients.
+# params_to_plot: [OtG, OtW, OpQM, OpQ3]
+
 # (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
 #     when both name the same parameter. Used in the template below to give
 #     this heatmap its own colormap.

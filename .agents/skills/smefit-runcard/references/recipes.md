@@ -198,6 +198,32 @@ comparable: the colour scale ([-1, 1] for correlations, 0–100% for Fisher),
 square cells, and the correlation heatmap's heading, which is always the fit's
 label so that every heatmap says which fit it is.
 
+### Choosing which coefficients a report shows
+
+`params_to_plot` restricts every routine that takes it to the coefficients
+named, in the order named — a global fit's correlation heatmap is unreadable
+with tens of operators on a side, and the interesting block is a handful of
+them.
+
+```yaml
+params_to_plot: [OtG, OtW, OpQM, OpQ3]
+```
+
+It is the mechanism above, but the one key meant to be shared: sharing keeps a
+report's figures and tables talking about the same operators in the same order.
+Taken today by `plot_posterior_correlations` and `fisher_diagonals_normalised`
+— so the Fisher table's CSV and the heatmap drawn from it are restricted
+together. An action argument still overrides it for one figure.
+
+- Write it as a YAML list of coefficient names — the raw names, not their LaTeX
+  labels. Nothing validates the list, so a name is either matched or skipped.
+- **Order is the runcard's**, not alphabetical: write operators in the order
+  they should be read, grouped by sector if that helps.
+- **Each fit keeps the largest subset it has.** A name a given fit never fitted
+  is left out of that fit's heatmap and logged, so one list can head several
+  fits with different coefficients. A list matching *nothing* raises instead —
+  that is a misspelling, not a subset.
+
 Three things to know about the mechanism:
 
 - **An argument that is not a parameter of the action is silently ignored.**

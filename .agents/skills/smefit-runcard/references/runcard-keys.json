@@ -62,6 +62,7 @@
     "n_eval",
     "n_samples",
     "n_steps",
+    "params_to_plot",
     "seed",
     "tol",
     "value_fmt"
@@ -264,6 +265,7 @@
     "n_samples",
     "n_steps",
     "optimizer_settings",
+    "params_to_plot",
     "pseudodata_settings",
     "rge",
     "seed",

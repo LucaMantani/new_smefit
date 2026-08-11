@@ -63,6 +63,19 @@ evaluates at the gradient-descent best fit; group datasets with `group:` labels
 to aggregate rows. See the smefit-runcard skill's `recipes.md` for the runcard
 side.
 
+A report can also be run over fits that already exist on disk, refitting
+nothing: list them under `fits:`, and run an action once per fit by putting it
+in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
+the fit's name, without which the report gives no clue which output belongs to
+which fit. `plot_posterior_correlations` is the action, drawing the posterior
+correlations of each fit's free coefficients. Template:
+`posterior_correlations.yaml`.
+
+Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
+parameters, so a runcard sets them with no settings block — as a top-level key
+or as an action argument, which wins. `recipes.md` has the details and the two
+ways it can bite.
+
 ## Performance checklist
 
 1. Benchmark first: `chi2_timing` action (template `time_likelihood.yaml`).

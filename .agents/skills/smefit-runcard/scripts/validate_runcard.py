@@ -35,6 +35,24 @@ SAMPLER_BLOCKS = {
     "run_individual_blackjax_fits": "blackjax_settings",
 }
 
+# Actions that report on fits read back off disk, so a runcard running only
+# these needs no fit setup of its own. Taken from runcard-keys.json when it is
+# there; this is the fallback.
+FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
+
+
+def action_name(action):
+    """The bare action name of an `actions_:` entry.
+
+    reportengine allows a namespace prefix and arguments around it —
+    `fits plot_posterior_correlations(cmap="PuOr")` — and neither is part of
+    the name.
+    """
+    if not isinstance(action, str):
+        return ""
+    head = action.split("(", 1)[0].split()
+    return head[-1] if head else ""
+
 
 class Report:
     def __init__(self, strict):
@@ -385,7 +403,8 @@ def check_actions(runcard, rep, nonlinear_exprs=()):
     if not isinstance(actions, list):
         rep.error("actions_: must be a list")
         return
-    for action in actions:
+    for entry in actions:
+        action = action_name(entry)
         block = SAMPLER_BLOCKS.get(action)
         if block and block not in runcard:
             rep.warn(
@@ -457,18 +476,44 @@ def main():
     ]
     resolver = PathResolver(standard_prefixes)
 
-    if "datasets" not in runcard and "external_chi2" not in runcard:
+    # A runcard that only reads fits back off disk ('fits:') fits nothing
+    # itself: its inputs are those directories, and the data and coefficients
+    # it reports on are whatever each fit was run with. Its actions have to
+    # agree — 'fits:' next to a fit action means the runcard *does* fit
+    # something, and it is a fit runcard like any other, held to the
+    # requirements below. Only actions_ is read; an action that a report
+    # template calls is not seen here.
+    fit_reading = set((keys or {}).get("fit_reading_actions") or FIT_READING_ACTIONS)
+    raw_actions = runcard.get("actions_")
+    action_names = {
+        action_name(a) for a in (raw_actions if isinstance(raw_actions, list) else [])
+    }
+    reads_fits_only = (
+        bool(runcard.get("fits"))
+        and not (
+            "datasets" in runcard
+            or "external_chi2" in runcard
+            or "coefficients" in runcard
+        )
+        and action_names <= fit_reading
+    )
+
+    if (
+        not reads_fits_only
+        and "datasets" not in runcard
+        and "external_chi2" not in runcard
+    ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
     if "datasets" in runcard:
         for key in ("data_path", "theory_path"):
             if key not in runcard:
                 rep.error(f"'{key}' is required when 'datasets' is present")
 
-    actions = runcard.get("actions_")
     coefficients = runcard.get("coefficients")
     nonlinear_exprs = []
     if not coefficients:
-        rep.error("runcard needs a non-empty 'coefficients' mapping")
+        if not reads_fits_only:
+            rep.error("runcard needs a non-empty 'coefficients' mapping")
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}
         coeff_keys = keys.get("coefficient_keys") if keys else None
@@ -478,9 +523,7 @@ def main():
         # gradient-descent fits, and their individual variants never resolve
         # it. Even then, `whitening`/`bayesian_update_path` make reportengine
         # synthesize a prior itself, so per-coefficient priors are unneeded.
-        needs_sampler_prior = isinstance(actions, list) and any(
-            a in SAMPLER_BLOCKS for a in actions
-        )
+        needs_sampler_prior = any(a in SAMPLER_BLOCKS for a in action_names)
         require_prior = needs_sampler_prior and not (
             "whitening" in runcard or "bayesian_update_path" in runcard
         )

@@ -47,6 +47,22 @@ def test_fisher_diagonals_normalised_unknown_name_falls_back_to_raw():
     assert result.index.tolist() == ["NotARealOp"]
 
 
+def test_fisher_diagonals_normalised_restricts_and_orders_by_params_to_plot():
+    """The runcard's params_to_plot picks the rows, in the order written. Each
+    row is normalised on its own, so the kept ones still sum to 1 — dropping a
+    coefficient does not redistribute its share."""
+    fim = {
+        "DS_A": _fim_entry(["OpA", "OpB", "OpZZ"], [2.0, 1.0, 6.0]),
+        "DS_B": _fim_entry(["OpA", "OpB", "OpZZ"], [8.0, 3.0, 2.0]),
+    }
+
+    result = fisher_diagonals_normalised(fim, params_to_plot=["OpZZ", "OpA"])
+
+    assert result.index.tolist() == ["OpZZ", "OpA"]
+    assert result.loc["OpZZ"].tolist() == [0.75, 0.25]
+    assert result.loc["OpA"].tolist() == [0.2, 0.8]
+
+
 def test_fisher_diagonals_normalised_single_source_is_all_ones():
     """With a single source, each row's only entry is trivially 1.0."""
     fim = {"DS_A": _fim_entry(["OpA", "OpZZ"], [5.0, 9.0])}

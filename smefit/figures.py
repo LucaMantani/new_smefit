@@ -85,7 +85,7 @@ def _plot_heatmap(
         masked = np.ma.masked_equal(masked, 0.0)
 
     cmap = plt.get_cmap(cmap).copy()
-    cmap.set_bad("white")
+    cmap.set_bad("black", 0.7)
     im = ax.imshow(masked, aspect=aspect, cmap=cmap, vmin=vmin, vmax=vmax)
     if colorbar:
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)

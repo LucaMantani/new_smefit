@@ -340,3 +340,43 @@ def test_plot_posterior_correlations_rejects_an_individual_fit():
 
     with pytest.raises(ValueError, match="my_individual_fit"):
         plot_posterior_correlations(fit)
+
+
+def test_plot_posterior_correlations_restricts_to_params_to_plot():
+    """A global fit has too many coefficients to read at once; the runcard's
+    params_to_plot picks the block worth looking at, and its order is the
+    order they are drawn in."""
+    fig = plot_posterior_correlations(
+        _fit(
+            free=["OpA", "OpB", "OpZZ"],
+            samples={
+                "OpA": [0.0, 1.0, 2.0, 3.0],
+                "OpB": [0.0, 2.0, 1.0, 4.0],
+                "OpZZ": [0.0, -1.0, -2.0, -3.0],
+            },
+        ),
+        params_to_plot=["OpZZ", "OpA"],
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpZZ", "OpA"]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["OpZZ", "OpA"]
+    # The pair is perfectly anti-correlated, and OpB is gone rather than blank.
+    assert sorted(t.get_text() for t in ax.texts) == [
+        "-1.00",
+        "-1.00",
+        "1.00",
+        "1.00",
+    ]
+
+
+def test_plot_posterior_correlations_skips_a_coefficient_this_fit_lacks():
+    """params_to_plot is one runcard-wide list over several fits, so a name a
+    given fit never fitted drops out of that fit's heatmap rather than
+    stopping the report."""
+    fig = plot_posterior_correlations(
+        _fit(free=["OpA", "OpZZ"]), params_to_plot=["OpA", "OpNotInThisFit"]
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA"]

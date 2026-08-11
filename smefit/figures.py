@@ -12,6 +12,7 @@ from matplotlib import rc
 from reportengine.figure import figure
 
 from smefit.op_to_latex import coeff_info_latex
+from smefit.plot_utils import select_params
 
 log = logging.getLogger(__name__)
 
@@ -152,7 +153,9 @@ def plot_fisher_diagonals_heatmap(
 
 
 @figure
-def plot_posterior_correlations(fit, cmap="RdBu_r", value_fmt="{:.2f}", colorbar=True):
+def plot_posterior_correlations(
+    fit, params_to_plot=None, cmap="RdBu_r", value_fmt="{:.2f}", colorbar=True
+):
     """Plot the posterior correlations of one fit's free coefficients.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
@@ -162,6 +165,9 @@ def plot_posterior_correlations(fit, cmap="RdBu_r", value_fmt="{:.2f}", colorbar
     ----------
     fit : smefit.fit_result.Fit
         A previously run fit, loaded from disk.
+    params_to_plot : list of str, optional
+        Restrict the heatmap to these coefficients, in this order.
+        All of them by default.
     cmap : str, optional
         Colormap. Diverging by default, as correlations run either way about
         zero; a sequential one misreads anti-correlation as "little".
@@ -186,7 +192,9 @@ def plot_posterior_correlations(fit, cmap="RdBu_r", value_fmt="{:.2f}", colorbar
         )
 
     corr = fit.fit_results.correlations
-    labels = [coeff_info_latex.get(name, name) for name in corr.index]
+    selected = select_params(corr.index, params_to_plot, context=fit.fit_name)
+    corr = corr.loc[selected, selected]
+    labels = [coeff_info_latex.get(name, name) for name in selected]
     return _plot_heatmap(
         corr.values,
         labels,

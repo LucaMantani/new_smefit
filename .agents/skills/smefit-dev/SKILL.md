@@ -302,6 +302,12 @@ protection against misspelling it.
    knows which sampler produced it and how it was driven — the action in
    `input/runcard.yaml` is the only record — so a name outside the convention
    silently leaves `fit_type` unset.
+6. **An action that reports on finished fits** takes the `fit` (or `fits`)
+   resource, which is how you would write it anyway. `collect_fit_reading_actions`
+   (`scripts/generate_skill_reference.py`) reads that parameter name to build
+   the `fit_reading_actions` list in `runcard-keys.json`: it is what tells
+   `validate_runcard.py` that a `fits:`-only runcard running this action needs
+   no `datasets`/`coefficients` of its own.
 
 ## Coefficients, priors, external chi2
 

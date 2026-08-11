@@ -35,6 +35,10 @@
     "theory",
     "whitening_transformation"
   ],
+  "fit_reading_actions": [
+    "plot_posterior_correlations",
+    "report"
+  ],
   "path_prefixes": [
     "new_smefit",
     "smefit_database",

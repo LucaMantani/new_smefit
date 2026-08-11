@@ -367,6 +367,43 @@ def test_runcard_listing_fits_and_fitting_too_still_needs_data(tmp_path):
     assert "no data to fit" in out
 
 
+def test_runcard_listing_fits_and_running_a_fit_still_needs_data(tmp_path):
+    """The exemption is about what the runcard *does*, not what it declares:
+    'fits:' next to a fit action means it fits something of its own, and the
+    fits it loads say nothing about the data and coefficients that needs."""
+    code, out = validate(
+        tmp_path,
+        datasets=None,
+        data_path=None,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fits=[{"name": "my_fit", "path": "."}],
+        actions_=["run_ultranest_fit"],
+    )
+    assert code == 1, out
+    assert "no data to fit" in out
+    assert "non-empty 'coefficients' mapping" in out
+
+
+def test_action_checks_see_through_arguments_and_namespaces(tmp_path):
+    """An entry carries a namespace prefix and arguments around the action's
+    name — `fits plot_posterior_correlations(cmap="PuOr")` — so a check that
+    compares whole strings silently never fires."""
+    code, out = validate(
+        tmp_path,
+        datasets=None,
+        data_path=None,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fits=[{"name": "my_fit", "path": "."}],
+        actions_=["report(main=True)"],
+    )
+    assert code == 1, out
+    assert "requires a 'template_text'" in out
+
+
 def test_missing_actions_is_rejected(tmp_path):
     code, out = validate(tmp_path, actions_=None)
     assert code == 1, out

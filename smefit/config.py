@@ -44,6 +44,32 @@ from smefit.whitening import (
 log = logging.getLogger(__name__)
 
 
+def _reference_numbers(raw, key: str, label: str) -> dict:
+    """Validate one coefficient-name-to-number mapping of a reference point.
+
+    Shared by ``values`` and ``std``, which differ only in what the numbers
+    mean. Absent is empty, and YAML integers become floats — the figure does
+    arithmetic with them.
+    """
+    mapping = raw or {}
+    if not isinstance(mapping, Mapping):
+        raise ConfigError(
+            f"The '{key}' of reference point '{label}' must be a mapping of "
+            f"coefficient name to number, got {mapping!r}."
+        )
+
+    numbers = {}
+    for name, value in mapping.items():
+        # bool is an int in Python, and `OtG: yes` is a typo, not a coordinate
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ConfigError(
+                f"The {key} of '{name}' in reference point '{label}' must be "
+                f"a number, got {value!r}."
+            )
+        numbers[str(name)] = float(value)
+    return numbers
+
+
 class smefitConfig(Config):
     """smefit Config class."""
 
@@ -828,6 +854,7 @@ class smefitConfig(Config):
             reference_points:
               - label: '$\\mathrm{Benchmark\\ A}$'   # mandatory, the legend entry
                 values: {OtG: 0.1, OpQM: -0.05}     # optional, see below
+                std: {OtG: 0.03, OpQM: 0.02}        # optional, see below
                 marker: x                           # optional matplotlib marker
                 color: firebrick                    # optional matplotlib colour
 
@@ -836,10 +863,16 @@ class smefitConfig(Config):
         same point as the SM marker. Coefficients that are not plotted are
         ignored, and a name no fit has is warned about — it is a typo more
         often than a point about another fit.
+
+        ``std`` gives the point an uncertainty, one standard deviation per
+        coefficient. A panel whose two coefficients both have one also gets the
+        confidence ellipse of the uncorrelated Gaussian they describe; a panel
+        missing either gets the marker alone. Unlike ``values`` there is no
+        default: a coefficient with no ``std`` is a point, not a measurement.
         """
         entry = dict(point)
 
-        known_keys = {"label", "values", "marker", "color"}
+        known_keys = {"label", "values", "std", "marker", "color"}
         for k in set(entry.keys()) - known_keys:
             log.warning("Unknown key '%s' in reference_points entry.", k)
 
@@ -850,25 +883,20 @@ class smefitConfig(Config):
                 f"legend entry of its marker: {entry}"
             )
 
-        values = entry.get("values") or {}
-        if not isinstance(values, Mapping):
-            raise ConfigError(
-                f"The 'values' of reference point '{label}' must be a mapping "
-                f"of coefficient name to number, got {values!r}."
-            )
-
-        coords = {}
-        for name, value in values.items():
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+        coords = _reference_numbers(entry.get("values"), "values", label)
+        std = _reference_numbers(entry.get("std"), "std", label)
+        for name, value in std.items():
+            if value <= 0:
                 raise ConfigError(
-                    f"The value of '{name}' in reference point '{label}' must "
-                    f"be a number, got {value!r}."
+                    f"The std of '{name}' in reference point '{label}' must be "
+                    f"positive, got {value!r}: it is the half-width of an "
+                    "ellipse, not an interval."
                 )
-            coords[str(name)] = float(value)
 
         return ReferencePoint(
             label=label,
             values=coords,
+            std=std,
             marker=entry.get("marker"),
             color=entry.get("color"),
         )

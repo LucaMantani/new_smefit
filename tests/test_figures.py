@@ -481,6 +481,81 @@ def test_contours_reference_point_replaces_the_sm_when_it_is_off() -> None:
     assert legend_labels[-1] == "$A$"
 
 
+def test_contours_draw_an_ellipse_when_both_coefficients_have_a_std() -> None:
+    """A point given with an uncertainty on both axes of a panel also gets the
+    confidence ellipse of the uncorrelated Gaussian it describes."""
+    points = [
+        ReferencePoint(
+            label="$A$", values={"OpA": 1.0, "OpZZ": 0.0}, std={"OpA": 0.4, "OpZZ": 0.2}
+        )
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ax = fig.axes[0]
+    # the fit's outline and fill, then the reference point's, drawn the same way
+    assert len(ax.patches) == 4
+    outline, fill = ax.patches[-2:]
+    assert fill.get_center() == (1.0, 0.0)
+    assert fill.get_width() > fill.get_height()  # 0.4 against 0.2
+    assert fill.get_alpha() == pytest.approx(0.3)
+    assert outline.get_facecolor()[3] == 0.0
+
+
+def test_contours_skip_the_ellipse_when_a_std_is_missing() -> None:
+    """One std describes a band, not an ellipse: the panel keeps the marker
+    and draws nothing around it."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 1.0}, std={"OpA": 0.4}),
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ax = fig.axes[0]
+    assert len(ax.patches) == 2  # the fit's two, none of the point's
+    assert ax.collections[-1].get_offsets().tolist() == [[1.0, 0.0]]
+
+
+def test_contours_ellipse_follows_the_confidence_level() -> None:
+    """The ellipse is drawn at the level the panels are read with, so it can
+    be compared against the contours beside it."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 0.0}, std={"OpA": 0.4, "OpZZ": 0.2})
+    ]
+    kwargs = {
+        "reference_points": points,
+        "show_sm": False,
+    }
+
+    narrow = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=68, **kwargs
+    )
+    wide = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=95, **kwargs
+    )
+
+    assert wide.axes[0].patches[-1].get_width() > narrow.axes[0].patches[-1].get_width()
+
+
+def test_contours_keep_the_whole_reference_ellipse_inside_the_frame() -> None:
+    """Stretching to the centre alone would clip an ellipse whose edge reaches
+    further than the samples."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 8.0}, std={"OpA": 2.0, "OpZZ": 0.5})
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ellipse = fig.axes[0].patches[-1]
+    assert fig.axes[0].get_xlim()[1] > 8.0 + ellipse.get_width() / 2
+
+
 def test_contours_keep_a_reference_point_inside_the_frame() -> None:
     """Points stretch the axes exactly as the SM marker does."""
     points = [ReferencePoint(label="$A$", values={"OpA": 14.0})]

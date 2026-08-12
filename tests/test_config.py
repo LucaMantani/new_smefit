@@ -1238,3 +1238,43 @@ def test_parse_reference_points_unknown_key_warns(cfg, caplog):
 
     assert "valeus" in caplog.text
     assert points[0].values == {}
+
+
+def test_parse_reference_points_reads_a_std(cfg):
+    points = cfg.parse_reference_points(
+        [{"label": "$A$", "values": {"OtG": 0.1}, "std": {"OtG": 0.03}}]
+    )
+
+    assert points[0].std == {"OtG": 0.03}
+
+
+def test_parse_reference_points_std_defaults_to_nothing(cfg):
+    """No std is a point, not a measurement: the panels draw no ellipse for
+    it, which is what an empty mapping says."""
+    points = cfg.parse_reference_points([{"label": "$A$", "values": {"OtG": 0.1}}])
+
+    assert points[0].std == {}
+
+
+def test_parse_reference_points_rejects_a_non_positive_std(cfg):
+    """A std is the half-width of an ellipse; zero or negative describes none."""
+    with pytest.raises(ConfigError, match="must be positive"):
+        cfg.parse_reference_points([{"label": "$A$", "std": {"OtG": 0.0}}])
+
+
+def test_parse_reference_points_rejects_a_non_numeric_std(cfg):
+    with pytest.raises(ConfigError, match="must be a number"):
+        cfg.parse_reference_points([{"label": "$A$", "std": {"OtG": "wide"}}])
+
+
+def test_parse_reference_points_rejects_a_std_that_is_not_a_mapping(cfg):
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        cfg.parse_reference_points([{"label": "$A$", "std": 0.1}])
+
+
+def test_parse_reference_points_std_needs_no_matching_value(cfg):
+    """The central value falls back to the baseline, so an uncertainty on a
+    coefficient the entry does not move is still meaningful."""
+    points = cfg.parse_reference_points([{"label": "$A$", "std": {"OtG": 0.03}}])
+
+    assert points[0].values == {} and points[0].std == {"OtG": 0.03}

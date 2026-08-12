@@ -214,12 +214,14 @@
         "color": "(no default)",
         "label": "(no default)",
         "marker": "(no default)",
+        "std": "(no default)",
         "values": "(no default)"
       },
       "known_keys": [
         "color",
         "label",
         "marker",
+        "std",
         "values"
       ]
     },

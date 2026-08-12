@@ -418,6 +418,39 @@ def test_marker_points_warn_about_a_coefficient_not_plotted(
     assert point.values == {"OtG": 0.0, "OpQM": 0.0}
 
 
+def test_marker_points_carry_the_std_of_the_plotted_coefficients(
+    fit_pair: list[Fit],
+) -> None:
+    """The std has no baseline to fall back on: it comes through for the
+    coefficients that have one and nowhere else."""
+    extra = [ReferencePoint(label="$A$", std={"OtG": 0.05})]
+
+    point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert point.std == {"OtG": 0.05}
+    assert point.values == {"OtG": 0.0, "OpQM": 0.0}
+
+
+def test_marker_points_drop_a_std_for_a_coefficient_not_plotted(
+    fit_pair: list[Fit], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Same warning as a stray value: naming a coefficient the panels do not
+    show is a typo more often than anything else."""
+    extra = [ReferencePoint(label="$A$", std={"OtTypo": 0.05})]
+
+    with caplog.at_level(logging.WARNING):
+        point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert "OtTypo" in caplog.text
+    assert point.std == {}
+
+
+def test_marker_points_give_the_sm_no_std(fit_pair: list[Fit]) -> None:
+    """The SM marker is a point: the baselines say where it is, not how well
+    it is known."""
+    assert marker_points(fit_pair, ["OtG", "OpQM"])[0].std == {}
+
+
 # --- best_fit_pair ----------------------------------------------------------
 
 

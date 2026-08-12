@@ -271,6 +271,7 @@ on their own, so these are additions to it:
     reference_points:
       - label: '$\mathrm{Benchmark\ A}$'   # mandatory, the legend entry
         values: {OtG: 0.1, OpQM: -0.05}     # optional, see below
+        std: {OtG: 0.03, OpQM: 0.02}        # optional, see below
         marker: x                           # optional matplotlib marker
         color: firebrick                    # optional matplotlib colour
 
@@ -280,11 +281,18 @@ same point as the SM marker. Coefficients that are not plotted are
 ignored, and a name no fit has is warned about — it is a typo more
 often than a point about another fit.
 
+``std`` gives the point an uncertainty, one standard deviation per
+coefficient. A panel whose two coefficients both have one also gets the
+confidence ellipse of the uncorrelated Gaussian they describe; a panel
+missing either gets the marker alone. Unlike ``values`` there is no
+default: a coefficient with no ``std`` is a point, not a measurement.
+
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `color` — default: `(no default)`
 - `label` — default: `(no default)`
 - `marker` — default: `(no default)`
+- `std` — default: `(no default)`
 - `values` — default: `(no default)`
 
 ### `rge`

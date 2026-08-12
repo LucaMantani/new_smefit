@@ -20,11 +20,14 @@ from smefit.contours_2d import (
     KDEGrid,
     confidence_ellipse,
     density_level,
+    ellipse_half_axis,
     fit_colors,
     kde_contour,
     kde_grid,
     plot_contours,
+    plot_uncorrelated_contours,
     split_solution,
+    uncorrelated_ellipse,
 )
 
 # The (x, y) sample arrays of the gaussian_samples fixture, and the
@@ -146,6 +149,94 @@ def test_confidence_ellipse_is_added_to_the_axes(
     ellipse = confidence_ellipse(x_values, y_values, ax)
 
     assert ellipse in ax.patches
+
+
+# ---------------------------------------------------------------------------
+# uncorrelated_ellipse
+# ---------------------------------------------------------------------------
+
+
+def test_uncorrelated_ellipse_axes_are_the_scaled_standard_deviations() -> None:
+    """A point known by a central value and a std per axis: the ellipse is
+    sqrt(chi2 quantile) standard deviations wide, as the sample one is sqrt of
+    the same quantile times a covariance eigenvalue."""
+    import scipy.stats
+
+    _, ax = plt.subplots()
+
+    ellipse = uncorrelated_ellipse((1.0, -2.0), (0.5, 0.25), ax, confidence_level=95)
+
+    scale = np.sqrt(scipy.stats.chi2.ppf(0.95, 2))
+    assert ellipse.get_width() == pytest.approx(2 * scale * 0.5)
+    assert ellipse.get_height() == pytest.approx(2 * scale * 0.25)
+    assert ellipse.get_center() == (1.0, -2.0)
+
+
+def test_uncorrelated_ellipse_is_axis_aligned() -> None:
+    """Nothing says how the two coefficients covary, so the ellipse cannot be
+    tilted: that is the assumption the name carries."""
+    _, ax = plt.subplots()
+
+    ellipse = uncorrelated_ellipse((0.0, 0.0), (1.0, 2.0), ax)
+
+    assert ellipse.get_angle() == pytest.approx(0.0)
+
+
+def test_uncorrelated_ellipse_grows_with_confidence_level() -> None:
+    _, ax = plt.subplots()
+
+    small = uncorrelated_ellipse((0.0, 0.0), (1.0, 1.0), ax, confidence_level=68)
+    large = uncorrelated_ellipse((0.0, 0.0), (1.0, 1.0), ax, confidence_level=95)
+
+    assert large.get_width() > small.get_width()
+
+
+def test_uncorrelated_ellipse_is_added_to_the_axes_unfilled_by_default() -> None:
+    """Like confidence_ellipse, the primitive draws an outline and the caller
+    layers a fill on top."""
+    _, ax = plt.subplots()
+
+    ellipse = uncorrelated_ellipse((0.0, 0.0), (1.0, 1.0), ax, edgecolor="firebrick")
+
+    assert ellipse in ax.patches
+    assert ellipse.get_facecolor()[3] == 0.0  # transparent fill
+
+
+def test_plot_uncorrelated_contours_draws_an_outline_and_a_fill() -> None:
+    """The convention plot_contours uses for a linear fit: a solid outline and
+    a translucent fill of the same colour, so the two read alike."""
+    _, ax = plt.subplots()
+
+    outline, fill = plot_uncorrelated_contours(ax, (0.0, 0.0), (1.0, 0.5), "C0")
+
+    assert len(ax.patches) == 2
+    assert fill.get_alpha() == pytest.approx(0.3)
+    assert outline.get_alpha() == pytest.approx(1)
+    assert outline.get_facecolor()[3] == 0.0
+    assert outline.get_width() == pytest.approx(fill.get_width())
+
+
+def test_plot_uncorrelated_contours_adds_the_dashed_outer_level() -> None:
+    """Two confidence levels draw the outer one dashed, as the fits' do."""
+    _, ax = plt.subplots()
+
+    _, fill = plot_uncorrelated_contours(
+        ax,
+        (0.0, 0.0),
+        (1.0, 1.0),
+        "C0",
+        confidence_level=95,
+        dashed_confidence_level=68,
+    )
+
+    assert len(ax.patches) == 3
+    dashed = ax.patches[0]
+    assert dashed.get_linestyle() == "dashed"
+    assert dashed.get_width() < fill.get_width()  # 68% inside the filled 95%
+
+
+def test_ellipse_half_axis_scales_the_standard_deviation() -> None:
+    assert ellipse_half_axis(2.0, 95) == pytest.approx(2 * ellipse_half_axis(1.0, 95))
 
 
 # ---------------------------------------------------------------------------

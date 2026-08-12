@@ -161,6 +161,71 @@ def confidence_ellipse(
     return ax.add_patch(ellipse)
 
 
+def ellipse_half_axis(std: float, confidence_level: float = 95) -> float:
+    """Half-axis of the confidence ellipse of an uncorrelated Gaussian.
+
+    The same scaling :func:`confidence_ellipse` applies to the square root of a
+    covariance eigenvalue — here the standard deviation is given directly.
+
+    Parameters
+    ----------
+    std : float
+        Standard deviation along the axis.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+
+    Returns
+    -------
+    float
+        Half the extent of the ellipse along that axis.
+    """
+    return float(np.sqrt(scipy.stats.chi2.ppf(confidence_level / 100.0, 2)) * std)
+
+
+def uncorrelated_ellipse(
+    center: tuple[float, float],
+    std: tuple[float, float],
+    ax: Axes,
+    facecolor: ColorType = "none",
+    confidence_level: float = 95,
+    **kwargs: Any,
+) -> Ellipse:
+    """Draw the confidence ellipse of an uncorrelated Gaussian on ``ax``.
+
+    The counterpart of :func:`confidence_ellipse` for a point known by a
+    central value and a standard deviation per coefficient rather than by
+    samples: with no correlation to orient it, the ellipse is axis-aligned.
+
+    Parameters
+    ----------
+    center : tuple of two floats
+        Central value on each axis.
+    std : tuple of two floats
+        Standard deviation on each axis.
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    facecolor : ColorType, optional
+        Fill colour of the ellipse, ``"none"`` by default.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+    **kwargs
+        Additional settings passed to ``matplotlib.patches.Ellipse``.
+
+    Returns
+    -------
+    matplotlib.patches.Ellipse
+        The ellipse added to ``ax``.
+    """
+    ellipse = Ellipse(
+        center,
+        width=2 * ellipse_half_axis(std[0], confidence_level),
+        height=2 * ellipse_half_axis(std[1], confidence_level),
+        facecolor=facecolor,
+        **kwargs,
+    )
+    return ax.add_patch(ellipse)
+
+
 def kde_grid(
     x_values: ArrayLike,
     y_values: ArrayLike,
@@ -473,6 +538,74 @@ def plot_contours(
     ax.tick_params(which="both", direction="in", labelsize=22)
 
     return hndls
+
+
+def plot_uncorrelated_contours(
+    ax: Axes,
+    center: tuple[float, float],
+    std: tuple[float, float],
+    color: ColorType,
+    confidence_level: float = 95,
+    dashed_confidence_level: float | None = None,
+) -> tuple[Ellipse, Ellipse]:
+    """Draw a point known by a central value and a std as a filled contour.
+
+    The three layers :func:`plot_contours` gives a linear fit — a dashed
+    outline at the outer level, then a solid outline and a translucent fill at
+    the inner one — so a reference point is read exactly like the posteriors
+    beside it. What differs is only what the ellipse comes from: a standard
+    deviation per coefficient, which says nothing about how the two covary, so
+    this one is axis-aligned where a fit's follows its sample covariance.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    center : tuple of two floats
+        Central value on each axis.
+    std : tuple of two floats
+        Standard deviation on each axis.
+    color : ColorType
+        Colour of the outline and of the fill.
+    confidence_level : float, optional
+        Confidence level in percent of the filled contour, 95 by default.
+    dashed_confidence_level : float, optional
+        Confidence level in percent of an additional dashed outline.
+
+    Returns
+    -------
+    tuple(matplotlib.patches.Ellipse, matplotlib.patches.Ellipse)
+        The outline and the fill, in the order :func:`plot_contours` returns
+        its handles.
+    """
+    if dashed_confidence_level is not None:
+        uncorrelated_ellipse(
+            center,
+            std,
+            ax,
+            edgecolor=color,
+            confidence_level=dashed_confidence_level,
+            linestyle="dashed",
+            linewidth=2,
+        )
+    outline = uncorrelated_ellipse(
+        center,
+        std,
+        ax,
+        alpha=1,
+        edgecolor=color,
+        confidence_level=confidence_level,
+    )
+    fill = uncorrelated_ellipse(
+        center,
+        std,
+        ax,
+        alpha=0.3,
+        facecolor=color,
+        edgecolor=None,
+        confidence_level=confidence_level,
+    )
+    return outline, fill
 
 
 def fit_colors(n_fits: int) -> list[ColorType]:

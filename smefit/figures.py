@@ -15,7 +15,12 @@ import numpy as np
 from matplotlib import rc
 from reportengine.figure import figure
 
-from smefit.contours_2d import fit_colors, plot_contours
+from smefit.contours_2d import (
+    ellipse_half_axis,
+    fit_colors,
+    plot_contours,
+    plot_uncorrelated_contours,
+)
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import (
@@ -297,7 +302,20 @@ def _posterior_contours(
     # that its baseline_value sits elsewhere — and a runcard can ask for
     # further points beside it; every one of them has to stay in frame
     points = marker_points(fits, coeffs, reference_points, show_sm)
-    limits = coeff_limits(fits, coeffs, include_points=[p.values for p in points])
+    # a point with a std reaches beyond its centre: the frame has to hold the
+    # whole ellipse, or it is drawn clipped
+    extents = [
+        {
+            name: value + sign * ellipse_half_axis(point.std[name], cl)
+            for name, value in point.values.items()
+            if name in point.std
+        }
+        for point in points
+        for sign in (-1, 1)
+    ]
+    limits = coeff_limits(
+        fits, coeffs, include_points=[p.values for p in points] + extents
+    )
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
@@ -343,6 +361,18 @@ def _posterior_contours(
                     zorder=10,
                 )
             )
+            # both coefficients of this panel have to be known for the point to
+            # describe an ellipse on it; one std alone describes a band, which
+            # is not what was asked for
+            if c1 in point.std and c2 in point.std:
+                plot_uncorrelated_contours(
+                    ax,
+                    center=(point.values[c1], point.values[c2]),
+                    std=(point.std[c1], point.std[c2]),
+                    color=point.color,
+                    confidence_level=cl,
+                    dashed_confidence_level=dashed_cl,
+                )
 
         ax.set_xlim(*limits[c1])
         ax.set_ylim(*limits[c2])

@@ -325,7 +325,9 @@ def marker_points(
     baselines for the coefficients it does not name. What comes back is one
     :class:`ReferencePoint` per marker whose ``values`` covers every plotted
     coefficient and whose ``marker``/``color`` are settled, so a caller can
-    scatter it without further defaulting.
+    scatter it without further defaulting. A ``std`` is carried over only for
+    the coefficients that have one — it has no baseline to fall back on, and
+    its absence is what tells a panel it has no ellipse to draw.
 
     Parameters
     ----------
@@ -352,7 +354,11 @@ def marker_points(
 
     resolved = []
     for index, point in enumerate(requested):
-        unknown = [name for name in point.values if name not in baselines]
+        unknown = [
+            name
+            for name in dict.fromkeys([*point.values, *point.std])
+            if name not in baselines
+        ]
         if unknown:
             log.warning(
                 "Reference point %s gives a value for %s, which %s not among "
@@ -368,6 +374,9 @@ def marker_points(
                 values={
                     name: float(point.values.get(name, baselines[name]))
                     for name in coeffs
+                },
+                std={
+                    name: float(point.std[name]) for name in coeffs if name in point.std
                 },
                 marker=point.marker or _MARKER_CYCLE[index % len(_MARKER_CYCLE)],
                 color=point.color or "k",

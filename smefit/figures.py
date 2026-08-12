@@ -374,16 +374,23 @@ def _posterior_contours(
     return fig
 
 
+# The two actions below take no *parameter* annotations, unlike the private
+# core they wrap, and document their types in the docstring instead:
+# reportengine reads a provider's parameter annotations as runtime type checks
+# (`isinstance(value, annotation)` in `resourcebuilder.check_types`), and this
+# module's `from __future__ import annotations` makes each of them a string
+# that `isinstance` rejects outright — the run dies while the graph is built.
+# The return annotation is never inspected, so it stays.
 @figure
 def plot_fits_posterior_contours(
-    fits: Sequence[Fit],
-    params_to_plot: list[str] | str | None = None,
-    confidence_level: float | Sequence[float] = 95,
-    subplot_size: float = 4,
-    kde: bool | Mapping[str, bool] | None = None,
-    double_solution: list[str] | Mapping[str, list[str]] | None = None,
-    show_sm: bool = True,
-    show_best_fit: bool = False,
+    fits,
+    params_to_plot=None,
+    confidence_level=95,
+    subplot_size=4,
+    kde=None,
+    double_solution=None,
+    show_sm=True,
+    show_best_fit=False,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
 
@@ -441,22 +448,48 @@ def plot_fits_posterior_contours(
 
 @figure
 def plot_posterior_contours(
-    fit: Fit,
-    params_to_plot: list[str] | str | None = None,
-    confidence_level: float | Sequence[float] = 95,
-    subplot_size: float = 4,
-    kde: bool | Mapping[str, bool] | None = None,
-    double_solution: list[str] | Mapping[str, list[str]] | None = None,
-    show_sm: bool = True,
-    show_best_fit: bool = False,
+    fit,
+    params_to_plot=None,
+    confidence_level=95,
+    subplot_size=4,
+    kde=None,
+    double_solution=None,
+    show_sm=True,
+    show_best_fit=False,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
     one figure per fit — ``{@fits plot_posterior_contours@}``, or a ``with
     fits`` block, exactly like ``plot_posterior_correlations``. To overlay
-    the fits in one figure instead, use :func:`plot_fits_posterior_contours`,
-    which documents the parameters they share.
+    the fits in one figure instead, use :func:`plot_fits_posterior_contours`.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+    params_to_plot : list of str, optional
+        Restrict the panels to these coefficients, in this order. All the
+        fit's free coefficients by default; at least two must remain.
+    confidence_level : float or list of two floats, optional
+        Confidence level in percent, 95 by default. A list of two values
+        draws the first as a dashed outline and fills the second.
+    subplot_size : float, optional
+        Size in inches of a single panel.
+    kde : bool or dict, optional
+        Estimate the contours with a kernel density estimate instead of a
+        Gaussian ellipse. Defaults to the fit's ``use_quad``. A dict keyed by
+        fit name is accepted too, so a runcard can share one key between both
+        contour actions.
+    double_solution : list of str or dict, optional
+        Coefficients whose posterior has two disjoint modes, marked with one
+        best-fit point per mode (KDE mode only). Also accepts a dict keyed by
+        fit name.
+    show_sm : bool, optional
+        Mark the SM point at the origin, on by default.
+    show_best_fit : bool, optional
+        Mark the fit's best-fit point, off by default. A fit that does not
+        record one is marked at its posterior mean.
 
     Raises
     ------

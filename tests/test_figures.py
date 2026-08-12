@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from smefit import figures as figures_mod
+from smefit.core import ReferencePoint
 from smefit.figures import (
     _plot_heatmap,
     plot_fisher_diagonals_heatmap,
@@ -444,6 +445,51 @@ def test_contours_mark_the_sm_at_the_coefficient_baselines() -> None:
     ax = fig.axes[0]
     sm_marker = ax.collections[-1]
     assert sm_marker.get_offsets().tolist() == [[1.5, -2.0]]
+
+
+def test_contours_draw_the_runcard_reference_points_beside_the_sm() -> None:
+    """reference_points add to the SM marker rather than replacing it, each
+    with its own legend entry."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 2.0}),
+        ReferencePoint(label="$B$", values={"OpA": -2.0, "OpZZ": 1.0}),
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points
+    )
+
+    ax = fig.axes[0]
+    drawn = [c.get_offsets().tolist()[0] for c in ax.collections[-3:]]
+    assert drawn == [[0.0, 0.0], [2.0, 0.0], [-2.0, 1.0]]
+    legend_labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert legend_labels[-3:] == [r"$\mathrm{SM}$", "$A$", "$B$"]
+
+
+def test_contours_reference_point_replaces_the_sm_when_it_is_off() -> None:
+    """show_sm: False with one entry is how a runcard moves the marker."""
+    points = [ReferencePoint(label="$A$", values={"OpA": 2.0, "OpZZ": 1.0})]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=points,
+        show_sm=False,
+    )
+
+    ax = fig.axes[0]
+    assert ax.collections[-1].get_offsets().tolist() == [[2.0, 1.0]]
+    assert [t.get_text() for t in ax.get_legend().get_texts()][-1] == "$A$"
+
+
+def test_contours_keep_a_reference_point_inside_the_frame() -> None:
+    """Points stretch the axes exactly as the SM marker does."""
+    points = [ReferencePoint(label="$A$", values={"OpA": 14.0})]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points
+    )
+
+    assert fig.axes[0].get_xlim()[1] > 14.0
 
 
 def test_contours_keep_a_non_zero_sm_point_inside_the_frame() -> None:

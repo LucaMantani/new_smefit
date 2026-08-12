@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from smefit.core import ReferencePoint
 from smefit.fit_result import FitResult
 
 if TYPE_CHECKING:
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
     from smefit.fit_result import Fit
 
 log = logging.getLogger(__name__)
+
+# Markers handed out to points that do not choose one, the SM's "+" first.
+_MARKER_CYCLE = ("+", "x", "*", "s", "D")
 
 
 def _joint_results(fit: Fit) -> FitResult:
@@ -164,7 +168,7 @@ def coeff_limits(
     fits: Sequence[Fit],
     coeffs: Sequence[str],
     padding: float = 0.1,
-    include_points: Mapping[str, float] | None = None,
+    include_points: Sequence[Mapping[str, float]] | None = None,
 ) -> dict[str, tuple[float, float]]:
     """Axis limits per coefficient, shared by every fit and every panel.
 
@@ -183,11 +187,11 @@ def coeff_limits(
         Fraction of the sample range added on each side, so a contour does
         not touch the frame. A range of zero width is padded by 1 instead:
         a fraction of nothing would leave nothing to draw in.
-    include_points : mapping of str to float, optional
-        A point per coefficient the range must contain, whatever the samples
-        do — the SM marker, which :func:`baseline_point` locates, would
-        otherwise fall outside the frame of a coefficient sampled away from
-        it. Coefficients absent from the mapping keep their sample range.
+    include_points : sequence of mapping, optional
+        Points the range must contain, whatever the samples do — a marker
+        (the SM, a benchmark) would otherwise fall outside the frame of a
+        coefficient sampled away from it. Each point maps coefficient names to
+        values; coefficients no point names keep their sample range.
 
     Returns
     -------
@@ -206,9 +210,10 @@ def coeff_limits(
             [np.asarray(samples[name], dtype=float) for samples in per_fit_samples]
         )
         low, high = float(values.min()), float(values.max())
-        if include_points is not None and name in include_points:
-            point = float(include_points[name])
-            low, high = min(low, point), max(high, point)
+        for point in include_points or ():
+            if name in point:
+                low = min(low, float(point[name]))
+                high = max(high, float(point[name]))
         pad = padding * (high - low) if high > low else 1.0
         limits[name] = (low - pad, high + pad)
     return limits
@@ -305,6 +310,70 @@ def baseline_point(fits: Sequence[Fit], coeffs: Sequence[str]) -> dict[str, floa
             )
 
     return baselines
+
+
+def marker_points(
+    fits: Sequence[Fit],
+    coeffs: Sequence[str],
+    reference_points: Sequence[ReferencePoint] | None = None,
+    show_sm: bool = True,
+) -> list[ReferencePoint]:
+    """Every point to mark on the panels, with its coordinates filled in.
+
+    The SM comes first when ``show_sm`` is on, at the fits' baselines; the
+    runcard's ``reference_points`` follow, each falling back to those same
+    baselines for the coefficients it does not name. What comes back is one
+    :class:`ReferencePoint` per marker whose ``values`` covers every plotted
+    coefficient and whose ``marker``/``color`` are settled, so a caller can
+    scatter it without further defaulting.
+
+    Parameters
+    ----------
+    fits : sequence of Fit
+        The fits being plotted, which locate the baselines.
+    coeffs : sequence of str
+        The coefficients drawn, and so the coordinates each point needs.
+    reference_points : sequence of ReferencePoint, optional
+        The runcard's extra points, in the order they were written. They add
+        to the SM marker rather than replacing it — drop it with
+        ``show_sm: False`` to move it somewhere else.
+    show_sm : bool, optional
+        Whether the SM marker is drawn at all. On by default.
+
+    Returns
+    -------
+    list of ReferencePoint
+        The resolved points, in drawing and legend order.
+    """
+    baselines = baseline_point(fits, coeffs)
+
+    requested = [ReferencePoint(label=r"$\mathrm{SM}$")] if show_sm else []
+    requested.extend(reference_points or [])
+
+    resolved = []
+    for index, point in enumerate(requested):
+        unknown = [name for name in point.values if name not in baselines]
+        if unknown:
+            log.warning(
+                "Reference point %s gives a value for %s, which %s not among "
+                "the coefficients plotted (%s) — ignored.",
+                point.label,
+                ", ".join(unknown),
+                "is" if len(unknown) == 1 else "are",
+                ", ".join(coeffs),
+            )
+        resolved.append(
+            ReferencePoint(
+                label=point.label,
+                values={
+                    name: float(point.values.get(name, baselines[name]))
+                    for name in coeffs
+                },
+                marker=point.marker or _MARKER_CYCLE[index % len(_MARKER_CYCLE)],
+                color=point.color or "k",
+            )
+        )
+    return resolved
 
 
 def best_fit_pair(fit: Fit, coeff1: str, coeff2: str) -> tuple[float, float] | None:

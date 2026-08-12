@@ -61,12 +61,36 @@ show_best_fit: True
 # every fit; a dict keyed by fit name sets it per fit.
 # double_solution: [OpWB]
 
+# --- Marking points of coefficient space -------------------------------------
+#
+# The SM is marked in every panel, at each coefficient's `baseline_value` in the
+# runcard the fit was run with — the origin unless a coefficient was
+# parametrised around a non-zero SM value. `show_sm: False` drops it.
+#
+# `reference_points` marks further points beside it, each with its own legend
+# entry. `values` names only the coefficients that move: every other one keeps
+# its baseline, so an entry with no `values` marks the SM point again. `marker`
+# and `color` are optional — points are black by default, taking the markers
+# +, x, *, s, D in turn.
+# reference_points:
+#   - label: '$\mathrm{Benchmark\ A}$'
+#     values: {OpD: 0.1, OpWB: -0.02}
+#     marker: x
+#   - label: '$\mathrm{Benchmark\ B}$'
+#     values: {OpD: -0.1}
+#     color: firebrick
+#
+# To move the SM marker rather than add to it, turn it off and write it out:
+#   show_sm: False
+#   reference_points:
+#     - {label: '$\mathrm{SM}$', values: {OpD: 0.06}}
+
 # (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
 #     when both name the same parameter. Scalars only, see (1). Others worth
 #     knowing about:
 #
 #   subplot_size=4              size in inches of a single panel.
-#   show_sm=False               drop the SM marker at the origin.
+#   show_sm=False               drop the SM marker.
 #
 # `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
 # same name its files are given.

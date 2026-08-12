@@ -5,7 +5,7 @@ Core module of smefit, containing the main data classes for the framework.
 """
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
@@ -222,6 +222,34 @@ class Coefficient:
         fn = self._expr_fn
 
         return fn(*args)
+
+
+@dataclass(frozen=True)
+class ReferencePoint:
+    """A point in coefficient space, to be marked on a figure.
+
+    Built by ``parse_reference_point`` from one entry of the ``reference_points``
+    runcard key, and resolved against the fits' baselines before it is drawn:
+    the coefficients ``values`` does not name keep their ``baseline_value``, so
+    an entry marks a benchmark by naming only what moves.
+
+    Attributes
+    ----------
+    label : str
+        Legend entry, passed to matplotlib verbatim, so it may be raw LaTeX.
+    values : Mapping[str, float]
+        Coordinates by coefficient name. Coefficients left out fall back to
+        their baseline; coefficients not plotted are ignored.
+    marker : str, optional
+        Matplotlib marker. None takes the next one of the figure's cycle.
+    color : str, optional
+        Matplotlib colour. None is black, as the SM marker has always been.
+    """
+
+    label: str
+    values: Mapping[str, float] = field(default_factory=dict)
+    marker: Optional[str] = None
+    color: Optional[str] = None
 
 
 class DataGroup:

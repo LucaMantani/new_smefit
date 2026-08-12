@@ -19,10 +19,10 @@ from smefit.contours_2d import fit_colors, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import (
-    baseline_point,
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
+    marker_points,
     per_fit_option,
     select_params,
 )
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from matplotlib.figure import Figure
 
+    from smefit.core import ReferencePoint
     from smefit.fit_result import Fit
 
 log = logging.getLogger(__name__)
@@ -244,6 +245,7 @@ def _posterior_contours(
     double_solution: list[str] | Mapping[str, list[str]] | None = None,
     show_sm: bool = True,
     show_best_fit: bool = False,
+    reference_points: Sequence[ReferencePoint] | None = None,
 ) -> Figure:
     """Draw the pairwise 2D confidence contours of *fits* in one figure.
 
@@ -291,10 +293,11 @@ def _posterior_contours(
     colors = fit_colors(len(fits))
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
     double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
-    # the SM is not always the origin: a coefficient can be parametrised so
-    # that its baseline_value sits elsewhere, and that is where the marker goes
-    baselines = baseline_point(fits, coeffs) if show_sm else None
-    limits = coeff_limits(fits, coeffs, include_points=baselines)
+    # the SM is not always the origin — a coefficient can be parametrised so
+    # that its baseline_value sits elsewhere — and a runcard can ask for
+    # further points beside it; every one of them has to stay in frame
+    points = marker_points(fits, coeffs, reference_points, show_sm)
+    limits = coeff_limits(fits, coeffs, include_points=[p.values for p in points])
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
@@ -325,11 +328,15 @@ def _posterior_contours(
                     best_fit=best_fit_pair(fit, c1, c2),
                 )
             )
-        if show_sm:
-            assert baselines is not None  # set together with show_sm
+        for point in points:
             handles.append(
                 ax.scatter(
-                    baselines[c1], baselines[c2], c="k", marker="+", s=50, zorder=10
+                    point.values[c1],
+                    point.values[c2],
+                    c=point.color,
+                    marker=point.marker,
+                    s=50,
+                    zorder=10,
                 )
             )
 
@@ -357,8 +364,7 @@ def _posterior_contours(
         ax.axis("off")
 
     legend_labels = [fit.plot_label for fit in fits]
-    if show_sm:
-        legend_labels.append(r"$\mathrm{SM}$")
+    legend_labels.extend(point.label for point in points)
 
     ax.legend(
         labels=legend_labels,
@@ -400,6 +406,7 @@ def plot_fits_posterior_contours(
     double_solution=None,
     show_sm=True,
     show_best_fit=False,
+    reference_points=None,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
 
@@ -437,6 +444,11 @@ def plot_fits_posterior_contours(
     show_best_fit : bool, optional
         Mark the best-fit point of every fit, off by default. Fits that do
         not record one are marked at their posterior means.
+    reference_points : list of ReferencePoint, optional
+        Further points of coefficient space to mark, from the runcard's
+        ``reference_points`` key. They come in addition to the SM marker, and
+        each falls back to the baselines for the coefficients its ``values``
+        does not name.
 
     Raises
     ------
@@ -454,6 +466,7 @@ def plot_fits_posterior_contours(
         double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
+        reference_points=reference_points,
     )
 
 
@@ -467,6 +480,7 @@ def plot_posterior_contours(
     double_solution=None,
     show_sm=True,
     show_best_fit=False,
+    reference_points=None,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
 
@@ -503,6 +517,9 @@ def plot_posterior_contours(
     show_best_fit : bool, optional
         Mark the fit's best-fit point, off by default. A fit that does not
         record one is marked at its posterior mean.
+    reference_points : list of ReferencePoint, optional
+        Further points of coefficient space to mark, from the runcard's
+        ``reference_points`` key, in addition to the SM marker.
 
     Raises
     ------
@@ -519,4 +536,5 @@ def plot_posterior_contours(
         double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
+        reference_points=reference_points,
     )

@@ -189,9 +189,21 @@ def kde_grid(
     -------
     tuple(np.ndarray, np.ndarray, np.ndarray)
         ``(xx, yy, density)``, each of shape ``(gridsize, gridsize)``.
+
+    Raises
+    ------
+    ValueError
+        If the two samples are not the same size, so they cannot be the
+        coordinates of one set of posterior draws.
     """
     x_values = np.asarray(x_values, dtype=float)
     y_values = np.asarray(y_values, dtype=float)
+
+    # checked before thinning: a common stride can erase a small difference in
+    # length (6000 and 5999 samples both thin to 3000), and the estimate would
+    # then silently pair up samples from different posterior draws
+    if x_values.size != y_values.size:
+        raise ValueError("x_values and y_values must be the same size")
 
     if max_samples is not None and x_values.size > max_samples:
         stride = int(np.ceil(x_values.size / max_samples))

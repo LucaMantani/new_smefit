@@ -219,6 +219,18 @@ def test_kde_grid_thins_large_posteriors(gaussian_samples: SamplePair) -> None:
     np.testing.assert_allclose(capped[2], thinned[2])
 
 
+def test_kde_grid_rejects_mismatched_sizes() -> None:
+    """Two samples of different length are not the coordinates of one set of
+    draws. Thinning is what makes this worth checking rather than leaving to
+    numpy: a common stride erases a difference of one (2001 and 2000 samples
+    both thin to 1000), and the estimate would silently pair up samples from
+    different draws."""
+    rng = np.random.default_rng(4)
+
+    with pytest.raises(ValueError, match="same size"):
+        kde_grid(rng.normal(size=2001), rng.normal(size=2000), max_samples=1000)
+
+
 def test_kde_grid_leaves_small_posteriors_untouched() -> None:
     rng = np.random.default_rng(3)
     x_values, y_values = rng.multivariate_normal([0, 0], np.eye(2), size=100).T

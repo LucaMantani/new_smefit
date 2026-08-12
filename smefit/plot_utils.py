@@ -18,7 +18,7 @@ import numpy as np
 from smefit.fit_result import FitResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from smefit.fit_result import Fit
 
@@ -164,7 +164,7 @@ def coeff_limits(
     fits: Sequence[Fit],
     coeffs: Sequence[str],
     padding: float = 0.1,
-    include_sm: bool = True,
+    include_points: Mapping[str, float] | None = None,
 ) -> dict[str, tuple[float, float]]:
     """Axis limits per coefficient, shared by every fit and every panel.
 
@@ -183,9 +183,11 @@ def coeff_limits(
         Fraction of the sample range added on each side, so a contour does
         not touch the frame. A range of zero width is padded by 1 instead:
         a fraction of nothing would leave nothing to draw in.
-    include_sm : bool, optional
-        Whether to stretch the range to include zero, keeping the SM marker
-        inside the frame. On by default.
+    include_points : mapping of str to float, optional
+        A point per coefficient the range must contain, whatever the samples
+        do — the SM marker, which :func:`baseline_point` locates, would
+        otherwise fall outside the frame of a coefficient sampled away from
+        it. Coefficients absent from the mapping keep their sample range.
 
     Returns
     -------
@@ -204,8 +206,9 @@ def coeff_limits(
             [np.asarray(samples[name], dtype=float) for samples in per_fit_samples]
         )
         low, high = float(values.min()), float(values.max())
-        if include_sm:
-            low, high = min(low, 0.0), max(high, 0.0)
+        if include_points is not None and name in include_points:
+            point = float(include_points[name])
+            low, high = min(low, point), max(high, point)
         pad = padding * (high - low) if high > low else 1.0
         limits[name] = (low - pad, high + pad)
     return limits
@@ -246,6 +249,62 @@ def per_fit_option(
             )
         return [option.get(name, default) for name, default in zip(names, defaults)]
     return [option for _ in fits]
+
+
+def _baseline_value(fit: Fit, coeff: str) -> float:
+    """``baseline_value`` of one coefficient in the runcard *fit* was run with.
+
+    Zero when the runcard leaves it out, which is both the runcard default and
+    what a coefficient means when the SM sits at the origin of its own
+    parametrisation.
+    """
+    entry = fit.setting("coefficients", {}).get(coeff) or {}
+    return float(entry.get("baseline_value", 0.0))
+
+
+def baseline_point(fits: Sequence[Fit], coeffs: Sequence[str]) -> dict[str, float]:
+    """Where the SM sits for each of *coeffs*, as the fits were configured.
+
+    A coefficient's ``baseline_value`` is the SM point of its parametrisation,
+    zero unless the runcard moved it. It is read back from the runcard the fit
+    was run with (``input/runcard.yaml``, kept as ``Fit.fit_runcard``), since
+    ``fit_results.json`` does not carry it.
+
+    Parameters
+    ----------
+    fits : sequence of Fit
+        The fits being plotted. The first one fixes the point: the panels
+        overlay every fit against a single SM marker, so a fit that declares a
+        different baseline for the same coefficient is warned about, then
+        ignored.
+    coeffs : sequence of str
+        The coefficients to look up.
+
+    Returns
+    -------
+    dict of str to float
+        The SM value per coefficient, 0.0 where no baseline was set.
+    """
+    per_fit = [{name: _baseline_value(fit, name) for name in coeffs} for fit in fits]
+    baselines = per_fit[0]
+
+    for name, value in baselines.items():
+        disagreeing = [
+            fit.fit_name
+            for fit, values in zip(fits[1:], per_fit[1:])
+            if values[name] != value
+        ]
+        if disagreeing:
+            log.warning(
+                "Fits disagree on the SM point of %s: %s puts it at %g, %s "
+                "elsewhere. Drawing the first.",
+                name,
+                fits[0].fit_name,
+                value,
+                ", ".join(disagreeing),
+            )
+
+    return baselines
 
 
 def best_fit_pair(fit: Fit, coeff1: str, coeff2: str) -> tuple[float, float] | None:

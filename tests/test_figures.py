@@ -193,6 +193,7 @@ def _fit(
     fit_name="my_fit",
     action="run_analytic_fit",
     use_quad=False,
+    baselines=None,
 ):
     """A joint fit holding the given posterior samples.
 
@@ -211,7 +212,20 @@ def _fit(
         ),
         fit_name=fit_name,
         label=label,
-        fit_runcard={"actions_": [action], "use_quad": use_quad},
+        fit_runcard={
+            "actions_": [action],
+            "use_quad": use_quad,
+            **(
+                {
+                    "coefficients": {
+                        name: {"free": True, "baseline_value": value}
+                        for name, value in baselines.items()
+                    }
+                }
+                if baselines is not None
+                else {}
+            ),
+        },
     )
 
 
@@ -418,6 +432,29 @@ def test_contours_overlay_every_fit_in_one_panel() -> None:
     ax = fig.axes[0]
     assert len(ax.patches) == 4
     assert len(ax.collections) == 1  # the SM marker
+
+
+def test_contours_mark_the_sm_at_the_coefficient_baselines() -> None:
+    """The SM is not always the origin: a coefficient parametrised around a
+    non-zero baseline_value must be marked where that puts it."""
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians(), baselines={"OpA": 1.5, "OpZZ": -2.0})]
+    )
+
+    ax = fig.axes[0]
+    sm_marker = ax.collections[-1]
+    assert sm_marker.get_offsets().tolist() == [[1.5, -2.0]]
+
+
+def test_contours_keep_a_non_zero_sm_point_inside_the_frame() -> None:
+    """Stretching the axes to the marker is what makes it visible: these
+    samples sit nowhere near the baseline."""
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians(), baselines={"OpA": 12.0})]
+    )
+
+    ax = fig.axes[0]
+    assert ax.get_xlim()[1] > 12.0
 
 
 def test_contours_three_coefficients_form_the_lower_triangle() -> None:

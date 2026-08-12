@@ -10,6 +10,7 @@ import pytest
 
 from smefit.fit_result import Fit, FitResult
 from smefit.plot_utils import (
+    baseline_point,
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
@@ -82,9 +83,17 @@ def make_fit(
     samples: dict[str, list[float]],
     free: list[str],
     best: dict[str, float] | None = None,
+    baselines: dict[str, float] | None = None,
 ) -> Fit:
     """A Fit as the contour helpers see one: joint samples, a name, maybe a
-    best-fit point."""
+    best-fit point, and the coefficients block of the runcard it was run with
+    when a coefficient's baseline is not the origin."""
+    runcard: dict = {}
+    if baselines is not None:
+        runcard["coefficients"] = {
+            coeff: {"free": True, "baseline_value": value}
+            for coeff, value in baselines.items()
+        }
     return Fit(
         fit_results=FitResult(
             free_parameters=free,
@@ -94,6 +103,7 @@ def make_fit(
             samples={key: jnp.array(vals) for key, vals in samples.items()},
         ),
         fit_name=name,
+        fit_runcard=runcard,
     )
 
 
@@ -191,22 +201,36 @@ def test_common_free_coefficients_rejects_disjoint_fits(fit_pair: list[Fit]) -> 
 def test_coeff_limits_pool_the_samples_of_every_fit(fit_pair: list[Fit]) -> None:
     """A coefficient spans the same range in every panel it appears in, so
     the limits cover both fits' samples."""
-    limits = coeff_limits(fit_pair, ["OtG"], include_sm=False)
+    limits = coeff_limits(fit_pair, ["OtG"])
 
     low, high = limits["OtG"]
     assert low == pytest.approx(-0.1 - 0.1 * 0.4)
     assert high == pytest.approx(0.3 + 0.1 * 0.4)
 
 
-def test_coeff_limits_include_the_sm_point_by_default(fit_pair: list[Fit]) -> None:
-    """OpQM is sampled strictly positive; the frame still shows the origin."""
-    low, high = coeff_limits(fit_pair, ["OpQM"])["OpQM"]
+def test_coeff_limits_stretch_to_an_included_point(fit_pair: list[Fit]) -> None:
+    """OpQM is sampled strictly positive, so the SM marker at the origin would
+    fall outside a frame drawn from the samples alone."""
+    low, high = coeff_limits(fit_pair, ["OpQM"], include_points={"OpQM": 0.0})["OpQM"]
 
     assert low < 0.0 < high
 
 
-def test_coeff_limits_without_sm_keep_the_sample_range(fit_pair: list[Fit]) -> None:
-    low, _ = coeff_limits(fit_pair, ["OpQM"], include_sm=False)["OpQM"]
+def test_coeff_limits_stretch_to_a_non_zero_included_point(
+    fit_pair: list[Fit],
+) -> None:
+    """The point is not always the origin: a coefficient whose SM sits away
+    from zero must still be inside the frame."""
+    low, high = coeff_limits(fit_pair, ["OtG"], include_points={"OtG": 5.0})["OtG"]
+
+    assert high > 5.0
+    assert low == pytest.approx(-0.1 - 0.1 * (5.0 + 0.1))
+
+
+def test_coeff_limits_without_a_point_keep_the_sample_range(
+    fit_pair: list[Fit],
+) -> None:
+    low, _ = coeff_limits(fit_pair, ["OpQM"])["OpQM"]
 
     assert low > 0.0
 
@@ -215,13 +239,13 @@ def test_coeff_limits_pad_a_zero_width_range_by_one() -> None:
     """A fraction of a zero-wide range would leave nothing to draw in."""
     flat = make_fit("flat", {"OtG": [2.0, 2.0]}, ["OtG"])
 
-    assert coeff_limits([flat], ["OtG"], include_sm=False)["OtG"] == (1.0, 3.0)
+    assert coeff_limits([flat], ["OtG"])["OtG"] == (1.0, 3.0)
 
 
 def test_coeff_limits_padding_is_a_fraction_of_the_range() -> None:
     fit = make_fit("fit", {"OtG": [0.0, 1.0]}, ["OtG"])
 
-    low, high = coeff_limits([fit], ["OtG"], padding=0.5, include_sm=False)["OtG"]
+    low, high = coeff_limits([fit], ["OtG"], padding=0.5)["OtG"]
 
     assert (low, high) == pytest.approx((-0.5, 1.5))
 
@@ -258,6 +282,45 @@ def test_per_fit_option_warns_about_unknown_fit_names(
 
     assert resolved == [False, False]
     assert "fit_typo" in caplog.text
+
+
+# --- baseline_point ---------------------------------------------------------
+
+
+def test_baseline_point_is_the_origin_without_a_baseline(fit_pair: list[Fit]) -> None:
+    """A runcard that never mentions baseline_value puts the SM at zero, which
+    is where the marker has always been drawn."""
+    assert baseline_point(fit_pair, ["OtG", "OpQM"]) == {"OtG": 0.0, "OpQM": 0.0}
+
+
+def test_baseline_point_reads_baseline_value_from_the_runcard() -> None:
+    """A coefficient parametrised around a non-zero SM value carries it in the
+    runcard the fit was run with, not in fit_results.json."""
+    fit = make_fit(
+        "fit",
+        {"OtG": [0.1, 0.2], "OpQM": [1.0, 2.0]},
+        ["OtG", "OpQM"],
+        baselines={"OtG": 1.5},
+    )
+
+    assert baseline_point([fit], ["OtG", "OpQM"]) == {"OtG": 1.5, "OpQM": 0.0}
+
+
+def test_baseline_point_takes_the_first_fit_and_warns_on_disagreement(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One marker is drawn for every fit overlaid, so a second baseline cannot
+    be honoured — but it must not pass unnoticed either."""
+    samples = {"OtG": [0.1, 0.2], "OpQM": [1.0, 2.0]}
+    first = make_fit("fit_a", samples, ["OtG", "OpQM"], baselines={"OtG": 1.5})
+    second = make_fit("fit_b", samples, ["OtG", "OpQM"], baselines={"OtG": -2.0})
+
+    with caplog.at_level(logging.WARNING):
+        baselines = baseline_point([first, second], ["OtG", "OpQM"])
+
+    assert baselines == {"OtG": 1.5, "OpQM": 0.0}
+    assert "OtG" in caplog.text
+    assert "fit_b" in caplog.text
 
 
 # --- best_fit_pair ----------------------------------------------------------

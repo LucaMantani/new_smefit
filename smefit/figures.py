@@ -19,6 +19,7 @@ from smefit.contours_2d import fit_colors, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import (
+    baseline_point,
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
@@ -290,7 +291,10 @@ def _posterior_contours(
     colors = fit_colors(len(fits))
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
     double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
-    limits = coeff_limits(fits, coeffs, include_sm=show_sm)
+    # the SM is not always the origin: a coefficient can be parametrised so
+    # that its baseline_value sits elsewhere, and that is where the marker goes
+    baselines = baseline_point(fits, coeffs) if show_sm else None
+    limits = coeff_limits(fits, coeffs, include_points=baselines)
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
@@ -322,7 +326,12 @@ def _posterior_contours(
                 )
             )
         if show_sm:
-            handles.append(ax.scatter(0, 0, c="k", marker="+", s=50, zorder=10))
+            assert baselines is not None  # set together with show_sm
+            handles.append(
+                ax.scatter(
+                    baselines[c1], baselines[c2], c="k", marker="+", s=50, zorder=10
+                )
+            )
 
         ax.set_xlim(*limits[c1])
         ax.set_ylim(*limits[c2])
@@ -422,7 +431,9 @@ def plot_fits_posterior_contours(
         best-fit point per mode (KDE mode only). A dict keyed by fit name
         sets it per fit.
     show_sm : bool, optional
-        Mark the SM point at the origin, on by default.
+        Mark the SM point, on by default. It sits at each coefficient's
+        ``baseline_value`` in the runcard the fit was run with — the origin
+        unless a coefficient was parametrised around a non-zero SM value.
     show_best_fit : bool, optional
         Mark the best-fit point of every fit, off by default. Fits that do
         not record one are marked at their posterior means.
@@ -486,7 +497,9 @@ def plot_posterior_contours(
         best-fit point per mode (KDE mode only). Also accepts a dict keyed by
         fit name.
     show_sm : bool, optional
-        Mark the SM point at the origin, on by default.
+        Mark the SM point, on by default. It sits at each coefficient's
+        ``baseline_value`` in the runcard the fit was run with — the origin
+        unless a coefficient was parametrised around a non-zero SM value.
     show_best_fit : bool, optional
         Mark the fit's best-fit point, off by default. A fit that does not
         record one is marked at its posterior mean.

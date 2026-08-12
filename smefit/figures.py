@@ -351,21 +351,19 @@ def _posterior_contours(
                 )
             )
         for point in points:
-            handles.append(
-                ax.scatter(
-                    point.values[c1],
-                    point.values[c2],
-                    c=point.color,
-                    marker=point.marker,
-                    s=50,
-                    zorder=10,
-                )
+            marker = ax.scatter(
+                point.values[c1],
+                point.values[c2],
+                c=point.color,
+                marker=point.marker,
+                s=50,
+                zorder=10,
             )
             # both coefficients of this panel have to be known for the point to
             # describe an ellipse on it; one std alone describes a band, which
             # is not what was asked for
             if c1 in point.std and c2 in point.std:
-                plot_uncorrelated_contours(
+                contour = plot_uncorrelated_contours(
                     ax,
                     center=(point.values[c1], point.values[c2]),
                     std=(point.std[c1], point.std[c2]),
@@ -373,6 +371,13 @@ def _posterior_contours(
                     confidence_level=cl,
                     dashed_confidence_level=dashed_cl,
                 )
+                # a tuple handle is drawn as its artists overlaid, so the
+                # legend key becomes the filled patch of the fits with this
+                # point's marker in the middle. A point without a contour keeps
+                # the bare marker: there is no filled region to advertise.
+                handles.append((*contour, marker))
+            else:
+                handles.append(marker)
 
         ax.set_xlim(*limits[c1])
         ax.set_ylim(*limits[c2])
@@ -409,6 +414,9 @@ def _posterior_contours(
         borderpad=0.5,
         handletextpad=1,
         title_fontsize=24,
+        # matplotlib puts a single scatter key at 3/8 of the key height, which
+        # reads as off-centre once the marker sits on top of a filled patch
+        scatteryoffsets=[0.5],
     )
     ax.text(
         0.05,

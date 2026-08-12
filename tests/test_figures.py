@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
+from matplotlib.patches import Rectangle
 
 from smefit import figures as figures_mod
 from smefit.core import ReferencePoint
@@ -502,6 +504,58 @@ def test_contours_draw_an_ellipse_when_both_coefficients_have_a_std() -> None:
     assert fill.get_width() > fill.get_height()  # 0.4 against 0.2
     assert fill.get_alpha() == pytest.approx(0.3)
     assert outline.get_facecolor()[3] == 0.0
+
+
+def test_contours_legend_key_of_a_point_with_a_contour_is_a_filled_patch() -> None:
+    """A point that draws a contour is legended like the fits — a filled patch
+    — with its own marker in the middle, rather than by a bare marker."""
+    values = {"OpA": 1.0, "OpZZ": 0.0}
+    keyed = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[
+            ReferencePoint(label="$A$", values=values, std={"OpA": 0.4, "OpZZ": 0.2})
+        ],
+        show_sm=False,
+    )
+    bare = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[ReferencePoint(label="$A$", values=values)],
+        show_sm=False,
+    )
+
+    keyed_legend = keyed.axes[-1].get_legend()
+    bare_legend = bare.axes[-1].get_legend()
+    # the outline and the fill the fits' keys are made of, on top of what the
+    # bare marker key already draws
+    assert (
+        len(keyed_legend.findobj(Rectangle)) == len(bare_legend.findobj(Rectangle)) + 2
+    )
+    # and the marker itself survives, drawn over them
+    assert len(keyed_legend.findobj(PathCollection)) == 1
+
+
+def test_contours_legend_marker_sits_at_the_centre_of_its_key() -> None:
+    """Overlaid on a patch, a marker placed anywhere but the middle reads as a
+    mistake — and matplotlib's default for a single scatter key is 3/8 up."""
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[
+            ReferencePoint(
+                label="$A$", values={"OpA": 1.0}, std={"OpA": 0.4, "OpZZ": 0.2}
+            )
+        ],
+        show_sm=False,
+    )
+    fig.canvas.draw()  # the key artists are positioned at draw time
+
+    legend = fig.axes[-1].get_legend()
+    key = [r for r in legend.findobj(Rectangle) if r.get_width() > 0][-1]
+    marker = legend.findobj(PathCollection)[0]
+
+    box = key.get_window_extent()
+    position = marker.get_offset_transform().transform(marker.get_offsets())[0]
+    assert position[0] == pytest.approx((box.x0 + box.x1) / 2, abs=0.5)
+    assert position[1] == pytest.approx((box.y0 + box.y1) / 2, abs=0.5)
 
 
 def test_contours_skip_the_ellipse_when_a_std_is_missing() -> None:

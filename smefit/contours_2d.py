@@ -67,7 +67,7 @@ def split_solution(full_solution: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
     max_val = full_solution.max()
     mid = np.mean([max_val, min_val])
 
-    solution1 = full_solution[full_solution < mid]
+    solution1 = full_solution[full_solution <= mid]
     solution2 = full_solution[full_solution > mid]
 
     if solution1.size == 0 or solution2.size == 0:

@@ -287,8 +287,10 @@ def plot_contours(
     ----------
     ax : matplotlib.axes.Axes
         Axes object to plot on.
-    posterior : pandas.DataFrame
-        Posterior samples, one column per coefficient.
+    posterior : mapping of str to array_like
+        Posterior samples, keyed by coefficient name —
+        :attr:`FitResult.samples` as it comes. A ``pandas.DataFrame`` works
+        too, since it maps a column name to its values the same way.
     coeff1 : str
         Name of the coefficient on the x-axis.
     coeff2 : str
@@ -320,8 +322,8 @@ def plot_contours(
     """
     double_solution = double_solution or []
 
-    x_values = posterior[coeff1].values
-    y_values = posterior[coeff2].values
+    x_values = np.asarray(posterior[coeff1], dtype=float)
+    y_values = np.asarray(posterior[coeff2], dtype=float)
 
     if kde:
         solution1x = solution2x = x_values

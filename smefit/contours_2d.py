@@ -394,15 +394,23 @@ def plot_contours(
         if show_best_fit:
             split = coeff1 in double_solution or coeff2 in double_solution
             if best_fit is not None and not split:
-                ax.scatter(*best_fit, c=color, s=50, marker="o")
+                ax.scatter(*best_fit, color=color, s=50, marker="o")
             else:
                 # one marker per solution: a single best-fit value cannot
                 # represent two disjoint modes
                 ax.scatter(
-                    np.mean(solution1x), np.mean(solution1y), c=color, s=50, marker="o"
+                    np.mean(solution1x),
+                    np.mean(solution1y),
+                    color=color,
+                    s=50,
+                    marker="o",
                 )
                 ax.scatter(
-                    np.mean(solution2x), np.mean(solution2y), c=color, s=50, marker="o"
+                    np.mean(solution2x),
+                    np.mean(solution2y),
+                    color=color,
+                    s=50,
+                    marker="o",
                 )
 
         hndls = (
@@ -444,7 +452,7 @@ def plot_contours(
                 if best_fit is not None
                 else (np.mean(x_values), np.mean(y_values))
             )
-            ax.scatter(*point, c=color, s=50, marker="o")
+            ax.scatter(*point, color=color, s=50, marker="o")
 
         hndls = (p1, p2)
 

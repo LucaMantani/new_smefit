@@ -164,7 +164,7 @@ def confidence_ellipse(
 def kde_grid(
     x_values: ArrayLike,
     y_values: ArrayLike,
-    bw_adjust: float = 1.2,
+    bw_adjust: float = 1.5,
     gridsize: int = _KDE_GRIDSIZE,
     max_samples: int | None = _KDE_MAX_SAMPLES,
 ) -> KDEGrid:
@@ -175,8 +175,9 @@ def kde_grid(
     x_values, y_values : array_like
         ``(N,)`` posterior samples.
     bw_adjust : float, optional
-        Multiplicative factor applied to Scott's bandwidth, 1.2 by default
-        (the value used by the old smefit report code).
+        Multiplicative factor applied to Scott's bandwidth, 1.5 by default.
+        Larger values smooth the density further, at the risk of washing out
+        genuine structure such as a shallow second mode.
     gridsize : int, optional
         Number of grid points per axis.
     max_samples : int, optional
@@ -258,7 +259,7 @@ def kde_contour(
     color: ColorType,
     confidence_level: float = 95,
     fill: bool = False,
-    bw_adjust: float = 1.2,
+    bw_adjust: float = 1.5,
     grid: KDEGrid | None = None,
     **kwargs: Any,
 ) -> QuadContourSet:
@@ -277,7 +278,8 @@ def kde_contour(
     fill : bool, optional
         If True the enclosed region is filled instead of outlined.
     bw_adjust : float, optional
-        Bandwidth adjustment factor passed to :func:`kde_grid`.
+        Bandwidth adjustment factor passed to :func:`kde_grid`, 1.5 by
+        default, as there. Ignored when ``grid`` is given.
     grid : tuple, optional
         Pre-computed ``(xx, yy, density)`` from :func:`kde_grid`. Evaluating
         the KDE is by far the most expensive step, so pass it whenever several

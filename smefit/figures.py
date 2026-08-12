@@ -301,8 +301,12 @@ def _posterior_contours(
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
-    fig = plt.figure(figsize=(n_cells * subplot_size, n_cells * subplot_size))
-    grid = plt.GridSpec(n_cells, n_cells, hspace=0.1, wspace=0.1)
+    # the legend lives in a cell of its own, which the lower triangle leaves
+    # free from three coefficients on; two coefficients fill their only cell,
+    # so the grid gains the column the legend would otherwise be drawn over
+    n_cols = max(n_cells, 2)
+    fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
+    grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
 
     # Every panel draws the same fits in the same colours, so the handles of
     # any one panel serve as the legend's; the last panel's are kept.
@@ -357,11 +361,10 @@ def _posterior_contours(
         else:
             ax.tick_params(axis="y", which="both", labelleft=False)
 
-    # legend: in the free upper-right corner when there is one, else in the
-    # single panel of a two-coefficient figure
-    if n_par > 2:
-        ax = fig.add_subplot(grid[0, 1:])
-        ax.axis("off")
+    # the legend, and the confidence level it is read with, go in the free
+    # upper-right corner — never over a panel, whatever the figure's size
+    ax = fig.add_subplot(grid[0, 1:])
+    ax.axis("off")
 
     legend_labels = [fit.plot_label for fit in fits]
     legend_labels.extend(point.label for point in points)
@@ -369,7 +372,7 @@ def _posterior_contours(
     ax.legend(
         labels=legend_labels,
         handles=handles,
-        loc="lower left" if n_par > 2 else "best",
+        loc="lower left",
         frameon=False,
         fontsize=20,
         handlelength=1,

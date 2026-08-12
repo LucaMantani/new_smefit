@@ -426,10 +426,10 @@ def _two_coeff_gaussians() -> dict[str, list[float]]:
 
 def test_contours_overlay_every_fit_in_one_panel() -> None:
     """Two fits and two coefficients: one panel holding both fits' ellipses
-    (two patches each) and the SM marker."""
+    (two patches each) and the SM marker, beside the legend's own cell."""
     fig = plot_fits_posterior_contours([_fit(fit_name="fit_a"), _fit(fit_name="fit_b")])
 
-    assert len(fig.axes) == 1
+    assert len(fig.axes) == 2  # the panel and the legend cell
     ax = fig.axes[0]
     assert len(ax.patches) == 4
     assert len(ax.collections) == 1  # the SM marker
@@ -462,7 +462,7 @@ def test_contours_draw_the_runcard_reference_points_beside_the_sm() -> None:
     ax = fig.axes[0]
     drawn = [c.get_offsets().tolist()[0] for c in ax.collections[-3:]]
     assert drawn == [[0.0, 0.0], [2.0, 0.0], [-2.0, 1.0]]
-    legend_labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    legend_labels = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
     assert legend_labels[-3:] == [r"$\mathrm{SM}$", "$A$", "$B$"]
 
 
@@ -476,9 +476,9 @@ def test_contours_reference_point_replaces_the_sm_when_it_is_off() -> None:
         show_sm=False,
     )
 
-    ax = fig.axes[0]
-    assert ax.collections[-1].get_offsets().tolist() == [[2.0, 1.0]]
-    assert [t.get_text() for t in ax.get_legend().get_texts()][-1] == "$A$"
+    assert fig.axes[0].collections[-1].get_offsets().tolist() == [[2.0, 1.0]]
+    legend_labels = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
+    assert legend_labels[-1] == "$A$"
 
 
 def test_contours_keep_a_reference_point_inside_the_frame() -> None:
@@ -522,7 +522,7 @@ def test_contours_per_fit_action_draws_a_single_fit() -> None:
     """The per-fit action wraps one fit: same figure, one fit's contours."""
     fig = plot_posterior_contours(_fit())
 
-    assert len(fig.axes) == 1
+    assert len(fig.axes) == 2  # the panel and the legend cell
     assert len(fig.axes[0].patches) == 2
 
 
@@ -532,7 +532,7 @@ def test_contours_restrict_to_params_to_plot() -> None:
 
     fig = plot_fits_posterior_contours(fits, params_to_plot=["OpC", "OpA"])
 
-    assert len(fig.axes) == 1
+    assert len(fig.axes) == 2  # the panel and the legend cell
     assert fig.axes[0].get_xlabel()  # OpC, the first requested, is the x-axis
 
 
@@ -579,7 +579,7 @@ def test_contours_legend_names_every_fit_and_the_sm() -> None:
 
     fig = plot_fits_posterior_contours(fits)
 
-    legend = fig.axes[0].get_legend()
+    legend = fig.axes[-1].get_legend()
     texts = [t.get_text() for t in legend.get_texts()]
     assert texts == [r"$\mathrm{Analytic}$", "fit_b", r"$\mathrm{SM}$"]
 
@@ -587,10 +587,22 @@ def test_contours_legend_names_every_fit_and_the_sm() -> None:
 def test_contours_without_sm_show_neither_marker_nor_legend_entry() -> None:
     fig = plot_fits_posterior_contours([_fit()], show_sm=False)
 
-    ax = fig.axes[0]
-    assert len(ax.collections) == 0
-    texts = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert len(fig.axes[0].collections) == 0
+    texts = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
     assert r"$\mathrm{SM}$" not in texts
+
+
+def test_contours_keep_the_legend_off_the_panels() -> None:
+    """Two coefficients fill their only grid cell, so the legend gets a column
+    of its own instead of being drawn over the contours, as it does in the
+    upper-right corner a larger figure leaves free."""
+    fig = plot_fits_posterior_contours([_fit()])
+
+    panel, legend_cell = fig.axes
+    assert panel.get_legend() is None
+    assert legend_cell.get_legend() is not None
+    assert not legend_cell.axison  # it carries the legend, not a plot
+    assert legend_cell.get_position().x0 >= panel.get_position().x1
 
 
 def test_contours_state_the_confidence_level() -> None:

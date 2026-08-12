@@ -1,0 +1,82 @@
+# Pairwise 2D marginalised confidence contours of fits that have already been
+# run: no fit is run here, the posterior samples are read back from each fit's
+# fit_results.json. The panels are the lower triangle of the coefficient
+# matrix, one panel per pair of coefficients.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# --- The two contour actions -------------------------------------------------
+#
+# They differ only in how many fits reportengine hands them, which its
+# parameter name fixes:
+#
+#   plot_fits_posterior_contours  takes the whole `fits` list -> one figure with
+#                                 every fit overlaid; called bare.
+#   plot_posterior_contours       takes one fit -> one figure per fit; called
+#                                 under `with fits` (or as
+#                                 `{@fits plot_posterior_contours@}`).
+#
+# Both read the same `fits` key above, so one runcard mixes them freely.
+
+# --- Configuring a figure ----------------------------------------------------
+#
+# There is no settings block for how a figure looks, and none is needed: an
+# action's keyword parameters are resolved by reportengine like any other
+# resource, so a runcard sets them directly. Two routes, both used below.
+#
+# (1) A TOP-LEVEL KEY sets the parameter everywhere it appears — literally
+#     everywhere, so both contour actions below get these. This is also the
+#     only route for a value that is a list or a dict: the template parser
+#     splits action arguments on commas, so `f(x=[68, 95])` does not parse.
+#
+# Two confidence levels: the first is drawn dashed, the second filled. A single
+# number (95 by default) fills one contour.
+confidence_level: [68, 95]
+show_best_fit: True
+
+# `params_to_plot`: every routine that takes it restricts itself to these
+# coefficients, in this order. The contours use the free coefficients common to
+# all the fits by default; at least two must be left.
+# params_to_plot: [OpWB, OpD]
+
+# `kde`: estimate the contours with a kernel density instead of a Gaussian
+# ellipse. Defaults to each fit's `use_quad`, since quadratic corrections
+# generally make a posterior non-Gaussian; a dict keyed by fit name overrides
+# it per fit.
+# kde:
+#   analytical_fit: False
+#   ultranest_fit: True
+
+# `double_solution`: coefficients whose posterior has two disjoint modes, marked
+# with one best-fit point per mode (KDE contours only). A plain list applies to
+# every fit; a dict keyed by fit name sets it per fit.
+# double_solution: [OpWB]
+
+# (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
+#     when both name the same parameter. Scalars only, see (1). Others worth
+#     knowing about:
+#
+#   subplot_size=4              size in inches of a single panel.
+#   show_sm=False               drop the SM marker at the origin.
+#
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
+# same name its files are given.
+template_text: |
+    Posterior contours
+    ==================
+
+    All fits overlaid
+    -----------------
+    {@plot_fits_posterior_contours@}
+
+    One figure per fit
+    ------------------
+    {@with fits@}
+    {@fit@}
+    ~~~~~~~~~
+    {@plot_posterior_contours(subplot_size=5)@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

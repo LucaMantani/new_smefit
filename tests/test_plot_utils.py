@@ -206,7 +206,7 @@ def test_coeff_limits_include_the_sm_point_by_default(fit_pair: list[Fit]) -> No
 
 
 def test_coeff_limits_without_sm_keep_the_sample_range(fit_pair: list[Fit]) -> None:
-    low, high = coeff_limits(fit_pair, ["OpQM"], include_sm=False)["OpQM"]
+    low, _ = coeff_limits(fit_pair, ["OpQM"], include_sm=False)["OpQM"]
 
     assert low > 0.0
 
@@ -285,12 +285,11 @@ def test_best_fit_pair_returns_plain_floats(fit_pair: list[Fit]) -> None:
 
 def test_helpers_leave_the_fit_samples_untouched(fit_pair: list[Fit]) -> None:
     """Limits are computed on copies: plotting must not mutate a fit."""
-    before = {
-        name: np.asarray(vals).copy()
-        for name, vals in fit_pair[0].fit_results.samples.items()
-    }
+    results = fit_pair[0].fit_results
+    assert isinstance(results, FitResult) and results.samples is not None
+    before = {name: np.asarray(vals).copy() for name, vals in results.samples.items()}
 
     coeff_limits(fit_pair, common_free_coefficients(fit_pair))
 
-    for name, vals in fit_pair[0].fit_results.samples.items():
+    for name, vals in results.samples.items():
         np.testing.assert_array_equal(np.asarray(vals), before[name])

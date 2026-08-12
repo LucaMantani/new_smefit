@@ -4,15 +4,34 @@ smefit.figures.py
 Functions for creating figures and plots.
 """
 
+from __future__ import annotations
+
+import itertools
 import logging
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import rc
 from reportengine.figure import figure
 
+from smefit.contours_2d import fit_colors, plot_contours
+from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
-from smefit.plot_utils import select_params
+from smefit.plot_utils import (
+    best_fit_pair,
+    coeff_limits,
+    common_free_coefficients,
+    per_fit_option,
+    select_params,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from matplotlib.figure import Figure
+
+    from smefit.fit_result import Fit
 
 log = logging.getLogger(__name__)
 
@@ -207,4 +226,251 @@ def plot_posterior_correlations(
         value_fmt=value_fmt,
         colorbar=colorbar,
         title=fit.plot_label,
+    )
+
+
+# ----------------------------------------------------------------------
+# Posterior contours — pairwise 2D marginalised confidence regions
+# ----------------------------------------------------------------------
+
+
+def _posterior_contours(
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    confidence_level: float | Sequence[float] = 95,
+    subplot_size: float = 4,
+    kde: bool | Mapping[str, bool] | None = None,
+    double_solution: list[str] | Mapping[str, list[str]] | None = None,
+    show_sm: bool = True,
+    show_best_fit: bool = False,
+) -> Figure:
+    """Draw the pairwise 2D confidence contours of *fits* in one figure.
+
+    The shared core of the two contour actions below, which differ only in
+    how many fits reportengine hands them — their docstrings carry the
+    parameter documentation. The panels form the lower triangle of the
+    coefficient matrix: the panel in row ``j - 1`` and column ``i`` shows
+    coefficient ``i`` on the x-axis and coefficient ``j`` on the y-axis, and
+    every fit is drawn in every panel.
+    """
+    if not fits:
+        raise ValueError("No fits to plot.")
+
+    # What is drawn comes from each fit's joint posterior samples; anything
+    # without one is rejected here, before any figure exists to be half-drawn.
+    posteriors = []
+    for fit in fits:
+        if fit.individual_fit:
+            raise ValueError(
+                f"Fit '{fit.fit_name}' was run one coefficient at a time, so "
+                "its coefficients were never sampled together and there is no "
+                "joint posterior to draw contours from."
+            )
+        results = fit.fit_results
+        assert isinstance(results, FitResult)  # individual fits were rejected
+        if results.samples is None:
+            raise ValueError(
+                f"Fit '{fit.fit_name}' stored no posterior samples, so there "
+                "is nothing to draw contours from."
+            )
+        posteriors.append(results.samples)
+
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+    coeffs = common_free_coefficients(fits, params_to_plot)
+    n_par = len(coeffs)
+
+    if isinstance(confidence_level, (list, tuple)):
+        dashed_cl, cl = confidence_level
+    else:
+        dashed_cl, cl = None, confidence_level
+
+    colors = fit_colors(len(fits))
+    kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
+    double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
+    limits = coeff_limits(fits, coeffs, include_sm=show_sm)
+    coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
+
+    n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
+    fig = plt.figure(figsize=(n_cells * subplot_size, n_cells * subplot_size))
+    grid = plt.GridSpec(n_cells, n_cells, hspace=0.1, wspace=0.1)
+
+    # Every panel draws the same fits in the same colours, so the handles of
+    # any one panel serve as the legend's; the last panel's are kept.
+    handles: list[Any] = []
+    for i, j in itertools.combinations(range(n_par), 2):
+        c1, c2 = coeffs[i], coeffs[j]
+        ax = fig.add_subplot(grid[j - 1, i])
+
+        handles = []
+        for idx, fit in enumerate(fits):
+            handles.append(
+                plot_contours(
+                    ax,
+                    posteriors[idx],
+                    coeff1=c1,
+                    coeff2=c2,
+                    kde=kdes[idx],
+                    color=colors[idx],
+                    confidence_level=cl,
+                    dashed_confidence_level=dashed_cl,
+                    double_solution=double_solutions[idx],
+                    show_best_fit=show_best_fit,
+                    best_fit=best_fit_pair(fit, c1, c2),
+                )
+            )
+        if show_sm:
+            handles.append(ax.scatter(0, 0, c="k", marker="+", s=50, zorder=10))
+
+        ax.set_xlim(*limits[c1])
+        ax.set_ylim(*limits[c2])
+        ax.locator_params(axis="x", nbins=5)
+        ax.locator_params(axis="y", nbins=6)
+        ax.minorticks_on()
+        ax.grid(linestyle="dotted", linewidth=0.5)
+
+        # only the outer panels carry axis labels and tick labels
+        if j == n_par - 1:
+            ax.set_xlabel(coeff_labels[i], fontsize=26)
+        else:
+            ax.tick_params(axis="x", which="both", labelbottom=False)
+        if i == 0:
+            ax.set_ylabel(coeff_labels[j], fontsize=26)
+        else:
+            ax.tick_params(axis="y", which="both", labelleft=False)
+
+    # legend: in the free upper-right corner when there is one, else in the
+    # single panel of a two-coefficient figure
+    if n_par > 2:
+        ax = fig.add_subplot(grid[0, 1:])
+        ax.axis("off")
+
+    legend_labels = [fit.plot_label for fit in fits]
+    if show_sm:
+        legend_labels.append(r"$\mathrm{SM}$")
+
+    ax.legend(
+        labels=legend_labels,
+        handles=handles,
+        loc="lower left" if n_par > 2 else "best",
+        frameon=False,
+        fontsize=20,
+        handlelength=1,
+        borderpad=0.5,
+        handletextpad=1,
+        title_fontsize=24,
+    )
+    ax.text(
+        0.05,
+        0.95,
+        rf"$\mathrm{{Marginalised}}\:{cl}\:\%\:\mathrm{{C.I.}}$",
+        fontsize=24,
+        transform=ax.transAxes,
+        verticalalignment="top",
+    )
+
+    return fig
+
+
+@figure
+def plot_fits_posterior_contours(
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    confidence_level: float | Sequence[float] = 95,
+    subplot_size: float = 4,
+    kde: bool | Mapping[str, bool] | None = None,
+    double_solution: list[str] | Mapping[str, list[str]] | None = None,
+    show_sm: bool = True,
+    show_best_fit: bool = False,
+) -> Figure:
+    """Overlay the 2D marginalised confidence contours of every fit.
+
+    Takes the whole ``fits`` list, so it is called bare in a report template —
+    one figure, every fit drawn in every panel. Its per-fit counterpart is
+    :func:`plot_posterior_contours`. The panels are the lower triangle of the
+    coefficient matrix, over the free coefficients every fit shares.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        The previously run fits to overlay, each legend-labelled with the
+        ``label`` of its ``fits`` entry (its name otherwise).
+    params_to_plot : list of str, optional
+        Restrict the panels to these coefficients, in this order. All the
+        coefficients the fits share by default; at least two must remain.
+    confidence_level : float or list of two floats, optional
+        Confidence level in percent, 95 by default. A list of two values
+        draws the first as a dashed outline and fills the second.
+    subplot_size : float, optional
+        Size in inches of a single panel.
+    kde : bool or dict, optional
+        Estimate the contours with a kernel density estimate instead of a
+        Gaussian ellipse. Defaults to each fit's ``use_quad``, since
+        quadratic corrections generally make a posterior non-Gaussian. A dict
+        keyed by fit name sets it per fit.
+    double_solution : list of str or dict, optional
+        Coefficients whose posterior has two disjoint modes, marked with one
+        best-fit point per mode (KDE mode only). A dict keyed by fit name
+        sets it per fit.
+    show_sm : bool, optional
+        Mark the SM point at the origin, on by default.
+    show_best_fit : bool, optional
+        Mark the best-fit point of every fit, off by default. Fits that do
+        not record one are marked at their posterior means.
+
+    Raises
+    ------
+    ValueError
+        If there is nothing to draw: no fits, a fit without joint posterior
+        samples (run one coefficient at a time, or by a routine that stores
+        none), or fewer than two shared coefficients left.
+    """
+    return _posterior_contours(
+        fits,
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        subplot_size=subplot_size,
+        kde=kde,
+        double_solution=double_solution,
+        show_sm=show_sm,
+        show_best_fit=show_best_fit,
+    )
+
+
+@figure
+def plot_posterior_contours(
+    fit: Fit,
+    params_to_plot: list[str] | str | None = None,
+    confidence_level: float | Sequence[float] = 95,
+    subplot_size: float = 4,
+    kde: bool | Mapping[str, bool] | None = None,
+    double_solution: list[str] | Mapping[str, list[str]] | None = None,
+    show_sm: bool = True,
+    show_best_fit: bool = False,
+) -> Figure:
+    """Plot the 2D marginalised confidence contours of one fit.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one figure per fit — ``{@fits plot_posterior_contours@}``, or a ``with
+    fits`` block, exactly like ``plot_posterior_correlations``. To overlay
+    the fits in one figure instead, use :func:`plot_fits_posterior_contours`,
+    which documents the parameters they share.
+
+    Raises
+    ------
+    ValueError
+        If the fit has no joint posterior samples to draw, or fewer than two
+        coefficients are left to pair up.
+    """
+    return _posterior_contours(
+        [fit],
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        subplot_size=subplot_size,
+        kde=kde,
+        double_solution=double_solution,
+        show_sm=show_sm,
+        show_best_fit=show_best_fit,
     )

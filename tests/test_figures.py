@@ -17,6 +17,8 @@ from smefit import figures as figures_mod
 from smefit.figures import (
     _plot_heatmap,
     plot_fisher_diagonals_heatmap,
+    plot_fits_posterior_contours,
+    plot_posterior_contours,
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
@@ -190,6 +192,7 @@ def _fit(
     label=None,
     fit_name="my_fit",
     action="run_analytic_fit",
+    use_quad=False,
 ):
     """A joint fit holding the given posterior samples.
 
@@ -208,7 +211,7 @@ def _fit(
         ),
         fit_name=fit_name,
         label=label,
-        fit_runcard={"actions_": [action]},
+        fit_runcard={"actions_": [action], "use_quad": use_quad},
     )
 
 
@@ -380,3 +383,170 @@ def test_plot_posterior_correlations_skips_a_coefficient_this_fit_lacks():
 
     ax = fig.axes[0]
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA"]
+
+
+# ---------------------------------------------------------------------------
+# plot_fits_posterior_contours / plot_posterior_contours
+# ---------------------------------------------------------------------------
+
+
+def _three_coeff_samples() -> dict[str, list[float]]:
+    """Three non-degenerate coefficients, enough for a 2x2 panel grid."""
+    rng = np.random.default_rng(0)
+    return {
+        name: rng.normal(loc, 1.0, size=50).tolist()
+        for name, loc in [("OpA", 0.5), ("OpZZ", -0.5), ("OpC", 1.0)]
+    }
+
+
+def _two_coeff_gaussians() -> dict[str, list[float]]:
+    """Two non-degenerate coefficients: the _fit default pair is perfectly
+    anti-correlated, whose singular covariance a KDE cannot estimate."""
+    rng = np.random.default_rng(1)
+    return {
+        "OpA": rng.normal(0.5, 1.0, size=50).tolist(),
+        "OpZZ": rng.normal(-0.5, 1.0, size=50).tolist(),
+    }
+
+
+def test_contours_overlay_every_fit_in_one_panel() -> None:
+    """Two fits and two coefficients: one panel holding both fits' ellipses
+    (two patches each) and the SM marker."""
+    fig = plot_fits_posterior_contours([_fit(fit_name="fit_a"), _fit(fit_name="fit_b")])
+
+    assert len(fig.axes) == 1
+    ax = fig.axes[0]
+    assert len(ax.patches) == 4
+    assert len(ax.collections) == 1  # the SM marker
+
+
+def test_contours_three_coefficients_form_the_lower_triangle() -> None:
+    """Three coefficients make three pairwise panels plus the legend axis in
+    the free upper-right corner."""
+    fits = [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())]
+
+    fig = plot_fits_posterior_contours(fits)
+
+    assert len(fig.axes) == 4
+    panels = fig.axes[:3]
+    # only the outer panels carry axis labels: x on the bottom row, y on the
+    # left column
+    assert [bool(ax.get_xlabel()) for ax in panels] == [False, True, True]
+    assert [bool(ax.get_ylabel()) for ax in panels] == [True, True, False]
+
+
+def test_contours_per_fit_action_draws_a_single_fit() -> None:
+    """The per-fit action wraps one fit: same figure, one fit's contours."""
+    fig = plot_posterior_contours(_fit())
+
+    assert len(fig.axes) == 1
+    assert len(fig.axes[0].patches) == 2
+
+
+def test_contours_restrict_to_params_to_plot() -> None:
+    """Restricting three coefficients to two leaves a single panel."""
+    fits = [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())]
+
+    fig = plot_fits_posterior_contours(fits, params_to_plot=["OpC", "OpA"])
+
+    assert len(fig.axes) == 1
+    assert fig.axes[0].get_xlabel()  # OpC, the first requested, is the x-axis
+
+
+def test_contours_default_to_kde_for_a_quadratic_fit() -> None:
+    """use_quad marks the posterior as non-Gaussian, so the contours are KDE
+    iso-density lines (collections), not ellipse patches."""
+    fits = [_fit(samples=_two_coeff_gaussians(), use_quad=True)]
+
+    fig = plot_fits_posterior_contours(fits, show_sm=False)
+
+    ax = fig.axes[0]
+    assert len(ax.patches) == 0
+    assert len(ax.collections) >= 2  # filled and outlined confidence region
+
+
+def test_contours_kde_is_overridable_per_fit() -> None:
+    """A dict keyed by fit name drives each fit separately."""
+    fits = [
+        _fit(fit_name="quad", samples=_two_coeff_gaussians(), use_quad=True),
+        _fit(fit_name="lin"),
+    ]
+
+    fig = plot_fits_posterior_contours(fits, kde={"quad": False}, show_sm=False)
+
+    # both fits fall back to ellipses: 2 patches each, no contour collections
+    assert len(fig.axes[0].patches) == 4
+    assert len(fig.axes[0].collections) == 0
+
+
+def test_contours_dashed_level_adds_a_third_ellipse() -> None:
+    """A [dashed, filled] confidence_level pair draws three patches per fit."""
+    fig = plot_fits_posterior_contours([_fit()], confidence_level=[68, 95])
+
+    assert len(fig.axes[0].patches) == 3
+
+
+def test_contours_legend_names_every_fit_and_the_sm() -> None:
+    """The legend is how an overlay says which contour is which; labels come
+    from the fits entries, names otherwise."""
+    fits = [
+        _fit(fit_name="fit_a", label=r"$\mathrm{Analytic}$"),
+        _fit(fit_name="fit_b"),
+    ]
+
+    fig = plot_fits_posterior_contours(fits)
+
+    legend = fig.axes[0].get_legend()
+    texts = [t.get_text() for t in legend.get_texts()]
+    assert texts == [r"$\mathrm{Analytic}$", "fit_b", r"$\mathrm{SM}$"]
+
+
+def test_contours_without_sm_show_neither_marker_nor_legend_entry() -> None:
+    fig = plot_fits_posterior_contours([_fit()], show_sm=False)
+
+    ax = fig.axes[0]
+    assert len(ax.collections) == 0
+    texts = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert r"$\mathrm{SM}$" not in texts
+
+
+def test_contours_state_the_confidence_level() -> None:
+    """The figure has to say which confidence level is filled."""
+    fig = plot_fits_posterior_contours([_fit()], confidence_level=90)
+
+    assert any("90" in t.get_text() for t in fig.axes[-1].texts)
+
+
+def test_contours_reject_an_individual_fit() -> None:
+    """One-at-a-time fits have no joint posterior: pairing their independent
+    1D samples would draw a correlation set by the seed and nothing else."""
+    with pytest.raises(ValueError, match="one coefficient at a time"):
+        plot_fits_posterior_contours([_fit(action="run_individual_analytic_fits")])
+
+
+def test_contours_reject_a_fit_without_samples() -> None:
+    fit = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpZZ"],
+            best_fit_point={},
+            max_loglikelihood=-1.0,
+            num_data=10,
+            samples=None,
+        ),
+        fit_name="sampleless",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no posterior samples"):
+        plot_fits_posterior_contours([fit])
+
+
+def test_contours_reject_an_empty_fits_list() -> None:
+    with pytest.raises(ValueError, match="No fits"):
+        plot_fits_posterior_contours([])
+
+
+def test_contours_reject_a_single_coefficient() -> None:
+    """Contours are pairwise: one coefficient has no panel to draw."""
+    with pytest.raises(ValueError, match="at least 2"):
+        plot_fits_posterior_contours([_fit()], params_to_plot=["OpA"])

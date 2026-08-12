@@ -16,11 +16,27 @@ at the iso-density level enclosing ``confidence_level`` percent of the
 posterior mass.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
 from matplotlib import patches, transforms
 from matplotlib.patches import Ellipse
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    import pandas as pd
+    from matplotlib.axes import Axes
+    from matplotlib.contour import QuadContourSet
+    from matplotlib.typing import ColorType
+    from numpy.typing import ArrayLike
+
+# A KDE evaluated on a regular grid: the ``(xx, yy, density)`` of `kde_grid`.
+KDEGrid = tuple[np.ndarray, np.ndarray, np.ndarray]
 
 # Density grid resolution and support padding (in bandwidth units) of the KDE,
 # and the sample cap above which posteriors are thinned before estimating it.
@@ -29,7 +45,7 @@ _KDE_CUT = 3
 _KDE_MAX_SAMPLES = 5000
 
 
-def split_solution(full_solution):
+def split_solution(full_solution: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
     """Split a posterior into two disjoint solutions.
 
     The samples are split at the midpoint between the smallest and the largest
@@ -65,8 +81,13 @@ def split_solution(full_solution):
 
 
 def confidence_ellipse(
-    coeff1, coeff2, ax, facecolor="none", confidence_level=95, **kwargs
-):
+    coeff1: ArrayLike,
+    coeff2: ArrayLike,
+    ax: Axes,
+    facecolor: ColorType = "none",
+    confidence_level: float = 95,
+    **kwargs: Any,
+) -> Ellipse:
     """Draw the confidence-level ellipse of the samples ``coeff1``, ``coeff2``.
 
     The ellipse is the iso-contour of the Gaussian with the same covariance as
@@ -80,9 +101,9 @@ def confidence_ellipse(
         ``(N,)`` posterior samples of the coefficient on the y-axis.
     ax : matplotlib.axes.Axes
         Axes object to plot on.
-    facecolor : str, optional
+    facecolor : ColorType, optional
         Fill colour of the ellipse, ``"none"`` by default.
-    confidence_level : int, optional
+    confidence_level : float, optional
         Confidence level in percent, 95 by default.
     **kwargs
         Additional settings passed to ``matplotlib.patches.Ellipse``.
@@ -141,12 +162,12 @@ def confidence_ellipse(
 
 
 def kde_grid(
-    x_values,
-    y_values,
-    bw_adjust=1.2,
-    gridsize=_KDE_GRIDSIZE,
-    max_samples=_KDE_MAX_SAMPLES,
-):
+    x_values: ArrayLike,
+    y_values: ArrayLike,
+    bw_adjust: float = 1.2,
+    gridsize: int = _KDE_GRIDSIZE,
+    max_samples: int | None = _KDE_MAX_SAMPLES,
+) -> KDEGrid:
     """Evaluate a 2D Gaussian KDE of the samples on a regular grid.
 
     Parameters
@@ -196,7 +217,7 @@ def kde_grid(
     return xx, yy, density
 
 
-def density_level(density, confidence_level):
+def density_level(density: np.ndarray, confidence_level: float) -> float:
     """Iso-density level enclosing ``confidence_level`` percent of the mass.
 
     Parameters
@@ -219,16 +240,16 @@ def density_level(density, confidence_level):
 
 
 def kde_contour(
-    x_values,
-    y_values,
-    ax,
-    color,
-    confidence_level=95,
-    fill=False,
-    bw_adjust=1.2,
-    grid=None,
-    **kwargs,
-):
+    x_values: ArrayLike,
+    y_values: ArrayLike,
+    ax: Axes,
+    color: ColorType,
+    confidence_level: float = 95,
+    fill: bool = False,
+    bw_adjust: float = 1.2,
+    grid: KDEGrid | None = None,
+    **kwargs: Any,
+) -> QuadContourSet:
     """Draw the KDE confidence contour of the samples on ``ax``.
 
     Parameters
@@ -269,18 +290,18 @@ def kde_contour(
 
 
 def plot_contours(
-    ax,
-    posterior,
-    coeff1,
-    coeff2,
-    kde,
-    color,
-    confidence_level=95,
-    dashed_confidence_level=None,
-    double_solution=None,
-    show_best_fit=False,
-    best_fit=None,
-):
+    ax: Axes,
+    posterior: Mapping[str, ArrayLike] | pd.DataFrame,
+    coeff1: str,
+    coeff2: str,
+    kde: bool,
+    color: ColorType,
+    confidence_level: float = 95,
+    dashed_confidence_level: float | None = None,
+    double_solution: list[str] | None = None,
+    show_best_fit: bool = False,
+    best_fit: tuple[float, float] | None = None,
+) -> tuple[patches.Patch, patches.Patch]:
     """Plot the 2D marginalised contour of a pair of coefficients.
 
     Parameters
@@ -432,7 +453,7 @@ def plot_contours(
     return hndls
 
 
-def fit_colors(n_fits):
+def fit_colors(n_fits: int) -> list[ColorType]:
     """Return ``n_fits`` colours from the current matplotlib colour cycle."""
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     return [colors[i % len(colors)] for i in range(n_fits)]

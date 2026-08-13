@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from smefit.contours_2d import fit_colors
 from smefit.core import ReferencePoint
 from smefit.fit_result import FitResult
 
@@ -342,6 +343,13 @@ def marker_points(
     show_sm : bool, optional
         Whether the SM marker is drawn at all. On by default.
 
+    Notes
+    -----
+    A point that chose no colour takes one from the plot cycle, continuing
+    past the colours the fits used so that no point wears a fit's. The SM
+    keeps black: it is the reference every panel is read against, not one
+    more thing being compared.
+
     Returns
     -------
     list of ReferencePoint
@@ -349,8 +357,10 @@ def marker_points(
     """
     baselines = baseline_point(fits, coeffs)
 
-    requested = [ReferencePoint(label=r"$\mathrm{SM}$")] if show_sm else []
-    requested.extend(reference_points or [])
+    sm = [ReferencePoint(label=r"$\mathrm{SM}$", color="k")] if show_sm else []
+    requested = [*sm, *(reference_points or [])]
+    # the colours after the fits', so a point is never mistaken for one
+    colors = fit_colors(len(requested), offset=len(fits))
 
     resolved = []
     for index, point in enumerate(requested):
@@ -379,7 +389,7 @@ def marker_points(
                     name: float(point.std[name]) for name in coeffs if name in point.std
                 },
                 marker=point.marker or _MARKER_CYCLE[index % len(_MARKER_CYCLE)],
-                color=point.color or "k",
+                color=point.color or colors[index],
             )
         )
     return resolved

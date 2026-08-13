@@ -38,6 +38,15 @@ if TYPE_CHECKING:
 # A KDE evaluated on a regular grid: the ``(xx, yy, density)`` of `kde_grid`.
 KDEGrid = tuple[np.ndarray, np.ndarray, np.ndarray]
 
+# Hatch patterns handed out alongside the colour cycle. They carry the same
+# information as the colour does, so a filled contour stays distinguishable in
+# print, in greyscale, and to a reader who cannot separate the hues.
+#
+# A hatch is always drawn as its own unfilled layer over the fill, never as the
+# fill's own `hatch`: the PDF backend silently drops the hatch of a patch that
+# is both filled and hatched, and PDF is what a report is made of.
+_HATCH_CYCLE = ("///", "\\\\\\", "xxx", "...", "+++", "ooo")
+
 # Density grid resolution and support padding (in bandwidth units) of the KDE,
 # and the sample cap above which posteriors are thinned before estimating it.
 _KDE_GRIDSIZE = 200
@@ -380,6 +389,7 @@ def plot_contours(
     double_solution: list[str] | None = None,
     show_best_fit: bool = False,
     best_fit: tuple[float, float] | None = None,
+    hatch: str | None = None,
 ) -> tuple[patches.Patch, patches.Patch]:
     """Plot the 2D marginalised contour of a pair of coefficients.
 
@@ -414,6 +424,9 @@ def plot_contours(
         Best-fit ``(coeff1, coeff2)`` values. Defaults to the posterior means,
         which is also what is used for a coefficient with a double solution
         (a single stored best-fit value cannot represent both modes).
+    hatch : str, optional
+        Matplotlib hatch pattern for the filled contour, from
+        :func:`fit_hatches`. None fills it flat.
 
     Returns
     -------
@@ -459,6 +472,18 @@ def plot_contours(
             grid=grid,
             alpha=0.3,
         )
+        if hatch:
+            hatched = kde_contour(
+                x_values,
+                y_values,
+                ax,
+                color="none",
+                confidence_level=confidence_level,
+                fill=True,
+                grid=grid,
+                hatches=[hatch],
+            )
+            hatched.set_edgecolor(color)
         kde_contour(
             x_values,
             y_values,
@@ -494,6 +519,7 @@ def plot_contours(
 
         hndls = (
             patches.Patch(ec=color, fc=color, fill=True, alpha=0.3),
+            *([patches.Patch(ec=color, fill=False, hatch=hatch)] if hatch else []),
             patches.Patch(ec=color, fc=color, fill=False, alpha=1.0),
         )
 
@@ -525,6 +551,20 @@ def plot_contours(
             edgecolor=None,
             confidence_level=confidence_level,
         )
+        hatch_layer = ()
+        if hatch:
+            hatch_layer = (
+                confidence_ellipse(
+                    x_values,
+                    y_values,
+                    ax,
+                    facecolor="none",
+                    edgecolor=color,
+                    hatch=hatch,
+                    linewidth=0,
+                    confidence_level=confidence_level,
+                ),
+            )
         if show_best_fit:
             point = (
                 best_fit
@@ -533,7 +573,7 @@ def plot_contours(
             )
             ax.scatter(*point, color=color, s=50, marker="o")
 
-        hndls = (p1, p2)
+        hndls = (p1, p2, *hatch_layer)
 
     ax.tick_params(which="both", direction="in", labelsize=22)
 
@@ -547,7 +587,8 @@ def plot_uncorrelated_contours(
     color: ColorType,
     confidence_level: float = 95,
     dashed_confidence_level: float | None = None,
-) -> tuple[Ellipse, Ellipse]:
+    hatch: str | None = None,
+) -> tuple[Ellipse, ...]:
     """Draw a point known by a central value and a std as a filled contour.
 
     The three layers :func:`plot_contours` gives a linear fit — a dashed
@@ -571,12 +612,16 @@ def plot_uncorrelated_contours(
         Confidence level in percent of the filled contour, 95 by default.
     dashed_confidence_level : float, optional
         Confidence level in percent of an additional dashed outline.
+    hatch : str, optional
+        Matplotlib hatch pattern for the fill, from :func:`fit_hatches`. None
+        fills it flat.
 
     Returns
     -------
-    tuple(matplotlib.patches.Ellipse, matplotlib.patches.Ellipse)
+    tuple of matplotlib.patches.Ellipse
         The outline and the fill, in the order :func:`plot_contours` returns
-        its handles.
+        its handles, followed by the hatch layer when there is one — every
+        patch the legend key has to repeat.
     """
     if dashed_confidence_level is not None:
         uncorrelated_ellipse(
@@ -605,10 +650,48 @@ def plot_uncorrelated_contours(
         edgecolor=None,
         confidence_level=confidence_level,
     )
-    return outline, fill
+    hatch_layer = ()
+    if hatch:
+        hatch_layer = (
+            uncorrelated_ellipse(
+                center,
+                std,
+                ax,
+                facecolor="none",
+                edgecolor=color,
+                hatch=hatch,
+                linewidth=0,
+                confidence_level=confidence_level,
+            ),
+        )
+    return outline, fill, *hatch_layer
 
 
-def fit_colors(n_fits: int) -> list[ColorType]:
-    """Return ``n_fits`` colours from the current matplotlib colour cycle."""
+def fit_colors(n_fits: int, offset: int = 0) -> list[ColorType]:
+    """Return ``n_fits`` colours from the current matplotlib colour cycle.
+
+    Parameters
+    ----------
+    n_fits : int
+        How many colours to return.
+    offset : int, optional
+        Where to start in the cycle. Whatever else is drawn on the same axes —
+        reference points beside the fits — takes the colours after them by
+        offsetting past what the fits already used.
+    """
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    return [colors[i % len(colors)] for i in range(n_fits)]
+    return [colors[(offset + i) % len(colors)] for i in range(n_fits)]
+
+
+def fit_hatches(n_fits: int, offset: int = 0) -> list[str]:
+    """Return ``n_fits`` hatch patterns, the counterpart of :func:`fit_colors`.
+
+    Parameters
+    ----------
+    n_fits : int
+        How many patterns to return.
+    offset : int, optional
+        Where to start in the cycle, as in :func:`fit_colors`, so a fit and a
+        reference point drawn in different colours also differ in texture.
+    """
+    return [_HATCH_CYCLE[(offset + i) % len(_HATCH_CYCLE)] for i in range(n_fits)]

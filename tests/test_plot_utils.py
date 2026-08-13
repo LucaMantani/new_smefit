@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from smefit.contours_2d import fit_colors
 from smefit.core import ReferencePoint
 from smefit.fit_result import Fit, FitResult
 from smefit.plot_utils import (
@@ -386,14 +387,32 @@ def test_marker_points_drop_the_sm_when_it_is_off(fit_pair: list[Fit]) -> None:
 
 
 def test_marker_points_hand_out_distinct_markers(fit_pair: list[Fit]) -> None:
-    """Points are all black by default, so the shape is what tells them
-    apart."""
+    """Shape tells the points apart even where colour cannot."""
     extra = [ReferencePoint(label="$A$"), ReferencePoint(label="$B$")]
 
     points = marker_points(fit_pair, ["OtG", "OpQM"], extra)
 
     assert [p.marker for p in points] == ["+", "x", "*"]
-    assert {p.color for p in points} == {"k"}
+
+
+def test_marker_points_colour_the_points_after_the_fits(
+    fit_pair: list[Fit],
+) -> None:
+    """A point wearing a fit's colour would read as one of the contours, so
+    the cycle continues past the colours the fits took."""
+    extra = [ReferencePoint(label="$A$"), ReferencePoint(label="$B$")]
+
+    points = marker_points(fit_pair, ["OtG", "OpQM"], extra)
+
+    _, first, second = points
+    assert {first.color, second.color}.isdisjoint(fit_colors(len(fit_pair)))
+    assert first.color != second.color
+
+
+def test_marker_points_keep_the_sm_black(fit_pair: list[Fit]) -> None:
+    """The SM is what every panel is read against, not one more thing being
+    compared, so it stays out of the colour cycle."""
+    assert marker_points(fit_pair, ["OtG", "OpQM"])[0].color == "k"
 
 
 def test_marker_points_keep_an_explicit_style(fit_pair: list[Fit]) -> None:

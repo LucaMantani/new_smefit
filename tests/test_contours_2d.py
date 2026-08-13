@@ -22,6 +22,7 @@ from smefit.contours_2d import (
     density_level,
     ellipse_half_axis,
     fit_colors,
+    fit_hatches,
     kde_contour,
     kde_grid,
     plot_contours,
@@ -214,6 +215,60 @@ def test_plot_uncorrelated_contours_draws_an_outline_and_a_fill() -> None:
     assert outline.get_alpha() == pytest.approx(1)
     assert outline.get_facecolor()[3] == 0.0
     assert outline.get_width() == pytest.approx(fill.get_width())
+
+
+def test_plot_uncorrelated_contours_hatches_a_layer_of_its_own() -> None:
+    """The hatch is never the fill's own attribute: the PDF backend drops the
+    hatch of a patch that is both filled and hatched, so it goes on an
+    unfilled patch of the same size laid over the fill."""
+    _, ax = plt.subplots()
+
+    outline, fill, hatched = plot_uncorrelated_contours(
+        ax, (0.0, 0.0), (1.0, 1.0), "C0", hatch="///"
+    )
+
+    assert (outline.get_hatch(), fill.get_hatch()) == (None, None)
+    assert hatched.get_hatch() == "///"
+    assert hatched.get_facecolor()[3] == 0.0  # unfilled, so the PDF keeps it
+    assert hatched.get_width() == pytest.approx(fill.get_width())
+
+
+def test_plot_uncorrelated_contours_without_a_hatch_draws_two_patches() -> None:
+    assert len(plot_uncorrelated_contours(plt.subplots()[1], (0, 0), (1, 1), "C0")) == 2
+
+
+def test_fit_hatches_repeat_only_past_the_cycle() -> None:
+    """Two fits must never share a texture, which is the whole point of it."""
+    assert len(set(fit_hatches(6))) == 6
+    assert fit_hatches(2, offset=2) == fit_hatches(4)[2:]
+
+
+def test_plot_contours_hatches_a_layer_over_the_ellipse_fill() -> None:
+    posterior = {
+        "OpA": np.random.default_rng(5).normal(size=200),
+        "OpZZ": np.random.default_rng(6).normal(size=200),
+    }
+    _, ax = plt.subplots()
+
+    plot_contours(ax, posterior, "OpA", "OpZZ", kde=False, color="C0", hatch="xxx")
+
+    fill, hatched = ax.patches[-2:]
+    assert fill.get_hatch() is None  # hatching the fill loses it in the PDF
+    assert hatched.get_hatch() == "xxx"
+    # the hatch is drawn in the edge colour, so the layer needs one to show
+    assert hatched.get_edgecolor()[3] > 0
+
+
+def test_plot_contours_leaves_the_fill_flat_without_a_hatch() -> None:
+    posterior = {
+        "OpA": np.random.default_rng(5).normal(size=200),
+        "OpZZ": np.random.default_rng(6).normal(size=200),
+    }
+    _, ax = plt.subplots()
+
+    plot_contours(ax, posterior, "OpA", "OpZZ", kde=False, color="C0")
+
+    assert ax.patches[-1].get_hatch() is None
 
 
 def test_plot_uncorrelated_contours_adds_the_dashed_outer_level() -> None:

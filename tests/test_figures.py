@@ -433,7 +433,7 @@ def test_contours_overlay_every_fit_in_one_panel() -> None:
 
     assert len(fig.axes) == 2  # the panel and the legend cell
     ax = fig.axes[0]
-    assert len(ax.patches) == 4
+    assert len(ax.patches) == 6  # outline, fill and hatch layer, for each fit
     assert len(ax.collections) == 1  # the SM marker
 
 
@@ -497,13 +497,43 @@ def test_contours_draw_an_ellipse_when_both_coefficients_have_a_std() -> None:
     )
 
     ax = fig.axes[0]
-    # the fit's outline and fill, then the reference point's, drawn the same way
-    assert len(ax.patches) == 4
-    outline, fill = ax.patches[-2:]
+    # the fit's three patches, then the reference point's, drawn the same way
+    assert len(ax.patches) == 6
+    outline, fill, _hatch = ax.patches[-3:]
     assert fill.get_center() == (1.0, 0.0)
     assert fill.get_width() > fill.get_height()  # 0.4 against 0.2
     assert fill.get_alpha() == pytest.approx(0.3)
     assert outline.get_facecolor()[3] == 0.0
+
+
+def test_contours_hatch_every_filled_contour_differently() -> None:
+    """Two fits and a reference point: three fills, three textures, so the
+    figure survives greyscale and colour blindness."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 3.0}, std={"OpA": 0.4, "OpZZ": 0.4})
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [
+            _fit(fit_name="fit_a", samples=_two_coeff_gaussians()),
+            _fit(fit_name="fit_b", samples=_three_coeff_samples()),
+        ],
+        params_to_plot=["OpA", "OpZZ"],
+        reference_points=points,
+        show_sm=False,
+    )
+
+    hatched = [p.get_hatch() for p in fig.axes[0].patches if p.get_hatch()]
+    assert len(hatched) == 3  # one per fill: two fits and the point
+    assert len(set(hatched)) == 3
+
+
+def test_contours_hatch_can_be_turned_off() -> None:
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], hatch=False, show_sm=False
+    )
+
+    assert all(p.get_hatch() is None for p in fig.axes[0].patches)
 
 
 def test_contours_legend_key_of_a_point_with_a_contour_is_a_filled_patch() -> None:
@@ -525,10 +555,10 @@ def test_contours_legend_key_of_a_point_with_a_contour_is_a_filled_patch() -> No
 
     keyed_legend = keyed.axes[-1].get_legend()
     bare_legend = bare.axes[-1].get_legend()
-    # the outline and the fill the fits' keys are made of, on top of what the
-    # bare marker key already draws
+    # the outline, fill and hatch layer the fits' keys are made of, on top of
+    # what the bare marker key already draws
     assert (
-        len(keyed_legend.findobj(Rectangle)) == len(bare_legend.findobj(Rectangle)) + 2
+        len(keyed_legend.findobj(Rectangle)) == len(bare_legend.findobj(Rectangle)) + 3
     )
     # and the marker itself survives, drawn over them
     assert len(keyed_legend.findobj(PathCollection)) == 1
@@ -570,7 +600,7 @@ def test_contours_skip_the_ellipse_when_a_std_is_missing() -> None:
     )
 
     ax = fig.axes[0]
-    assert len(ax.patches) == 2  # the fit's two, none of the point's
+    assert len(ax.patches) == 3  # the fit's three, none of the point's
     assert ax.collections[-1].get_offsets().tolist() == [[1.0, 0.0]]
 
 
@@ -652,7 +682,7 @@ def test_contours_per_fit_action_draws_a_single_fit() -> None:
     fig = plot_posterior_contours(_fit())
 
     assert len(fig.axes) == 2  # the panel and the legend cell
-    assert len(fig.axes[0].patches) == 2
+    assert len(fig.axes[0].patches) == 3  # outline, fill and hatch layer
 
 
 def test_contours_restrict_to_params_to_plot() -> None:
@@ -686,16 +716,17 @@ def test_contours_kde_is_overridable_per_fit() -> None:
 
     fig = plot_fits_posterior_contours(fits, kde={"quad": False}, show_sm=False)
 
-    # both fits fall back to ellipses: 2 patches each, no contour collections
-    assert len(fig.axes[0].patches) == 4
+    # both fits fall back to ellipses: 3 patches each, no contour collections
+    assert len(fig.axes[0].patches) == 6
     assert len(fig.axes[0].collections) == 0
 
 
-def test_contours_dashed_level_adds_a_third_ellipse() -> None:
-    """A [dashed, filled] confidence_level pair draws three patches per fit."""
+def test_contours_dashed_level_adds_an_ellipse() -> None:
+    """A [dashed, filled] confidence_level pair adds the dashed outline to the
+    outline, fill and hatch layer a single level already draws."""
     fig = plot_fits_posterior_contours([_fit()], confidence_level=[68, 95])
 
-    assert len(fig.axes[0].patches) == 3
+    assert len(fig.axes[0].patches) == 4
 
 
 def test_contours_legend_names_every_fit_and_the_sm() -> None:

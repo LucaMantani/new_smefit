@@ -18,6 +18,7 @@ from reportengine.figure import figure
 from smefit.contours_2d import (
     ellipse_half_axis,
     fit_colors,
+    fit_hatches,
     plot_contours,
     plot_uncorrelated_contours,
 )
@@ -251,6 +252,7 @@ def _posterior_contours(
     show_sm: bool = True,
     show_best_fit: bool = False,
     reference_points: Sequence[ReferencePoint] | None = None,
+    hatch: bool = True,
 ) -> Figure:
     """Draw the pairwise 2D confidence contours of *fits* in one figure.
 
@@ -296,6 +298,9 @@ def _posterior_contours(
         dashed_cl, cl = None, confidence_level
 
     colors = fit_colors(len(fits))
+    # texture carries what colour carries, for print and for a reader who
+    # cannot separate the hues; None everywhere turns it back into flat fills
+    hatches = fit_hatches(len(fits)) if hatch else [None] * len(fits)
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
     double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
     # the SM is not always the origin — a coefficient can be parametrised so
@@ -348,13 +353,19 @@ def _posterior_contours(
                     double_solution=double_solutions[idx],
                     show_best_fit=show_best_fit,
                     best_fit=best_fit_pair(fit, c1, c2),
+                    hatch=hatches[idx],
                 )
             )
-        for point in points:
+        point_hatches = (
+            fit_hatches(len(points), offset=len(fits))
+            if hatch
+            else [None] * len(points)
+        )
+        for index, point in enumerate(points):
             marker = ax.scatter(
                 point.values[c1],
                 point.values[c2],
-                c=point.color,
+                color=point.color,
                 marker=point.marker,
                 s=50,
                 zorder=10,
@@ -370,6 +381,7 @@ def _posterior_contours(
                     color=point.color,
                     confidence_level=cl,
                     dashed_confidence_level=dashed_cl,
+                    hatch=point_hatches[index],
                 )
                 # a tuple handle is drawn as its artists overlaid, so the
                 # legend key becomes the filled patch of the fits with this
@@ -448,6 +460,7 @@ def plot_fits_posterior_contours(
     show_sm=True,
     show_best_fit=False,
     reference_points=None,
+    hatch=True,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
 
@@ -490,6 +503,10 @@ def plot_fits_posterior_contours(
         ``reference_points`` key. They come in addition to the SM marker, and
         each falls back to the baselines for the coefficients its ``values``
         does not name.
+    hatch : bool, optional
+        Texture every filled contour, one pattern per fit and per reference
+        point, so they stay distinguishable in greyscale and to a reader who
+        cannot separate the colours. On by default; False fills them flat.
 
     Raises
     ------
@@ -508,6 +525,7 @@ def plot_fits_posterior_contours(
         show_sm=show_sm,
         show_best_fit=show_best_fit,
         reference_points=reference_points,
+        hatch=hatch,
     )
 
 
@@ -522,6 +540,7 @@ def plot_posterior_contours(
     show_sm=True,
     show_best_fit=False,
     reference_points=None,
+    hatch=True,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
 
@@ -561,6 +580,8 @@ def plot_posterior_contours(
     reference_points : list of ReferencePoint, optional
         Further points of coefficient space to mark, from the runcard's
         ``reference_points`` key, in addition to the SM marker.
+    hatch : bool, optional
+        Texture every filled contour, on by default. False fills them flat.
 
     Raises
     ------
@@ -578,4 +599,5 @@ def plot_posterior_contours(
         show_sm=show_sm,
         show_best_fit=show_best_fit,
         reference_points=reference_points,
+        hatch=hatch,
     )

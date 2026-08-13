@@ -12,9 +12,11 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import rc
+from matplotlib import patches, rc
+from matplotlib.lines import Line2D
 from reportengine.figure import figure
 
+from smefit.bounds_1d import split_solution
 from smefit.contours_2d import fit_colors, fit_hatches, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
@@ -525,4 +527,241 @@ def plot_posterior_contours(
         show_sm=show_sm,
         show_best_fit=show_best_fit,
         hatch=hatch,
+    )
+
+
+# ----------------------------------------------------------------------
+# Posterior histograms — 1D marginalised distributions
+# ----------------------------------------------------------------------
+
+
+def _histogram_bins(values: np.ndarray, double_solution: bool, bins: Any | None) -> Any:
+    """Bin edges for one coefficient's posterior.
+
+    Freedman–Diaconis by default, which sets the width from the interquartile
+    range and so follows the bulk of the posterior rather than its tails.
+
+    A bimodal posterior gets one FD rule *per branch*, merged and sorted: the
+    IQR of the two modes together spans the empty gap between them, and the
+    single rule it yields is wide enough to smear each mode into a couple of
+    bars. This is the one subtle piece of the old ``plot_posteriors``, and it
+    is why ``double_solution`` matters to a histogram at all — the bars
+    themselves are drawn from the unsplit samples, so nothing is hidden.
+
+    ``bins`` overrides all of it and is passed to ``hist`` untouched, so a
+    runcard can ask for a count, its own edges, or another rule by name.
+    """
+    if bins is not None:
+        return bins
+    if double_solution:
+        solution1, solution2 = split_solution(values)
+        return np.sort(
+            np.concatenate(
+                [
+                    np.histogram_bin_edges(solution1, bins="fd"),
+                    np.histogram_bin_edges(solution2, bins="fd"),
+                ]
+            )
+        )
+    return np.histogram_bin_edges(values, bins="fd")
+
+
+def _posterior_histograms(
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    double_solution: Sequence[str] | Mapping[str, Sequence[str]] | None = None,
+    show_sm: bool = True,
+    bins: Any | None = None,
+    subplot_size: float = 4,
+) -> Figure:
+    """Draw the 1D marginalised posteriors of *fits* in one figure.
+
+    The shared core of the two histogram actions below, which differ only in
+    how many fits reportengine hands them — their docstrings carry the
+    parameter documentation. One panel per coefficient, every fit overlaid in
+    every panel, laid out on a near-square grid whose last cell is left to the
+    legend.
+
+    Individual (one-at-a-time) fits are accepted, unlike by the contour
+    actions: a histogram is about one coefficient at a time, which is exactly
+    what such a fit has to offer.
+    """
+    if not fits:
+        raise ValueError("No fits to plot.")
+
+    posteriors = []
+    for fit in fits:
+        samples = fit.fit_results.samples
+        if not samples:
+            raise ValueError(
+                f"Fit '{fit.fit_name}' stored no posterior samples, so there "
+                "is nothing to draw a histogram of."
+            )
+        posteriors.append(samples)
+
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+    # one panel is enough: a histogram needs no pair
+    coeffs = common_free_coefficients(fits, params_to_plot, min_count=1)
+
+    colors = fit_colors(len(fits))
+    # bimodality is declared per fit, since two fits of the same coefficient
+    # need not both resolve a second solution
+    doubles = per_fit_option(double_solution, fits, [[] for _ in fits])
+    baselines = baseline_point(fits, coeffs) if show_sm else None
+    limits = coeff_limits(fits, coeffs, include_points=baselines)
+    coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
+
+    # the legend gets a cell of its own, so it is never drawn over a panel;
+    # the grid is laid out for it as for one more coefficient
+    n_cells = len(coeffs) + 1
+    n_cols = int(np.ceil(np.sqrt(n_cells)))
+    n_rows = int(np.ceil(n_cells / n_cols))
+    fig = plt.figure(figsize=(n_cols * subplot_size, n_rows * subplot_size))
+
+    for idx, name in enumerate(coeffs):
+        ax = fig.add_subplot(n_rows, n_cols, idx + 1)
+
+        for fit_idx, posterior in enumerate(posteriors):
+            values = np.asarray(posterior[name], dtype=float)
+            ax.hist(
+                values,
+                bins=_histogram_bins(values, name in doubles[fit_idx], bins),
+                # densities, not counts: fits of different sample sizes are
+                # being compared, and only the shapes are comparable
+                density=True,
+                color=colors[fit_idx],
+                edgecolor="black",
+                alpha=0.3,
+            )
+
+        if show_sm:
+            assert baselines is not None  # set together with show_sm
+            ax.axvline(baselines[name], color="k", linestyle="dashed", linewidth=1.5)
+
+        # the coefficient names the panel from the inside: an axis label under
+        # every panel of a large grid costs a row of height each time
+        ax.text(0.05, 0.85, coeff_labels[idx], transform=ax.transAxes, fontsize=25)
+        ax.set_xlim(*limits[name])
+        ax.tick_params(which="both", direction="in", labelsize=22.5)
+        # the y-axis is a normalisation, not a quantity anybody reads off
+        ax.tick_params(labelleft=False)
+
+    legend_ax = fig.add_subplot(n_rows, n_cols, n_cells)
+    legend_ax.axis("off")
+    handles: list[Any] = [
+        patches.Patch(facecolor=color, edgecolor="black", alpha=0.3) for color in colors
+    ]
+    labels = [fit.plot_label for fit in fits]
+    if show_sm:
+        handles.append(Line2D([], [], color="k", linestyle="dashed", linewidth=1.5))
+        labels.append(r"$\mathrm{SM}$")
+    legend_ax.legend(
+        handles=handles,
+        labels=labels,
+        loc="upper left",
+        frameon=False,
+        fontsize=20,
+        handlelength=1,
+        borderpad=0.5,
+        handletextpad=1,
+    )
+
+    return fig
+
+
+@figure
+def plot_fits_posterior_histograms(
+    fits,
+    params_to_plot=None,
+    double_solution=None,
+    show_sm=True,
+    bins=None,
+    subplot_size=4,
+) -> Figure:
+    """Overlay the 1D marginalised posteriors of every fit.
+
+    Takes the whole ``fits`` list, so it is called bare in a report template —
+    one figure, one panel per coefficient, every fit drawn in every panel. Its
+    per-fit counterpart is :func:`plot_posterior_histograms`.
+
+    Both accept a fit run one coefficient at a time, unlike the contour
+    actions: a histogram reads one coefficient's posterior at a time, which is
+    what an individual fit has. That is how the individual counterpart of a
+    marginalised figure is produced — a ``fits:`` entry pointing at an
+    ``individual_fits`` output, not an option here.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        The previously run fits to overlay, each legend-labelled with the
+        ``label`` of its ``fits`` entry (its name otherwise).
+    params_to_plot : list of str, optional
+        Restrict the panels to these coefficients, in this order. All the
+        coefficients the fits share by default.
+    double_solution : list of str or dict, optional
+        Coefficients whose posterior has two disjoint solutions. They are
+        binned one branch at a time, so that a mode is not smeared into a
+        couple of bars by a bin width set across the gap between them. A dict
+        keyed by fit name sets the list per fit. As in the old pipeline this
+        is declared, never detected: a posterior is bimodal because of the
+        physics.
+    show_sm : bool, optional
+        Mark the SM with a dashed vertical line, on by default. It sits at
+        each coefficient's ``baseline_value`` in the runcard the fit was run
+        with — the origin unless a coefficient was parametrised around a
+        non-zero SM value.
+    bins : int or str or list, optional
+        Binning, passed to ``matplotlib.axes.Axes.hist`` as it comes.
+        Freedman–Diaconis per fit and coefficient by default.
+    subplot_size : float, optional
+        Size in inches of a single panel.
+
+    Raises
+    ------
+    ValueError
+        If there is nothing to draw: no fits, a fit that stored no posterior
+        samples, or no shared coefficient left.
+    """
+    return _posterior_histograms(
+        fits,
+        params_to_plot=params_to_plot,
+        double_solution=double_solution,
+        show_sm=show_sm,
+        bins=bins,
+        subplot_size=subplot_size,
+    )
+
+
+@figure
+def plot_posterior_histograms(
+    fit,
+    params_to_plot=None,
+    double_solution=None,
+    show_sm=True,
+    bins=None,
+    subplot_size=4,
+) -> Figure:
+    """Plot the 1D marginalised posteriors of one fit.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one figure per fit — ``{@fits plot_posterior_histograms@}``, or a ``with
+    fits`` block. To overlay the fits in one figure instead, use
+    :func:`plot_fits_posterior_histograms`, whose docstring describes the
+    parameters, all shared.
+
+    Raises
+    ------
+    ValueError
+        If the fit stored no posterior samples, or no coefficient is left.
+    """
+    return _posterior_histograms(
+        [fit],
+        params_to_plot=params_to_plot,
+        double_solution=double_solution,
+        show_sm=show_sm,
+        bins=bins,
+        subplot_size=subplot_size,
     )

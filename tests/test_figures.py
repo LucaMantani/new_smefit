@@ -18,10 +18,13 @@ from smefit.figures import (
     _plot_heatmap,
     plot_fisher_diagonals_heatmap,
     plot_fits_posterior_contours,
+    plot_fits_posterior_histograms,
     plot_posterior_contours,
     plot_posterior_correlations,
+    plot_posterior_histograms,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
+from smefit.op_to_latex import coeff_info_latex
 
 
 @pytest.fixture(autouse=True)
@@ -625,3 +628,315 @@ def test_contours_reject_a_single_coefficient() -> None:
     """Contours are pairwise: one coefficient has no panel to draw."""
     with pytest.raises(ValueError, match="at least 2"):
         plot_fits_posterior_contours([_fit()], params_to_plot=["OpA"])
+
+
+# ---------------------------------------------------------------------------
+# plot_fits_posterior_histograms / plot_posterior_histograms
+# ---------------------------------------------------------------------------
+
+
+def _individual_fit(samples, fit_name="individual_fit", baselines=None):
+    """A fit run one coefficient at a time: a group of single-parameter
+    results, each with its own independently sampled 1D posterior."""
+    return Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=[name],
+                    best_fit_point={name: 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={name: jnp.array(vals)},
+                )
+                for name, vals in samples.items()
+            ]
+        ),
+        fit_name=fit_name,
+        fit_runcard={
+            "actions_": ["run_individual_analytic_fits"],
+            **(
+                {
+                    "coefficients": {
+                        name: {"free": True, "baseline_value": value}
+                        for name, value in baselines.items()
+                    }
+                }
+                if baselines is not None
+                else {}
+            ),
+        },
+    )
+
+
+def _bimodal_samples(size=400):
+    """Two well-separated modes, as quadratic corrections produce."""
+    rng = np.random.default_rng(2)
+    return np.concatenate(
+        [rng.normal(0.0, 0.1, size=size), rng.normal(5.0, 0.1, size=size)]
+    ).tolist()
+
+
+def _panels(fig):
+    """The coefficient panels of a histogram figure — every axes but the
+    legend's, which is the last one added and carries no bars."""
+    return fig.axes[:-1]
+
+
+def test_histograms_draw_one_panel_per_coefficient_plus_the_legend() -> None:
+    """The legend gets a cell of its own, so it is never drawn over a panel."""
+    fig = plot_fits_posterior_histograms([_fit()])
+
+    assert len(fig.axes) == 3  # OpA, OpZZ, and the legend cell
+    assert not fig.axes[-1].patches  # the legend cell holds no bars
+    assert fig.axes[-1].get_legend() is not None
+
+
+def test_histograms_overlay_every_fit_in_every_panel() -> None:
+    fig = plot_fits_posterior_histograms(
+        [_fit(fit_name="fit_a"), _fit(fit_name="fit_b")], show_sm=False
+    )
+
+    colors = {tuple(bar.get_facecolor()) for bar in _panels(fig)[0].patches}
+    assert len(colors) == 2  # one colour per fit, both in the same panel
+
+
+def test_histograms_are_densities_not_counts() -> None:
+    """Fits of different sample sizes are being compared, and only the shapes
+    of their posteriors are comparable."""
+    fig = plot_fits_posterior_histograms(
+        [_fit(samples={"OpA": [0.0, 1.0, 2.0, 3.0] * 10, "OpZZ": [0.0, 1.0] * 20})],
+        show_sm=False,
+    )
+
+    bars = _panels(fig)[0].patches
+    area = sum(bar.get_height() * bar.get_width() for bar in bars)
+    assert area == pytest.approx(1.0)
+
+
+def test_histograms_label_each_panel_with_its_coefficient() -> None:
+    """The name goes inside the axes: an axis label under every panel of a
+    large grid costs a row of height each time."""
+    fig = plot_fits_posterior_histograms([_fit()], show_sm=False)
+
+    texts = [t.get_text() for ax in _panels(fig) for t in ax.texts]
+    assert texts == [coeff_info_latex.get("OpA", "OpA"), "OpZZ"]
+
+
+def test_histograms_hide_the_y_ticks() -> None:
+    """The y-axis is a normalisation, not a quantity anybody reads off."""
+    fig = plot_fits_posterior_histograms([_fit()], show_sm=False)
+
+    ax = _panels(fig)[0]
+    assert ax.get_yticks().size  # the ticks themselves are still there
+    assert not [t.get_text() for t in ax.get_yticklabels() if t.get_text()]
+
+
+def test_histograms_share_the_x_range_across_fits() -> None:
+    """A coefficient spans the same range for every fit drawn of it, or their
+    posteriors cannot be compared by eye."""
+    fig = plot_fits_posterior_histograms(
+        [
+            _fit(fit_name="narrow", samples={"OpA": [0.0, 0.1], "OpZZ": [0.0, 0.1]}),
+            _fit(fit_name="wide", samples={"OpA": [-5.0, 5.0], "OpZZ": [0.0, 0.1]}),
+        ],
+        show_sm=False,
+    )
+
+    low, high = _panels(fig)[0].get_xlim()
+    assert low < -5.0
+    assert high > 5.0
+
+
+def test_histograms_mark_the_sm_with_a_dashed_line() -> None:
+    fig = plot_fits_posterior_histograms([_fit(baselines={"OpA": 1.5, "OpZZ": 0.0})])
+
+    sm_line = _panels(fig)[0].lines[0]
+    assert sm_line.get_xdata()[0] == pytest.approx(1.5)
+    assert sm_line.get_linestyle() == "--"
+
+
+def test_histograms_without_sm_draw_no_line() -> None:
+    fig = plot_fits_posterior_histograms([_fit()], show_sm=False)
+
+    assert not _panels(fig)[0].lines
+
+
+def test_histograms_keep_a_non_zero_sm_point_inside_the_frame() -> None:
+    """A coefficient sampled away from its baseline would otherwise have its
+    SM marker fall outside the panel."""
+    fig = plot_fits_posterior_histograms([_fit(baselines={"OpA": 9.0, "OpZZ": 0.0})])
+
+    assert _panels(fig)[0].get_xlim()[1] > 9.0
+
+
+def test_histograms_legend_names_every_fit_and_the_sm() -> None:
+    fig = plot_fits_posterior_histograms(
+        [
+            _fit(fit_name="fit_a", label=r"$\mathrm{Analytic}$"),
+            _fit(fit_name="fit_b"),
+        ]
+    )
+
+    legend = fig.axes[-1].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == [
+        r"$\mathrm{Analytic}$",
+        "fit_b",
+        r"$\mathrm{SM}$",
+    ]
+
+
+def test_histograms_legend_drops_the_sm_entry_with_the_marker() -> None:
+    fig = plot_fits_posterior_histograms([_fit()], show_sm=False)
+
+    legend = fig.axes[-1].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == ["my_fit"]
+
+
+def test_histograms_bin_by_freedman_diaconis_by_default() -> None:
+    """The rule follows the bulk of the posterior rather than its tails."""
+    samples = np.random.default_rng(3).normal(size=500).tolist()
+    fig = plot_fits_posterior_histograms(
+        [_fit(samples={"OpA": samples, "OpZZ": samples})], show_sm=False
+    )
+
+    expected = len(np.histogram_bin_edges(samples, bins="fd")) - 1
+    assert len(_panels(fig)[0].patches) == expected
+
+
+def test_histograms_bins_can_be_overridden() -> None:
+    fig = plot_fits_posterior_histograms([_fit()], bins=7, show_sm=False)
+
+    assert len(_panels(fig)[0].patches) == 7
+
+
+def test_histograms_bin_a_double_solution_one_branch_at_a_time() -> None:
+    """The IQR of two modes together spans the empty gap between them, and
+    the single bin width it yields smears each mode into a couple of bars."""
+    bimodal = _bimodal_samples()
+    fit = _fit(samples={"OpA": bimodal, "OpZZ": bimodal})
+
+    merged = plot_fits_posterior_histograms(
+        [fit], double_solution=["OpA"], show_sm=False
+    )
+    single = plot_fits_posterior_histograms([fit], show_sm=False)
+
+    assert len(_panels(merged)[0].patches) > len(_panels(single)[0].patches)
+    # the other coefficient was not declared bimodal, and is binned as before
+    assert len(_panels(merged)[1].patches) == len(_panels(single)[1].patches)
+
+
+def test_histograms_double_solution_keeps_every_sample() -> None:
+    """Only the binning is split: the bars are drawn from the whole posterior,
+    so declaring a second solution hides nothing."""
+    bimodal = _bimodal_samples()
+    fig = plot_fits_posterior_histograms(
+        [_fit(samples={"OpA": bimodal, "OpZZ": bimodal})],
+        double_solution=["OpA"],
+        show_sm=False,
+    )
+
+    bars = _panels(fig)[0].patches
+    area = sum(bar.get_height() * bar.get_width() for bar in bars)
+    assert area == pytest.approx(1.0)
+
+
+def test_histograms_double_solution_can_be_set_per_fit() -> None:
+    """Two fits of the same coefficient need not both resolve a second
+    solution."""
+    bimodal = _bimodal_samples()
+    fits = [
+        _fit(fit_name="fit_a", samples={"OpA": bimodal, "OpZZ": bimodal}),
+        _fit(fit_name="fit_b", samples={"OpA": bimodal, "OpZZ": bimodal}),
+    ]
+
+    fig = plot_fits_posterior_histograms(
+        fits, double_solution={"fit_a": ["OpA"]}, show_sm=False
+    )
+
+    per_fit_bars = [
+        len([b for b in _panels(fig)[0].patches if tuple(b.get_facecolor()) == color])
+        for color in dict.fromkeys(
+            tuple(b.get_facecolor()) for b in _panels(fig)[0].patches
+        )
+    ]
+    assert per_fit_bars[0] > per_fit_bars[1]
+
+
+def test_histograms_restrict_to_params_to_plot() -> None:
+    fig = plot_fits_posterior_histograms([_fit()], params_to_plot=["OpZZ"])
+
+    assert len(_panels(fig)) == 1
+
+
+def test_histograms_accept_a_single_coefficient() -> None:
+    """Unlike a contour, a histogram needs no pair."""
+    fig = plot_fits_posterior_histograms([_fit()], params_to_plot=["OpA"])
+
+    assert len(_panels(fig)) == 1
+
+
+def test_histograms_accept_an_individual_fit() -> None:
+    """This is how the individual counterpart of a marginalised figure is
+    produced: a fits: entry pointing at an individual_fits output, not an
+    option here."""
+    fig = plot_fits_posterior_histograms(
+        [_individual_fit({"OpA": [0.0, 1.0, 2.0, 3.0], "OpZZ": [0.0, 1.0, 2.0]})],
+        show_sm=False,
+    )
+
+    assert len(_panels(fig)) == 2
+    assert _panels(fig)[0].patches
+
+
+def test_histograms_overlay_an_individual_fit_on_a_joint_one() -> None:
+    """The comparison the notebook's figure pairs are about."""
+    fig = plot_fits_posterior_histograms(
+        [
+            _fit(fit_name="joint"),
+            _individual_fit({"OpA": [0.0, 1.0], "OpZZ": [0.0, 1.0]}),
+        ],
+        show_sm=False,
+    )
+
+    colors = {tuple(bar.get_facecolor()) for bar in _panels(fig)[0].patches}
+    assert len(colors) == 2
+
+
+def test_histograms_per_fit_action_draws_a_single_fit() -> None:
+    fig = plot_posterior_histograms(_fit(), show_sm=False)
+
+    legend = fig.axes[-1].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == ["my_fit"]
+
+
+def test_histograms_grid_stays_near_square() -> None:
+    """Five coefficients and the legend fill a 3x2 grid, not a 6x1 strip."""
+    samples = {f"Op{i}": [0.0, 1.0, 2.0, 3.0] for i in range(5)}
+    fig = plot_fits_posterior_histograms(
+        [_fit(free=tuple(samples), samples=samples)], show_sm=False
+    )
+
+    geometry = _panels(fig)[0].get_subplotspec().get_gridspec().get_geometry()
+    assert geometry == (2, 3)
+
+
+def test_histograms_reject_an_empty_fits_list() -> None:
+    with pytest.raises(ValueError, match="No fits"):
+        plot_fits_posterior_histograms([])
+
+
+def test_histograms_reject_a_fit_without_samples() -> None:
+    fit = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpZZ"],
+            best_fit_point={},
+            max_loglikelihood=-1.0,
+            num_data=10,
+            samples=None,
+        ),
+        fit_name="sampleless",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no posterior samples"):
+        plot_fits_posterior_histograms([fit])

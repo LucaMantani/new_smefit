@@ -202,7 +202,9 @@ def coeff_limits(
     """
     per_fit_samples = []
     for fit in fits:
-        samples = _joint_results(fit).samples
+        # a coefficient's range is about that coefficient alone, so an
+        # individual fit's independently sampled posteriors are read here too
+        samples = fit.fit_results.samples
         assert samples is not None  # the actions reject sample-less fits first
         per_fit_samples.append(samples)
 

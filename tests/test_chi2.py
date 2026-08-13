@@ -6,6 +6,7 @@ import pytest
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, Dataset, TheoryGroup
 from smefit.model import EFTModel
+from smefit.whitening import WhitenTransform
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
@@ -86,6 +87,69 @@ def test_chi2_baseline_explicit():
     baseline = jnp.array([0.7, -0.3])
     chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=5, baseline=baseline)
     assert jnp.allclose(chi2.baseline, baseline)
+
+
+# ---------------------------------------------------------------------------
+# Chi2.whitened
+# ---------------------------------------------------------------------------
+
+
+def test_chi2_whitened_evaluates_at_physical_point():
+    """Whitened chi2 at c_w equals the original at matrix @ c_w + shift."""
+    transform = WhitenTransform(
+        matrix=jnp.array([[2.0, 0.0], [0.0, 3.0]]), shift=jnp.array([0.5, -1.0])
+    )
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=7)
+
+    whitened = chi2.whitened(transform)
+
+    c_w = jnp.array([1.0, 1.0])
+    assert float(whitened(c_w)) == pytest.approx(
+        float(chi2(transform.to_physical(c_w)))
+    )
+
+
+def test_chi2_whitened_baseline_in_whitened_coordinates():
+    baseline = jnp.array([1.0, -2.0])
+    transform = WhitenTransform(
+        matrix=jnp.array([[2.0, 0.0], [0.0, 3.0]]), shift=jnp.array([0.5, -1.0])
+    )
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=7, baseline=baseline)
+
+    whitened = chi2.whitened(transform)
+
+    assert jnp.allclose(whitened.baseline, transform.to_whitened(baseline))
+    assert jnp.allclose(transform.to_physical(whitened.baseline), baseline)
+
+
+def test_chi2_whitened_baseline_is_origin_when_centred_on_it():
+    """With shift = baseline (the default whitening centre), the whitened
+    baseline is the origin — what the sampler expects to start from."""
+    baseline = jnp.array([1.0, -2.0])
+    transform = WhitenTransform(matrix=jnp.eye(2) * 2.0, shift=baseline)
+    chi2 = Chi2(lambda c: jnp.sum(c**2), ["OpA", "OpB"], num_data=7, baseline=baseline)
+
+    assert jnp.allclose(chi2.whitened(transform).baseline, jnp.zeros(2))
+
+
+def test_chi2_whitened_preserves_metadata():
+    transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
+    chi2 = Chi2(
+        lambda c: jnp.sum(c**2),
+        ["OpA", "OpB"],
+        num_data=7,
+        has_external=True,
+        name="total",
+    )
+
+    whitened = chi2.whitened(transform)
+
+    assert isinstance(whitened, Chi2)
+    assert whitened.param_names == ["OpA", "OpB"]
+    assert whitened.nparam == 2
+    assert whitened.num_data == 7
+    assert whitened.has_external is True
+    assert whitened.name == "total"
 
 
 # ---------------------------------------------------------------------------

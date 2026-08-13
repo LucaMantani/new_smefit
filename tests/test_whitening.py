@@ -6,26 +6,19 @@ import jax.numpy as jnp
 import pytest
 
 from smefit.chi2 import Chi2
-from smefit.core import Coefficient, CoefficientGroup
 from smefit.whitening import (
     WhitenTransform,
     _build_matrix,
     _whitening_baseline_shift,
     _whitening_gradient_descent_shift,
-    apply_whitening,
 )
 
 _WHITENING = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
-_PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
 
 def _quadratic_chi2(names=("OpA", "OpB")):
     """chi2 = sum(c**2), Hessian = 2*I everywhere (shift-invariant curvature)."""
     return Chi2(lambda c: jnp.sum(c**2), list(names), num_data=1)
-
-
-def _free(name):
-    return Coefficient(name=name, free=True, prior=_PRIOR)
 
 
 # ---------------------------------------------------------------------------
@@ -154,46 +147,3 @@ def test_gradient_descent_shift_centers_on_given_point():
     assert jnp.allclose(transform.shift, gd_best_fit)
     # Hessian of sum(c**2) is constant (2*I), so matrix agrees with the baseline case.
     assert jnp.allclose(transform.matrix, jnp.eye(2) / jnp.sqrt(2.0), atol=1e-5)
-
-
-# ---------------------------------------------------------------------------
-# apply_whitening
-# ---------------------------------------------------------------------------
-
-
-def test_apply_whitening_chi2_equivalent():
-    """Whitened chi2 evaluated at c_w equals original chi2 at W @ c_w."""
-    W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
-    transform = WhitenTransform(matrix=W, shift=jnp.zeros(2))
-    chi2 = lambda c: jnp.sum(c**2)
-    cg = CoefficientGroup([_free("OpA"), _free("OpB")])
-
-    whitened_chi2, _ = apply_whitening(chi2, cg, transform)
-
-    c_w = jnp.array([1.0, 1.0])
-    assert float(whitened_chi2(c_w)) == pytest.approx(float(chi2(W @ c_w)))
-
-
-def test_apply_whitening_chi2_equivalent_with_shift():
-    """Whitened chi2 at c_w equals original chi2 at W @ c_w + shift."""
-    W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
-    shift = jnp.array([0.5, -1.0])
-    transform = WhitenTransform(matrix=W, shift=shift)
-    chi2 = lambda c: jnp.sum(c**2)
-    cg = CoefficientGroup([_free("OpA"), _free("OpB")])
-
-    whitened_chi2, _ = apply_whitening(chi2, cg, transform)
-
-    c_w = jnp.array([1.0, 1.0])
-    assert float(whitened_chi2(c_w)) == pytest.approx(float(chi2(W @ c_w + shift)))
-
-
-def test_apply_whitening_coeff_group():
-    """Returned CoefficientGroup should have _transform set (whitening active)."""
-    transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
-    chi2 = lambda c: jnp.sum(c**2)
-    cg = CoefficientGroup([_free("OpA"), _free("OpB")])
-
-    _, whitened_cg = apply_whitening(chi2, cg, transform)
-
-    assert whitened_cg._transform is not None

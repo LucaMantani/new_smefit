@@ -22,7 +22,8 @@
                           #  reusable via rge.rg_matrix in later runcards
   pseudodata/             # written by the write_pseudodata action
     <dataset>.yaml        # projected commondata (+ theory JSON copies for _proj sets)
-  index.html              # report action output
+  index.html              # report action output, alongside the index.md it was
+  index.md                #  rendered from, plus report.css / report.template
 ```
 
 Table and figure actions (Fisher, chi2/mass scans) write only into `tables/`

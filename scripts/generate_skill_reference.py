@@ -315,6 +315,7 @@ def collect_actions():
                         "name": fname,
                         "signature": str(sig),
                         "doc": doc,
+                        "params": [p.name for p in sig.parameters.values()],
                         "optional_params": [
                             p.name
                             for p in sig.parameters.values()
@@ -460,7 +461,8 @@ def render_runcard_keys_md(surface, paths_info, coeff_keys):
         "## Path resolution (shareable runcards)",
         "",
         "Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,",
-        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,",
+        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,",
+        "`fits[*].path`) support prefix-relative form,",
         f"resolved via the machine-specific `{paths_info['config_file']}` (created by",
         "`smefit_setup_local`). Standard prefixes: "
         + ", ".join(f"`{p}`" for p in paths_info["standard_prefixes"])
@@ -630,6 +632,28 @@ def collect_provider_arg_keys(action_modules, surface):
     return sorted(keys - resources)
 
 
+def collect_fit_reading_actions(action_modules):
+    """Actions whose input is a fit that has already been run.
+
+    A runcard that only runs these needs no `datasets`/`coefficients` of its
+    own: `fits:` loads finished fit directories, and what the action reports on
+    is whatever each was fitted with. Every other action builds a chi2 and
+    needs the full setup — which is what validate_runcard.py uses this for.
+
+    An action qualifies by taking the `fit`/`fits` resource. `report` is added
+    by hand: it comes from reportengine, and its real actions are the `{@…@}`
+    tags of the template.
+    """
+    names = {"report"}
+    for mod in action_modules:
+        for fn in mod["functions"]:
+            if is_runnable_action(mod["module"], fn["name"]) and (
+                {"fit", "fits"} & set(fn["params"])
+            ):
+                names.add(fn["name"])
+    return sorted(names)
+
+
 def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_keys):
     """Machine-readable key list consumed by validate_runcard.py."""
     settings_blocks = {}
@@ -647,6 +671,7 @@ def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_k
     )
     return {
         "top_level_keys": top_level,
+        "fit_reading_actions": collect_fit_reading_actions(action_modules),
         "settings_blocks": settings_blocks,
         "raw_keys": surface["raw"],
         "derived_keys": sorted(e["key"] for e in surface["produce"]),

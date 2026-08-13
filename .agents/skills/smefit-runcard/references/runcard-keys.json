@@ -40,6 +40,10 @@
     "theory",
     "whitening_transformation"
   ],
+  "fit_reading_actions": [
+    "plot_posterior_correlations",
+    "report"
+  ],
   "path_prefixes": [
     "new_smefit",
     "smefit_database",
@@ -62,11 +66,15 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "cmap",
+    "colorbar",
     "n_eval",
     "n_samples",
     "n_steps",
+    "params_to_plot",
     "seed",
-    "tol"
+    "tol",
+    "value_fmt"
   ],
   "raw_keys": {
     "datasets": {
@@ -209,7 +217,9 @@
     },
     "rge": {
       "defaults": {
-        "obs_scale": "'dynamic'"
+        "obs_scale": "'dynamic'",
+        "smeft_accuracy": "'integrate'",
+        "yukawa": "'top'"
       },
       "known_keys": [
         "adm_QCD",
@@ -260,7 +270,9 @@
     "bayesian_update_path",
     "blackjax_settings",
     "chi2_scan_settings",
+    "cmap",
     "coefficients",
+    "colorbar",
     "data_path",
     "datasets",
     "external_chi2",
@@ -272,6 +284,7 @@
     "n_samples",
     "n_steps",
     "optimizer_settings",
+    "params_to_plot",
     "pseudodata_settings",
     "rge",
     "seed",
@@ -282,6 +295,7 @@
     "use_quad",
     "use_t0",
     "use_theory_covmat",
+    "value_fmt",
     "whitening"
   ]
 }

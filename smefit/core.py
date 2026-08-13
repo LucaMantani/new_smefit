@@ -425,6 +425,8 @@ class CoefficientGroup:
     def whitened(self, transform: WhitenTransform) -> "CoefficientGroup":
         """Return a CoefficientGroup whose resolve un-whitens free coefficients first.
 
+        ``baseline_free`` comes back in whitened coordinates too.
+
         Parameters
         ----------
         transform : WhitenTransform
@@ -434,6 +436,7 @@ class CoefficientGroup:
 
         new = copy.copy(self)
         new._transform = transform
+        new.baseline_free = transform.to_whitened(self.baseline_free)
         return new
 
     def resolve(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":

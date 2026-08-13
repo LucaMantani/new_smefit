@@ -181,6 +181,122 @@ actions_:
   the SM point).
 - Add `group: <label>` to dataset entries (and external chi2 blocks) to
   aggregate Fisher matrices per group instead of per dataset.
+- `plot_fisher_diagonals_heatmap` takes the same `cmap`, `value_fmt` and
+  `colorbar` as the correlation heatmap — see "Configuring an action" below.
+  `value_fmt: "{:.2f}"` is the one worth knowing: the default single decimal
+  rounds a small but non-zero share to `0.0`.
+
+## Reporting on fits that have already been run
+
+`fits:` loads finished fit directories, so a runcard can report on them without
+refitting anything — no `datasets`, `coefficients` or covariance flags needed.
+Template: `posterior_correlations.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+template_text: |
+  # Posterior correlations
+  {@with fits@}
+  ## {@fit@}
+  {@plot_posterior_correlations@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- `path` is the directory *containing* the fit; drop it to look the fit up in
+  `smefit_results/fits`, downloading it from the server if it is not there.
+- A `{@with fits@}`…`{@endwith@}` block runs everything inside it once per fit,
+  and `{@fit@}` renders that fit's name — use it for a heading, or the report
+  stacks every fit's output with nothing saying which is which. `{@fits
+  <action>@}` is the one-line form, and gives up the heading.
+- Outside a report, prefix the action with the namespace in `actions_`,
+  space-separated: `- fits plot_posterior_correlations`. Either way outputs are
+  named after the fit (`<fit_name>_plot_posterior_correlations.pdf`), and
+  heatmaps are headed with the fit's `label` (its name when it has none).
+- `plot_posterior_correlations` reads the posterior samples in each fit's
+  `fit_results.json` and correlates the **free** coefficients. Every cell is
+  annotated with its value, so there is no separate table. It rejects a fit run
+  with `run_individual_*_fits`: its coefficients were never sampled together.
+
+### Configuring an action
+
+There is no settings block for how a figure looks, and none is needed: an
+action's keyword parameters are resolved by reportengine like any other
+resource, so a runcard sets them three ways.
+
+As a **top-level key**, applying everywhere the parameter appears — the same
+mechanism as `n_samples`, `seed` or `tol`:
+
+```yaml
+cmap: PuOr
+colorbar: False
+```
+
+As an **action argument**, in a template or in `actions_`:
+
+```yaml
+template_text: |
+  {@fits plot_posterior_correlations(cmap="PuOr", colorbar=False)@}
+actions_:
+  - fits plot_posterior_correlations(value_fmt="{:.3f}")
+```
+
+Argument values are parsed as YAML, so strings, numbers and booleans work.
+**An action argument beats a top-level key** when both name the same
+parameter — the specific wins.
+
+Both heatmaps take `cmap`, `value_fmt` and `colorbar`, and they share those
+names, so one top-level `cmap:` sets both; use an action argument where they
+should differ. What is *not* settable is what would stop two plots being
+comparable: the colour scale ([-1, 1] for correlations, 0–100% for Fisher),
+square cells, and the correlation heatmap's heading, which is always the fit's
+label so that every heatmap says which fit it is.
+
+### Choosing which coefficients a report shows
+
+`params_to_plot` restricts every routine that takes it to the coefficients
+named, in the order named — a global fit's correlation heatmap is unreadable
+with tens of operators on a side, and the interesting block is a handful of
+them.
+
+```yaml
+params_to_plot: [OtG, OtW, OpQM, OpQ3]
+```
+
+It is the mechanism above, but the one key meant to be shared: sharing keeps a
+report's figures and tables talking about the same operators in the same order.
+Taken today by `plot_posterior_correlations` and `fisher_diagonals_normalised`
+— so the Fisher table's CSV and the heatmap drawn from it are restricted
+together. An action argument still overrides it for one figure.
+
+- Write it as a YAML list of coefficient names — the raw names, not their LaTeX
+  labels. Nothing validates the list, so a name is either matched or skipped.
+- **Order is the runcard's**, not alphabetical: write operators in the order
+  they should be read, grouped by sector if that helps.
+- **Each fit keeps the largest subset it has.** A name a given fit never fitted
+  is left out of that fit's heatmap and logged, so one list can head several
+  fits with different coefficients. A list matching *nothing* raises instead —
+  that is a misspelling, not a subset.
+
+Three things to know about the mechanism:
+
+- **An argument that is not a parameter of the action is silently ignored.**
+  reportengine matches arguments against the action's signature
+  (`_make_callspec`, `reportengine/resourcebuilder.py`) and drops the rest, so
+  `cmpa="PuOr"` does nothing and says nothing. Check the spelling against the
+  signature in `actions.md`.
+- **The same action cannot appear twice with different arguments.** The node's
+  namespace key is built from the action's *name* only
+  (`_create_default_key`), so both calls collapse to one node and one output
+  file: the first set of arguments wins, the second is dropped silently. Two
+  variants of one figure need two providers.
+- **A parameter has to be a parameter.** Only what a provider declares can be
+  set this way, which is the deliberate limit on how much of a plot a runcard
+  controls — see `smefit-dev` before adding one.
 
 ## Precision and performance
 

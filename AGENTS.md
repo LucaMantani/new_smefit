@@ -96,14 +96,15 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`model.py`**: `EFTModel` — maps free coefficient values to theory predictions. `forward_map` is JAX JIT-compiled.
 - **`loader.py`**: Reads datasets from YAML and theories from JSON files in an external `smefit_database`.
 - **`data_utils.py`**: Covariance matrix construction (handles correlated/uncorrelated systematics).
-- **`chi2.py`**: `build_chi2` returns a JAX-differentiable loss function.
+- **`chi2.py`**: `build_chi2` returns a JAX-differentiable loss function; `Chi2` wraps it with the metadata the fit nodes need (`baseline`, `num_data`, …) and `Chi2.whitened` re-expresses it in whitened coordinates.
 - **`fit_actions.py`**: The reportengine actions listed under `actions_:` in a runcard (`run_analytic_fit`, `run_ultranest_fit`, `run_blackjax_fit`, `run_hessian_fit`, and their `run_individual_*_fits` counterparts) — each takes its produced fit object plus `output_path` and executes/writes it.
-- **`utils.py`**: Whitening (`apply_whitening`), posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
+- **`whitening.py`**: `WhitenTransform` (the affine map between whitened and physical coefficients) and the `_whitening_*_shift` workers that build it. Callers whiten by asking the domain objects themselves: `chi2.whitened(transform)` and `coefficients.whitened(transform)`.
+- **`utils.py`**: Posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
 
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
 `blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
-`external_chi2.py`, `rge.py`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
+`external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
 `tables.py`, `wcxf.py`, `op_to_latex.py`, `utils_actions.py`, `constants.py`, `api.py` (the
 `reportengine` programmatic API).
 
@@ -187,3 +188,9 @@ which one: `baseline` (default) centres on the coefficients' baseline point
 (`baseline_value`, zero by default), while `gradient_descent` centres on the
 `gd_best_fit` point instead, which additionally requires a
 `gradient_descent_settings` block in the runcard.
+
+An optional `params_to_plot: [OtG, OpQM, ...]` list restricts a report to those
+coefficients, in that order. It is a plain provider parameter, global on purpose:
+every report routine taking one reads the same key, so figures and tables agree on
+which operators they are about. Each routine keeps whichever of the names it has —
+fits need not share coefficients — via `smefit.plot_utils.select_params`.

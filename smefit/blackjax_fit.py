@@ -19,7 +19,6 @@ from jax.scipy.special import logsumexp
 
 from smefit.fit_result import FitResult
 from smefit.utils import resolve_posterior
-from smefit.whitening import apply_whitening
 
 log = logging.getLogger(__name__)
 
@@ -58,12 +57,10 @@ def blackjax_fit(
     """
     if whitening_transformation is not None:
         log.info("Using whitening transformation in BlackJAX fit.")
-        _chi2, resolve_coeffs = apply_whitening(
-            chi2, coefficients, whitening_transformation
-        )
+        _chi2 = chi2.whitened(whitening_transformation)
+        _coeffs = coefficients.whitened(whitening_transformation)
     else:
-        _chi2 = chi2
-        resolve_coeffs = coefficients
+        _chi2, _coeffs = chi2, coefficients
 
     # set the BlackJAX seed
     rng_key = jax.random.PRNGKey(blackjax_settings["seed"])
@@ -148,15 +145,13 @@ def blackjax_fit(
     max_logl = float(final_states.particles.loglikelihood[best_free_index])
     best_free = final_states.particles.position[best_free_index]
 
-    samples, best_fit_point = resolve_posterior(
-        resolve_coeffs, posterior_free, best_free
-    )
+    samples, best_fit_point = resolve_posterior(_coeffs, posterior_free, best_free)
 
     return FitResult(
-        free_parameters=resolve_coeffs.free_names,
+        free_parameters=_coeffs.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_logl,
-        num_data=chi2.num_data,
+        num_data=_chi2.num_data,
         logz=float(logzs.mean()),
         samples=samples,
         prior_specs=prior.prior_specs,

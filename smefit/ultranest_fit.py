@@ -15,7 +15,6 @@ import ultranest.stepsampler as ustepsampler
 
 from smefit.fit_result import FitResult
 from smefit.utils import resolve_posterior
-from smefit.whitening import apply_whitening
 
 log = logging.getLogger(__name__)
 
@@ -54,16 +53,14 @@ def ultranest_fit(
     """
     if whitening_transformation is not None:
         log.info("Using whitening transformation in UltraNest fit.")
-        _chi2, resolve_coeffs = apply_whitening(
-            chi2, coefficients, whitening_transformation
-        )
+        _chi2 = chi2.whitened(whitening_transformation)
+        _coeffs = coefficients.whitened(whitening_transformation)
     else:
-        _chi2 = chi2
-        resolve_coeffs = coefficients
+        _chi2, _coeffs = chi2, coefficients
 
     log.info(
         "Running UltraNest fit for free coefficients: %s",
-        resolve_coeffs.free_names,
+        _coeffs.free_names,
     )
 
     # set the ultranest seed
@@ -133,15 +130,13 @@ def ultranest_fit(
         )
     posterior_free = full_samples[:n_posterior_samples]
 
-    samples, best_fit_point = resolve_posterior(
-        resolve_coeffs, posterior_free, best_free
-    )
+    samples, best_fit_point = resolve_posterior(_coeffs, posterior_free, best_free)
 
     return FitResult(
-        free_parameters=resolve_coeffs.free_names,
+        free_parameters=_coeffs.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_logl,
-        num_data=chi2.num_data,
+        num_data=_chi2.num_data,
         logz=logz,
         samples=samples,
         prior_specs=prior.prior_specs,

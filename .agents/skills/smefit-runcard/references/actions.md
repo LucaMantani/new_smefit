@@ -64,7 +64,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_scan_table(individual_chi2_scans)`
   - Per-coefficient 1D chi2 scan results as a table.
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices)`
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.
@@ -73,8 +73,10 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `plot_chi2_scan(individual_chi2_scans)`
   - Plot the 1D chi2 scan for each free coefficient.
-- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
+- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
+  - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`
 

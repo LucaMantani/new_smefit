@@ -10,7 +10,8 @@ with `scripts/validate_runcard.py`.
 ## Path resolution (shareable runcards)
 
 Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,
-`external_chi2[*].rg_matrix`, `rge.rg_matrix`) support prefix-relative form,
+`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,
+`fits[*].path`) support prefix-relative form,
 resolved via the machine-specific `.config/paths.yaml` (created by
 `smefit_setup_local`). Standard prefixes: `new_smefit`, `smefit_database`, `smefit_results`.
 From `smefit.paths`:
@@ -63,6 +64,10 @@ Notes:
 ### `bayesian_update_path`
 
 Parse and validate the path to a previous fit for Bayesian updating.
+
+Accepts an absolute path or the prefix-relative form
+(`smefit_results/fits/my_fit`); a fit that is not there yet is
+downloaded from the server, as for `fits`.
 
 ### `blackjax_settings`
 
@@ -279,11 +284,13 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `obs_scale` — default: `'dynamic'`
 - `rg_matrix`
 - `scale_variation`
-- `smeft_accuracy`
-- `yukawa`
+- `smeft_accuracy` — default: `'integrate'`
+- `yukawa` — default: `'top'`
 
 Validation errors raised while parsing:
 
+- Invalid 'smeft_accuracy' in rge settings
+- Invalid 'yukawa' in rge settings
 - obs_scale must be a float/int or 'dynamic'
 - rge block requires 'init_scale'
 

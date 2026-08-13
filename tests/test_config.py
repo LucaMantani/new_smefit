@@ -167,6 +167,79 @@ def test_parse_rge_fixed_obs_scale_ok(cfg):
     assert result["obs_scale"] == 91.2
 
 
+def test_parse_rge_invalid_smeft_accuracy_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "smeft_accuracy": "bad_value"})
+
+
+def test_parse_rge_invalid_yukawa_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "yukawa": "bad_value"})
+
+
+def test_parse_rge_valid_yukawas_accepted(cfg):
+    for yukawa in ("top", "none", "full"):
+        result = cfg.parse_rge({"init_scale": 1000.0, "yukawa": yukawa})
+        assert result["yukawa"] == yukawa
+
+
+# ---------------------------------------------------------------------------
+# produce_rge_matrix
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_rge_matrix():
+    """Stand-in for an RGEMatrix — produce_rge_matrix only logs and writes it."""
+    matrix = MagicMock()
+    matrix.stacked_mats.shape = (1, 3, 2)
+    matrix.obs_operators = ["Op1", "Op2", "Op3"]
+    return matrix
+
+
+def test_produce_rge_matrix_builds_writes_and_returns(
+    cfg, theory_a, fake_rge_matrix, monkeypatch
+):
+    """The node sorts the coefficient names, builds, then writes to output_path."""
+    from smefit import config as config_mod
+
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    coefficients = CoefficientGroup(
+        [Coefficient(name="OpB", free=True), Coefficient(name="OpA", free=True)]
+    )
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    result = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+
+    assert result is fake_rge_matrix
+    build.assert_called_once_with(
+        rge_dict=rge, coeff_list=["OpA", "OpB"], theory_group=theory
+    )
+    fake_rge_matrix.write.assert_called_once_with(cfg.output_path)
+
+
+def test_produce_rge_matrix_caching(cfg, theory_a, fake_rge_matrix, monkeypatch):
+    """The matrix is expensive, so it is built once and reused."""
+    from smefit import config as config_mod
+
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    coefficients = CoefficientGroup([Coefficient(name="OpA", free=True)])
+    rge = {"init_scale": 1000.0}
+
+    first = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+    second = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+
+    assert first is second
+    assert build.call_count == 1
+    assert fake_rge_matrix.write.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # produce_rge_matrix / rge_matrix as a required dependency
 #
@@ -203,20 +276,37 @@ def test_eft_model_requires_rge_matrix(method):
     assert param.default is inspect.Parameter.empty
 
 
-def test_produce_rge_matrix_skips_save_without_output_path(cfg):
+def test_produce_rge_matrix_skips_save_without_output_path(
+    cfg, fake_rge_matrix, monkeypatch
+):
     """With no output folder the matrix is computed but not cached to disk."""
+    from smefit import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
+    )
     rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
-    with patch("smefit.config.load_rge_matrix") as mock_load:
-        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=None)
-    assert mock_load.call_args.kwargs["save_path"] is None
+
+    result = cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=None)
+
+    assert result is fake_rge_matrix
+    fake_rge_matrix.write.assert_not_called()
 
 
-def test_produce_rge_matrix_saves_with_output_path(cfg, tmp_path):
+def test_produce_rge_matrix_saves_with_output_path(
+    cfg, tmp_path, fake_rge_matrix, monkeypatch
+):
     """The CLI contract -- <output>/rge_matrix.pkl -- is unchanged."""
+    from smefit import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
+    )
     rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
-    with patch("smefit.config.load_rge_matrix") as mock_load:
-        cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
-    assert mock_load.call_args.kwargs["save_path"] == tmp_path
+
+    cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
+
+    fake_rge_matrix.write.assert_called_once_with(tmp_path)
 
 
 # ---------------------------------------------------------------------------

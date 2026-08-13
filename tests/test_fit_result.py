@@ -232,6 +232,39 @@ def _make_individual_result(
     )
 
 
+def test_group_free_parameters_lists_every_coefficient_fitted():
+    """Under the FitResult name, so that a routine reading one coefficient at
+    a time — the 1D bounds ones — reads both kinds of fit the same way."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.2])
+
+    assert FitResultGroup([r1, r2]).free_parameters == ["OpA", "OpB"]
+
+
+def test_group_samples_merges_the_individual_posteriors():
+    """Each coefficient's samples come from its own single-parameter fit."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.2])
+
+    samples = FitResultGroup([r1, r2]).samples
+
+    assert list(samples) == ["OpA", "OpB"]
+    assert samples["OpA"] == pytest.approx([0.8, 1.2])
+    assert samples["OpB"] == pytest.approx([1.8, 2.2])
+
+
+def test_group_samples_is_none_when_no_fit_kept_any():
+    """Same absent-samples signal as FitResult, so consumers test it once."""
+    result = FitResult(
+        free_parameters=["OpA"],
+        best_fit_point={"OpA": 1.0},
+        max_loglikelihood=-1.0,
+        num_data=10,
+    )
+
+    assert FitResultGroup([result]).samples is None
+
+
 def test_write_summary_no_overwrite(tmp_path):
     """Each coefficient's best_fit and std must come from its own fit, not be
     overwritten by later fits."""

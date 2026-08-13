@@ -907,11 +907,10 @@ class smefitConfig(Config):
         """Produce RGE matrix with init_scale set to the current mass scan point."""
         rge_dict = dict(rge)
         rge_dict["init_scale"] = float(individual_mass_scale)
-        return load_rge_matrix(
+        return build_rge_matrix(
             rge_dict=rge_dict,
             coeff_list=sorted(coefficients.names),
             theory_group=theory,
-            save_path=None,
         )
 
     def produce_individual_mass_eft_model(

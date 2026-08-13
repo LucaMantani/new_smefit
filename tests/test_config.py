@@ -1075,15 +1075,16 @@ def test_produce_individual_mass_rge_matrix_overrides_init_scale(cfg, theory_a):
     theory = TheoryGroup([theory_a])
     rge = {"init_scale": 10.0, "obs_scale": 1000.0}
 
-    with patch("smefit.config.load_rge_matrix", return_value="RGE_MATRIX") as mock_load:
+    with patch(
+        "smefit.config.build_rge_matrix", return_value="RGE_MATRIX"
+    ) as mock_build:
         result = cfg.produce_individual_mass_rge_matrix(rge, cg, theory, 42.0)
 
     assert result == "RGE_MATRIX"
-    _, kwargs = mock_load.call_args
+    _, kwargs = mock_build.call_args
     assert kwargs["rge_dict"]["init_scale"] == 42.0
     assert kwargs["coeff_list"] == ["OpA"]
     assert kwargs["theory_group"] is theory
-    assert kwargs["save_path"] is None
     # the caller's rge dict must not be mutated in place
     assert rge["init_scale"] == 10.0
 

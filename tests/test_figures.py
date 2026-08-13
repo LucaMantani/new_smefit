@@ -15,8 +15,11 @@ import pytest
 
 from smefit import figures as figures_mod
 from smefit.figures import (
+    _ROW_GAP_RATIO,
     _plot_heatmap,
+    plot_coefficient_bounds,
     plot_fisher_diagonals_heatmap,
+    plot_fits_coefficient_bounds,
     plot_fits_posterior_contours,
     plot_fits_posterior_histograms,
     plot_posterior_contours,
@@ -940,3 +943,277 @@ def test_histograms_reject_a_fit_without_samples() -> None:
 
     with pytest.raises(ValueError, match="no posterior samples"):
         plot_fits_posterior_histograms([fit])
+
+
+# ---------------------------------------------------------------------------
+# plot_fits_coefficient_bounds / plot_coefficient_bounds
+# ---------------------------------------------------------------------------
+
+
+def _intervals(ax):
+    """The error bars drawn, as (x_low, x_high, y) per bar.
+
+    An errorbar container leaves its bar as a LineCollection; reading the
+    segments back is what says where an interval was actually drawn.
+    """
+    bars = []
+    for collection in ax.collections:
+        for segment in collection.get_segments():
+            bars.append((segment[0][0], segment[-1][0], segment[0][1]))
+    return bars
+
+
+def _uniform_fit(fit_name="my_fit", **kwargs):
+    """A fit whose percentiles are exact: 0..1000 puts the p-th percentile at
+    10p, so a 68% interval is [160, 840] and a 95% one [25, 975]."""
+    ramp = np.arange(0.0, 1001.0).tolist()
+    return _fit(samples={"OpA": ramp, "OpZZ": ramp}, fit_name=fit_name, **kwargs)
+
+
+def test_bounds_draw_one_interval_per_coefficient() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+
+    assert len(_intervals(fig.axes[0])) == 2  # OpA and OpZZ, one level each
+
+
+def test_bounds_span_the_confidence_interval() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], confidence_level=68)
+
+    low, high, _ = _intervals(fig.axes[0])[0]
+    assert (low, high) == pytest.approx((160.0, 840.0))
+
+
+def test_bounds_marker_sits_at_the_central_value() -> None:
+    """The mean of the posterior, which is what the interval is quoted
+    around."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], confidence_level=68)
+
+    markers = [line for line in fig.axes[0].lines if line.get_marker() == "."]
+    assert len(markers) == 2  # one per coefficient
+    assert [m.get_xdata()[0] for m in markers] == pytest.approx([500.0, 500.0])
+
+
+def test_bounds_two_levels_draw_a_thin_bar_under_a_thick_one() -> None:
+    """The wider interval is the thin one, whichever way round the levels are
+    written."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], confidence_level=[95, 68])
+
+    spans = sorted(_intervals(fig.axes[0]), key=lambda bar: bar[1] - bar[0])
+    inner, outer = spans[0], spans[-1]
+    assert (inner[0], inner[1]) == pytest.approx((160.0, 840.0))
+    assert (outer[0], outer[1]) == pytest.approx((25.0, 975.0))
+
+
+def test_bounds_level_order_does_not_matter() -> None:
+    ascending = plot_fits_coefficient_bounds(
+        [_uniform_fit()], confidence_level=[68, 95]
+    )
+    descending = plot_fits_coefficient_bounds(
+        [_uniform_fit()], confidence_level=[95, 68]
+    )
+
+    assert sorted(_intervals(ascending.axes[0])) == pytest.approx(
+        sorted(_intervals(descending.axes[0]))
+    )
+
+
+def test_bounds_rows_run_top_to_bottom_in_the_requested_order() -> None:
+    """params_to_plot is a layout as much as a filter: the first coefficient
+    asked for is the first one read."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], params_to_plot=["OpZZ", "OpA"])
+
+    ax = fig.axes[0]
+    ticks = sorted(zip(ax.get_yticks(), [t.get_text() for t in ax.get_yticklabels()]))
+    assert [label for _, label in ticks] == [
+        "OpA",
+        coeff_info_latex.get("OpZZ", "OpZZ"),
+    ]
+
+
+def test_bounds_offset_the_fits_within_a_row() -> None:
+    """Two fits of the same coefficient would otherwise draw over each
+    other."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit(fit_name="fit_a"), _uniform_fit(fit_name="fit_b")]
+    )
+
+    ys = {round(bar[2], 6) for bar in _intervals(fig.axes[0])}
+    assert len(ys) == 4  # two coefficients x two fits, none coincident
+
+
+def test_bounds_of_a_single_fit_sit_on_the_row_itself() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+
+    ax = fig.axes[0]
+    assert sorted(round(bar[2], 6) for bar in _intervals(ax)) == sorted(ax.get_yticks())
+
+
+def test_bounds_colour_each_fit_differently() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit(fit_name="fit_a"), _uniform_fit(fit_name="fit_b")]
+    )
+
+    colors = {tuple(np.ravel(c.get_color())) for c in fig.axes[0].collections}
+    assert len(colors) == 2
+
+
+def test_bounds_draw_both_branches_of_a_double_solution() -> None:
+    """The second solution goes on the same row, so a bimodal coefficient
+    shows two intervals rather than one spanning the gap."""
+    bimodal = _bimodal_samples()
+    fig = plot_fits_coefficient_bounds(
+        [_fit(samples={"OpA": bimodal, "OpZZ": bimodal})],
+        params_to_plot=["OpA"],
+        double_solution=["OpA"],
+    )
+
+    drawn = sorted(_intervals(fig.axes[0]))
+    assert len(drawn) == 2
+    assert drawn[0][1] < 1.0  # the SM-like branch stops well before the gap
+    assert drawn[1][0] > 4.0
+
+
+def test_bounds_without_double_solution_span_the_gap() -> None:
+    """What the split is there to avoid."""
+    bimodal = _bimodal_samples()
+    fig = plot_fits_coefficient_bounds(
+        [_fit(samples={"OpA": bimodal, "OpZZ": bimodal})], params_to_plot=["OpA"]
+    )
+
+    ((low, high, _),) = _intervals(fig.axes[0])
+    assert low < 1.0 < high
+
+
+def test_bounds_double_solution_can_be_set_per_fit() -> None:
+    bimodal = _bimodal_samples()
+    fits = [
+        _fit(fit_name="fit_a", samples={"OpA": bimodal, "OpZZ": bimodal}),
+        _fit(fit_name="fit_b", samples={"OpA": bimodal, "OpZZ": bimodal}),
+    ]
+
+    fig = plot_fits_coefficient_bounds(
+        fits, params_to_plot=["OpA"], double_solution={"fit_a": ["OpA"]}
+    )
+
+    assert len(_intervals(fig.axes[0])) == 3  # two branches for fit_a, one for fit_b
+
+
+def test_bounds_mark_the_origin() -> None:
+    """Whether an interval covers zero is the question the plot is read for."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+
+    zero_line = [
+        line
+        for line in fig.axes[0].lines
+        if line.get_linestyle() == "--" and line.get_xdata()[0] == 0.0
+    ]
+    assert zero_line
+
+
+def test_bounds_log_scale_is_symmetric_about_zero() -> None:
+    """Bounds run either side of zero, so a plain log scale cannot show
+    them."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], x_log=True, lin_thr=0.5)
+
+    ax = fig.axes[0]
+    assert ax.get_xscale() == "symlog"
+    assert ax.xaxis.get_transform().linthresh == pytest.approx(0.5)
+
+
+def test_bounds_log_scale_ticks_skip_the_linear_region() -> None:
+    """Decade ticks crowd together inside the linear region, where the scale
+    no longer separates them."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], x_log=True, lin_thr=1.0)
+
+    minor = fig.axes[0].get_xticks(minor=True)
+    assert minor.size
+    assert np.all(np.abs(minor) > 0.1)
+
+
+def test_bounds_linear_by_default() -> None:
+    assert (
+        plot_fits_coefficient_bounds([_uniform_fit()]).axes[0].get_xscale() == "linear"
+    )
+
+
+def test_bounds_axis_limits_are_settable() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], x_min=-10, x_max=10)
+
+    assert fig.axes[0].get_xlim() == pytest.approx((-10.0, 10.0))
+
+
+def test_bounds_legend_names_every_fit_and_the_levels() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [
+            _uniform_fit(fit_name="fit_a", label=r"$\mathrm{Analytic}$"),
+            _uniform_fit(fit_name="fit_b"),
+        ],
+        confidence_level=[68, 95],
+    )
+
+    legend = fig.axes[0].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == [
+        r"$\mathrm{Analytic}$",
+        "fit_b",
+    ]
+    assert "68" in legend.get_title().get_text()
+    assert "95" in legend.get_title().get_text()
+
+
+def test_bounds_accept_an_individual_fit() -> None:
+    ramp = np.arange(0.0, 1001.0).tolist()
+    fig = plot_fits_coefficient_bounds(
+        [_individual_fit({"OpA": ramp, "OpZZ": ramp})], confidence_level=68
+    )
+
+    low, high, _ = _intervals(fig.axes[0])[0]
+    assert (low, high) == pytest.approx((160.0, 840.0))
+
+
+def test_bounds_accept_a_single_coefficient() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], params_to_plot=["OpA"])
+
+    assert len(fig.axes[0].get_yticks()) == 1
+
+
+def test_bounds_per_fit_action_draws_a_single_fit() -> None:
+    fig = plot_coefficient_bounds(_uniform_fit())
+
+    assert [t.get_text() for t in fig.axes[0].get_legend().get_texts()] == ["my_fit"]
+
+
+def test_bounds_reject_an_empty_fits_list() -> None:
+    with pytest.raises(ValueError, match="No fits"):
+        plot_fits_coefficient_bounds([])
+
+
+def test_bounds_reject_a_fit_without_samples() -> None:
+    fit = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpZZ"],
+            best_fit_point={},
+            max_loglikelihood=-1.0,
+            num_data=10,
+            samples=None,
+        ),
+        fit_name="sampleless",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no posterior samples"):
+        plot_fits_coefficient_bounds([fit])
+
+
+def test_bounds_group_the_fits_of_one_coefficient_together() -> None:
+    """The gap between two coefficients has to stay a fixed factor wider than
+    the gap between two fits of the same one, or the grouping reads backwards
+    — which a fixed spread does as soon as enough fits are added."""
+    for n_fits in (2, 3, 5):
+        fig = plot_fits_coefficient_bounds(
+            [_uniform_fit(fit_name=f"fit_{i}") for i in range(n_fits)]
+        )
+
+        ys = sorted({round(bar[2], 9) for bar in _intervals(fig.axes[0])})
+        within = ys[1] - ys[0]  # two fits of the last coefficient
+        between = ys[n_fits] - ys[n_fits - 1]  # across the coefficient boundary
+        assert between == pytest.approx(_ROW_GAP_RATIO * within)

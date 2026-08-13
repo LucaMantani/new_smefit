@@ -16,7 +16,7 @@ from matplotlib import patches, rc
 from matplotlib.lines import Line2D
 from reportengine.figure import figure
 
-from smefit.bounds_1d import split_solution
+from smefit.bounds_1d import coeff_bounds, split_solution
 from smefit.contours_2d import fit_colors, fit_hatches, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
@@ -764,4 +764,251 @@ def plot_posterior_histograms(
         show_sm=show_sm,
         bins=bins,
         subplot_size=subplot_size,
+    )
+
+
+# ----------------------------------------------------------------------
+# Coefficient bounds — central value and confidence intervals
+# ----------------------------------------------------------------------
+
+# How much wider the gap between two coefficients is than the gap between two
+# fits of the same one, in the bounds plot. What makes the intervals of one
+# coefficient read as a group rather than as neighbours.
+_ROW_GAP_RATIO = 3.0
+
+# Decade ticks of a symlog x-axis, at 1..9 times every power of ten either
+# side of zero, as the old `plot_coeffs` drew them.
+_SYMLOG_DECADES = np.concatenate([-np.logspace(-4, 2, 7), np.logspace(-4, 2, 7)])
+
+
+def _symlog_minor_ticks(lin_thr: float) -> np.ndarray:
+    """Minor tick positions of a symlog axis with threshold *lin_thr*.
+
+    Ticks well inside the linear region are dropped: they crowd together
+    around zero, where the scale no longer separates them.
+    """
+    ticks = np.concatenate([decade * np.arange(1, 10) for decade in _SYMLOG_DECADES])
+    return ticks[np.abs(ticks) > lin_thr / 10]
+
+
+def _coefficient_bounds(
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    confidence_level: float | Sequence[float] = 95,
+    double_solution: Sequence[str] | Mapping[str, Sequence[str]] | None = None,
+    x_log: bool = False,
+    lin_thr: float = 1e-2,
+    x_min: float | None = None,
+    x_max: float | None = None,
+) -> Figure:
+    """Draw the confidence intervals of *fits* one coefficient per row.
+
+    The shared core of the two bounds actions below, which differ only in how
+    many fits reportengine hands them — their docstrings carry the parameter
+    documentation. One row per coefficient, top to bottom in the order asked
+    for, every fit on its own offset within the row.
+
+    Individual (one-at-a-time) fits are accepted, as by the histograms: a
+    bound is about one coefficient at a time.
+    """
+    if not fits:
+        raise ValueError("No fits to plot.")
+
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+    coeffs = common_free_coefficients(fits, params_to_plot, min_count=1)
+
+    # the wider interval is drawn thin, the narrower one thick on top of it,
+    # so which way round the two levels are written does not matter
+    if isinstance(confidence_level, (list, tuple)):
+        outer_cl, inner_cl = max(confidence_level), min(confidence_level)
+    else:
+        outer_cl, inner_cl = float(confidence_level), None
+    levels = [outer_cl] if inner_cl is None else [outer_cl, inner_cl]
+
+    colors = fit_colors(len(fits))
+    doubles = per_fit_option(double_solution, fits, [[] for _ in fits])
+    bounds = [
+        coeff_bounds(fit, coeffs, levels, double_solution=doubles[idx])
+        for idx, fit in enumerate(fits)
+    ]
+
+    # One row per coefficient, first one at the top; the fits share the row,
+    # spread over it so their intervals do not sit on top of one another.
+    #
+    # Rows are one apart, and the spread is set so that the gap between two
+    # rows is _ROW_GAP_RATIO times the gap between two fits inside one: a
+    # reader has to see at a glance which intervals belong to the same
+    # coefficient, and with a fixed spread the two gaps close on each other as
+    # fits are added until the grouping reads backwards.
+    rows = np.arange(len(coeffs))[::-1]
+    spread = (len(fits) - 1) / (len(fits) - 1 + _ROW_GAP_RATIO)
+    shifts = np.linspace(spread / 2, -spread / 2, len(fits))
+
+    fig, ax = plt.subplots(
+        figsize=(10, max(3.0, len(coeffs) * (0.6 + 0.25 * len(fits))))
+    )
+
+    for coeff_idx, name in enumerate(coeffs):
+        for fit_idx in range(len(fits)):
+            solutions = bounds[fit_idx].get(name)
+            if solutions is None:  # this fit never sampled it: leave a gap
+                continue
+            y = rows[coeff_idx] + shifts[fit_idx]
+            # every solution of the coefficient goes on the same row —
+            # explicitly, one interval per branch the split produced
+            for solution in solutions:
+                outer = solution[outer_cl]
+                ax.errorbar(
+                    x=outer.mid,
+                    y=y,
+                    xerr=[[outer.mid - outer.low], [outer.high - outer.mid]],
+                    color=colors[fit_idx],
+                    elinewidth=1,
+                )
+                if inner_cl is not None:
+                    inner = solution[inner_cl]
+                    ax.errorbar(
+                        x=inner.mid,
+                        y=y,
+                        xerr=[[inner.mid - inner.low], [inner.high - inner.mid]],
+                        color=colors[fit_idx],
+                        elinewidth=3,
+                        fmt=".",
+                    )
+                else:
+                    ax.plot(outer.mid, y, ".", color=colors[fit_idx])
+
+    ax.set_ylim(rows.min() - 1, rows.max() + 1)
+    ax.set_yticks(rows, [coeff_info_latex.get(name, name) for name in coeffs])
+    ax.axvline(0, ls="dashed", color="black", alpha=0.7)
+
+    if x_log:
+        ax.set_xscale("symlog", linthresh=lin_thr)
+        ax.set_xticks(_symlog_minor_ticks(lin_thr), minor=True)
+    ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
+    ax.set_xlim(x_min, x_max)
+    ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
+
+    levels_title = (
+        rf"${outer_cl:g}\:\%\:\mathrm{{C.I.}}$"
+        if inner_cl is None
+        else rf"${inner_cl:g}\:\%\:\mathrm{{and}}\:{outer_cl:g}\:\%\:\mathrm{{C.I.}}$"
+    )
+    ax.legend(
+        handles=[
+            Line2D([], [], color=color, marker=".", linewidth=3) for color in colors
+        ],
+        labels=[fit.plot_label for fit in fits],
+        title=levels_title,
+        loc="lower center",
+        bbox_to_anchor=(0, 1.02, 1.0, 0.05),
+        frameon=False,
+        ncol=2,
+    )
+
+    return fig
+
+
+@figure
+def plot_fits_coefficient_bounds(
+    fits,
+    params_to_plot=None,
+    confidence_level=95,
+    double_solution=None,
+    x_log=False,
+    lin_thr=1e-2,
+    x_min=None,
+    x_max=None,
+) -> Figure:
+    """Overlay the coefficient bounds of every fit — central value and C.I.
+
+    Takes the whole ``fits`` list, so it is called bare in a report template —
+    one figure, one row per coefficient, every fit on its own offset within
+    the row. Its per-fit counterpart is :func:`plot_coefficient_bounds`.
+
+    Both accept a fit run one coefficient at a time, like the histogram
+    actions: a bound reads one coefficient's posterior at a time, which is
+    what an individual fit has.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        The previously run fits to overlay, each legend-labelled with the
+        ``label`` of its ``fits`` entry (its name otherwise).
+    params_to_plot : list of str, optional
+        Restrict the rows to these coefficients, in this order — top to
+        bottom. All the coefficients the fits share by default.
+    confidence_level : float or list of two floats, optional
+        Confidence level in percent, 95 by default. A list of two values
+        draws both: the wider one as a thin bar, the narrower one thick over
+        it, so their order does not matter.
+    double_solution : list of str or dict, optional
+        Coefficients whose posterior has two disjoint solutions. Each branch
+        gets its own interval on the same row; without this, equal-tailed
+        percentiles would span the empty gap between the modes and put the
+        central value where the posterior has no mass. A dict keyed by fit
+        name sets the list per fit.
+    x_log : bool, optional
+        Draw the x-axis on a symmetric log scale, off by default. Bounds run
+        either side of zero, so a plain log scale cannot show them.
+    lin_thr : float, optional
+        Half-width of the linear region of that scale, ``1e-2`` by default.
+        Ignored unless ``x_log``.
+    x_min, x_max : float, optional
+        Axis limits. Chosen from the intervals drawn by default.
+
+    Raises
+    ------
+    ValueError
+        If there is nothing to draw: no fits, a fit that stored no posterior
+        samples, or no shared coefficient left.
+    """
+    return _coefficient_bounds(
+        fits,
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        double_solution=double_solution,
+        x_log=x_log,
+        lin_thr=lin_thr,
+        x_min=x_min,
+        x_max=x_max,
+    )
+
+
+@figure
+def plot_coefficient_bounds(
+    fit,
+    params_to_plot=None,
+    confidence_level=95,
+    double_solution=None,
+    x_log=False,
+    lin_thr=1e-2,
+    x_min=None,
+    x_max=None,
+) -> Figure:
+    """Plot the coefficient bounds of one fit — central value and C.I.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one figure per fit — ``{@fits plot_coefficient_bounds@}``, or a ``with
+    fits`` block. To overlay the fits in one figure instead, use
+    :func:`plot_fits_coefficient_bounds`, whose docstring describes the
+    parameters, all shared.
+
+    Raises
+    ------
+    ValueError
+        If the fit stored no posterior samples, or no coefficient is left.
+    """
+    return _coefficient_bounds(
+        [fit],
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        double_solution=double_solution,
+        x_log=x_log,
+        lin_thr=lin_thr,
+        x_min=x_min,
+        x_max=x_max,
     )

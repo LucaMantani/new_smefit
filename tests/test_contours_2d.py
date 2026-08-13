@@ -190,9 +190,10 @@ def test_plot_contours_leaves_the_fill_flat_without_a_hatch() -> None:
 def test_kde_grid_shapes_and_support(gaussian_samples: SamplePair) -> None:
     x_values, y_values = gaussian_samples
 
-    xx, yy, density = kde_grid(x_values, y_values, gridsize=50)
+    xx, yy, density, sample_density = kde_grid(x_values, y_values, gridsize=50)
 
     assert xx.shape == yy.shape == density.shape == (50, 50)
+    assert sample_density.shape == (x_values.size,)
     # the grid is padded beyond the samples so the tails are not truncated
     assert xx.min() < x_values.min() and xx.max() > x_values.max()
     assert yy.min() < y_values.min() and yy.max() > y_values.max()
@@ -204,31 +205,51 @@ def test_kde_grid_bandwidth_adjust_widens_the_density(
 ) -> None:
     x_values, y_values = gaussian_samples
 
-    _, _, narrow = kde_grid(x_values, y_values, bw_adjust=0.5, gridsize=50)
-    _, _, wide = kde_grid(x_values, y_values, bw_adjust=2.0, gridsize=50)
+    narrow = kde_grid(x_values, y_values, bw_adjust=0.5, gridsize=50)[2]
+    wide = kde_grid(x_values, y_values, bw_adjust=2.0, gridsize=50)[2]
 
     assert wide.max() < narrow.max()
 
 
-def test_density_level_encloses_the_requested_mass() -> None:
-    """The mass above the returned level matches the requested confidence."""
+@pytest.mark.parametrize("confidence_level", [68, 95])
+def test_density_level_encloses_the_requested_fraction_of_samples(
+    confidence_level: float,
+) -> None:
+    """Exactly `confidence_level` percent of the samples sit above the level."""
     rng = np.random.default_rng(1)
     x_values, y_values = rng.multivariate_normal([0, 0], np.eye(2), size=5000).T
-    _, _, density = kde_grid(x_values, y_values, gridsize=200)
+    sample_density = kde_grid(x_values, y_values, gridsize=200)[3]
 
-    level = density_level(density, 95)
+    level = density_level(sample_density, confidence_level)
 
-    mass = density[density > level].sum() / density.sum()
-    assert mass == pytest.approx(0.95, abs=0.01)
+    inside = (sample_density >= level).mean()
+    assert inside == pytest.approx(confidence_level / 100, abs=1e-3)
+
+
+@pytest.mark.parametrize("confidence_level", [68, 95])
+def test_density_level_encloses_the_requested_fraction_of_a_bimodal_posterior(
+    confidence_level: float,
+) -> None:
+    """The case the grid-mass level got badly wrong: two disjoint modes, where
+    it over-covered by up to 16 percentage points at 68%."""
+    rng = np.random.default_rng(5)
+    x_values = np.concatenate([rng.normal(-1.5, 0.3, 2500), rng.normal(1.5, 0.3, 2500)])
+    y_values = rng.normal(0, 0.5, 5000)
+    sample_density = kde_grid(x_values, y_values, gridsize=200)[3]
+
+    level = density_level(sample_density, confidence_level)
+
+    inside = (sample_density >= level).mean()
+    assert inside == pytest.approx(confidence_level / 100, abs=1e-3)
 
 
 def test_density_level_is_monotonic_in_confidence_level() -> None:
     """A tighter contour sits at a higher density level."""
     rng = np.random.default_rng(2)
     x_values, y_values = rng.multivariate_normal([0, 0], np.eye(2), size=2000).T
-    _, _, density = kde_grid(x_values, y_values, gridsize=100)
+    sample_density = kde_grid(x_values, y_values, gridsize=100)[3]
 
-    assert density_level(density, 68) > density_level(density, 95)
+    assert density_level(sample_density, 68) > density_level(sample_density, 95)
 
 
 def test_kde_contour_draws_a_single_level(gaussian_samples: SamplePair) -> None:
@@ -239,7 +260,7 @@ def test_kde_contour_draws_a_single_level(gaussian_samples: SamplePair) -> None:
 
     assert len(contour.levels) == 1
     assert contour.levels[0] == pytest.approx(
-        density_level(kde_grid(x_values, y_values)[2], 95)
+        density_level(kde_grid(x_values, y_values)[3], 95)
     )
 
 

@@ -13,7 +13,8 @@ Two contour styles are supported, following the old smefit report code:
 
 The KDE is computed with ``scipy.stats.gaussian_kde`` and the contour is drawn
 at the iso-density level enclosing ``confidence_level`` percent of the
-posterior mass.
+posterior mass, calibrated on the samples themselves — see
+:func:`density_level`.
 """
 
 from __future__ import annotations
@@ -35,8 +36,11 @@ if TYPE_CHECKING:
     from matplotlib.typing import ColorType
     from numpy.typing import ArrayLike
 
-# A KDE evaluated on a regular grid: the ``(xx, yy, density)`` of `kde_grid`.
-KDEGrid = tuple[np.ndarray, np.ndarray, np.ndarray]
+# A KDE evaluated on a regular grid *and* at the samples it was estimated from:
+# the ``(xx, yy, density, sample_density)`` of `kde_grid`. The grid is what gets
+# drawn, the sample densities are what the contour level is read off — see
+# `density_level`.
+KDEGrid = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
 # Hatch patterns handed out alongside the colour cycle. They carry the same
 # information as the colour does, so a filled contour stays distinguishable in
@@ -197,8 +201,11 @@ def kde_grid(
 
     Returns
     -------
-    tuple(np.ndarray, np.ndarray, np.ndarray)
-        ``(xx, yy, density)``, each of shape ``(gridsize, gridsize)``.
+    tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
+        ``(xx, yy, density, sample_density)``. The first three have shape
+        ``(gridsize, gridsize)``; ``sample_density`` is the same KDE evaluated
+        at the (thinned) samples, shape ``(N,)``, and is what
+        :func:`density_level` calibrates the contour level on.
 
     Raises
     ------
@@ -235,30 +242,36 @@ def kde_grid(
 
     xx, yy = np.meshgrid(x_grid, y_grid)
     density = kde(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+    sample_density = kde(np.vstack([x_values, y_values]))
 
-    return xx, yy, density
+    return xx, yy, density, sample_density
 
 
-def density_level(density: np.ndarray, confidence_level: float) -> float:
+def density_level(sample_density: np.ndarray, confidence_level: float) -> float:
     """Iso-density level enclosing ``confidence_level`` percent of the mass.
+
+    The level is the ``1 - confidence_level`` quantile of the density *at the
+    posterior samples*, so that exactly ``confidence_level`` percent of them
+    lie inside the contour by construction.
+
+    Reading the level off the grid instead — sorting the grid densities and
+    cutting where their cumulative sum reaches the confidence level, the
+    obvious alternative — systematically over-covers.
 
     Parameters
     ----------
-    density : np.ndarray
-        Density evaluated on a regular grid.
+    sample_density : np.ndarray
+        ``(N,)`` density evaluated at the samples, from :func:`kde_grid`.
     confidence_level : float
         Confidence level in percent.
 
     Returns
     -------
     float
-        Density value such that the region where ``density`` exceeds it
-        contains ``confidence_level`` percent of the total mass.
+        Density value such that ``confidence_level`` percent of the samples
+        sit where the density exceeds it.
     """
-    sorted_values = np.sort(density.ravel())[::-1]
-    cumulative = np.cumsum(sorted_values) / sorted_values.sum()
-    idx = np.searchsorted(cumulative, confidence_level / 100.0)
-    return float(np.take(sorted_values, idx, mode="clip"))
+    return float(np.quantile(sample_density, 1.0 - confidence_level / 100.0))
 
 
 def kde_contour(
@@ -290,9 +303,10 @@ def kde_contour(
         Bandwidth adjustment factor passed to :func:`kde_grid`, 1.5 by
         default, as there. Ignored when ``grid`` is given.
     grid : tuple, optional
-        Pre-computed ``(xx, yy, density)`` from :func:`kde_grid`. Evaluating
-        the KDE is by far the most expensive step, so pass it whenever several
-        contours are drawn from the same samples.
+        Pre-computed ``(xx, yy, density, sample_density)`` from
+        :func:`kde_grid`. Evaluating the KDE is by far the most expensive
+        step, so pass it whenever several contours are drawn from the same
+        samples.
     **kwargs
         Additional settings passed to ``contour``/``contourf``.
 
@@ -300,14 +314,19 @@ def kde_contour(
     -------
     matplotlib.contour.QuadContourSet
     """
-    xx, yy, density = (
+    xx, yy, density, sample_density = (
         grid if grid is not None else kde_grid(x_values, y_values, bw_adjust=bw_adjust)
     )
-    level = density_level(density, confidence_level)
+    level = density_level(sample_density, confidence_level)
 
     if fill:
+        # the level comes from the samples, the fill from the grid, and the
+        # grid need not resolve the very peak the densest sample sits on — so
+        # the upper bound is nudged past the level rather than taken from the
+        # grid alone, which contourf rejects unless the levels increase
+        top = float(np.nextafter(max(float(density.max()), level), np.inf))
         return ax.contourf(
-            xx, yy, density, levels=[level, density.max()], colors=[color], **kwargs
+            xx, yy, density, levels=[level, top], colors=[color], **kwargs
         )
     return ax.contour(xx, yy, density, levels=[level], colors=[color], **kwargs)
 

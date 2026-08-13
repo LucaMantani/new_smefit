@@ -67,9 +67,9 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
-- `plot_fits_posterior_contours(fits, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, double_solution=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
+- `plot_fits_posterior_contours(fits, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
   - Overlay the 2D marginalised confidence contours of every fit.
-- `plot_posterior_contours(fit, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, double_solution=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
+- `plot_posterior_contours(fit, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
   - Plot the 2D marginalised confidence contours of one fit.
 - `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.

@@ -264,8 +264,8 @@ def test_per_fit_option_broadcasts_a_single_value(fit_pair: list[Fit]) -> None:
 
 
 def test_per_fit_option_broadcasts_a_list_value(fit_pair: list[Fit]) -> None:
-    """A list is a value like any other — double_solution takes one — not the
-    per-fit form, which is a dict keyed by fit name."""
+    """A list is a value like any other, not the per-fit form — that is a dict
+    keyed by fit name."""
     assert per_fit_option(["OtG"], fit_pair, [[], []]) == [["OtG"], ["OtG"]]
 
 

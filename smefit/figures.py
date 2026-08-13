@@ -241,7 +241,6 @@ def _posterior_contours(
     confidence_level: float | Sequence[float] = 95,
     subplot_size: float = 4,
     kde: bool | Mapping[str, bool] | None = None,
-    double_solution: list[str] | Mapping[str, list[str]] | None = None,
     show_sm: bool = True,
     show_best_fit: bool = False,
     hatch: bool = True,
@@ -294,7 +293,6 @@ def _posterior_contours(
     # cannot separate the hues; None everywhere turns it back into flat fills
     hatches = fit_hatches(len(fits)) if hatch else [None] * len(fits)
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
-    double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
     # the SM is not always the origin: a coefficient can be parametrised so
     # that its baseline_value sits elsewhere, and that is where the marker goes
     baselines = baseline_point(fits, coeffs) if show_sm else None
@@ -328,7 +326,6 @@ def _posterior_contours(
                     color=colors[idx],
                     confidence_level=cl,
                     dashed_confidence_level=dashed_cl,
-                    double_solution=double_solutions[idx],
                     show_best_fit=show_best_fit,
                     best_fit=best_fit_pair(fit, c1, c2),
                     hatch=hatches[idx],
@@ -405,7 +402,6 @@ def plot_fits_posterior_contours(
     confidence_level=95,
     subplot_size=4,
     kde=None,
-    double_solution=None,
     show_sm=True,
     show_best_fit=False,
     hatch=True,
@@ -435,17 +431,15 @@ def plot_fits_posterior_contours(
         Gaussian ellipse. Defaults to each fit's ``use_quad``, since
         quadratic corrections generally make a posterior non-Gaussian. A dict
         keyed by fit name sets it per fit.
-    double_solution : list of str or dict, optional
-        Coefficients whose posterior has two disjoint modes, marked with one
-        best-fit point per mode (KDE mode only). A dict keyed by fit name
-        sets it per fit.
     show_sm : bool, optional
         Mark the SM point, on by default. It sits at each coefficient's
         ``baseline_value`` in the runcard the fit was run with — the origin
         unless a coefficient was parametrised around a non-zero SM value.
     show_best_fit : bool, optional
-        Mark the best-fit point of every fit, off by default. Fits that do
-        not record one are marked at their posterior means.
+        Mark the best-fit point of every fit, off by default — one marker per
+        fit, including for a bimodal posterior, which still has a single
+        maximum-likelihood point. Fits that record none are marked at their
+        posterior means.
     hatch : bool, optional
         Texture every filled contour, one pattern per fit, so they stay
         distinguishable in greyscale and to a reader who cannot separate the
@@ -464,7 +458,6 @@ def plot_fits_posterior_contours(
         confidence_level=confidence_level,
         subplot_size=subplot_size,
         kde=kde,
-        double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
         hatch=hatch,
@@ -478,7 +471,6 @@ def plot_posterior_contours(
     confidence_level=95,
     subplot_size=4,
     kde=None,
-    double_solution=None,
     show_sm=True,
     show_best_fit=False,
     hatch=True,
@@ -507,17 +499,14 @@ def plot_posterior_contours(
         Gaussian ellipse. Defaults to the fit's ``use_quad``. A dict keyed by
         fit name is accepted too, so a runcard can share one key between both
         contour actions.
-    double_solution : list of str or dict, optional
-        Coefficients whose posterior has two disjoint modes, marked with one
-        best-fit point per mode (KDE mode only). Also accepts a dict keyed by
-        fit name.
     show_sm : bool, optional
         Mark the SM point, on by default. It sits at each coefficient's
         ``baseline_value`` in the runcard the fit was run with — the origin
         unless a coefficient was parametrised around a non-zero SM value.
     show_best_fit : bool, optional
-        Mark the fit's best-fit point, off by default. A fit that does not
-        record one is marked at its posterior mean.
+        Mark the fit's best-fit point, off by default — one marker, including
+        for a bimodal posterior, which still has a single maximum-likelihood
+        point. A fit that records none is marked at its posterior mean.
     hatch : bool, optional
         Texture every filled contour, on by default. False fills them flat.
 
@@ -533,7 +522,6 @@ def plot_posterior_contours(
         confidence_level=confidence_level,
         subplot_size=subplot_size,
         kde=kde,
-        double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
         hatch=hatch,

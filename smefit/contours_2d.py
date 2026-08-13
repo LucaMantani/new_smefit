@@ -58,41 +58,6 @@ _KDE_CUT = 3
 _KDE_MAX_SAMPLES = 5000
 
 
-def split_solution(full_solution: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
-    """Split a posterior into two disjoint solutions.
-
-    The samples are split at the midpoint between the smallest and the largest
-    sample. The solution closer to zero is returned first.
-
-    Parameters
-    ----------
-    full_solution : array_like
-        ``(N,)`` posterior samples of a single coefficient.
-
-    Returns
-    -------
-    tuple(np.ndarray, np.ndarray)
-        The two solutions, the one closer to zero first.
-    """
-    full_solution = np.asarray(full_solution)
-
-    min_val = full_solution.min()
-    max_val = full_solution.max()
-    mid = np.mean([max_val, min_val])
-
-    solution1 = full_solution[full_solution <= mid]
-    solution2 = full_solution[full_solution > mid]
-
-    if solution1.size == 0 or solution2.size == 0:
-        return full_solution, full_solution
-
-    # solution 1 should be closer to 0
-    if np.min(np.abs(solution2)) < np.min(np.abs(solution1)):
-        solution1, solution2 = solution2, solution1
-
-    return solution1, solution2
-
-
 def confidence_ellipse(
     coeff1: ArrayLike,
     coeff2: ArrayLike,
@@ -340,7 +305,6 @@ def plot_contours(
     color: ColorType,
     confidence_level: float = 95,
     dashed_confidence_level: float | None = None,
-    double_solution: list[str] | None = None,
     show_best_fit: bool = False,
     best_fit: tuple[float, float] | None = None,
     hatch: str | None = None,
@@ -369,15 +333,14 @@ def plot_contours(
     dashed_confidence_level : float, optional
         Secondary confidence level, drawn as a dashed outline only. Shares the
         density estimate of the main contour.
-    double_solution : list, optional
-        Coefficients of this fit that have a double (disjoint) solution. Only
-        used in KDE mode, to place one best-fit marker per solution.
     show_best_fit : bool, optional
-        If True mark the best-fit point of this fit. Off by default.
+        If True mark the best-fit point of this fit. Off by default. One
+        marker, wherever the posterior's modes are: a bimodal posterior still
+        has a single maximum-likelihood point, and the contour already shows
+        both modes.
     best_fit : tuple(float, float), optional
         Best-fit ``(coeff1, coeff2)`` values. Defaults to the posterior means,
-        which is also what is used for a coefficient with a double solution
-        (a single stored best-fit value cannot represent both modes).
+        for a fit that recorded no best-fit point.
     hatch : str, optional
         Matplotlib hatch pattern for the filled contour, from
         :func:`fit_hatches`. None fills it flat.
@@ -387,20 +350,13 @@ def plot_contours(
     tuple
         Handles (Patch objects) to be used in the figure legend.
     """
-    double_solution = double_solution or []
-
     x_values = np.asarray(posterior[coeff1], dtype=float)
     y_values = np.asarray(posterior[coeff2], dtype=float)
 
+    if show_best_fit and best_fit is None:
+        best_fit = (float(np.mean(x_values)), float(np.mean(y_values)))
+
     if kde:
-        solution1x = solution2x = x_values
-        if coeff1 in double_solution:
-            solution1x, solution2x = split_solution(x_values)
-
-        solution1y = solution2y = y_values
-        if coeff2 in double_solution:
-            solution1y, solution2y = split_solution(y_values)
-
         # the KDE dominates the cost of the figure: evaluate it once and draw
         # every contour of this fit and panel from the same density grid
         grid = kde_grid(x_values, y_values)
@@ -450,26 +406,7 @@ def plot_contours(
         )
 
         if show_best_fit:
-            split = coeff1 in double_solution or coeff2 in double_solution
-            if best_fit is not None and not split:
-                ax.scatter(*best_fit, color=color, s=50, marker="o")
-            else:
-                # one marker per solution: a single best-fit value cannot
-                # represent two disjoint modes
-                ax.scatter(
-                    np.mean(solution1x),
-                    np.mean(solution1y),
-                    color=color,
-                    s=50,
-                    marker="o",
-                )
-                ax.scatter(
-                    np.mean(solution2x),
-                    np.mean(solution2y),
-                    color=color,
-                    s=50,
-                    marker="o",
-                )
+            ax.scatter(*best_fit, color=color, s=50, marker="o")
 
         hndls = (
             patches.Patch(ec=color, fc=color, fill=True, alpha=0.3),
@@ -520,12 +457,7 @@ def plot_contours(
                 ),
             )
         if show_best_fit:
-            point = (
-                best_fit
-                if best_fit is not None
-                else (np.mean(x_values), np.mean(y_values))
-            )
-            ax.scatter(*point, color=color, s=50, marker="o")
+            ax.scatter(*best_fit, color=color, s=50, marker="o")
 
         hndls = (p1, p2, *hatch_layer)
 

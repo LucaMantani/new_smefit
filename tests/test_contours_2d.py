@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
 
 from smefit.contours_2d import (
     KDEGrid,
@@ -25,7 +26,6 @@ from smefit.contours_2d import (
     kde_contour,
     kde_grid,
     plot_contours,
-    split_solution,
 )
 
 # The (x, y) sample arrays of the gaussian_samples fixture, and the
@@ -46,40 +46,6 @@ def gaussian_samples() -> SamplePair:
     cov = np.array([[1.0, 0.5], [0.5, 2.0]])
     values = rng.multivariate_normal([0.3, -0.2], cov, size=4000)
     return values[:, 0], values[:, 1]
-
-
-# ---------------------------------------------------------------------------
-# split_solution
-# ---------------------------------------------------------------------------
-
-
-def test_split_solution_returns_solution_closest_to_zero_first() -> None:
-    samples = np.concatenate([np.linspace(-0.1, 0.1, 50), np.linspace(4.9, 5.1, 50)])
-
-    first, second = split_solution(samples)
-
-    assert np.abs(first).min() < np.abs(second).min()
-    assert first.max() < second.min()
-
-
-def test_split_solution_orders_by_distance_to_zero_not_by_value() -> None:
-    """A negative solution closer to zero is still returned first."""
-    samples = np.concatenate([np.linspace(-5.1, -4.9, 50), np.linspace(-0.1, 0.1, 50)])
-
-    first, second = split_solution(samples)
-
-    assert np.abs(first).min() < np.abs(second).min()
-    assert first.min() > second.max()
-
-
-def test_split_solution_single_mode_returns_full_sample_twice() -> None:
-    """A unimodal sample cannot be split: both solutions are the full sample."""
-    samples = np.array([1.0, 1.0, 1.0])
-
-    first, second = split_solution(samples)
-
-    assert np.array_equal(first, samples)
-    assert np.array_equal(second, samples)
 
 
 # ---------------------------------------------------------------------------
@@ -385,58 +351,6 @@ def test_plot_contours_best_fit_overrides_the_posterior_mean(
     assert tuple(ax.collections[0].get_offsets()[0]) == (1.5, -2.5)
 
 
-def test_plot_contours_kde_mode_marks_one_point_per_solution(
-    posterior_samples: Posterior,
-) -> None:
-    _, ax = plt.subplots()
-
-    plot_contours(
-        ax,
-        posterior_samples,
-        "OpA",
-        "OpB",
-        kde=True,
-        color="C0",
-        double_solution=["OpA"],
-        show_best_fit=True,
-    )
-
-    scatters = [c for c in ax.collections if c.get_offsets().shape[-1] == 2]
-    marker_x = sorted(float(s.get_offsets()[0][0]) for s in scatters[-2:])
-    solution1, solution2 = split_solution(posterior_samples["OpA"])
-    assert marker_x == pytest.approx(
-        sorted([np.mean(solution1), np.mean(solution2)]), rel=1e-6
-    )
-
-
-def test_plot_contours_kde_mode_splits_the_second_coefficient(
-    posterior_samples: Posterior,
-) -> None:
-    """A double solution on coeff2 splits the y values, coeff1 stays whole."""
-    _, ax = plt.subplots()
-
-    plot_contours(
-        ax,
-        posterior_samples,
-        "OpA",
-        "OpB",
-        kde=True,
-        color="C0",
-        double_solution=["OpB"],
-        show_best_fit=True,
-    )
-
-    scatters = [c for c in ax.collections if c.get_offsets().shape[-1] == 2]
-    marker_y = sorted(float(s.get_offsets()[0][1]) for s in scatters[-2:])
-    solution1, solution2 = split_solution(posterior_samples["OpB"])
-    assert marker_y == pytest.approx(
-        sorted([np.mean(solution1), np.mean(solution2)]), rel=1e-6
-    )
-    # coeff1 is not split, so both markers share the same x
-    marker_x = [float(s.get_offsets()[0][0]) for s in scatters[-2:]]
-    assert marker_x[0] == pytest.approx(marker_x[1])
-
-
 def test_plot_contours_kde_mode_best_fit_overrides_the_posterior_mean(
     posterior_samples: Posterior,
 ) -> None:
@@ -457,45 +371,22 @@ def test_plot_contours_kde_mode_best_fit_overrides_the_posterior_mean(
     assert tuple(scatters[-1].get_offsets()[0]) == (1.5, -2.5)
 
 
-def test_plot_contours_kde_mode_double_solution_ignores_the_best_fit(
+def test_plot_contours_kde_mode_falls_back_to_the_posterior_mean(
     posterior_samples: Posterior,
 ) -> None:
-    """A single stored best-fit cannot represent two modes: mark both means."""
-    _, ax = plt.subplots()
-
-    plot_contours(
-        ax,
-        posterior_samples,
-        "OpA",
-        "OpB",
-        kde=True,
-        color="C0",
-        double_solution=["OpA"],
-        show_best_fit=True,
-        best_fit=(1.5, -2.5),
-    )
-
-    scatters = [c for c in ax.collections if c.get_offsets().shape[-1] == 2]
-    marker_x = sorted(float(s.get_offsets()[0][0]) for s in scatters[-2:])
-    solution1, solution2 = split_solution(posterior_samples["OpA"])
-    assert marker_x == pytest.approx(
-        sorted([np.mean(solution1), np.mean(solution2)]), rel=1e-6
-    )
-
-
-def test_plot_contours_kde_mode_without_double_solution_marks_the_mean(
-    posterior_samples: Posterior,
-) -> None:
+    """A fit that recorded no best-fit point is marked at its mean."""
     _, ax = plt.subplots()
 
     plot_contours(
         ax, posterior_samples, "OpA", "OpB", kde=True, color="C0", show_best_fit=True
     )
 
-    scatters = [c for c in ax.collections if c.get_offsets().shape[-1] == 2]
-    both = [s.get_offsets()[0] for s in scatters[-2:]]
-    np.testing.assert_allclose(both[0], both[1])
-    assert both[0][0] == pytest.approx(np.mean(posterior_samples["OpA"]))
+    # the contour sets are collections too, so filter on the scatter's own type
+    scatters = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert len(scatters) == 1  # one marker, whatever the posterior's shape
+    marker = scatters[0].get_offsets()[0]
+    assert marker[0] == pytest.approx(np.mean(posterior_samples["OpA"]))
+    assert marker[1] == pytest.approx(np.mean(posterior_samples["OpB"]))
 
 
 def test_plot_contours_dashed_level_adds_one_ellipse(

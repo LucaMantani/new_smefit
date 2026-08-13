@@ -97,7 +97,11 @@ coefficient's `prior:` block** — it must be `dist: uniform`, whose `low`/`high
 become the grid endpoints. Any other distribution (or no prior at all) falls
 back to `[-1, 1]` with a warning, which is almost never what you want.
 
-### 1D chi2 scan per coefficient (`chi2_scan.yaml`)
+### 1D chi2 scan per coefficient
+
+No template runcard ships for this one — take the structure from
+`mass_scan.yaml` (or any fit template) and replace the coefficients and
+`actions_:` with the block below.
 
 ```yaml
 coefficients:

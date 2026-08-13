@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from smefit.fit_result import Fit, FitResult
+from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.plot_utils import (
     baseline_point,
     best_fit_pair,
@@ -107,6 +107,26 @@ def make_fit(
     )
 
 
+def make_individual_fit(name: str, samples: dict[str, list[float]]) -> Fit:
+    """A fit run one coefficient at a time: a group of single-parameter
+    results rather than one joint result."""
+    return Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=[key],
+                    best_fit_point={key: 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={key: jnp.array(vals)},
+                )
+                for key, vals in samples.items()
+            ]
+        ),
+        fit_name=name,
+    )
+
+
 @pytest.fixture
 def fit_pair() -> list[Fit]:
     """Two fits sharing OtG and OpQM; only the first also fitted OtW."""
@@ -184,6 +204,35 @@ def test_common_free_coefficients_rejects_fewer_than_two(
     """Contours are pairwise: one coefficient has no panel to draw."""
     with pytest.raises(ValueError, match="at least 2"):
         common_free_coefficients(fit_pair, ["OtG"])
+
+
+def test_common_free_coefficients_keeps_one_when_min_count_allows_it(
+    fit_pair: list[Fit],
+) -> None:
+    """The 1D bounds routines have a panel to draw of a single coefficient,
+    so they ask for one."""
+    assert common_free_coefficients(fit_pair, ["OtG"], min_count=1) == ["OtG"]
+
+
+def test_common_free_coefficients_reports_the_count_it_needed(
+    fit_pair: list[Fit],
+) -> None:
+    """The error says how many the caller wanted, since it is no longer
+    always two."""
+    with pytest.raises(ValueError, match="at least 3"):
+        common_free_coefficients(fit_pair, min_count=3)
+
+
+def test_common_free_coefficients_reads_an_individual_fit() -> None:
+    """An individual fit reports the coefficients it fitted one by one, so a
+    fits: entry pointing at an individual_fits output can be overlaid on a
+    joint one by the routines that read 1D posteriors."""
+    individual = make_individual_fit(
+        "individual", {"OtG": [0.1, 0.2], "OpQM": [1.0, 2.0]}
+    )
+    joint = make_fit("joint", {"OtG": [0.0, 0.3], "OpQM": [0.5, 2.5]}, ["OtG", "OpQM"])
+
+    assert common_free_coefficients([individual, joint]) == ["OtG", "OpQM"]
 
 
 def test_common_free_coefficients_rejects_disjoint_fits(fit_pair: list[Fit]) -> None:

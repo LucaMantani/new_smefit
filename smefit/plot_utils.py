@@ -99,9 +99,11 @@ def select_params(
 
 
 def common_free_coefficients(
-    fits: Sequence[Fit], params_to_plot: list[str] | str | None = None
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    min_count: int = 2,
 ) -> list[str]:
-    """The coefficients a contour plot of *fits* is about.
+    """The coefficients an overlaid plot of *fits* is about.
 
     The free coefficients every fit shares, in the order of the first one: a
     panel of a coefficient some fit never sampled would have nothing to show
@@ -115,24 +117,29 @@ def common_free_coefficients(
     Parameters
     ----------
     fits : sequence of Fit
-        The fits to overlay. Joint fits only — an individual (one-at-a-time)
-        fit has no joint posterior, and its rejection is its consumer's job.
+        The fits to overlay. An individual (one-at-a-time) fit reports the
+        coefficients it fitted one by one, which is what a routine reading 1D
+        posteriors needs; rejecting one that cannot be read that way — a
+        contour — is its consumer's job.
     params_to_plot : list of str or str or None
         The coefficients the runcard asked for, all common ones by default.
+    min_count : int, optional
+        How many coefficients the caller needs left. Two by default, for the
+        pairwise routines: contours and correlations have no panel to draw of
+        a single coefficient. The 1D bounds routines pass 1.
 
     Returns
     -------
     list of str
-        At least two coefficient names, free in every fit.
+        At least ``min_count`` coefficient names, free in every fit.
 
     Raises
     ------
     ValueError
-        If the fits have no free coefficient in common, or fewer than two
-        remain after ``params_to_plot``: contours are pairwise, so a single
-        coefficient has no panel to draw.
+        If the fits have no free coefficient in common, or fewer than
+        ``min_count`` remain after ``params_to_plot``.
     """
-    per_fit = [list(_joint_results(fit).free_parameters) for fit in fits]
+    per_fit = [list(fit.fit_results.free_parameters) for fit in fits]
     common = [name for name in per_fit[0] if all(name in rest for rest in per_fit[1:])]
     if not common:
         raise ValueError(
@@ -151,11 +158,10 @@ def common_free_coefficients(
     selected = select_params(
         common, params_to_plot, context=", ".join(str(fit) for fit in fits)
     )
-    if len(selected) < 2:
+    if len(selected) < min_count:
         raise ValueError(
-            f"A contour plot needs at least 2 coefficients, {len(selected)} "
-            f"left: {selected}. Contours are pairwise, so a single "
-            "coefficient has no panel to draw."
+            f"This plot needs at least {min_count} coefficients, "
+            f"{len(selected)} left: {selected}."
         )
     return selected
 

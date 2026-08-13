@@ -15,20 +15,14 @@ import numpy as np
 from matplotlib import rc
 from reportengine.figure import figure
 
-from smefit.contours_2d import (
-    ellipse_half_axis,
-    fit_colors,
-    fit_hatches,
-    plot_contours,
-    plot_uncorrelated_contours,
-)
+from smefit.contours_2d import fit_colors, fit_hatches, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import (
+    baseline_point,
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
-    marker_points,
     per_fit_option,
     select_params,
 )
@@ -38,7 +32,6 @@ if TYPE_CHECKING:
 
     from matplotlib.figure import Figure
 
-    from smefit.core import ReferencePoint
     from smefit.fit_result import Fit
 
 log = logging.getLogger(__name__)
@@ -251,7 +244,6 @@ def _posterior_contours(
     double_solution: list[str] | Mapping[str, list[str]] | None = None,
     show_sm: bool = True,
     show_best_fit: bool = False,
-    reference_points: Sequence[ReferencePoint] | None = None,
     hatch: bool = True,
 ) -> Figure:
     """Draw the pairwise 2D confidence contours of *fits* in one figure.
@@ -303,24 +295,10 @@ def _posterior_contours(
     hatches = fit_hatches(len(fits)) if hatch else [None] * len(fits)
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
     double_solutions = per_fit_option(double_solution, fits, [[] for _ in fits])
-    # the SM is not always the origin — a coefficient can be parametrised so
-    # that its baseline_value sits elsewhere — and a runcard can ask for
-    # further points beside it; every one of them has to stay in frame
-    points = marker_points(fits, coeffs, reference_points, show_sm)
-    # a point with a std reaches beyond its centre: the frame has to hold the
-    # whole ellipse, or it is drawn clipped
-    extents = [
-        {
-            name: value + sign * ellipse_half_axis(point.std[name], cl)
-            for name, value in point.values.items()
-            if name in point.std
-        }
-        for point in points
-        for sign in (-1, 1)
-    ]
-    limits = coeff_limits(
-        fits, coeffs, include_points=[p.values for p in points] + extents
-    )
+    # the SM is not always the origin: a coefficient can be parametrised so
+    # that its baseline_value sits elsewhere, and that is where the marker goes
+    baselines = baseline_point(fits, coeffs) if show_sm else None
+    limits = coeff_limits(fits, coeffs, include_points=baselines)
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
@@ -356,40 +334,13 @@ def _posterior_contours(
                     hatch=hatches[idx],
                 )
             )
-        point_hatches = (
-            fit_hatches(len(points), offset=len(fits))
-            if hatch
-            else [None] * len(points)
-        )
-        for index, point in enumerate(points):
-            marker = ax.scatter(
-                point.values[c1],
-                point.values[c2],
-                color=point.color,
-                marker=point.marker,
-                s=50,
-                zorder=10,
-            )
-            # both coefficients of this panel have to be known for the point to
-            # describe an ellipse on it; one std alone describes a band, which
-            # is not what was asked for
-            if c1 in point.std and c2 in point.std:
-                contour = plot_uncorrelated_contours(
-                    ax,
-                    center=(point.values[c1], point.values[c2]),
-                    std=(point.std[c1], point.std[c2]),
-                    color=point.color,
-                    confidence_level=cl,
-                    dashed_confidence_level=dashed_cl,
-                    hatch=point_hatches[index],
+        if show_sm:
+            assert baselines is not None  # set together with show_sm
+            handles.append(
+                ax.scatter(
+                    baselines[c1], baselines[c2], c="k", marker="+", s=50, zorder=10
                 )
-                # a tuple handle is drawn as its artists overlaid, so the
-                # legend key becomes the filled patch of the fits with this
-                # point's marker in the middle. A point without a contour keeps
-                # the bare marker: there is no filled region to advertise.
-                handles.append((*contour, marker))
-            else:
-                handles.append(marker)
+            )
 
         ax.set_xlim(*limits[c1])
         ax.set_ylim(*limits[c2])
@@ -414,7 +365,8 @@ def _posterior_contours(
     ax.axis("off")
 
     legend_labels = [fit.plot_label for fit in fits]
-    legend_labels.extend(point.label for point in points)
+    if show_sm:
+        legend_labels.append(r"$\mathrm{SM}$")
 
     ax.legend(
         labels=legend_labels,
@@ -426,9 +378,6 @@ def _posterior_contours(
         borderpad=0.5,
         handletextpad=1,
         title_fontsize=24,
-        # matplotlib puts a single scatter key at 3/8 of the key height, which
-        # reads as off-centre once the marker sits on top of a filled patch
-        scatteryoffsets=[0.5],
     )
     ax.text(
         0.05,
@@ -459,7 +408,6 @@ def plot_fits_posterior_contours(
     double_solution=None,
     show_sm=True,
     show_best_fit=False,
-    reference_points=None,
     hatch=True,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
@@ -498,15 +446,10 @@ def plot_fits_posterior_contours(
     show_best_fit : bool, optional
         Mark the best-fit point of every fit, off by default. Fits that do
         not record one are marked at their posterior means.
-    reference_points : list of ReferencePoint, optional
-        Further points of coefficient space to mark, from the runcard's
-        ``reference_points`` key. They come in addition to the SM marker, and
-        each falls back to the baselines for the coefficients its ``values``
-        does not name.
     hatch : bool, optional
-        Texture every filled contour, one pattern per fit and per reference
-        point, so they stay distinguishable in greyscale and to a reader who
-        cannot separate the colours. On by default; False fills them flat.
+        Texture every filled contour, one pattern per fit, so they stay
+        distinguishable in greyscale and to a reader who cannot separate the
+        colours. On by default; False fills them flat.
 
     Raises
     ------
@@ -524,7 +467,6 @@ def plot_fits_posterior_contours(
         double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
-        reference_points=reference_points,
         hatch=hatch,
     )
 
@@ -539,7 +481,6 @@ def plot_posterior_contours(
     double_solution=None,
     show_sm=True,
     show_best_fit=False,
-    reference_points=None,
     hatch=True,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
@@ -577,9 +518,6 @@ def plot_posterior_contours(
     show_best_fit : bool, optional
         Mark the fit's best-fit point, off by default. A fit that does not
         record one is marked at its posterior mean.
-    reference_points : list of ReferencePoint, optional
-        Further points of coefficient space to mark, from the runcard's
-        ``reference_points`` key, in addition to the SM marker.
     hatch : bool, optional
         Texture every filled contour, on by default. False fills them flat.
 
@@ -598,6 +536,5 @@ def plot_posterior_contours(
         double_solution=double_solution,
         show_sm=show_sm,
         show_best_fit=show_best_fit,
-        reference_points=reference_points,
         hatch=hatch,
     )

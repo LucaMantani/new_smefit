@@ -81,7 +81,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 ### `smefit.utils_actions`
 
 - `run_pca(pca, output_path)`
-  - Print the principal-component spectrum and write ``pca.json``.
+  - Print the principal-component analysis and save it.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 

@@ -12,12 +12,17 @@ posterior is set by the prior rather than by the data. The width the data allow
 along a direction is ``sigma_i = 1 / sqrt(lambda_i)``.
 """
 
+import json
 import logging
+import pathlib
 from dataclasses import dataclass
 from typing import List
 
 import numpy as np
 import pandas as pd
+from rich import box
+from rich.console import Console
+from rich.table import Table
 
 log = logging.getLogger(__name__)
 
@@ -146,8 +151,55 @@ class PCA:
             terms.append(f"{sign} {abs(v[j]):.2f} {self.coeff_names[j]}".strip())
         return " ".join(terms)
 
+    # ------------------------------------------------------------------
+    # Display
+    # ------------------------------------------------------------------
+
+    def print_summary(self) -> None:
+        """Print the principal-component spectrum using ``rich``."""
+        console = Console()
+        console.rule("[bold cyan]Principal Component Analysis[/bold cyan]")
+        console.print(f"  [bold]n_free[/bold]    = {self.n_components}")
+        console.print(f"  [bold]threshold[/bold] = {self.threshold:.1e}")
+        console.print(
+            f"  [bold]n_flat[/bold]    = "
+            f"[{'red' if self.n_flat else 'green'}]{self.n_flat}[/]"
+        )
+
+        table = Table(
+            box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta"
+        )
+        table.add_column("PC", style="cyan", no_wrap=True)
+        table.add_column("Eigenvalue", justify="right")
+        table.add_column("Sigma", justify="right")
+        table.add_column("Ratio", justify="right")
+        table.add_column("Direction", justify="left")
+
+        sigma = self.constraints
+        for i, name in enumerate(self.component_names):
+            table.add_row(
+                name,
+                f"{self.eigenvalues[i]:.4e}",
+                "inf" if not np.isfinite(sigma[i]) else f"{sigma[i]:.4e}",
+                f"{self.eigenvalue_ratios[i]:.2e}",
+                self.describe(i),
+                style="dim red" if self.flat_mask[i] else None,
+            )
+
+        console.print(table)
+        if self.n_flat:
+            console.print(
+                f"  [red]{self.n_flat} direction(s) shown dimmed are flat[/red]: the "
+                "data do not constrain them, so the prior sets their width."
+            )
+        console.rule(style="dim")
+
+    # ------------------------------------------------------------------
+    # I/O
+    # ------------------------------------------------------------------
+
     def to_dict(self) -> dict:
-        """JSON-serialisable representation, used by :func:`run_pca`.
+        """JSON-serialisable representation, used by :meth:`write`.
 
         Infinite widths are written as ``null``: an unconstrained direction has
         no width, and ``Infinity`` is not valid JSON for readers outside Python.
@@ -165,6 +217,13 @@ class PCA:
             "threshold": self.threshold,
             "min_weight": self.min_weight,
         }
+
+    def write(self, output_path) -> None:
+        """Serialise this analysis to ``pca.json`` under *output_path*."""
+        output_path = pathlib.Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        with (output_path / "pca.json").open("w") as f:
+            json.dump(self.to_dict(), f, indent=2)
 
 
 def pca(total_fisher_information_matrix, pca_settings) -> PCA:

@@ -1,7 +1,4 @@
-"""Unit tests for smefit.pca — the PCA dataclass and the pca node.
-
-The run_pca action lives in smefit.utils_actions, and so do its tests.
-"""
+"""Unit tests for smefit.pca — the PCA dataclass and the pca node."""
 
 import json
 import logging
@@ -192,3 +189,23 @@ def test_to_dict_is_json_serialisable_with_null_for_infinite_widths():
     assert payload["constraints"][1] is None
     assert payload["flat"] == [False, True]
     assert payload["coeff_names"] == ["OpA", "OpB"]
+
+
+def test_write_serialises_to_pca_json(tmp_path):
+    """write() creates its output directory, as FitResult.write does."""
+    _pca_of(np.diag([4.0, 1.0]), ["OpA", "OpB"]).write(tmp_path / "out")
+
+    payload = json.loads((tmp_path / "out" / "pca.json").read_text())
+    assert payload["component_names"] == ["PC1", "PC2"]
+    assert payload["eigenvalues"] == pytest.approx([4.0, 1.0])
+    assert payload["flat"] == [False, False]
+
+
+def test_print_summary_names_every_direction(capsys):
+    """The console table has a row per PC, and flags the flat ones."""
+    _pca_of(np.diag([4.0, 0.0]), ["OpA", "OpB"]).print_summary()
+
+    out = capsys.readouterr().out
+    assert "PC1" in out and "PC2" in out
+    assert "n_flat" in out
+    assert "flat" in out

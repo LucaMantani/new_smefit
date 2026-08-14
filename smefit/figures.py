@@ -8,20 +8,12 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import rc
 from reportengine.figure import figure
 
 from smefit.op_to_latex import coeff_info_latex
-from smefit.plot_utils import select_params
+from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
-
-
-def _set_plot_style():
-    """Apply the shared matplotlib style. Every figure in this module calls it."""
-    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-    rc("text", usetex=True)
-    rc("text.latex", preamble=r"\usepackage{amssymb}")
 
 
 def _plot_heatmap(
@@ -65,7 +57,7 @@ def _plot_heatmap(
         Heading for the plot, drawn above the column labels. Passed to
         matplotlib verbatim, so it may be raw LaTeX.
     """
-    _set_plot_style()
+    set_plot_style()
 
     matrix = np.array(matrix, dtype=float)
     n_coeffs, n_sources = matrix.shape
@@ -209,7 +201,7 @@ def plot_pca_spectrum(pca):
     ----------
     pca : smefit.pca.PCA
     """
-    _set_plot_style()
+    set_plot_style()
 
     ratios = np.array(pca.eigenvalue_ratios, dtype=float)
     index = np.arange(1, pca.n_components + 1)

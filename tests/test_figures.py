@@ -1,13 +1,16 @@
-"""Unit tests for smefit.figures — _plot_heatmap and the heatmaps built on it.
+"""Unit tests for smefit.figures — the report figures and the heatmap they share.
 
-_plot_heatmap enables matplotlib's usetex globally, which would require a
-LaTeX installation to actually render text. Tests here never draw/save the
-figure (get_text() etc. only read stored attributes), and the module-level
-`rc` call is neutralised so running the suite never depends on LaTeX being
-installed (e.g. on CI runners).
+The figures enable matplotlib's usetex, which needs a LaTeX installation to
+render any text. CI has none, and installing one is expensive, so the suite must
+never invoke it — see the `_no_latex` fixture below.
+
+Most tests here also avoid drawing at all (get_text() and friends only read
+stored attributes), but that is not something to rely on — anything that
+measures text, `tight_layout()` above all, renders it.
 """
 
 import jax.numpy as jnp
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -28,8 +31,17 @@ from smefit.pca import PCA
 
 
 @pytest.fixture(autouse=True)
-def _no_matplotlib_rc(monkeypatch):
-    monkeypatch.setattr(figures_mod, "rc", lambda *args, **kwargs: None)
+def _no_latex(monkeypatch):
+    """Keep matplotlib off LaTeX for the duration of a test.
+
+    Stubbing out `set_plot_style` is what stops the figures switching usetex on.
+    The rcParam is then forced off as well, so the invariant the suite needs —
+    "no LaTeX is invoked" — is asserted directly rather than inferred from
+    nobody having turned it on; that inference is exactly what broke when
+    `smefit.op_to_latex` used to do it at import time.
+    """
+    monkeypatch.setattr(figures_mod, "set_plot_style", lambda: None)
+    monkeypatch.setitem(matplotlib.rcParams, "text.usetex", False)
     yield
     plt.close("all")
 

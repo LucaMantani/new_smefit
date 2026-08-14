@@ -1,4 +1,7 @@
-"""Unit tests for smefit.pca — the PCA dataclass, the pca node and run_pca."""
+"""Unit tests for smefit.pca — the PCA dataclass and the pca node.
+
+The run_pca action lives in smefit.utils_actions, and so do its tests.
+"""
 
 import json
 import logging
@@ -7,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from smefit.pca import PCA, _fix_signs, pca, run_pca
+from smefit.pca import PCA, _fix_signs, pca
 
 SETTINGS = {"threshold": 1.0e-3, "min_weight": 0.01}
 
@@ -189,18 +192,3 @@ def test_to_dict_is_json_serialisable_with_null_for_infinite_widths():
     assert payload["constraints"][1] is None
     assert payload["flat"] == [False, True]
     assert payload["coeff_names"] == ["OpA", "OpB"]
-
-
-# ----------------------------------------------------------------------
-# the action
-# ----------------------------------------------------------------------
-
-
-def test_run_pca_writes_pca_json(tmp_path):
-    result = _pca_of(np.diag([4.0, 1.0]), ["OpA", "OpB"])
-
-    run_pca(result, tmp_path / "out")
-
-    payload = json.loads((tmp_path / "out" / "pca.json").read_text())
-    assert payload["component_names"] == ["PC1", "PC2"]
-    assert payload["eigenvalues"] == pytest.approx([4.0, 1.0])

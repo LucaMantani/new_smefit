@@ -58,11 +58,6 @@ reportengine (see runcard-keys.md for what each resource needs).
 - `run_ultranest_fit(ultranest_fit, output_path)`
   - Print and save the result of the UltraNest nested-sampling fit.
 
-### `smefit.pca`
-
-- `run_pca(pca, output_path)`
-  - Print the principal-component spectrum and write ``pca.json``.
-
 ### `smefit.tables`
 
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
@@ -85,6 +80,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.utils_actions`
 
+- `run_pca(pca, output_path)`
+  - Print the principal-component spectrum and write ``pca.json``.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 

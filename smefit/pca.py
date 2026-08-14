@@ -12,17 +12,12 @@ posterior is set by the prior rather than by the data. The width the data allow
 along a direction is ``sigma_i = 1 / sqrt(lambda_i)``.
 """
 
-import json
 import logging
-import pathlib
 from dataclasses import dataclass
 from typing import List
 
 import numpy as np
 import pandas as pd
-from rich import box
-from rich.console import Console
-from rich.table import Table
 
 log = logging.getLogger(__name__)
 
@@ -239,56 +234,3 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
         result.threshold,
     )
     return result
-
-
-def run_pca(pca, output_path):
-    """Print the principal-component spectrum and write ``pca.json``.
-
-    Parameters
-    ----------
-    pca : PCA
-        The decomposition, from the node of the same name.
-    output_path : pathlib.Path
-        Directory the run writes to.
-    """
-    console = Console()
-    console.rule("[bold cyan]Principal Component Analysis[/bold cyan]")
-    console.print(f"  [bold]n_free[/bold]    = {pca.n_components}")
-    console.print(f"  [bold]threshold[/bold] = {pca.threshold:.1e}")
-    console.print(
-        f"  [bold]n_flat[/bold]    = "
-        f"[{'red' if pca.n_flat else 'green'}]{pca.n_flat}[/]"
-    )
-
-    table = Table(box=box.SIMPLE_HEAVY, show_header=True, header_style="bold magenta")
-    table.add_column("PC", style="cyan", no_wrap=True)
-    table.add_column("Eigenvalue", justify="right")
-    table.add_column("Sigma", justify="right")
-    table.add_column("Ratio", justify="right")
-    table.add_column("Direction", justify="left")
-
-    sigma = pca.constraints
-    for i, name in enumerate(pca.component_names):
-        flat = bool(pca.flat_mask[i])
-        style = "dim red" if flat else None
-        table.add_row(
-            name,
-            f"{pca.eigenvalues[i]:.4e}",
-            "inf" if not np.isfinite(sigma[i]) else f"{sigma[i]:.4e}",
-            f"{pca.eigenvalue_ratios[i]:.2e}",
-            pca.describe(i),
-            style=style,
-        )
-
-    console.print(table)
-    if pca.n_flat:
-        console.print(
-            f"  [red]{pca.n_flat} direction(s) shown dimmed are flat[/red]: the "
-            "data do not constrain them, so the prior sets their width."
-        )
-    console.rule(style="dim")
-
-    output_path = pathlib.Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
-    with (output_path / "pca.json").open("w") as f:
-        json.dump(pca.to_dict(), f, indent=2)

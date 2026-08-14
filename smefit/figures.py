@@ -17,6 +17,13 @@ from smefit.plot_utils import select_params
 log = logging.getLogger(__name__)
 
 
+def _set_plot_style():
+    """Apply the shared matplotlib style. Every figure in this module calls it."""
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+
 def _plot_heatmap(
     matrix,
     coeff_names,
@@ -58,9 +65,7 @@ def _plot_heatmap(
         Heading for the plot, drawn above the column labels. Passed to
         matplotlib verbatim, so it may be raw LaTeX.
     """
-    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-    rc("text", usetex=True)
-    rc("text.latex", preamble=r"\usepackage{amssymb}")
+    _set_plot_style()
 
     matrix = np.array(matrix, dtype=float)
     n_coeffs, n_sources = matrix.shape
@@ -150,6 +155,101 @@ def plot_fisher_diagonals_heatmap(
         value_fmt=value_fmt,
         colorbar=colorbar,
     )
+
+
+@figure
+def plot_pca_components_heatmap(
+    pca_components,
+    cmap="RdBu_r",
+    value_fmt="{:.2f}",
+    colorbar=True,
+):
+    """Plot the principal-direction weights as a heatmap.
+
+    Reading it: a column is one principal direction, and the coloured cells say
+    which coefficients it is made of. The leftmost columns are the directions
+    the data pin down; the rightmost are the flat ones, and the coefficients
+    lit up there are the combinations the fit cannot resolve.
+
+    Parameters
+    ----------
+    pca_components : pd.DataFrame
+        Index = coeff_names, columns = PC1..PCn.
+    cmap : str, optional
+        Colormap. Diverging by default: eigenvector components run either way
+        about zero, and the relative sign of two entries is what says whether a
+        direction is a sum or a difference of them.
+    value_fmt : str, optional
+        Format of the per-cell annotation.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside.
+    """
+    comps = pca_components
+    return _plot_heatmap(
+        comps.values,
+        comps.index.tolist(),
+        comps.columns.tolist(),
+        vmin=-1,
+        vmax=1,
+        mask_zeros=False,
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
+    )
+
+
+@figure
+def plot_pca_spectrum(pca):
+    """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
+
+    The one picture of the whole analysis: points below the dashed line are the
+    directions the data do not constrain.
+
+    Parameters
+    ----------
+    pca : smefit.pca.PCA
+    """
+    _set_plot_style()
+
+    ratios = np.array(pca.eigenvalue_ratios, dtype=float)
+    index = np.arange(1, pca.n_components + 1)
+    flat = np.array(pca.flat_mask)
+
+    # An exactly flat direction sits at zero, which a log axis cannot place. Put
+    # the floor a decade below everything of interest and draw such a point on
+    # it, as a downward triangle: the reading is "off the bottom of the scale",
+    # which is what an unconstrained direction is.
+    positive = ratios[ratios > 0]
+    floor = min(pca.threshold, positive.min() if positive.size else pca.threshold) / 10
+    shown = np.clip(ratios, floor, None)
+
+    fig, ax = plt.subplots(figsize=(max(6, pca.n_components * 0.4), 5))
+    ax.vlines(index, floor, shown, color="gray", linewidth=1)
+    ax.scatter(
+        index[~flat], shown[~flat], s=60, color="C0", zorder=3, label="constrained"
+    )
+    if flat.any():
+        ax.scatter(
+            index[flat],
+            shown[flat],
+            s=60,
+            color="C3",
+            marker="v",
+            zorder=3,
+            label="flat",
+        )
+    ax.axhline(pca.threshold, color="black", linestyle="--", linewidth=1)
+
+    ax.set_yscale("log")
+    # a little room under the floor so a marker drawn on it is not half-clipped
+    ax.set_ylim(floor / 3, 2.0)
+    ax.set_xticks(index)
+    ax.set_xticklabels(pca.component_names, rotation=90, fontsize=12)
+    ax.set_ylabel(r"$\lambda_i / \lambda_{\rm max}$", fontsize=16)
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend(fontsize=12)
+    fig.tight_layout()
+    return fig
 
 
 @figure

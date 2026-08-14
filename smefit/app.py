@@ -21,6 +21,7 @@ smefit_providers = [
     "smefit.individual_fit",
     "smefit.fit_actions",
     "smefit.fisher",
+    "smefit.pca",
     "smefit.tables",
     "smefit.figures",
     "smefit.utils_actions",

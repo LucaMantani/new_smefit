@@ -6,15 +6,13 @@ Utility functions for the smefit framework.
 
 import csv
 import logging
-import pathlib
 import time
 
 import jax
 import jax.numpy as jnp
-import yaml
 from reportengine.configparser import ConfigError
 
-from smefit.fit_result import FitResult
+from smefit.fit_result import Fit
 from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)
@@ -164,12 +162,26 @@ def build_exact_posterior_prior(
 ):
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 
-    Reads fit1's fit_results.json and input/runcard.yaml, rebuilds chi2 for
-    fit1's data, and returns an ExactPosteriorPrior whose
-    log_prob = log_prior_1 + log_likelihood_1.
+    Loads fit1 with :meth:`Fit.from_folder` — its numbers and the runcard it was
+    run with — rebuilds chi2 for fit1's data from that runcard, and returns an
+    ExactPosteriorPrior whose log_prob = log_prior_1 + log_likelihood_1.
     """
-    # --- Load previous fit result ---
-    prev = FitResult.from_json(bayesian_update_path)
+    # --- Load previous fit: its result and the runcard it was run with ---
+    try:
+        prev_fit = Fit.from_folder(bayesian_update_path)
+    except (KeyError, OSError, ValueError) as e:
+        raise ConfigError(
+            f"Could not load the previous fit at {bayesian_update_path}: {e}"
+        ) from e
+
+    if prev_fit.individual_fit:
+        raise ConfigError(
+            f"The fit at {bayesian_update_path} was run one coefficient at a time, "
+            "so it holds an independent 1D posterior per coefficient rather than "
+            "the joint posterior a Bayesian update needs as its prior."
+        )
+
+    prev = prev_fit.fit_results
 
     if prev.free_parameters != coefficients.free_names:
         raise ConfigError(
@@ -184,15 +196,10 @@ def build_exact_posterior_prior(
             f"Previous fit at {bayesian_update_path} has no posterior samples. "
         )
 
-    # --- Load previous runcard and rebuild chi2 via the smefit API ---
-    runcard_path = pathlib.Path(bayesian_update_path) / "input" / "runcard.yaml"
-    with runcard_path.open() as f:
-        prev_rc = yaml.safe_load(f)
-
     # --- Check for dataset overlap ---
     if datasets:
         current_names = {ds["name"] for ds in datasets}
-        prev_names = {ds["name"] for ds in prev_rc.get("datasets", [])}
+        prev_names = {ds["name"] for ds in prev_fit.setting("datasets", []) or []}
         overlap = current_names & prev_names
         if overlap:
             raise ConfigError(
@@ -203,7 +210,7 @@ def build_exact_posterior_prior(
     # --- Check for external_chi2 overlap ---
     if external_chi2:
         current_ext = set(external_chi2.keys())
-        prev_ext = set(prev_rc.get("external_chi2", {}).keys())
+        prev_ext = set(prev_fit.setting("external_chi2", {}) or {})
         overlap = current_ext & prev_ext
         if overlap:
             raise ConfigError(
@@ -215,11 +222,11 @@ def build_exact_posterior_prior(
     # Local import to avoid circular dependency
     from smefit.api import smefitAPI
 
-    prev_chi2 = smefitAPI.chi2(**prev_rc)
+    prev_chi2 = smefitAPI.chi2(**prev_fit.fit_runcard)
     log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)
 
     # --- Reconstruct prior_1 in physical space via the API (handles chains recursively) ---
-    prior_1 = smefitAPI.prior(**prev_rc)
+    prior_1 = smefitAPI.prior(**prev_fit.fit_runcard)
     if prev.whitening_active:
         if prev.whitening_transformation is None:
             raise ConfigError(

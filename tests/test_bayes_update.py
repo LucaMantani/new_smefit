@@ -87,6 +87,8 @@ def _make_fit_dir(
             p: {"free": True, "prior": {"dist": "uniform", "low": -1.0, "high": 1.0}}
             for p in free_params
         },
+        # Fit.from_folder reads how the fit was run from the action it ran.
+        "actions_": ["run_ultranest_fit"],
     }
     if datasets is not None:
         rc["datasets"] = datasets
@@ -526,6 +528,51 @@ def test_build_whitening_wraps_prior(tmp_path):
     from smefit.priors import _WhitenedToPhysicalPrior
 
     assert isinstance(result._base_prior, _WhitenedToPhysicalPrior)
+
+
+def test_build_individual_fit_raises(tmp_path):
+    """A previous fit run one coefficient at a time is not a joint posterior."""
+    fit_dir = tmp_path / "prev_individual_fit"
+    fit_dir.mkdir()
+    (fit_dir / "input").mkdir()
+
+    # The summary payload of FitResultGroup.write_summary: a chi2 per coefficient.
+    summary = {
+        "free_parameters": ["OpA", "OpB"],
+        "num_data": 5,
+        "n_free": 2,
+        "best_fit_point": {"OpA": 0.0, "OpB": 0.0},
+        "std": {"OpA": 0.1, "OpB": 0.1},
+        "chi2": {"OpA": 2.0, "OpB": 3.0},
+        "chi2_ndof": {"OpA": 0.5, "OpB": 0.75},
+        "logz": {"OpA": None, "OpB": None},
+        "samples": {"OpA": [0.1, 0.2], "OpB": [-0.1, 0.0]},
+        "prior_specs": None,
+        "whitening_active": False,
+    }
+    with (fit_dir / "fit_results.json").open("w") as f:
+        json.dump(summary, f)
+    with (fit_dir / "input" / "runcard.yaml").open("w") as f:
+        yaml.dump({"actions_": ["run_individual_ultranest_fits"]}, f)
+
+    cg = _mock_coeff_group(["OpA", "OpB"])
+    with pytest.raises(ConfigError, match="one coefficient at a time"):
+        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+
+
+def test_build_unreadable_fit_dir_raises_config_error(tmp_path):
+    """A directory that is not a loadable fit fails as a ConfigError."""
+    fit_dir = _make_fit_dir(
+        tmp_path,
+        free_params=["OpA"],
+        samples={"OpA": [0.1, 0.2]},
+    )
+    # Without its runcard the directory is no longer a fit.
+    (fit_dir / "input" / "runcard.yaml").unlink()
+
+    cg = _mock_coeff_group(["OpA"])
+    with pytest.raises(ConfigError, match="Could not load the previous fit"):
+        build_exact_posterior_prior(fit_dir, cg, datasets=None)
 
 
 def test_build_whitening_active_but_no_matrix_raises(tmp_path):

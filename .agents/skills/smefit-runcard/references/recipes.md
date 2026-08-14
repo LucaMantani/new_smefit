@@ -129,7 +129,7 @@ rge:
 coefficients:
   OtG:  {free: False, vars: [m], expr: "1/m**2"}
   OpWB: {free: False, vars: [m], expr: "1/m**2"}
-  m:    {free: True, prior: {dist: uniform, low: 1000, high: 10000}}
+  m:    {free: True, prior: {dist: uniform, low: 1, high: 10}}   # TeV
 chi2_scan_settings:
   n_points: 10
 actions_:
@@ -147,7 +147,13 @@ coefficient (the mass), with every Wilson coefficient tied to it through an
   scan is genuinely `n_points` × the startup cost of one fit. Keep `n_points`
   small at first. A cached `rge.rg_matrix:` is *not* reused here, since the
   whole point is a different matching scale per point.
-- The prior range is a mass range in GeV, not a Wilson-coefficient range.
+- The prior range is a mass range **in TeV**, not a Wilson-coefficient range.
+  TeV is the convention because the `expr:` output *is* a Wilson coefficient,
+  and those are in TeV^-2 — so `expr: "1/m**2"` works with no conversion
+  factor. `rge.init_scale` is in GeV, but the scan point is converted for you
+  (`gev_per_tev` in `produce_individual_mass_rge_matrix` /
+  `produce_individual_mass_ext_chi2_func`), so `rge.init_scale` in the runcard
+  stays in GeV like everywhere else.
 
 ## Pseudodata / projections
 

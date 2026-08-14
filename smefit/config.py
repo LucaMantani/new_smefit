@@ -904,9 +904,14 @@ class smefitConfig(Config):
     def produce_individual_mass_rge_matrix(
         self, rge, coefficients, theory, individual_mass_scale
     ):
-        """Produce RGE matrix with init_scale set to the current mass scan point."""
+        """Produce RGE matrix with init_scale set to the current mass scan point.
+
+        Scan points are masses in TeV, matching the TeV^-2 Wilson coefficients
+        they feed through the ``expr:`` constraints; ``init_scale`` is in GeV.
+        """
         rge_dict = dict(rge)
-        rge_dict["init_scale"] = float(individual_mass_scale)
+        # 1e3 converts the scan point from TeV to GeV
+        rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
         return build_rge_matrix(
             rge_dict=rge_dict,
             coeff_list=sorted(coefficients.names),
@@ -922,10 +927,15 @@ class smefitConfig(Config):
     def produce_individual_mass_ext_chi2_func(
         self, coefficients, external_chi2, individual_mass_scale, rge=None
     ):
-        """Load external chi2 for a single mass scan point with init_scale overridden."""
+        """Load external chi2 for a single mass scan point with init_scale overridden.
+
+        Same TeV (scan point) -> GeV (``init_scale``) conversion as
+        :meth:`produce_individual_mass_rge_matrix`.
+        """
         rge_dict = dict(rge) if rge is not None else None
         if rge_dict is not None:
-            rge_dict["init_scale"] = float(individual_mass_scale)
+            # 1e3 converts the scan point from TeV to GeV
+            rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
         return load_external_chi2(external_chi2, coefficients, rge_dict=rge_dict)
 
     def produce_individual_mass_chi2(

@@ -1082,7 +1082,8 @@ def test_produce_individual_mass_rge_matrix_overrides_init_scale(cfg, theory_a):
 
     assert result == "RGE_MATRIX"
     _, kwargs = mock_build.call_args
-    assert kwargs["rge_dict"]["init_scale"] == 42.0
+    # the scan point is a mass in TeV, init_scale is in GeV
+    assert kwargs["rge_dict"]["init_scale"] == 42000.0
     assert kwargs["coeff_list"] == ["OpA"]
     assert kwargs["theory_group"] is theory
     # the caller's rge dict must not be mutated in place
@@ -1113,7 +1114,8 @@ def test_produce_individual_mass_ext_chi2_func_overrides_init_scale_when_rge_set
 
     assert result == "EXT"
     _, kwargs = mock_load.call_args
-    assert kwargs["rge_dict"]["init_scale"] == 42.0
+    # the scan point is a mass in TeV, init_scale is in GeV
+    assert kwargs["rge_dict"]["init_scale"] == 42000.0
     assert rge["init_scale"] == 10.0  # caller's dict must not be mutated
 
 

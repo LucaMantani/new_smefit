@@ -92,6 +92,9 @@ datasets:
   - {name: CMS_tttt_13TeV_2023, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
 # Coefficients to fit
+# The scanned mass `m` is in TeV, so that 1/m**2 is directly a Wilson
+# coefficient in TeV^-2. The scan point is converted to GeV internally when it
+# overrides the RGE `init_scale`.
 coefficients:
   OtG:
     free: False
@@ -111,7 +114,7 @@ coefficients:
     expr: "1/m**2"
   m:
     free: True
-    prior: {dist: uniform, low: 1000, high: 10000}
+    prior: {dist: uniform, low: 1, high: 10}  # TeV
 
 
 external_chi2:

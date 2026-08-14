@@ -1,0 +1,61 @@
+# Principal component analysis of the Fisher information matrix: which linear
+# combinations of coefficients the data constrain, and which are flat.
+#
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: False
+
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+
+coefficients:
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+
+# The Fisher matrix is evaluated at the gd_best_fit point. `sm_solution: true`
+# skips the minimisation and uses the coefficients' baseline values instead, so
+# the PCA costs a single Hessian evaluation and needs no fit — that is the usual
+# way to ask "what would this dataset constrain?" before running anything.
+gradient_descent_settings:
+    sm_solution: true
+
+# Required by the PCA actions, but every sub-key is optional: leave the block
+# empty to take the defaults written here.
+pca_settings:
+    # eigenvalue below this fraction of the largest one -> the direction is flat
+    threshold: 1.0e-3
+    # eigenvector components below this are left out of the printed combination
+    min_weight: 0.01
+
+actions_:
+  - run_pca
+
+# Prints the spectrum and writes <output>/pca.json. For the same analysis as a
+# report — a spectrum plot, and a heatmap of which coefficients make up each
+# direction — swap the action above for the block below.
+#
+# Note there is no params_to_plot here: a principal direction is a combination
+# of every free coefficient, so the heatmap cannot show a subset of them. To ask
+# about a subset, free only those coefficients above.
+#
+# template_text: |
+#     PCA spectrum
+#     ============
+#     {@plot_pca_spectrum@}
+#     Principal directions
+#     ====================
+#     {@pca_spectrum@}
+#     {@plot_pca_components_heatmap@}
+#
+# actions_:
+#   - report(main=True)

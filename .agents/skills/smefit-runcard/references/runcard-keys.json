@@ -185,6 +185,16 @@
         "scheduler"
       ]
     },
+    "pca_settings": {
+      "defaults": {
+        "min_weight": "0.01",
+        "threshold": "0.001"
+      },
+      "known_keys": [
+        "min_weight",
+        "threshold"
+      ]
+    },
     "pseudodata_settings": {
       "defaults": {
         "fred_sys": "1.0",
@@ -270,6 +280,7 @@
     "n_steps",
     "optimizer_settings",
     "params_to_plot",
+    "pca_settings",
     "pseudodata_settings",
     "rge",
     "seed",

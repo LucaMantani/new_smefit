@@ -244,6 +244,25 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `optimizer_hyperparams`
 - `scheduler`
 
+### `pca_settings`
+
+Parse the settings for the principal component analysis.
+
+Keys
+----
+threshold : float, default 1e-3
+    A direction whose eigenvalue is below this fraction of the largest
+    one is reported as flat, i.e. unconstrained by the data.
+min_weight : float, default 0.01
+    Components below this are left out when a principal direction is
+    written as a linear combination of coefficients. Presentation only;
+    the eigenvectors themselves are never truncated.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `min_weight` — default: `0.01`
+- `threshold` — default: `0.001`
+
 ### `pseudodata_settings`
 
 Parse pseudodata projection settings.

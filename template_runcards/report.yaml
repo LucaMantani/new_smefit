@@ -105,6 +105,11 @@ gradient_descent_settings:
     n_steps: 2000
     tol: 1.0e-8
 
+# Required by the PCA actions; every sub-key is optional.
+pca_settings:
+    threshold: 1.0e-3
+    min_weight: 0.01
+
 # Coefficients to fit
 coefficients:
   OtG:
@@ -145,6 +150,16 @@ template_text: |
     Fisher heatmap
     ===========
     {@plot_fisher_diagonals_heatmap@}
+    PCA spectrum
+    ===========
+    {@plot_pca_spectrum@}
+    Principal directions
+    ===========
+    {@pca_spectrum@}
+    PCA components
+    ===========
+    {@pca_components@}
+    {@plot_pca_components_heatmap@}
 
 actions_:
   - report(main=True)

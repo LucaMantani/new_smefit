@@ -804,6 +804,43 @@ def test_parse_hessian_settings_unknown_key_warns(cfg, caplog):
 
 
 # ---------------------------------------------------------------------------
+# parse_pca_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_pca_settings_defaults(cfg):
+    assert cfg.parse_pca_settings({}) == {"threshold": 1.0e-3, "min_weight": 0.01}
+
+
+def test_parse_pca_settings_accepts_a_bare_block(cfg):
+    """`pca_settings:` with nothing under it is YAML None, and means "defaults"."""
+    assert cfg.parse_pca_settings(None) == cfg.parse_pca_settings({})
+
+
+def test_parse_pca_settings_custom(cfg):
+    result = cfg.parse_pca_settings({"threshold": 1e-2, "min_weight": 0.2})
+    assert result == {"threshold": 1e-2, "min_weight": 0.2}
+
+
+def test_parse_pca_settings_threshold_out_of_range_raises(cfg):
+    with pytest.raises(ConfigError, match="pca_settings.threshold"):
+        cfg.parse_pca_settings({"threshold": 1.5})
+
+
+def test_parse_pca_settings_min_weight_out_of_range_raises(cfg):
+    with pytest.raises(ConfigError, match="pca_settings.min_weight"):
+        cfg.parse_pca_settings({"min_weight": -0.1})
+
+
+def test_parse_pca_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_pca_settings({"unknown_key": 99})
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
 # parse_optimizer_settings / produce_optimizer
 # ---------------------------------------------------------------------------
 

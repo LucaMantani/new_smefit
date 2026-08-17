@@ -20,8 +20,10 @@ from smefit.figures import (
     plot_coefficient_bounds,
     plot_fisher_diagonals_heatmap,
     plot_fits_coefficient_bounds,
+    plot_fits_mass_reach,
     plot_fits_posterior_contours,
     plot_fits_posterior_histograms,
+    plot_mass_reach,
     plot_posterior_contours,
     plot_posterior_correlations,
     plot_posterior_histograms,
@@ -1217,3 +1219,164 @@ def test_bounds_group_the_fits_of_one_coefficient_together() -> None:
         within = ys[1] - ys[0]  # two fits of the last coefficient
         between = ys[n_fits] - ys[n_fits - 1]  # across the coefficient boundary
         assert between == pytest.approx(_ROW_GAP_RATIO * within)
+
+
+# ---------------------------------------------------------------------------
+# plot_fits_mass_reach / plot_mass_reach
+# ---------------------------------------------------------------------------
+
+
+def _bars(ax):
+    """The bars drawn, as (x_centre, height) — NaN heights included, which is
+    how an unconstrained coefficient shows up."""
+    return [(bar.get_x() + bar.get_width() / 2, bar.get_height()) for bar in ax.patches]
+
+
+def test_mass_reach_is_the_inverse_root_of_the_semi_interval() -> None:
+    """The 95% interval of the 0..1000 ramp is [25, 975], so the bound is
+    475 and the reach 1/sqrt(475)."""
+    fig = plot_fits_mass_reach([_uniform_fit()])
+
+    heights = [height for _, height in _bars(fig.axes[0])]
+    assert heights == pytest.approx([1 / np.sqrt(475.0)] * 2)
+
+
+def test_mass_reach_can_use_the_whole_interval() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()], full_interval=True)
+
+    assert _bars(fig.axes[0])[0][1] == pytest.approx(1 / np.sqrt(950.0))
+
+
+def test_mass_reach_follows_the_confidence_level() -> None:
+    """A narrower interval is a tighter bound, so a further reach."""
+    at68 = plot_fits_mass_reach([_uniform_fit()], confidence_level=68)
+    at95 = plot_fits_mass_reach([_uniform_fit()], confidence_level=95)
+
+    assert _bars(at68.axes[0])[0][1] > _bars(at95.axes[0])[0][1]
+
+
+def test_mass_reach_draws_one_bar_per_fit_and_coefficient() -> None:
+    fig = plot_fits_mass_reach(
+        [_uniform_fit(fit_name="fit_a"), _uniform_fit(fit_name="fit_b")]
+    )
+
+    assert len(_bars(fig.axes[0])) == 4
+
+
+def test_mass_reach_groups_the_bars_by_coefficient() -> None:
+    """Two fits of one coefficient touch; the next coefficient's group starts
+    a clear gap away."""
+    fig = plot_fits_mass_reach(
+        [_uniform_fit(fit_name="fit_a"), _uniform_fit(fit_name="fit_b")]
+    )
+
+    xs = sorted(x for x, _ in _bars(fig.axes[0]))
+    assert xs[1] - xs[0] < xs[2] - xs[1]
+
+
+def test_mass_reach_labels_the_groups_with_the_coefficients() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()])
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        coeff_info_latex.get("OpA", "OpA"),
+        coeff_info_latex.get("OpZZ", "OpZZ"),
+    ]
+
+
+def test_mass_reach_names_the_axis_it_is_read_on() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()])
+
+    assert "Lambda" in fig.axes[0].get_ylabel()
+    assert "TeV" in fig.axes[0].get_ylabel()
+
+
+def test_mass_reach_colours_each_fit_differently() -> None:
+    fig = plot_fits_mass_reach(
+        [_uniform_fit(fit_name="fit_a"), _uniform_fit(fit_name="fit_b")]
+    )
+
+    assert len({bar.get_facecolor() for bar in fig.axes[0].patches}) == 2
+
+
+def test_mass_reach_legend_names_every_fit_and_the_level() -> None:
+    fig = plot_fits_mass_reach(
+        [
+            _uniform_fit(fit_name="fit_a", label=r"$\mathrm{Analytic}$"),
+            _uniform_fit(fit_name="fit_b"),
+        ],
+        confidence_level=68,
+    )
+
+    legend = fig.axes[0].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == [
+        r"$\mathrm{Analytic}$",
+        "fit_b",
+    ]
+    assert "68" in legend.get_title().get_text()
+
+
+def test_mass_reach_leaves_a_gap_for_an_unconstrained_coefficient() -> None:
+    """A flat posterior has no width to invert: a bar of infinite height
+    would read as an infinitely good bound."""
+    fig = plot_fits_mass_reach(
+        [_fit(samples={"OpA": [2.0] * 10, "OpZZ": [0.0, 1.0, 2.0, 3.0]})]
+    )
+
+    heights = [height for _, height in _bars(fig.axes[0])]
+    assert np.isnan(heights[0])
+    assert np.isfinite(heights[1])
+
+
+def test_mass_reach_log_scale() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()], y_log=True)
+
+    assert fig.axes[0].get_yscale() == "log"
+
+
+def test_mass_reach_is_linear_by_default() -> None:
+    assert plot_fits_mass_reach([_uniform_fit()]).axes[0].get_yscale() == "linear"
+
+
+def test_mass_reach_restricts_to_params_to_plot() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()], params_to_plot=["OpZZ"])
+
+    assert len(_bars(fig.axes[0])) == 1
+
+
+def test_mass_reach_accepts_an_individual_fit() -> None:
+    """The individual reach figure is this action pointed at an
+    individual_fits output, not a mode of it."""
+    ramp = np.arange(0.0, 1001.0).tolist()
+    fig = plot_fits_mass_reach([_individual_fit({"OpA": ramp, "OpZZ": ramp})])
+
+    assert _bars(fig.axes[0])[0][1] == pytest.approx(1 / np.sqrt(475.0))
+
+
+def test_mass_reach_per_fit_action_draws_a_single_fit() -> None:
+    fig = plot_mass_reach(_uniform_fit())
+
+    assert len(_bars(fig.axes[0])) == 2  # one bar per coefficient
+    assert [t.get_text() for t in fig.axes[0].get_legend().get_texts()] == ["my_fit"]
+
+
+def test_mass_reach_rejects_an_empty_fits_list() -> None:
+    with pytest.raises(ValueError, match="No fits"):
+        plot_fits_mass_reach([])
+
+
+def test_mass_reach_rejects_a_fit_without_samples() -> None:
+    fit = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpZZ"],
+            best_fit_point={},
+            max_loglikelihood=-1.0,
+            num_data=10,
+            samples=None,
+        ),
+        fit_name="sampleless",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no posterior samples"):
+        plot_fits_mass_reach([fit])

@@ -48,6 +48,43 @@ class Bounds(NamedTuple):
     high: float
 
 
+def mass_reach(bounds: Bounds, full_interval: bool = False) -> float:
+    r"""The energy a confidence interval reaches, :math:`\Lambda/\sqrt{c_i}`.
+
+    A Wilson coefficient is a ratio :math:`c_i/\Lambda^2` in TeV\ :sup:`-2`,
+    so the inverse square root of a bound on it is the scale in TeV that the
+    bound probes: the tighter the interval, the further the reach.
+
+    The bound is the **semi-interval** ``(high - low) / 2`` by default. For a
+    Gaussian posterior that reproduces ``n_sigma * std`` exactly, but being
+    read off percentiles it stays right for the non-Gaussian posterior that
+    quadratic corrections produce. An asymmetric interval therefore enters
+    through its width, not through ``max(|low|, |high|)``.
+
+    Parameters
+    ----------
+    bounds : Bounds
+        The interval to convert, at whichever confidence level the caller
+        computed it — the level is part of what "reach" means here, and is
+        reported alongside it rather than assumed.
+    full_interval : bool, optional
+        Use the whole width ``high - low`` instead of half of it.
+
+    Returns
+    -------
+    float
+        The reach in TeV, or NaN for an interval of non-positive width — a
+        coefficient a fit did not constrain at all. Consumers draw a gap
+        rather than a bar of infinite height.
+    """
+    width = bounds.high - bounds.low
+    if not full_interval:
+        width /= 2.0
+    if not np.isfinite(width) or width <= 0.0:
+        return float("nan")
+    return float(1.0 / np.sqrt(width))
+
+
 def confidence_bounds(samples: ArrayLike, confidence_level: float) -> Bounds:
     """The ``confidence_level`` percent bounds of a 1D posterior.
 

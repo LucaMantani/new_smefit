@@ -16,7 +16,7 @@ from matplotlib import patches, rc
 from matplotlib.lines import Line2D
 from reportengine.figure import figure
 
-from smefit.bounds_1d import coeff_bounds, split_solution
+from smefit.bounds_1d import coeff_bounds, mass_reach, split_solution
 from smefit.contours_2d import fit_colors, fit_hatches, plot_contours
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
@@ -1011,4 +1011,172 @@ def plot_coefficient_bounds(
         lin_thr=lin_thr,
         x_min=x_min,
         x_max=x_max,
+    )
+
+
+# ----------------------------------------------------------------------
+# Mass reach — the scale a bound probes
+# ----------------------------------------------------------------------
+
+# Fraction of the space between two coefficients that the bars of one fill.
+# The rest is what separates one coefficient's group of bars from the next.
+_BAR_GROUP_WIDTH = 0.8
+
+
+def _mass_reach(
+    fits: Sequence[Fit],
+    params_to_plot: list[str] | str | None = None,
+    confidence_level: float = 95,
+    full_interval: bool = False,
+    y_log: bool = False,
+) -> Figure:
+    r"""Draw the :math:`\Lambda/\sqrt{c_i}` reach of *fits* as grouped bars.
+
+    The shared core of the two reach actions below, which differ only in how
+    many fits reportengine hands them — their docstrings carry the parameter
+    documentation. One group of bars per coefficient, one bar per fit inside
+    it.
+
+    Individual (one-at-a-time) fits are accepted, as by the histograms and
+    the bounds plot: a reach is read off one coefficient's interval. Which of
+    the two a figure is about is which fit directory its ``fits:`` entry
+    points at — a joint output or an ``individual_fits`` one — never an option
+    here.
+    """
+    if not fits:
+        raise ValueError("No fits to plot.")
+
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+    coeffs = common_free_coefficients(fits, params_to_plot, min_count=1)
+    colors = fit_colors(len(fits))
+
+    fig, ax = plt.subplots(figsize=(max(6.0, 1.2 * len(coeffs) * len(fits)), 6))
+
+    positions = np.arange(len(coeffs), dtype=float)
+    width = _BAR_GROUP_WIDTH / len(fits)
+    for fit_idx, fit in enumerate(fits):
+        bounds = coeff_bounds(fit, coeffs, confidence_level)
+        # a coefficient this fit never sampled, or did not constrain, becomes
+        # a gap in its group rather than a missing or infinite bar
+        reaches = [
+            (
+                mass_reach(bounds[name][0][confidence_level], full_interval)
+                if name in bounds
+                else float("nan")
+            )
+            for name in coeffs
+        ]
+        offset = (fit_idx - (len(fits) - 1) / 2) * width
+        ax.bar(
+            positions + offset,
+            reaches,
+            width=width,
+            color=colors[fit_idx],
+            label=fit.plot_label,
+        )
+
+    ax.set_xticks(positions, [coeff_info_latex.get(name, name) for name in coeffs])
+    ax.set_ylabel(r"$\Lambda/\sqrt{c_i}\ ({\rm TeV})$", fontsize=20)
+    if y_log:
+        ax.set_yscale("log")
+    ax.grid(True, which="both", ls="dashed", axis="y", lw=0.5)
+    ax.set_axisbelow(True)  # the bars are the figure, the grid reads under them
+    ax.legend(
+        title=rf"${confidence_level:g}\:\%\:\mathrm{{C.I.}}$",
+        loc="lower center",
+        bbox_to_anchor=(0, 1.02, 1.0, 0.05),
+        frameon=False,
+        ncol=2,
+    )
+
+    return fig
+
+
+@figure
+def plot_fits_mass_reach(
+    fits,
+    params_to_plot=None,
+    confidence_level=95,
+    full_interval=False,
+    y_log=False,
+) -> Figure:
+    r"""Overlay the mass reach of every fit, one group of bars per coefficient.
+
+    Takes the whole ``fits`` list, so it is called bare in a report template.
+    Its per-fit counterpart is :func:`plot_mass_reach`.
+
+    The reach is :math:`\Lambda/\sqrt{c_i}` in TeV, the inverse square root of
+    the bound on the coefficient — the scale that bound probes. It is read off
+    the same percentile intervals as the bounds plot and table, so the three
+    cannot disagree.
+
+    Both actions accept a fit run one coefficient at a time. The marginalised
+    and the individual figure are the same action pointed at different fit
+    directories (a joint output and an ``individual_fits`` one), not two
+    modes of one.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        The previously run fits to compare, each legend-labelled with the
+        ``label`` of its ``fits`` entry (its name otherwise).
+    params_to_plot : list of str, optional
+        Restrict the groups to these coefficients, in this order. All the
+        coefficients the fits share by default.
+    confidence_level : float, optional
+        Confidence level in percent of the interval the reach is read off, 95
+        by default. A single value: a bar has one height.
+    full_interval : bool, optional
+        Take the bound to be the whole interval ``high - low`` rather than
+        half of it. Off by default, so that a Gaussian posterior reproduces
+        ``n_sigma * std``.
+    y_log : bool, optional
+        Draw the reach on a log scale, off by default. Reaches are positive,
+        so this one is a plain log scale.
+
+    Raises
+    ------
+    ValueError
+        If there is nothing to draw: no fits, a fit that stored no posterior
+        samples, or no shared coefficient left.
+    """
+    return _mass_reach(
+        fits,
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        full_interval=full_interval,
+        y_log=y_log,
+    )
+
+
+@figure
+def plot_mass_reach(
+    fit,
+    params_to_plot=None,
+    confidence_level=95,
+    full_interval=False,
+    y_log=False,
+) -> Figure:
+    """Plot the mass reach of one fit, one bar per coefficient.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one figure per fit — ``{@fits plot_mass_reach@}``, or a ``with fits``
+    block. To compare the fits in one figure instead, use
+    :func:`plot_fits_mass_reach`, whose docstring describes the parameters,
+    all shared.
+
+    Raises
+    ------
+    ValueError
+        If the fit stored no posterior samples, or no coefficient is left.
+    """
+    return _mass_reach(
+        [fit],
+        params_to_plot=params_to_plot,
+        confidence_level=confidence_level,
+        full_interval=full_interval,
+        y_log=y_log,
     )

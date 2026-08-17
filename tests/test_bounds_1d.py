@@ -7,7 +7,13 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from smefit.bounds_1d import Bounds, coeff_bounds, confidence_bounds, split_solution
+from smefit.bounds_1d import (
+    Bounds,
+    coeff_bounds,
+    confidence_bounds,
+    mass_reach,
+    split_solution,
+)
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 
 # ---------------------------------------------------------------------------
@@ -300,3 +306,56 @@ def test_coeff_bounds_rejects_a_fit_without_samples() -> None:
 
     with pytest.raises(ValueError, match="sample_less.*no posterior samples"):
         coeff_bounds(fit, ["OtG"], 68)
+
+
+# ---------------------------------------------------------------------------
+# mass_reach
+# ---------------------------------------------------------------------------
+
+
+def test_mass_reach_is_the_inverse_root_of_the_semi_interval() -> None:
+    """A coefficient is a ratio c/Lambda^2 in TeV^-2, so the inverse square
+    root of a bound on it is the scale in TeV that bound probes."""
+    assert mass_reach(Bounds(-0.25, 0.0, 0.25)) == pytest.approx(1 / np.sqrt(0.25))
+
+
+def test_mass_reach_can_take_the_whole_interval() -> None:
+    assert mass_reach(Bounds(-0.25, 0.0, 0.25), full_interval=True) == pytest.approx(
+        1 / np.sqrt(0.5)
+    )
+
+
+def test_mass_reach_reads_an_asymmetric_interval_through_its_width() -> None:
+    """Not through max(|low|, |high|): the width is what the fit constrained,
+    and where the interval sits is the central value's business."""
+    assert mass_reach(Bounds(0.0, 0.25, 0.5)) == pytest.approx(
+        mass_reach(Bounds(-0.25, 0.0, 0.25))
+    )
+
+
+def test_mass_reach_of_a_tighter_bound_is_larger() -> None:
+    """The whole point of the plot: the better the constraint, the further
+    the scale it probes."""
+    assert mass_reach(Bounds(-0.1, 0.0, 0.1)) > mass_reach(Bounds(-1.0, 0.0, 1.0))
+
+
+def test_mass_reach_matches_n_sigma_for_a_gaussian_posterior() -> None:
+    """Percentile-based, so it stays right for the non-Gaussian posterior a
+    quadratic fit produces — but it must still reproduce the familiar
+    1/sqrt(sigma) where the posterior is Gaussian."""
+    rng = np.random.default_rng(0)
+    samples = rng.normal(0.0, 0.5, size=200_000)
+
+    reach = mass_reach(confidence_bounds(samples, 68.27))
+
+    assert reach == pytest.approx(1 / np.sqrt(0.5), rel=0.01)
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [Bounds(0.5, 0.5, 0.5), Bounds(0.5, 0.0, -0.5), Bounds(-np.inf, 0.0, np.inf)],
+)
+def test_mass_reach_of_an_unconstrained_coefficient_is_nan(bounds: Bounds) -> None:
+    """A bar of infinite height, or none at all, would read as a result; a
+    gap says the fit did not constrain the coefficient."""
+    assert np.isnan(mass_reach(bounds))

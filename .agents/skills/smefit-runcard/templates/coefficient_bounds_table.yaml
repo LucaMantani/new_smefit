@@ -70,7 +70,7 @@ round_val: 2
 # Confidence level in percent of the interval the REACH column is read off,
 # 95 by default. The reach is one column, so it is one level; the bounds
 # columns have their own, above, and this does not touch them.
-# confidence_level: [68, 95]
+# confidence_level: 95
 
 # Take the reach bound to be the whole interval rather than half of it, as in
 # the mass-reach plot. Default false.

@@ -9,6 +9,7 @@ import pandas as pd
 from reportengine.table import table
 
 from smefit.bounds_1d import coeff_bounds, mass_reach
+from smefit.latex_table import latex_table
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import common_free_coefficients, per_fit_option, select_params
 
@@ -80,6 +81,24 @@ def _interval(bounds, round_val):
     return f"[{_number(bounds.low, round_val)}, {_number(bounds.high, round_val)}]"
 
 
+def _caption(bounds_levels, show_bounds, show_reach, confidence_level):
+    """What the LaTeX table says about itself when the runcard does not.
+
+    Written from the columns the table actually has, so a caption cannot
+    promise a column that was switched off.
+    """
+    said = []
+    if show_bounds:
+        levels = " and ".join(rf"{level:.10g}\%" for level in bounds_levels)
+        said.append(rf"best-fit values and {levels} CL intervals")
+    if show_reach:
+        said.append(
+            rf"the scale $\Lambda/\sqrt{{c_i}}$ probed at "
+            rf"{float(confidence_level):.10g}\% CL"
+        )
+    return "Coefficient bounds per fit: " + ", and ".join(said) + "."
+
+
 def _level_column(level):
     r"""Header of the bounds columns of one confidence level.
 
@@ -89,7 +108,7 @@ def _level_column(level):
     return rf"{level:.10g}\% CL"
 
 
-@table
+@latex_table
 def coefficient_bounds_table(
     fits,
     params_to_plot=None,
@@ -100,6 +119,8 @@ def coefficient_bounds_table(
     show_reach=False,
     confidence_level=95,
     full_interval=False,
+    latex_caption=None,
+    latex_label="tab:coefficient_bounds",
 ):
     r"""Tabulate the coefficient bounds of every fit.
 
@@ -155,6 +176,12 @@ def coefficient_bounds_table(
     full_interval : bool, optional
         Take the reach bound to be the whole interval rather than half of it,
         as in the mass-reach plot.
+    latex_caption : str, optional
+        Caption of the LaTeX version of the table — the one the report's "Copy
+        LaTeX" button copies and ``tables/<name>.tex`` holds. Written from the
+        columns the table has when not given.
+    latex_label : str, optional
+        ``\\label`` of that same table. Pass None to leave it out.
 
     Returns
     -------
@@ -259,8 +286,17 @@ def coefficient_bounds_table(
         # label would read as two readings of the same thing
         index.extend([label] + [f"{label} (2)"] * (n_solutions[name] - 1))
 
-    return pd.DataFrame(
+    frame = pd.DataFrame(
         np.array(data, dtype=object).T,
         index=index,
         columns=pd.MultiIndex.from_tuples(columns),
     )
+    # how the LaTeX version of this table captions itself; reportengine hands
+    # `attrs` to the final action that renders it
+    frame.attrs["latex_caption"] = (
+        _caption(bounds_levels, show_bounds, show_reach, confidence_level)
+        if latex_caption is None
+        else latex_caption
+    )
+    frame.attrs["latex_label"] = latex_label
+    return frame

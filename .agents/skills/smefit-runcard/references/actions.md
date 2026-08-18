@@ -60,7 +60,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
-- `coefficient_bounds_table(fits, params_to_plot=None, double_solution=None, round_val=3, show_bounds=True, bounds_levels=None, show_reach=False, confidence_level=95, full_interval=False)`
+- `coefficient_bounds_table(fits, params_to_plot=None, double_solution=None, round_val=3, show_bounds=True, bounds_levels=None, show_reach=False, confidence_level=95, full_interval=False, latex_caption=None, latex_label='tab:coefficient_bounds')`
   - Tabulate the coefficient bounds of every fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.

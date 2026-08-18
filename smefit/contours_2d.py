@@ -19,6 +19,7 @@ posterior mass, calibrated on the samples themselves — see
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
@@ -39,6 +40,8 @@ if TYPE_CHECKING:
     from matplotlib.typing import ColorType
     from numpy.typing import ArrayLike
 
+log = logging.getLogger(__name__)
+
 # A KDE evaluated on a regular grid *and* at the samples it was estimated from:
 # the ``(xx, yy, density, sample_density)`` of `kde_grid`. The grid is what gets
 # drawn, the sample densities are what the contour level is read off — see
@@ -52,7 +55,7 @@ KDEGrid = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 # A hatch is always drawn as its own unfilled layer over the fill, never as the
 # fill's own `hatch`: the PDF backend silently drops the hatch of a patch that
 # is both filled and hatched, and PDF is what a report is made of.
-_HATCH_CYCLE = ("///", "\\\\\\", "xxx", "...", "+++", "ooo")
+_HATCH_CYCLE = ("///", "\\\\\\", "---", "|||", "...", "+++", "ooo")
 
 # Density grid resolution and support padding (in bandwidth units) of the KDE,
 # and the sample cap above which posteriors are thinned before estimating it.
@@ -64,10 +67,15 @@ _KDE_MAX_SAMPLES = 5000
 # with, and the size of its end caps. A second confidence level is drawn on the
 # same line as the first, so the wider one is thinned and faded to the alpha of
 # a contour fill and the narrower one keeps the width of a contour outline.
-_SEGMENT_LINEWIDTH = 4
-_SEGMENT_OUTER_LINEWIDTH = 2
+_SEGMENT_LINEWIDTH = 2
+_SEGMENT_OUTER_LINEWIDTH = 1
 _SEGMENT_OUTER_ALPHA = 0.4
 _SEGMENT_CAP_SIZE = 10
+
+# Below this ratio of the two principal variances of a pair of coefficients,
+# the joint posterior is treated as living on a line rather than in the plane —
+# see `degenerate_direction`.
+_DEGENERACY_TOL = 1e-10
 
 # Size of the cross marking a panel where the fit sampled neither coefficient.
 _STUCK_POINT_SIZE = 9
@@ -152,6 +160,49 @@ def confidence_ellipse(
     ellipse.set_transform(transf + ax.transData)
 
     return ax.add_patch(ellipse)
+
+
+def degenerate_direction(
+    x_values: ArrayLike, y_values: ArrayLike, tol: float = _DEGENERACY_TOL
+) -> np.ndarray | None:
+    """The line a perfectly correlated pair of coefficients lives on, if any.
+
+    A pair need not span the plane: a coefficient constrained by ``expr`` to a
+    multiple of another one — or two coefficients a fit only ever moved
+    together — has a joint posterior supported on a line. There is no 2D
+    density to estimate there: ``scipy.stats.gaussian_kde`` raises on the
+    singular covariance and the Gaussian ellipse collapses to a sliver, so the
+    pair is drawn as an interval along the line instead, by
+    :func:`plot_degenerate_segment`.
+
+    The case of one (or both) of the two never moving at all is *not* this one:
+    :func:`smefit.plot_utils.stuck_values` catches it upstream and the panel is
+    drawn as a segment or a point.
+
+    Parameters
+    ----------
+    x_values, y_values : array_like
+        ``(N,)`` posterior samples.
+    tol : float, optional
+        Ratio of the smaller to the larger principal variance below which the
+        pair counts as degenerate.
+
+    Returns
+    -------
+    np.ndarray or None
+        Unit vector along the line, or None if the samples do span the plane.
+    """
+    x_values = np.asarray(x_values, dtype=float)
+    y_values = np.asarray(y_values, dtype=float)
+    if x_values.size < 2:
+        return np.array([1.0, 0.0])
+
+    eigenvalues, eigenvectors = np.linalg.eigh(np.cov(np.vstack([x_values, y_values])))
+    if eigenvalues[-1] <= 0.0:  # no spread at all, in any direction
+        return np.array([1.0, 0.0])
+    if eigenvalues[0] > tol * eigenvalues[-1]:
+        return None
+    return np.asarray(eigenvectors[:, -1], dtype=float)
 
 
 def kde_grid(
@@ -323,7 +374,7 @@ def plot_contours(
     show_best_fit: bool = False,
     best_fit: tuple[float, float] | None = None,
     hatch: str | None = None,
-) -> tuple[patches.Patch, patches.Patch]:
+) -> tuple[patches.Patch | Line2D, ...]:
     """Plot the 2D marginalised contour of a pair of coefficients.
 
     Parameters
@@ -363,13 +414,37 @@ def plot_contours(
     Returns
     -------
     tuple
-        Handles (Patch objects) to be used in the figure legend.
+        Handles to be used in the figure legend: Patch objects, or the Line2D
+        objects of :func:`plot_degenerate_segment` for a pair whose posterior
+        lies on a line.
     """
     x_values = np.asarray(posterior[coeff1], dtype=float)
     y_values = np.asarray(posterior[coeff2], dtype=float)
 
     if show_best_fit and best_fit is None:
         best_fit = (float(np.mean(x_values)), float(np.mean(y_values)))
+
+    # a pair that moves only along a line has no 2D density: neither a KDE nor
+    # an ellipse is defined there, so it is drawn as an interval on that line
+    direction = degenerate_direction(x_values, y_values)
+    if direction is not None:
+        log.warning(
+            "Coefficients %s and %s only move together in this fit; drawing "
+            "their posterior as an interval along the line they lie on.",
+            coeff1,
+            coeff2,
+        )
+        return plot_degenerate_segment(
+            ax,
+            x_values,
+            y_values,
+            color=color,
+            confidence_level=confidence_level,
+            dashed_confidence_level=dashed_confidence_level,
+            show_best_fit=show_best_fit,
+            best_fit=best_fit,
+            direction=direction,
+        )
 
     if kde:
         # the KDE dominates the cost of the figure: evaluate it once and draw
@@ -481,6 +556,111 @@ def plot_contours(
     return hndls
 
 
+def _interval_styles(n_levels: int) -> list[tuple[float, float]]:
+    """``(linewidth, alpha)`` per interval, widest interval first.
+
+    One level is drawn as a plain line; two share the line and are told apart
+    by width, the wider interval thin and faded and the narrower one thick and
+    opaque — the usual double error bar.
+    """
+    if n_levels == 1:
+        return [(_SEGMENT_LINEWIDTH, 1.0)]
+    return [
+        (_SEGMENT_OUTER_LINEWIDTH, _SEGMENT_OUTER_ALPHA),
+        (_SEGMENT_LINEWIDTH, 1.0),
+    ]
+
+
+def plot_degenerate_segment(
+    ax: Axes,
+    x_values: ArrayLike,
+    y_values: ArrayLike,
+    color: ColorType,
+    confidence_level: float = 95,
+    dashed_confidence_level: float | None = None,
+    show_best_fit: bool = False,
+    best_fit: tuple[float, float] | None = None,
+    direction: ArrayLike | None = None,
+) -> tuple[Line2D, ...]:
+    """Draw a pair of coefficients whose posterior lies on a line.
+
+    The counterpart of :func:`plot_stuck_segment` for a pair that *was*
+    sampled but only ever moved together — two coefficients tied by an ``expr``
+    constraint, say. There is no 2D density to contour (see
+    :func:`degenerate_direction`), so what the fit knows about the panel is
+    again an interval, this time along a slanted line: the confidence interval
+    of the samples projected onto that line, mapped back into the plane.
+
+    The segment carries no end caps, unlike :func:`plot_stuck_segment`: a cap
+    is drawn across the line, and "across" is only defined once the panel's
+    limits and aspect are, which happens after every fit has been drawn.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    x_values, y_values : array_like
+        ``(N,)`` posterior samples of the two coefficients.
+    color : ColorType
+        Colour associated to the fit these samples belong to.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+    dashed_confidence_level : float, optional
+        Secondary confidence level, drawn on the same line — see
+        :func:`_interval_styles`.
+    show_best_fit : bool, optional
+        Mark the best-fit point, off by default.
+    best_fit : tuple(float, float), optional
+        Where to mark it, the posterior mean by default.
+    direction : array_like, optional
+        Unit vector along the line, from :func:`degenerate_direction`, which is
+        called by default.
+
+    Returns
+    -------
+    tuple of matplotlib.lines.Line2D
+        Handles to be used in the figure legend.
+    """
+    x_values = np.asarray(x_values, dtype=float)
+    y_values = np.asarray(y_values, dtype=float)
+    if direction is None:
+        direction = degenerate_direction(x_values, y_values)
+    unit = np.asarray(direction, dtype=float)
+
+    centre = np.array([x_values.mean(), y_values.mean()])
+    # the samples are one-dimensional in disguise: the coordinate along the
+    # line is all there is to take an interval of
+    projection = (x_values - centre[0]) * unit[0] + (y_values - centre[1]) * unit[1]
+
+    levels = [confidence_level]
+    if dashed_confidence_level is not None:
+        levels.append(dashed_confidence_level)
+    bounds = [confidence_bounds(projection, level) for level in levels]
+    # widest first, so a nested interval stays visible on top of the one
+    # containing it whichever order the levels were given in
+    bounds.sort(key=lambda b: b.high - b.low, reverse=True)
+
+    handles = []
+    for interval, (linewidth, alpha) in zip(bounds, _interval_styles(len(bounds))):
+        ends = centre + np.outer([interval.low, interval.high], unit)
+        (line,) = ax.plot(
+            ends[:, 0],
+            ends[:, 1],
+            color=color,
+            alpha=alpha,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+        )
+        handles.append(line)
+
+    if show_best_fit:
+        ax.scatter(*(best_fit if best_fit is not None else centre), color=color, s=50)
+
+    ax.tick_params(which="both", direction="in", labelsize=22)
+
+    return tuple(handles)
+
+
 def plot_stuck_segment(
     ax: Axes,
     values: ArrayLike,
@@ -549,17 +729,8 @@ def plot_stuck_segment(
     # containing it whichever order the levels were given in
     bounds.sort(key=lambda b: b.high - b.low, reverse=True)
 
-    styles = (
-        [(_SEGMENT_LINEWIDTH, 1.0)]
-        if len(bounds) == 1
-        else [
-            (_SEGMENT_OUTER_LINEWIDTH, _SEGMENT_OUTER_ALPHA),
-            (_SEGMENT_LINEWIDTH, 1.0),
-        ]
-    )
-
     handles = []
-    for interval, (linewidth, alpha) in zip(bounds, styles):
+    for interval, (linewidth, alpha) in zip(bounds, _interval_styles(len(bounds))):
         span = (interval.low, interval.high)
         fixed = (fixed_value, fixed_value)
         x_values, y_values = (

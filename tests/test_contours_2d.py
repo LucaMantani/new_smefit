@@ -20,12 +20,14 @@ from matplotlib.collections import PathCollection
 from smefit.contours_2d import (
     KDEGrid,
     confidence_ellipse,
+    degenerate_direction,
     density_level,
     fit_colors,
     fit_hatches,
     kde_contour,
     kde_grid,
     plot_contours,
+    plot_degenerate_segment,
     plot_stuck_point,
     plot_stuck_segment,
 )
@@ -656,6 +658,138 @@ def test_plot_stuck_point_returns_its_handle() -> None:
 
     assert len(handles) == 1
     assert handles[0] in ax.lines
+
+
+# ---------------------------------------------------------------------------
+# degenerate_direction and plot_degenerate_segment
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def degenerate_samples() -> SamplePair:
+    """A pair tied by ``y = 2x + 1``, as an ``expr`` constraint leaves it."""
+    x_values = np.random.default_rng(3).normal(0.5, 1.0, size=500)
+    return x_values, 2.0 * x_values + 1.0
+
+
+def test_degenerate_direction_finds_the_line(degenerate_samples: SamplePair) -> None:
+    direction = degenerate_direction(*degenerate_samples)
+
+    assert direction is not None
+    # (1, 2)/sqrt(5) up to the sign, which the eigenvector is free in
+    assert abs(float(direction[1] / direction[0])) == pytest.approx(2.0)
+    assert float(np.linalg.norm(direction)) == pytest.approx(1.0)
+
+
+def test_degenerate_direction_is_none_for_a_pair_spanning_the_plane(
+    gaussian_samples: SamplePair,
+) -> None:
+    assert degenerate_direction(*gaussian_samples) is None
+
+
+def test_degenerate_direction_tolerates_a_sliver(
+    degenerate_samples: SamplePair,
+) -> None:
+    """A pair that is nearly, but not exactly, on a line is a genuine 2D
+    posterior: a KDE of it is defined, and it is contoured."""
+    x_values, y_values = degenerate_samples
+    jitter = np.random.default_rng(4).normal(0.0, 1e-2, size=x_values.size)
+
+    assert degenerate_direction(x_values, y_values + jitter) is None
+
+
+def test_plot_contours_draws_a_degenerate_pair_as_a_segment(
+    degenerate_samples: SamplePair,
+) -> None:
+    """The KDE would raise on the singular covariance, so the pair is drawn
+    as an interval along the line it lies on instead."""
+    x_values, y_values = degenerate_samples
+    _, ax = plt.subplots()
+
+    handles = plot_contours(
+        ax, {"OpA": x_values, "OpB": y_values}, "OpA", "OpB", kde=True, color="C0"
+    )
+
+    (line,) = ax.lines
+    assert not ax.patches  # no contour, no ellipse
+    assert handles == (line,)
+    assert line.get_ydata() == pytest.approx(2.0 * np.array(line.get_xdata()) + 1.0)
+
+
+def test_plot_contours_draws_a_degenerate_pair_without_a_kde_too(
+    degenerate_samples: SamplePair,
+) -> None:
+    """A linear fit has no more of an ellipse to draw than a quadratic one has
+    a density."""
+    x_values, y_values = degenerate_samples
+    _, ax = plt.subplots()
+
+    plot_contours(
+        ax, {"OpA": x_values, "OpB": y_values}, "OpA", "OpB", kde=False, color="C0"
+    )
+
+    assert len(ax.lines) == 1
+    assert not ax.patches
+
+
+def test_plot_degenerate_segment_spans_the_percentile_interval(
+    degenerate_samples: SamplePair,
+) -> None:
+    """The endpoints are the equal-tailed interval of the samples projected
+    on the line, so along x they are the x percentiles."""
+    x_values, y_values = degenerate_samples
+    _, ax = plt.subplots()
+
+    plot_degenerate_segment(ax, x_values, y_values, "C0", confidence_level=68)
+
+    (line,) = ax.lines
+    assert sorted(line.get_xdata()) == pytest.approx(
+        sorted(np.percentile(x_values, [16, 84]))
+    )
+
+
+def test_plot_degenerate_segment_draws_both_levels(
+    degenerate_samples: SamplePair,
+) -> None:
+    _, ax = plt.subplots()
+
+    plot_degenerate_segment(
+        ax,
+        *degenerate_samples,
+        "C0",
+        confidence_level=95,
+        dashed_confidence_level=68,
+    )
+
+    outer, inner = ax.lines
+    assert np.ptp(outer.get_xdata()) > np.ptp(inner.get_xdata())
+    assert outer.get_linewidth() < inner.get_linewidth()
+
+
+def test_plot_degenerate_segment_marks_the_best_fit(
+    degenerate_samples: SamplePair,
+) -> None:
+    _, ax = plt.subplots()
+
+    plot_degenerate_segment(
+        ax, *degenerate_samples, "C0", show_best_fit=True, best_fit=(1.0, 3.0)
+    )
+
+    (marker,) = ax.collections
+    assert marker.get_offsets().tolist() == [[1.0, 3.0]]
+
+
+def test_plot_degenerate_segment_returns_a_handle_per_level(
+    degenerate_samples: SamplePair,
+) -> None:
+    _, ax = plt.subplots()
+
+    handles = plot_degenerate_segment(
+        ax, *degenerate_samples, "C0", dashed_confidence_level=68
+    )
+
+    assert len(handles) == 2
+    assert all(handle in ax.lines for handle in handles)
 
 
 # ---------------------------------------------------------------------------

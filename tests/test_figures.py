@@ -454,7 +454,12 @@ def _two_coeff_gaussians() -> dict[str, list[float]]:
 def test_contours_overlay_every_fit_in_one_panel() -> None:
     """Two fits and two coefficients: one panel holding both fits' ellipses
     (two patches each) and the SM marker, beside the legend's own cell."""
-    fig = plot_fits_posterior_contours([_fit(fit_name="fit_a"), _fit(fit_name="fit_b")])
+    fig = plot_fits_posterior_contours(
+        [
+            _fit(fit_name="fit_a", samples=_two_coeff_gaussians()),
+            _fit(fit_name="fit_b", samples=_two_coeff_gaussians()),
+        ]
+    )
 
     assert len(fig.axes) == 2  # the panel and the legend cell
     ax = fig.axes[0]
@@ -527,7 +532,7 @@ def test_contours_three_coefficients_form_the_lower_triangle() -> None:
 
 def test_contours_per_fit_action_draws_a_single_fit() -> None:
     """The per-fit action wraps one fit: same figure, one fit's contours."""
-    fig = plot_posterior_contours(_fit())
+    fig = plot_posterior_contours(_fit(samples=_two_coeff_gaussians()))
 
     assert len(fig.axes) == 2  # the panel and the legend cell
     assert len(fig.axes[0].patches) == 3  # outline, fill and hatch layer
@@ -559,7 +564,7 @@ def test_contours_kde_is_overridable_per_fit() -> None:
     """A dict keyed by fit name drives each fit separately."""
     fits = [
         _fit(fit_name="quad", samples=_two_coeff_gaussians(), use_quad=True),
-        _fit(fit_name="lin"),
+        _fit(fit_name="lin", samples=_two_coeff_gaussians()),
     ]
 
     fig = plot_fits_posterior_contours(fits, kde={"quad": False}, show_sm=False)
@@ -572,9 +577,44 @@ def test_contours_kde_is_overridable_per_fit() -> None:
 def test_contours_dashed_level_adds_an_ellipse() -> None:
     """A [dashed, filled] confidence_level pair adds the dashed outline to the
     outline, fill and hatch layer a single level already draws."""
-    fig = plot_fits_posterior_contours([_fit()], confidence_level=[68, 95])
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=[68, 95]
+    )
 
     assert len(fig.axes[0].patches) == 4
+
+
+def test_contours_survive_a_pair_that_only_moves_together() -> None:
+    """An expr-constrained coefficient tracks a free one exactly: there is no
+    2D density to estimate, and the panel gets the interval on that line
+    rather than a scipy error that takes the whole report down."""
+    ramp = np.linspace(-1.0, 1.0, 200)
+    fit = _fit(samples={"OpA": ramp.tolist(), "OpZZ": (2.0 * ramp).tolist()})
+
+    fig = plot_fits_posterior_contours([fit], kde=True, show_sm=False)
+
+    ax = fig.axes[0]
+    (line,) = ax.lines
+    assert not ax.patches
+    assert line.get_ydata() == pytest.approx(2.0 * np.array(line.get_xdata()))
+
+
+def test_contours_reject_more_than_two_confidence_levels() -> None:
+    """A contour panel holds one fill and one outline; a third level has
+    nowhere to go, and saying so beats unpacking into a bare ValueError."""
+    with pytest.raises(ValueError, match="confidence_level takes one or two"):
+        plot_fits_posterior_contours(
+            [_fit(samples=_two_coeff_gaussians())], confidence_level=[68, 95, 99]
+        )
+
+
+def test_contours_accept_a_single_level_in_a_list() -> None:
+    """One level written as a list is the same figure as the bare number."""
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=[95], show_sm=False
+    )
+
+    assert len(fig.axes[0].patches) == 3  # outline, fill and hatch layer, no dashed
 
 
 def test_contours_legend_names_every_fit_and_the_sm() -> None:
@@ -1183,6 +1223,35 @@ def test_bounds_two_levels_draw_a_thin_bar_under_a_thick_one() -> None:
     inner, outer = spans[0], spans[-1]
     assert (inner[0], inner[1]) == pytest.approx((160.0, 840.0))
     assert (outer[0], outer[1]) == pytest.approx((25.0, 975.0))
+
+
+def test_bounds_draw_the_sm_line_at_the_coefficient_baseline() -> None:
+    """The reference line marks the SM, which a non-zero baseline_value moves
+    off the origin — the histograms and contours of the same fit put it
+    there, and the bounds have to agree."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit(baselines={"OpA": 3.0, "OpZZ": 3.0})]
+    )
+
+    (reference,) = (line for line in fig.axes[0].lines if line.get_linestyle() == "--")
+    assert list(reference.get_xdata()) == [3.0, 3.0]
+
+
+def test_bounds_draw_one_sm_line_per_row_when_the_baselines_differ() -> None:
+    """One line across the figure would have to be at two places at once."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit(baselines={"OpA": 3.0, "OpZZ": -1.0})]
+    )
+
+    dashed = [line for line in fig.axes[0].lines if line.get_linestyle() == "--"]
+    assert sorted(line.get_xdata()[0] for line in dashed) == [-1.0, 3.0]
+
+
+def test_bounds_reject_more_than_two_confidence_levels() -> None:
+    """A row holds a thin bar under a thick one: a third level was silently
+    dropped before, which is worse than being told."""
+    with pytest.raises(ValueError, match="confidence_level takes one or two"):
+        plot_fits_coefficient_bounds([_uniform_fit()], confidence_level=[68, 95, 99])
 
 
 def test_bounds_level_order_does_not_matter() -> None:

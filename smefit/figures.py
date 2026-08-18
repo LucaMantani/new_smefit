@@ -246,6 +246,42 @@ def plot_posterior_correlations(
 # ----------------------------------------------------------------------
 
 
+def _confidence_levels(
+    confidence_level: float | Sequence[float], key: str = "confidence_level"
+) -> list[float]:
+    """The one or two confidence levels a figure is drawn at.
+
+    A single number or a list of one or two, since a contour panel and a bounds
+    row hold one filled region and one outline. Anything else is the runcard's
+    mistake and is named as such, rather than unpacking into a message that
+    does not mention the key it came from.
+
+    Raises
+    ------
+    ValueError
+        If no level, or more than two, were given.
+    """
+    if isinstance(confidence_level, (list, tuple)):
+        levels = [float(level) for level in confidence_level]
+    else:
+        levels = [float(confidence_level)]
+
+    if not 1 <= len(levels) <= 2:
+        raise ValueError(
+            f"{key} takes one or two levels, got {len(levels)}: "
+            f"{list(confidence_level)}."
+        )
+    return levels
+
+
+def _contour_levels(
+    confidence_level: float | Sequence[float],
+) -> tuple[float | None, float]:
+    """``(dashed_level, filled_level)`` of a contour figure, in that order."""
+    levels = _confidence_levels(confidence_level)
+    return (None, levels[0]) if len(levels) == 1 else (levels[0], levels[1])
+
+
 def _posterior_contours(
     fits: Sequence[Fit],
     params_to_plot: list[str] | str | None = None,
@@ -295,10 +331,7 @@ def _posterior_contours(
     coeffs = contour_coefficients(fits, params_to_plot)
     n_par = len(coeffs)
 
-    if isinstance(confidence_level, (list, tuple)):
-        dashed_cl, cl = confidence_level
-    else:
-        dashed_cl, cl = None, confidence_level
+    dashed_cl, cl = _contour_levels(confidence_level)
 
     colors = fit_colors(len(fits))
     # texture carries what colour carries, for print and for a reader who
@@ -913,10 +946,9 @@ def _coefficient_bounds(
 
     # the wider interval is drawn thin, the narrower one thick on top of it,
     # so which way round the two levels are written does not matter
-    if isinstance(confidence_level, (list, tuple)):
-        outer_cl, inner_cl = max(confidence_level), min(confidence_level)
-    else:
-        outer_cl, inner_cl = float(confidence_level), None
+    levels = _confidence_levels(confidence_level)
+    outer_cl = max(levels)
+    inner_cl = min(levels) if len(levels) == 2 else None
     levels = [outer_cl] if inner_cl is None else [outer_cl, inner_cl]
 
     colors = fit_colors(len(fits))
@@ -974,7 +1006,26 @@ def _coefficient_bounds(
 
     ax.set_ylim(rows.min() - 1, rows.max() + 1)
     ax.set_yticks(rows, [coeff_info_latex.get(name, name) for name in coeffs])
-    ax.axvline(0, ls="dashed", color="black", alpha=0.7)
+
+    # the SM is not always the origin: a coefficient parametrised around a
+    # non-zero baseline_value has its SM elsewhere, and the reference line has
+    # to agree with the histograms and contours of the same fits. One line
+    # across the figure while every coefficient shares a baseline — the usual
+    # case — and one tick per row otherwise, since the rows then disagree.
+    baselines = baseline_point(fits, coeffs)
+    if len(set(baselines.values())) == 1:
+        ax.axvline(
+            next(iter(baselines.values())), ls="dashed", color="black", alpha=0.7
+        )
+    else:
+        for coeff_idx, name in enumerate(coeffs):
+            ax.plot(
+                [baselines[name]] * 2,
+                [rows[coeff_idx] - 0.5, rows[coeff_idx] + 0.5],
+                ls="dashed",
+                color="black",
+                alpha=0.7,
+            )
 
     if x_log:
         ax.set_xscale("symlog", linthresh=lin_thr)

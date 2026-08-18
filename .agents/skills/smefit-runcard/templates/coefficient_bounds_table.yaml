@@ -60,7 +60,7 @@ fits:
 round_val: 2
 
 # The confidence levels the BOUNDS columns quote, in percent and in the order
-# they should be read. Default [68, 95]. One value gives one column, and any
+# they should be read. Default [95]. One value gives one column, and any
 # level works: 99.99994 is 5 sigma. Each column is named after its own level,
 # so the table always says what it quotes. A list only works as a top-level key
 # like this one; a single value also goes in a call, `(bounds_levels=95)`.
@@ -80,7 +80,7 @@ template_text: |
     Coefficient bounds
     ==================
 
-    Best fit, 68% and 95% CL bounds, and the scale each bound probes. Drop the
+    Best fit, 95% CL bounds, and the scale each bound probes. Drop the
     argument for the bounds alone, or pass `show_bounds=False` alongside it for
     the reach alone.
     {@coefficient_bounds_table(show_reach=True)@}

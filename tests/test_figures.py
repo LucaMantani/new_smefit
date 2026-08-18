@@ -1380,3 +1380,37 @@ def test_mass_reach_rejects_a_fit_without_samples() -> None:
 
     with pytest.raises(ValueError, match="no posterior samples"):
         plot_fits_mass_reach([fit])
+
+
+def test_bounds_leave_a_gap_for_a_coefficient_a_fit_never_sampled() -> None:
+    """A one-at-a-time fit can hold a coefficient whose own fit stored no
+    samples: it is still a coefficient the fit fitted, so it keeps its row,
+    and that row is simply empty for this fit."""
+    fit = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=["OpA"],
+                    best_fit_point={"OpA": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={"OpA": jnp.array([0.0, 1.0, 2.0, 3.0])},
+                ),
+                FitResult(
+                    free_parameters=["OpZZ"],
+                    best_fit_point={"OpZZ": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples=None,
+                ),
+            ]
+        ),
+        fit_name="half_sampled",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+
+    fig = plot_fits_coefficient_bounds([fit])
+
+    ax = fig.axes[0]
+    assert len(ax.get_yticks()) == 2  # both coefficients keep their row
+    assert len(_intervals(ax)) == 1  # only the sampled one is drawn

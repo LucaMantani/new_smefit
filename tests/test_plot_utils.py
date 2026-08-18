@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from matplotlib.ticker import ScalarFormatter
 
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.plot_utils import (
@@ -14,6 +17,7 @@ from smefit.plot_utils import (
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
+    compact_tick_labels,
     per_fit_option,
     select_params,
 )
@@ -405,3 +409,87 @@ def test_helpers_leave_the_fit_samples_untouched(fit_pair: list[Fit]) -> None:
 
     for name, vals in results.samples.items():
         np.testing.assert_array_equal(np.asarray(vals), before[name])
+
+
+# --- compact_tick_labels ----------------------------------------------------
+
+
+def test_compact_tick_labels_factors_the_power_out_of_small_numbers() -> None:
+    """A coefficient of 1e-4 would otherwise print five leading zeros in every
+    label, and a panel has room for about four characters."""
+    fig, ax = plt.subplots()
+    ax.set_xlim(-5e-4, 5e-4)
+
+    compact_tick_labels(ax)
+    fig.canvas.draw()
+
+    # the labels come out as mathtext, so the digits are what to look at
+    digits = [
+        re.sub(r"[^0-9.]", "", t.get_text())
+        for t in ax.get_xticklabels()
+        if t.get_text()
+    ]
+    assert digits, "no tick labels at all"
+    assert not any("0.00" in label for label in digits), digits
+    assert all(len(label) <= 3 for label in digits), digits
+    # the power is written once, at the end of the axis
+    assert "10" in ax.xaxis.get_offset_text().get_text()
+    plt.close(fig)
+
+
+def test_compact_tick_labels_leave_ordinary_numbers_alone() -> None:
+    """Nothing is factored out of a range that reads perfectly well as it
+    is — the power would be one more thing to look up."""
+    fig, ax = plt.subplots()
+    ax.set_xlim(-0.5, 0.5)
+
+    compact_tick_labels(ax)
+    fig.canvas.draw()
+
+    assert not ax.xaxis.get_offset_text().get_text()
+    plt.close(fig)
+
+
+def test_compact_tick_labels_reformat_both_axes() -> None:
+    """A coefficient sits on the x-axis of one panel and the y-axis of
+    another, and has to read the same way in both."""
+    fig, ax = plt.subplots()
+
+    compact_tick_labels(ax)
+
+    assert isinstance(ax.xaxis.get_major_formatter(), ScalarFormatter)
+    assert isinstance(ax.yaxis.get_major_formatter(), ScalarFormatter)
+    plt.close(fig)
+
+
+def test_compact_tick_labels_can_hide_the_power() -> None:
+    """matplotlib draws the power whatever `labelbottom` says, so an inner
+    panel of a grid would carry a stray one of its own."""
+    fig, ax = plt.subplots()
+
+    compact_tick_labels(ax, show_x_offset=False, show_y_offset=True)
+
+    assert not ax.xaxis.offsetText.get_visible()
+    assert ax.yaxis.offsetText.get_visible()
+    plt.close(fig)
+
+
+def test_compact_tick_labels_can_reformat_one_axis_only() -> None:
+    """The bounds plot names its rows after coefficients: a numeric formatter
+    on that axis would replace the names with the positions they sit at."""
+    fig, ax = plt.subplots()
+    default = ax.yaxis.get_major_formatter()
+
+    compact_tick_labels(ax, axis="x")
+
+    assert isinstance(ax.xaxis.get_major_formatter(), ScalarFormatter)
+    assert ax.yaxis.get_major_formatter() is default
+    plt.close(fig)
+
+
+def test_compact_tick_labels_rejects_an_unknown_axis() -> None:
+    fig, ax = plt.subplots()
+
+    with pytest.raises(ValueError, match="'both', 'x' or 'y'"):
+        compact_tick_labels(ax, axis="z")
+    plt.close(fig)

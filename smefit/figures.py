@@ -25,6 +25,7 @@ from smefit.plot_utils import (
     best_fit_pair,
     coeff_limits,
     common_free_coefficients,
+    compact_tick_labels,
     per_fit_option,
     select_params,
 )
@@ -358,6 +359,10 @@ def _posterior_contours(
         else:
             ax.tick_params(axis="y", which="both", labelleft=False)
 
+        # a coefficient of 1e-4 would otherwise print five leading zeros in
+        # every label, and the labels of one panel would run into each other
+        compact_tick_labels(ax, show_x_offset=j == n_par - 1, show_y_offset=i == 0)
+
     # the legend, and the confidence level it is read with, go in the free
     # upper-right corner — never over a panel, whatever the figure's size
     ax = fig.add_subplot(grid[0, 1:])
@@ -645,6 +650,10 @@ def _posterior_histograms(
         # every panel of a large grid costs a row of height each time
         ax.text(0.05, 0.85, coeff_labels[idx], transform=ax.transAxes, fontsize=25)
         ax.set_xlim(*limits[name])
+        # every panel is a different coefficient on its own range, so each
+        # carries its own power — unlike the contour grid, where a column
+        # shares one. The y axis is an unlabelled normalisation.
+        compact_tick_labels(ax, axis="x")
         ax.tick_params(which="both", direction="in", labelsize=22.5)
         # the y-axis is a normalisation, not a quantity anybody reads off
         ax.tick_params(labelleft=False)
@@ -888,6 +897,10 @@ def _coefficient_bounds(
     if x_log:
         ax.set_xscale("symlog", linthresh=lin_thr)
         ax.set_xticks(_symlog_minor_ticks(lin_thr), minor=True)
+    else:
+        # x only: the rows are named after coefficients, and a numeric
+        # formatter would replace those names with the positions they sit at
+        compact_tick_labels(ax, axis="x")
     ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
     ax.set_xlim(x_min, x_max)
     ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
@@ -1081,7 +1094,10 @@ def _mass_reach(
     ax.set_xticks(positions, [coeff_info_latex.get(name, name) for name in coeffs])
     ax.set_ylabel(r"$\Lambda/\sqrt{c_i}\ ({\rm TeV})$", fontsize=20)
     if y_log:
-        ax.set_yscale("log")
+        ax.set_yscale("log")  # its own formatter already writes the powers
+    else:
+        # y only: the groups are named after coefficients
+        compact_tick_labels(ax, axis="y")
     ax.grid(True, which="both", ls="dashed", axis="y", lw=0.5)
     ax.set_axisbelow(True)  # the bars are the figure, the grid reads under them
     ax.legend(

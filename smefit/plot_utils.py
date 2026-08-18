@@ -14,15 +14,79 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from matplotlib.ticker import ScalarFormatter
 
 from smefit.fit_result import FitResult
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+    from matplotlib.axes import Axes
+
     from smefit.fit_result import Fit
 
 log = logging.getLogger(__name__)
+
+# Orders of magnitude a tick label is written out in full between; outside
+# them it is written as a mantissa, with the power factored out to the end of
+# the axis. Tighter than matplotlib's default (-5, 6), which spells out
+# 0.00015 in a panel that has room for about four characters — the labels then
+# overlap into an unreadable smear. A Wilson coefficient in TeV^-2 is routinely
+# that small, so this is the common case, not the corner one.
+_SCI_POWER_LIMITS = (-2, 3)
+
+
+def compact_tick_labels(
+    ax: Axes,
+    axis: str = "both",
+    show_x_offset: bool = True,
+    show_y_offset: bool = True,
+    fontsize: float = 18,
+) -> None:
+    """Keep the tick labels of *ax* short enough to read.
+
+    Small values switch to a mantissa with the shared power written once, at
+    the end of the axis, instead of every label carrying its own leading
+    zeros.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to reformat.
+    axis : {"both", "x", "y"}, optional
+        Which of them to reformat. Never an axis that is **not a numeric
+        scale**: the bounds plot names its rows after coefficients and the
+        reach plot names its columns after them, and a numeric formatter would
+        replace those names with the positions they happen to sit at. Nor a
+        **log or symlog** axis, whose own formatter already writes powers.
+    show_x_offset, show_y_offset : bool, optional
+        Whether to show the power at the end of that axis. A grid of panels
+        sharing a range labels only its outer ones, and the power belongs with
+        the labels: matplotlib draws it regardless of ``labelbottom``, so an
+        inner panel would otherwise carry a stray ``x10^-3`` of its own.
+    fontsize : float, optional
+        Size of that power, which does not follow the tick label size.
+
+    Raises
+    ------
+    ValueError
+        If ``axis`` is not one of the three names.
+    """
+    if axis not in ("both", "x", "y"):
+        raise ValueError(f"axis is 'both', 'x' or 'y', got {axis!r}.")
+
+    wanted = []
+    if axis in ("both", "x"):
+        wanted.append((ax.xaxis, show_x_offset))
+    if axis in ("both", "y"):
+        wanted.append((ax.yaxis, show_y_offset))
+
+    for target, show in wanted:
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_powerlimits(_SCI_POWER_LIMITS)
+        target.set_major_formatter(formatter)
+        target.offsetText.set_visible(show)
+        target.offsetText.set_fontsize(fontsize)
 
 
 def _joint_results(fit: Fit) -> FitResult:

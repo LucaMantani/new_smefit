@@ -7,11 +7,14 @@ figure (get_text() etc. only read stored attributes), and the module-level
 installed (e.g. on CI runners).
 """
 
+import re
+
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.ticker import ScalarFormatter
 
 from smefit import figures as figures_mod
 from smefit.figures import (
@@ -1414,3 +1417,118 @@ def test_bounds_leave_a_gap_for_a_coefficient_a_fit_never_sampled() -> None:
     ax = fig.axes[0]
     assert len(ax.get_yticks()) == 2  # both coefficients keep their row
     assert len(_intervals(ax)) == 1  # only the sampled one is drawn
+
+
+def test_contours_keep_small_tick_labels_readable() -> None:
+    """A coefficient of 1e-4 prints five leading zeros per label under the
+    default formatter, and the labels of one panel run into each other."""
+    rng = np.random.default_rng(7)
+    tiny = {
+        name: rng.normal(0.0, 1.5e-4, size=200).tolist() for name in ("OpA", "OpZZ")
+    }
+
+    fig = plot_fits_posterior_contours([_fit(samples=tiny)])
+    fig.canvas.draw()
+
+    ax = fig.axes[0]
+    digits = [
+        re.sub(r"[^0-9.]", "", t.get_text())
+        for t in ax.get_xticklabels()
+        if t.get_text()
+    ]
+    assert not any("0.00" in label for label in digits), digits
+    assert "10" in ax.xaxis.get_offset_text().get_text()
+
+
+def test_contours_write_the_power_on_the_outer_panels_only() -> None:
+    """matplotlib draws it whatever `labelbottom` says, so an inner panel
+    would carry a stray power of its own next to a panel it does not label."""
+    fig = plot_fits_posterior_contours(
+        [_fit(free=("OpA", "OpZZ", "OpC"), samples=_three_coeff_samples())]
+    )
+
+    panels = {
+        (ax.get_subplotspec().colspan.start, ax.get_subplotspec().rowspan.start): ax
+        for ax in fig.axes
+    }
+    bottom_left = panels[(0, 1)]  # bottom row, first column: labels both ways
+    inner = panels[(0, 0)]  # top row, first column: y labels only
+
+    assert bottom_left.xaxis.offsetText.get_visible()
+    assert bottom_left.yaxis.offsetText.get_visible()
+    assert not inner.xaxis.offsetText.get_visible()
+    assert inner.yaxis.offsetText.get_visible()
+
+
+def _tick_digits(ticklabels) -> list[str]:
+    """The digits of a set of tick labels, which come out as mathtext."""
+    return [re.sub(r"[^0-9.]", "", t.get_text()) for t in ticklabels if t.get_text()]
+
+
+def test_histograms_keep_small_tick_labels_readable() -> None:
+    """Each panel is a different coefficient on its own range, so each carries
+    its own power — unlike a contour grid, where a column shares one."""
+    rng = np.random.default_rng(8)
+    tiny = {
+        name: rng.normal(0.0, 1.5e-4, size=300).tolist() for name in ("OpA", "OpZZ")
+    }
+
+    fig = plot_fits_posterior_histograms([_fit(samples=tiny)], show_sm=False)
+    fig.canvas.draw()
+
+    for ax in _panels(fig):
+        digits = _tick_digits(ax.get_xticklabels())
+        assert not any("0.00" in label for label in digits), digits
+        assert ax.xaxis.offsetText.get_visible()
+
+
+def test_bounds_keep_small_tick_labels_readable() -> None:
+    rng = np.random.default_rng(9)
+    tiny = {
+        name: rng.normal(0.0, 1.5e-4, size=300).tolist() for name in ("OpA", "OpZZ")
+    }
+
+    fig = plot_fits_coefficient_bounds([_fit(samples=tiny)])
+    fig.canvas.draw()
+
+    ax = fig.axes[0]
+    digits = _tick_digits(ax.get_xticklabels())
+    assert not any("0.00" in label for label in digits), digits
+    assert "10" in ax.xaxis.get_offset_text().get_text()
+
+
+def test_bounds_keep_the_coefficient_names_on_the_rows() -> None:
+    """The y axis is not a numeric scale: reformatting it would label the rows
+    with the positions they sit at instead of the coefficients."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+    fig.canvas.draw()
+
+    labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
+    assert coeff_info_latex.get("OpA", "OpA") in labels
+    assert "OpZZ" in labels
+
+
+def test_bounds_log_scale_keeps_its_own_formatter() -> None:
+    """A symlog axis already writes its powers; a linear formatter over it
+    would label decade ticks with plain numbers."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], x_log=True)
+
+    assert not isinstance(fig.axes[0].xaxis.get_major_formatter(), ScalarFormatter)
+
+
+def test_mass_reach_keeps_the_coefficient_names_on_the_groups() -> None:
+    """Same as the bounds plot, the other way round: here it is x that names
+    coefficients and y that is numeric."""
+    fig = plot_fits_mass_reach([_uniform_fit()])
+    fig.canvas.draw()
+
+    ax = fig.axes[0]
+    labels = [t.get_text() for t in ax.get_xticklabels()]
+    assert coeff_info_latex.get("OpA", "OpA") in labels
+    assert isinstance(ax.yaxis.get_major_formatter(), ScalarFormatter)
+
+
+def test_mass_reach_log_scale_keeps_its_own_formatter() -> None:
+    fig = plot_fits_mass_reach([_uniform_fit()], y_log=True)
+
+    assert not isinstance(fig.axes[0].yaxis.get_major_formatter(), ScalarFormatter)

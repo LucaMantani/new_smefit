@@ -1,0 +1,89 @@
+# AUTO-COPIED from template_runcards/mass_reach.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Mass reach of fits that have already been run: no fit is run here, the
+# samples are read back from each fit's fit_results.json. One group of bars per
+# coefficient, one bar per fit inside it.
+#
+# The reach is Lambda/sqrt(c_i) in TeV — the inverse square root of the bound on
+# the coefficient, which is a ratio c/Lambda^2 in TeV^-2. It is read off the
+# same percentile intervals as the bounds plot and table, so the three cannot
+# disagree.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# Marginalised or individual is not an option below: it is which fit directory
+# an entry points at. Listing an individual_fits output alongside a joint one is
+# how the two are compared in a single figure:
+#
+#   - {name: blackjax_individual_fit, path: '.', label: '$\mathrm{Individual}$'}
+
+# --- The two reach actions ---------------------------------------------------
+#
+# They differ only in how many fits reportengine hands them, which its parameter
+# name fixes:
+#
+#   plot_fits_mass_reach  the whole `fits` list -> one figure comparing them;
+#                         called bare.
+#   plot_mass_reach       one fit -> one figure per fit; called under
+#                         `with fits` (or `{@fits plot_...@}`).
+#
+# Both read the `fits` key above, so one runcard mixes them freely.
+
+# --- Setting the options -----------------------------------------------------
+#
+# No settings block: an action's keyword parameters are resolved like any other
+# resource, so a runcard sets them directly, two ways.
+#
+#   (1) A TOP-LEVEL KEY applies everywhere the parameter appears, so both
+#       actions get it. Only route for a list or dict value: the template parser
+#       splits action arguments on commas, so `f(x=[68, 95])` does not parse.
+#   (2) An ACTION ARGUMENT applies to that call alone and beats the key.
+#       Scalars only, see (1).
+#
+# Every option, with its default. Uncomment to change.
+
+# Confidence level in percent of the interval the reach is read off. Default 95.
+# A single value, unlike the bounds plot: a bar has one height.
+# confidence_level: 68
+
+# Restrict the groups to these coefficients, in this order. Default: the free
+# coefficients common to every fit. At least one must be left.
+# params_to_plot: [OpWB, OpD]
+
+# Take the bound to be the whole interval high - low rather than half of it.
+# Default false, so that a Gaussian posterior reproduces n_sigma * std.
+# full_interval: True
+
+# Log y-axis. Reaches are positive, so this one is a plain log scale.
+# Default false.
+# y_log: True
+
+# A coefficient a fit did not constrain — a posterior of no width — is left as a
+# gap in that fit's group rather than drawn as a bar of infinite height.
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
+template_text: |
+    Mass reach
+    ==========
+
+    All fits compared
+    -----------------
+    {@plot_fits_mass_reach@}
+
+    One figure per fit
+    ------------------
+    {@with fits@}
+    {@fit@}
+    ~~~~~~~~~
+    {@plot_mass_reach@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

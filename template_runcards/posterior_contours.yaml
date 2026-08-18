@@ -1,0 +1,88 @@
+# Pairwise 2D marginalised confidence contours of fits that have already been
+# run: no fit is run here, the samples are read back from each fit's
+# fit_results.json. The panels are the lower triangle of the coefficient matrix,
+# over the coefficients free in at least one fit — a fit that fixed one of them
+# is drawn at the value it was stuck at rather than left out of the figure.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# --- The two contour actions -------------------------------------------------
+#
+# They differ only in how many fits reportengine hands them, which its parameter
+# name fixes:
+#
+#   plot_fits_posterior_contours  the whole `fits` list -> one overlaid figure;
+#                                 called bare.
+#   plot_posterior_contours       one fit -> one figure per fit; called under
+#                                 `with fits` (or `{@fits plot_...@}`).
+#
+# Both read the `fits` key above, so one runcard mixes them freely.
+
+# --- Setting the options -----------------------------------------------------
+#
+# No settings block: an action's keyword parameters are resolved like any other
+# resource, so a runcard sets them directly, two ways.
+#
+#   (1) A TOP-LEVEL KEY applies everywhere the parameter appears, so both
+#       actions get it. Only route for a list or dict value: the template parser
+#       splits action arguments on commas, so `f(x=[68, 95])` does not parse.
+#   (2) An ACTION ARGUMENT applies to that call alone and beats the key.
+#       Scalars only, see (1).
+#
+# Every option, with its default. Uncomment to change.
+
+# Confidence level in percent. Two values draw the first dashed, fill the second.
+confidence_level: 95
+
+# Restrict the panels to these coefficients, in this order. Default: every
+# coefficient at least one fit floated. At least two must be left. A fit that
+# held one of them fixed is drawn where it held it — a bar spanning the other
+# coefficient's confidence interval, or a cross where two fixed values meet.
+# A coefficient NO fit floated is not drawn by default, but naming it here
+# adds its panels, showing every fit stuck at the value it fixed it to.
+# params_to_plot: [OpWB, OpD]
+
+# Kernel density estimate instead of a Gaussian ellipse. Default: each fit's
+# `use_quad`, quadratic corrections generally making a posterior non-Gaussian.
+# A dict keyed by fit name sets it per fit.
+# kde:
+#   analytical_fit: False
+#   ultranest_fit: True
+
+# Size in inches of one panel. Default 4.
+# subplot_size: 5
+
+# Mark the SM in every panel, at each coefficient's `baseline_value` in the
+# runcard the fit was run with — the origin unless it was parametrised around a
+# non-zero SM value. Default true.
+# show_sm: False
+
+# Mark each fit's best-fit point: one marker per fit, at the maximum-likelihood
+# point the fit recorded. Default false.
+# show_best_fit: True
+
+# Texture the filled contours, one hatch per fit alongside its colour, so the
+# figure survives greyscale printing and a reader who cannot separate the hues.
+# Default true.
+# hatch: False
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
+template_text: |
+    Posterior contours
+    ==================
+
+    All fits overlaid
+    -----------------
+    {@plot_fits_posterior_contours@}
+
+    One figure per fit
+    ------------------
+    {@with fits@}
+    {@fit@}
+    ~~~~~~~~~
+    {@plot_posterior_contours(subplot_size=5)@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

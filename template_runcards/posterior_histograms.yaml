@@ -1,0 +1,85 @@
+# 1D marginalised posteriors of fits that have already been run: no fit is run
+# here, the samples are read back from each fit's fit_results.json. One panel
+# per coefficient, every fit overlaid in each of them.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# A fit run one coefficient at a time is listed the same way — these actions
+# read one coefficient's posterior at a time, which is exactly what it has. So
+# the individual counterpart of a marginalised figure is a `fits:` entry
+# pointing at an individual_fits output, not an option below:
+#
+#   - {name: blackjax_individual_fit, path: '.', label: '$\mathrm{Individual}$'}
+
+# --- The two histogram actions -----------------------------------------------
+#
+# They differ only in how many fits reportengine hands them, which its parameter
+# name fixes:
+#
+#   plot_fits_posterior_histograms  the whole `fits` list -> one overlaid
+#                                   figure; called bare.
+#   plot_posterior_histograms       one fit -> one figure per fit; called under
+#                                   `with fits` (or `{@fits plot_...@}`).
+#
+# Both read the `fits` key above, so one runcard mixes them freely.
+
+# --- Setting the options -----------------------------------------------------
+#
+# No settings block: an action's keyword parameters are resolved like any other
+# resource, so a runcard sets them directly, two ways.
+#
+#   (1) A TOP-LEVEL KEY applies everywhere the parameter appears, so both
+#       actions get it. Only route for a list or dict value: the template parser
+#       splits action arguments on commas, so `f(x=[68, 95])` does not parse.
+#   (2) An ACTION ARGUMENT applies to that call alone and beats the key.
+#       Scalars only, see (1).
+#
+# Every option, with its default. Uncomment to change.
+
+# Restrict the panels to these coefficients, in this order. Default: the free
+# coefficients common to every fit. At least one must be left.
+# params_to_plot: [OpWB, OpD]
+
+# Coefficients whose posterior has two disjoint solutions, as quadratic
+# corrections produce. They are binned one branch at a time, so that a mode is
+# not smeared into a couple of bars by a bin width set across the empty gap
+# between them; the bars themselves are still drawn from the whole posterior.
+# Declared, never detected — a posterior is bimodal because of the physics. A
+# dict keyed by fit name sets the list per fit.
+# double_solution: [OpWB]
+# double_solution:
+#   analytical_fit: []
+#   ultranest_fit: [OpWB]
+
+# Mark the SM with a dashed vertical line, at each coefficient's
+# `baseline_value` in the runcard the fit was run with — the origin unless it
+# was parametrised around a non-zero SM value. Default true.
+# show_sm: False
+
+# Binning, passed to matplotlib's `hist` as it comes: a count, a rule by name,
+# or your own edges. Default: Freedman-Diaconis, per fit and coefficient.
+# bins: 20
+
+# Size in inches of one panel. Default 4.
+# subplot_size: 5
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
+template_text: |
+    Posterior histograms
+    ====================
+
+    All fits overlaid
+    -----------------
+    {@plot_fits_posterior_histograms@}
+
+    One figure per fit
+    ------------------
+    {@with fits@}
+    {@fit@}
+    ~~~~~~~~~
+    {@plot_posterior_histograms(subplot_size=5)@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

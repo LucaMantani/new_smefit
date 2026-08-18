@@ -396,6 +396,40 @@ class FitResultGroup:
     def __init__(self, results: List[FitResult]):
         self.results = results
 
+    # ------------------------------------------------------------------
+    # The FitResult fields that still mean something one at a time
+    # ------------------------------------------------------------------
+    #
+    # A group is not a FitResult and deliberately does not pretend to be one:
+    # it has no joint likelihood, no single best-fit point, no correlations.
+    # These two fields are the ones a coefficient answers on its own, and they
+    # are exposed under their FitResult names so that a consumer looking at one
+    # coefficient at a time — the 1D bounds routines — reads both kinds of fit
+    # the same way. Anything reading two coefficients *together* (a contour, a
+    # correlation) must not: individual posteriors were sampled independently,
+    # so pairing them up would draw a correlation that was never fitted.
+
+    @property
+    def free_parameters(self) -> List[str]:
+        """The coefficients fitted, in the order they were fitted.
+
+        One per individual fit, each free in its own.
+        """
+        return [result.free_parameters[0] for result in self.results]
+
+    @property
+    def samples(self) -> Optional[Dict[str, jnp.ndarray]]:
+        """Posterior samples per coefficient, from its own individual fit.
+
+        ``None`` when no individual fit kept any, as for :class:`FitResult`.
+        """
+        samples = {}
+        for result in self.results:
+            name = result.free_parameters[0]
+            if result.samples is not None and name in result.samples:
+                samples[name] = result.samples[name]
+        return samples or None
+
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
         console = Console()

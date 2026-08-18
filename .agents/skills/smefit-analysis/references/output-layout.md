@@ -9,7 +9,13 @@
     runcard.yaml          # copy of the runcard (reportengine bookkeeping;
                           #  required later by bayesian_update_path)
     lockfile.yaml         # reportengine lockfile
-  figures/  tables/       # created on every run; populated by report actions
+  figures/                # created on every run; populated by report actions
+    <name>.pdf, .png      #  every figure, in both formats
+  tables/                 # likewise
+    <name>.csv            #  every table, tab separated
+    <name>.tex            #  LaTeX of it, for the tables that offer one
+                          #  (coefficient_bounds_table); needs tabularx,
+                          #  multirow and amssymb, as its comment says
   fit_results.json        # written by every run_*_fit action
   individual_fits/        # only for run_individual_*_fits actions
     <coefficient>/

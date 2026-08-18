@@ -60,15 +60,33 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
+- `coefficient_bounds_table(fits, params_to_plot=None, double_solution=None, round_val=3, show_bounds=True, bounds_levels=None, show_reach=False, confidence_level=95, full_interval=False, latex_caption=None, latex_label='tab:coefficient_bounds')`
+  - Tabulate the coefficient bounds of every fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 
 ### `smefit.figures`
 
+- `plot_coefficient_bounds(fit, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None) -> 'Figure'`
+  - Plot the coefficient bounds of one fit — central value and C.I.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_fits_coefficient_bounds(fits, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None) -> 'Figure'`
+  - Overlay the coefficient bounds of every fit — central value and C.I.
+- `plot_fits_mass_reach(fits, params_to_plot=None, confidence_level=95, full_interval=False, y_log=False) -> 'Figure'`
+  - Overlay the mass reach of every fit, one group of bars per coefficient.
+- `plot_fits_posterior_contours(fits, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
+  - Overlay the 2D marginalised confidence contours of every fit.
+- `plot_fits_posterior_histograms(fits, params_to_plot=None, double_solution=None, show_sm=True, bins=None, subplot_size=4) -> 'Figure'`
+  - Overlay the 1D marginalised posteriors of every fit.
+- `plot_mass_reach(fit, params_to_plot=None, confidence_level=95, full_interval=False, y_log=False) -> 'Figure'`
+  - Plot the mass reach of one fit, one bar per coefficient.
+- `plot_posterior_contours(fit, params_to_plot=None, confidence_level=95, subplot_size=4, kde=None, show_sm=True, show_best_fit=False, hatch=True) -> 'Figure'`
+  - Plot the 2D marginalised confidence contours of one fit.
 - `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
+- `plot_posterior_histograms(fit, params_to_plot=None, double_solution=None, show_sm=True, bins=None, subplot_size=4) -> 'Figure'`
+  - Plot the 1D marginalised posteriors of one fit.
 
 ### `smefit.utils_actions`
 

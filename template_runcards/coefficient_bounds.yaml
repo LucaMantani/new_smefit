@@ -1,0 +1,88 @@
+# Central value and confidence intervals of fits that have already been run: no
+# fit is run here, the samples are read back from each fit's fit_results.json.
+# One row per coefficient, every fit on its own offset within the row.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# A fit run one coefficient at a time is listed the same way — these actions
+# read one coefficient's posterior at a time, which is exactly what it has. So
+# the individual counterpart of a marginalised figure is a `fits:` entry
+# pointing at an individual_fits output, not an option below:
+#
+#   - {name: blackjax_individual_fit, path: '.', label: '$\mathrm{Individual}$'}
+
+# --- The two bounds actions --------------------------------------------------
+#
+# They differ only in how many fits reportengine hands them, which its parameter
+# name fixes:
+#
+#   plot_fits_coefficient_bounds  the whole `fits` list -> one overlaid figure;
+#                                 called bare.
+#   plot_coefficient_bounds       one fit -> one figure per fit; called under
+#                                 `with fits` (or `{@fits plot_...@}`).
+#
+# Both read the `fits` key above, so one runcard mixes them freely.
+
+# --- Setting the options -----------------------------------------------------
+#
+# No settings block: an action's keyword parameters are resolved like any other
+# resource, so a runcard sets them directly, two ways.
+#
+#   (1) A TOP-LEVEL KEY applies everywhere the parameter appears, so both
+#       actions get it. Only route for a list or dict value: the template parser
+#       splits action arguments on commas, so `f(x=[68, 95])` does not parse.
+#   (2) An ACTION ARGUMENT applies to that call alone and beats the key.
+#       Scalars only, see (1).
+#
+# Every option, with its default. Uncomment to change.
+
+# Confidence level in percent. Two values draw both: the wider one as a thin
+# bar, the narrower one thick over it, so their order does not matter.
+confidence_level: [68, 95]
+
+# Restrict the rows to these coefficients, in this order — top to bottom.
+# Default: the free coefficients common to every fit. At least one must be left.
+# params_to_plot: [OpWB, OpD]
+
+# Coefficients whose posterior has two disjoint solutions, as quadratic
+# corrections produce. Each branch gets its own interval on the same row;
+# without this, equal-tailed percentiles span the empty gap between the modes
+# and put the central value where the posterior has no mass. Declared, never
+# detected. A dict keyed by fit name sets the list per fit.
+# double_solution: [OpWB]
+# double_solution:
+#   analytical_fit: []
+#   ultranest_fit: [OpWB]
+
+# Symmetric log x-axis — bounds run either side of zero, so a plain log scale
+# cannot show them. Default false.
+# x_log: True
+
+# Half-width of the linear region of that scale. Default 1e-2, ignored unless
+# x_log.
+# lin_thr: 0.001
+
+# Axis limits. Default: chosen from the intervals drawn.
+# x_min: -0.5
+# x_max: 0.5
+
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
+template_text: |
+    Coefficient bounds
+    ==================
+
+    All fits overlaid
+    -----------------
+    {@plot_fits_coefficient_bounds@}
+
+    One figure per fit
+    ------------------
+    {@with fits@}
+    {@fit@}
+    ~~~~~~~~~
+    {@plot_coefficient_bounds@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

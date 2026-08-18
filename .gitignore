@@ -1,6 +1,9 @@
 # Machine-specific path configuration
 .config/
 
+# Template fit and report directories
+template_runcards/*/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

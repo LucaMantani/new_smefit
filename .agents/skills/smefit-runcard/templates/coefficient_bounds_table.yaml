@@ -1,0 +1,89 @@
+# AUTO-COPIED from template_runcards/coefficient_bounds_table.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Coefficient bounds of fits that have already been run, as a table: no fit is
+# run here, the samples are read back from each fit's fit_results.json. The
+# numbers are the ones the bounds and mass-reach plots draw, read off the same
+# percentile intervals, so a report cannot quote one thing and draw another.
+#
+# reportengine writes a @table as a .csv beside the report and renders it in the
+# HTML — there is no pdflatex step.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# A fit run one coefficient at a time is listed the same way — the table reads
+# one coefficient's posterior at a time, which is exactly what it has:
+#
+#   - {name: blackjax_individual_fit, path: '.', label: '$\mathrm{Individual}$'}
+
+# --- Choosing the columns ----------------------------------------------------
+#
+# `coefficient_bounds_table` takes the whole `fits` list, so it is called bare,
+# and its columns are switched inline in the template below:
+#
+#   show_bounds  (default true)   best | 68% CL | 95% CL, per fit
+#   show_reach   (default false)  Lambda/sqrt(c_i) [TeV], per fit
+#
+# Both are plain booleans, so they go straight into the call —
+# `{@coefficient_bounds_table(show_reach=True)@}` — which is the canonical route
+# for a scalar option. Turning both off is an error: the table would have no
+# columns. A top-level key works too and then applies to every call.
+#
+# ONE CALL PER REPORT. reportengine keys an action's inline arguments by the
+# action's name at that template level, so a second `{@coefficient_bounds_table
+# (...)@}` in the same report is the same graph node as the first: it runs once,
+# with the first call's arguments, and both places in the template show that one
+# table. This is true of every action, not just this one — it is only visible
+# here because two column layouts of one table is a natural thing to want. To
+# show two, run two reports.
+#
+# Every other option, with its default. Uncomment to change.
+
+# Restrict the rows to these coefficients, in this order. Default: the free
+# coefficients common to every fit. At least one must be left.
+# params_to_plot: [OpWB, OpD]
+
+# Coefficients whose posterior has two disjoint solutions. Each branch gets a
+# row of its own, the second marked "(2)". A dict keyed by fit name sets the
+# list per fit. A list value only works as a top-level key like this one — the
+# template parser splits action arguments on commas.
+# double_solution: [OpWB]
+
+# Decimals every number is written to. Default 3. Cells are fixed-decimal
+# strings, so a column lines up and says how precise it is.
+round_val: 2
+
+# The confidence levels the BOUNDS columns quote, in percent and in the order
+# they should be read. Default [95]. One value gives one column, and any
+# level works: 99.99994 is 5 sigma. Each column is named after its own level,
+# so the table always says what it quotes. A list only works as a top-level key
+# like this one; a single value also goes in a call, `(bounds_levels=95)`.
+# bounds_levels: [95]
+# bounds_levels: [68, 95, 99.99994]
+
+# Confidence level in percent of the interval the REACH column is read off,
+# 95 by default. The reach is one column, so it is one level; the bounds
+# columns have their own, above, and this does not touch them.
+# confidence_level: 95
+
+# Take the reach bound to be the whole interval rather than half of it, as in
+# the mass-reach plot. Default false.
+# full_interval: True
+
+template_text: |
+    Coefficient bounds
+    ==================
+
+    Best fit, 95% CL bounds, and the scale each bound probes. Drop the
+    argument for the bounds alone, or pass `show_bounds=False` alongside it for
+    the reach alone.
+    {@coefficient_bounds_table(show_reach=True)@}
+
+actions_:
+  - report(main=True)

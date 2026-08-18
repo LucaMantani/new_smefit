@@ -164,6 +164,58 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### What can be drawn from a finished fit
+
+Everything below reads the posterior samples in `fit_results.json`; none of it
+refits. `actions.md` has the full signatures.
+
+| What | Overlaid, called bare | One per fit, under `{@with fits@}` | Template |
+|---|---|---|---|
+| 1D posteriors | `plot_fits_posterior_histograms` | `plot_posterior_histograms` | `posterior_histograms.yaml` |
+| Central value + C.I. | `plot_fits_coefficient_bounds` | `plot_coefficient_bounds` | `coefficient_bounds.yaml` |
+| Mass reach `Λ/√cᵢ` | `plot_fits_mass_reach` | `plot_mass_reach` | `mass_reach.yaml` |
+| 2D contours | `plot_fits_posterior_contours` | `plot_posterior_contours` | `posterior_contours.yaml` |
+| Correlations | — | `plot_posterior_correlations` | `posterior_correlations.yaml` |
+| Bounds table | `coefficient_bounds_table` | — | `coefficient_bounds_table.yaml` |
+
+Two things decide which member of a pair to call, and neither is an option:
+
+- **How many fits reportengine hands the action**, which its first parameter
+  name fixes. `fits` (plural) takes the whole list and draws one figure with
+  every fit in it, so it is called bare; `fit` takes one and is called under
+  `{@with fits@}`, giving one figure per fit.
+- **Whether the action can read a one-at-a-time fit.** The 1D routines —
+  histograms, bounds, reach, table — accept a `run_individual_*_fits` output,
+  because a 1D posterior per coefficient is all they need. So the
+  "marginalised vs individual" pair of figures is two `fits:` entries pointing
+  at two fit directories, never a flag. The contour and correlation actions
+  reject one: those coefficients were never sampled together, and pairing
+  independent posteriors would draw a correlation set by the seed.
+
+Options worth knowing before reaching for the key tables:
+
+- `confidence_level` is a percentage — 95, not 0.95. The routines reading 1D
+  bounds (histograms aside: the bounds plot, the reach plot, the table) raise
+  on a value below 1 rather than quietly drawing a 0.95% interval; **the
+  contour actions do not check it**, and 0.95 there silently draws a contour
+  nobody wants. The contour and bounds plots take a two-element list to draw
+  two levels at once; the reach plot takes one, since a bar has one height.
+- `double_solution: [OtG]` declares a coefficient whose posterior has two
+  disjoint solutions, as quadratic corrections produce. It is never detected:
+  a posterior is bimodal because of the physics. Without it, equal-tailed
+  percentiles span the empty gap between the modes and put the central value
+  where there is no posterior mass — so the bounds plot and the table need it,
+  while the contours do not (their KDE level is calibrated on the samples).
+  A dict keyed by fit name sets it per fit.
+- `coefficient_bounds_table` chooses its columns: `show_bounds` (default true)
+  gives `best` plus one column per entry of `bounds_levels` (default `95`
+  alone; `[68, 95]` for the pair the old report quoted, any level for
+  anything else), and `show_reach` adds `Λ/√cᵢ` at `confidence_level`. Both
+  off is an error.
+- Lists and dicts have to be **top-level keys**: the template argument parser
+  splits on commas, so `{@action(confidence_level=[68, 95])@}` does not parse.
+  Scalars and booleans go either way.
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an
@@ -211,9 +263,12 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations` and `fisher_diagonals_normalised`
-— so the Fisher table's CSV and the heatmap drawn from it are restricted
-together. An action argument still overrides it for one figure.
+Taken by every report routine that is about coefficients — the posterior
+figures and table listed above, `plot_posterior_correlations` and
+`fisher_diagonals_normalised` — so the Fisher table's CSV and the heatmap drawn
+from it are restricted together, and a bounds figure and the table beside it
+cannot end up about different operators. An action argument still overrides it
+for one figure.
 
 - Write it as a YAML list of coefficient names — the raw names, not their LaTeX
   labels. Nothing validates the list, so a name is either matched or skipped.
@@ -223,6 +278,12 @@ together. An action argument still overrides it for one figure.
   is left out of that fit's heatmap and logged, so one list can head several
   fits with different coefficients. A list matching *nothing* raises instead —
   that is a misspelling, not a subset.
+- **The contour actions are the exception**, and take it further: they draw
+  every coefficient free in *at least one* fit, and a fit that held one fixed
+  is drawn at the value it held it at — a bar spanning the other coefficient's
+  confidence interval, or a cross where two fixed values meet. So a name here
+  may be a coefficient no fit floated at all, which adds its panels showing
+  where each fit was stuck; every other routine still needs it free everywhere.
 
 Three things to know about the mechanism:
 

@@ -278,6 +278,12 @@ for one figure.
   is left out of that fit's heatmap and logged, so one list can head several
   fits with different coefficients. A list matching *nothing* raises instead —
   that is a misspelling, not a subset.
+- **The contour actions are the exception**, and take it further: they draw
+  every coefficient free in *at least one* fit, and a fit that held one fixed
+  is drawn at the value it held it at — a bar spanning the other coefficient's
+  confidence interval, or a cross where two fixed values meet. So a name here
+  may be a coefficient no fit floated at all, which adds its panels showing
+  where each fit was stuck; every other routine still needs it free everywhere.
 
 Three things to know about the mechanism:
 

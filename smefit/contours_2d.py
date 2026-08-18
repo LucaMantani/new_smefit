@@ -27,12 +27,15 @@ import scipy.stats
 from matplotlib import patches, transforms
 from matplotlib.patches import Ellipse
 
+from smefit.bounds_1d import confidence_bounds
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     import pandas as pd
     from matplotlib.axes import Axes
     from matplotlib.contour import QuadContourSet
+    from matplotlib.lines import Line2D
     from matplotlib.typing import ColorType
     from numpy.typing import ArrayLike
 
@@ -56,6 +59,18 @@ _HATCH_CYCLE = ("///", "\\\\\\", "xxx", "...", "+++", "ooo")
 _KDE_GRIDSIZE = 200
 _KDE_CUT = 3
 _KDE_MAX_SAMPLES = 5000
+
+# Widths and opacity of the interval a coefficient stuck at a value is drawn
+# with, and the size of its end caps. A second confidence level is drawn on the
+# same line as the first, so the wider one is thinned and faded to the alpha of
+# a contour fill and the narrower one keeps the width of a contour outline.
+_SEGMENT_LINEWIDTH = 4
+_SEGMENT_OUTER_LINEWIDTH = 2
+_SEGMENT_OUTER_ALPHA = 0.4
+_SEGMENT_CAP_SIZE = 10
+
+# Size of the cross marking a panel where the fit sampled neither coefficient.
+_STUCK_POINT_SIZE = 9
 
 
 def confidence_ellipse(
@@ -464,6 +479,154 @@ def plot_contours(
     ax.tick_params(which="both", direction="in", labelsize=22)
 
     return hndls
+
+
+def plot_stuck_segment(
+    ax: Axes,
+    values: ArrayLike,
+    fixed_value: float,
+    orientation: str,
+    color: ColorType,
+    confidence_level: float = 95,
+    dashed_confidence_level: float | None = None,
+    show_best_fit: bool = False,
+) -> tuple[Line2D, ...]:
+    """Draw one coefficient's interval at the value the other is stuck at.
+
+    Half of a contour: the fit sampled one of the pair and held the other
+    fixed, so what it knows about the panel is a segment — the sampled
+    coefficient's 1D confidence interval, drawn on the line where the fixed
+    one sits.
+
+    The interval is the equal-tailed one of :func:`smefit.bounds_1d.confidence_bounds`,
+    the same numbers the 1D bounds figures and the CL table report, rather than
+    the width of the 2D contour a joint fit would have drawn at that level.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    values : array_like
+        ``(N,)`` posterior samples of the coefficient that *was* sampled.
+    fixed_value : float
+        Where the other coefficient was held, on the other axis.
+    orientation : {"horizontal", "vertical"}
+        Which axis the sampled coefficient is on: ``"horizontal"`` runs the
+        segment along x at ``y = fixed_value``, ``"vertical"`` the other way.
+    color : ColorType
+        Colour associated to the fit these samples belong to.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+    dashed_confidence_level : float, optional
+        Secondary confidence level, drawn on the same line. The two are told
+        apart by width rather than by which argument they arrived in: the
+        wider interval is drawn thin and faded and the narrower one thick and
+        opaque, the usual double error bar.
+    show_best_fit : bool, optional
+        Mark the central value (the posterior mean) along the segment, off by
+        default — the counterpart of the best-fit marker of a contour.
+
+    Returns
+    -------
+    tuple of matplotlib.lines.Line2D
+        Handles to be used in the figure legend.
+
+    Raises
+    ------
+    ValueError
+        If ``orientation`` is neither of the two names.
+    """
+    if orientation not in ("horizontal", "vertical"):
+        raise ValueError(
+            f"orientation is 'horizontal' or 'vertical', got {orientation!r}."
+        )
+
+    levels = [confidence_level]
+    if dashed_confidence_level is not None:
+        levels.append(dashed_confidence_level)
+    bounds = [confidence_bounds(values, level) for level in levels]
+    # widest first, so a nested interval stays visible on top of the one
+    # containing it whichever order the levels were given in
+    bounds.sort(key=lambda b: b.high - b.low, reverse=True)
+
+    styles = (
+        [(_SEGMENT_LINEWIDTH, 1.0)]
+        if len(bounds) == 1
+        else [
+            (_SEGMENT_OUTER_LINEWIDTH, _SEGMENT_OUTER_ALPHA),
+            (_SEGMENT_LINEWIDTH, 1.0),
+        ]
+    )
+
+    handles = []
+    for interval, (linewidth, alpha) in zip(bounds, styles):
+        span = (interval.low, interval.high)
+        fixed = (fixed_value, fixed_value)
+        x_values, y_values = (
+            (span, fixed) if orientation == "horizontal" else (fixed, span)
+        )
+        (line,) = ax.plot(
+            x_values,
+            y_values,
+            color=color,
+            alpha=alpha,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+            # end caps across the segment, so an interval reads as an interval
+            # and not as a line that happens to stop there
+            marker="|" if orientation == "horizontal" else "_",
+            markersize=_SEGMENT_CAP_SIZE,
+            markeredgewidth=linewidth,
+        )
+        handles.append(line)
+
+    if show_best_fit:
+        mid = bounds[0].mid  # the mean, the same at either level
+        point = (
+            (mid, fixed_value) if orientation == "horizontal" else (fixed_value, mid)
+        )
+        ax.scatter(*point, color=color, s=50, marker="o")
+
+    ax.tick_params(which="both", direction="in", labelsize=22)
+
+    return tuple(handles)
+
+
+def plot_stuck_point(
+    ax: Axes, x_value: float, y_value: float, color: ColorType
+) -> tuple[Line2D]:
+    """Mark where a fit held *both* coefficients of a panel.
+
+    Nothing was sampled in this plane, so the fit has one point to contribute
+    and no extent at all. Drawn as a cross in the fit's colour, which the
+    black ``+`` of the SM marker cannot be confused with.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    x_value, y_value : float
+        Where the two coefficients were held.
+    color : ColorType
+        Colour associated to the fit.
+
+    Returns
+    -------
+    tuple of matplotlib.lines.Line2D
+        A handle to be used in the figure legend.
+    """
+    (line,) = ax.plot(
+        [x_value],
+        [y_value],
+        color=color,
+        linestyle="none",
+        marker="x",
+        markersize=_STUCK_POINT_SIZE,
+        markeredgewidth=2,
+    )
+    ax.tick_params(which="both", direction="in", labelsize=22)
+
+    return (line,)
 
 
 def fit_colors(n_fits: int) -> list[ColorType]:

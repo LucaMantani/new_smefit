@@ -17,7 +17,13 @@ from matplotlib.lines import Line2D
 from reportengine.figure import figure
 
 from smefit.bounds_1d import coeff_bounds, mass_reach, split_solution
-from smefit.contours_2d import fit_colors, fit_hatches, plot_contours
+from smefit.contours_2d import (
+    fit_colors,
+    fit_hatches,
+    plot_contours,
+    plot_stuck_point,
+    plot_stuck_segment,
+)
 from smefit.fit_result import FitResult
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import (
@@ -26,8 +32,10 @@ from smefit.plot_utils import (
     coeff_limits,
     common_free_coefficients,
     compact_tick_labels,
+    contour_coefficients,
     per_fit_option,
     select_params,
+    stuck_values,
 )
 
 if TYPE_CHECKING:
@@ -255,7 +263,8 @@ def _posterior_contours(
     parameter documentation. The panels form the lower triangle of the
     coefficient matrix: the panel in row ``j - 1`` and column ``i`` shows
     coefficient ``i`` on the x-axis and coefficient ``j`` on the y-axis, and
-    every fit is drawn in every panel.
+    every fit is drawn in every panel — as a contour where it sampled both
+    coefficients, and otherwise at the value it held one or both of them at.
     """
     if not fits:
         raise ValueError("No fits to plot.")
@@ -283,7 +292,7 @@ def _posterior_contours(
     rc("text", usetex=True)
     rc("text.latex", preamble=r"\usepackage{amssymb}")
 
-    coeffs = common_free_coefficients(fits, params_to_plot)
+    coeffs = contour_coefficients(fits, params_to_plot)
     n_par = len(coeffs)
 
     if isinstance(confidence_level, (list, tuple)):
@@ -298,8 +307,22 @@ def _posterior_contours(
     kdes = per_fit_option(kde, fits, [fit.use_quad for fit in fits])
     # the SM is not always the origin: a coefficient can be parametrised so
     # that its baseline_value sits elsewhere, and that is where the marker goes
-    baselines = baseline_point(fits, coeffs) if show_sm else None
-    limits = coeff_limits(fits, coeffs, include_points=baselines)
+    # — and where a fit that never declared a coefficient at all sits, marker
+    # or no marker, so the baselines are needed whether or not one is drawn
+    baselines = baseline_point(fits, coeffs)
+    stuck = stuck_values(fits, coeffs, baselines)
+
+    # a coefficient's frame must hold every point drawn in it: its samples,
+    # the values the fits that did not sample it were stuck at, and the SM
+    # marker when there is one
+    include_points: dict[str, list[float]] = {}
+    for name in coeffs:
+        points = [values[name] for values in stuck if name in values]
+        if show_sm:
+            points.append(baselines[name])
+        if points:
+            include_points[name] = points
+    limits = coeff_limits(fits, coeffs, include_points=include_points)
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
@@ -310,17 +333,21 @@ def _posterior_contours(
     fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
     grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
 
-    # Every panel draws the same fits in the same colours, so the handles of
-    # any one panel serve as the legend's; the last panel's are kept.
-    handles: list[Any] = []
+    # A fit is not drawn the same way in every panel: it contours the pairs it
+    # sampled and marks the ones it held fixed. Its legend key is the richest
+    # thing it was drawn as anywhere in the figure — a contour over a segment,
+    # a segment over a point — so the key describes the fit, not whichever
+    # panel happened to be drawn last.
+    legend_handles: list[tuple[int, Any]] = [(0, None)] * len(fits)
+    sm_handle: Any = None
     for i, j in itertools.combinations(range(n_par), 2):
         c1, c2 = coeffs[i], coeffs[j]
         ax = fig.add_subplot(grid[j - 1, i])
 
-        handles = []
         for idx, fit in enumerate(fits):
-            handles.append(
-                plot_contours(
+            x_stuck, y_stuck = stuck[idx].get(c1), stuck[idx].get(c2)
+            if x_stuck is None and y_stuck is None:
+                rank, handle = 3, plot_contours(
                     ax,
                     posteriors[idx],
                     coeff1=c1,
@@ -333,13 +360,34 @@ def _posterior_contours(
                     best_fit=best_fit_pair(fit, c1, c2),
                     hatch=hatches[idx],
                 )
-            )
-        if show_sm:
-            assert baselines is not None  # set together with show_sm
-            handles.append(
-                ax.scatter(
-                    baselines[c1], baselines[c2], c="k", marker="+", s=50, zorder=10
+            elif x_stuck is None or y_stuck is None:
+                sampled, fixed_value, orientation = (
+                    (c1, y_stuck, "horizontal")
+                    if y_stuck is not None
+                    else (c2, x_stuck, "vertical")
                 )
+                assert fixed_value is not None  # exactly one of the two is
+                rank, handle = 2, plot_stuck_segment(
+                    ax,
+                    posteriors[idx][sampled],
+                    fixed_value,
+                    orientation=orientation,
+                    color=colors[idx],
+                    confidence_level=cl,
+                    dashed_confidence_level=dashed_cl,
+                    show_best_fit=show_best_fit,
+                )
+            else:
+                rank, handle = 1, plot_stuck_point(
+                    ax, x_stuck, y_stuck, color=colors[idx]
+                )
+
+            if rank > legend_handles[idx][0]:
+                legend_handles[idx] = (rank, handle)
+
+        if show_sm:
+            sm_handle = ax.scatter(
+                baselines[c1], baselines[c2], c="k", marker="+", s=50, zorder=10
             )
 
         ax.set_xlim(*limits[c1])
@@ -369,8 +417,10 @@ def _posterior_contours(
     ax.axis("off")
 
     legend_labels = [fit.plot_label for fit in fits]
+    handles = [handle for _, handle in legend_handles]
     if show_sm:
         legend_labels.append(r"$\mathrm{SM}$")
+        handles.append(sm_handle)
 
     ax.legend(
         labels=legend_labels,
@@ -391,6 +441,17 @@ def _posterior_contours(
         transform=ax.transAxes,
         verticalalignment="top",
     )
+    if any(stuck):
+        # said once, in the legend cell: a bar or a cross is not a contour of
+        # anything, it is where a fit held a coefficient it did not fit
+        ax.text(
+            0.05,
+            0.85,
+            r"$\mathrm{Bars\:and\:crosses\:mark\:fixed\:coefficients}$",
+            fontsize=18,
+            transform=ax.transAxes,
+            verticalalignment="top",
+        )
 
     return fig
 
@@ -418,7 +479,13 @@ def plot_fits_posterior_contours(
     Takes the whole ``fits`` list, so it is called bare in a report template —
     one figure, every fit drawn in every panel. Its per-fit counterpart is
     :func:`plot_posterior_contours`. The panels are the lower triangle of the
-    coefficient matrix, over the free coefficients every fit shares.
+    coefficient matrix, over the coefficients free in at least one fit.
+
+    A fit that did not float a coefficient of a panel is drawn where it held
+    it: a segment spanning the other coefficient's confidence interval at that
+    value, or a cross when it held both. The value is the one the runcard
+    fixed the coefficient to, or its baseline (the SM point) for a coefficient
+    the fit never declared.
 
     Parameters
     ----------
@@ -426,11 +493,16 @@ def plot_fits_posterior_contours(
         The previously run fits to overlay, each legend-labelled with the
         ``label`` of its ``fits`` entry (its name otherwise).
     params_to_plot : list of str, optional
-        Restrict the panels to these coefficients, in this order. All the
-        coefficients the fits share by default; at least two must remain.
+        Restrict the panels to these coefficients, in this order. Every
+        coefficient at least one fit floated by default; at least two must
+        remain. A coefficient *no* fit floated can be named here too, and is
+        then drawn stuck in all of them.
     confidence_level : float or list of two floats, optional
         Confidence level in percent, 95 by default. A list of two values
-        draws the first as a dashed outline and fills the second.
+        draws the first as a dashed outline and fills the second. A segment
+        drawn for a coefficient held fixed spans the equal-tailed percentiles
+        of the other one's 1D posterior at the same level, the interval the
+        bounds figures and the CL table report.
     subplot_size : float, optional
         Size in inches of a single panel.
     kde : bool or dict, optional
@@ -446,7 +518,8 @@ def plot_fits_posterior_contours(
         Mark the best-fit point of every fit, off by default — one marker per
         fit, including for a bimodal posterior, which still has a single
         maximum-likelihood point. Fits that record none are marked at their
-        posterior means.
+        posterior means, and a segment is marked at the mean of the
+        coefficient it does span.
     hatch : bool, optional
         Texture every filled contour, one pattern per fit, so they stay
         distinguishable in greyscale and to a reader who cannot separate the
@@ -457,7 +530,8 @@ def plot_fits_posterior_contours(
     ValueError
         If there is nothing to draw: no fits, a fit without joint posterior
         samples (run one coefficient at a time, or by a routine that stores
-        none), or fewer than two shared coefficients left.
+        none), no free coefficient in any fit, or fewer than two coefficients
+        left.
     """
     return _posterior_contours(
         fits,
@@ -489,16 +563,24 @@ def plot_posterior_contours(
     fits`` block, exactly like ``plot_posterior_correlations``. To overlay
     the fits in one figure instead, use :func:`plot_fits_posterior_contours`.
 
+    Naming a coefficient the fit held fixed in ``params_to_plot`` adds its
+    panels, showing where the fit was stuck: a segment at that value spanning
+    the other coefficient's confidence interval, or a cross where two fixed
+    coefficients meet.
+
     Parameters
     ----------
     fit : smefit.fit_result.Fit
         A previously run fit, loaded from disk.
     params_to_plot : list of str, optional
-        Restrict the panels to these coefficients, in this order. All the
-        fit's free coefficients by default; at least two must remain.
+        Restrict the panels to these coefficients, in this order. The fit's
+        free coefficients by default; at least two must remain. A coefficient
+        the fit fixed can be named here too, and is then drawn at its value.
     confidence_level : float or list of two floats, optional
         Confidence level in percent, 95 by default. A list of two values
-        draws the first as a dashed outline and fills the second.
+        draws the first as a dashed outline and fills the second. A segment
+        drawn for a coefficient held fixed spans the equal-tailed percentiles
+        of the other one's 1D posterior at the same level.
     subplot_size : float, optional
         Size in inches of a single panel.
     kde : bool or dict, optional

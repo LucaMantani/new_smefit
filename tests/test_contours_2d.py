@@ -26,6 +26,8 @@ from smefit.contours_2d import (
     kde_contour,
     kde_grid,
     plot_contours,
+    plot_stuck_point,
+    plot_stuck_segment,
 )
 
 # The (x, y) sample arrays of the gaussian_samples fixture, and the
@@ -471,6 +473,189 @@ def test_plot_contours_uses_x_for_coeff1_and_y_for_coeff2(
     marker = ax.collections[0].get_offsets()[0]
     assert marker[0] == pytest.approx(np.mean(posterior_samples["OpA"]))
     assert marker[1] == pytest.approx(np.mean(posterior_samples["OpB"]))
+
+
+# ---------------------------------------------------------------------------
+# plot_stuck_segment / plot_stuck_point
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sampled_values() -> np.ndarray:
+    """One coefficient's posterior, of a fit that froze the other one."""
+    return np.random.default_rng(2).normal(0.5, 1.0, size=500)
+
+
+def test_plot_stuck_segment_spans_the_percentile_interval(
+    sampled_values: np.ndarray,
+) -> None:
+    """The segment is the equal-tailed interval the 1D bounds report, not a
+    width read off the 2D contour it stands in for."""
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, 2.0, "horizontal", "C0")
+
+    (line,) = ax.lines
+    assert line.get_xdata() == pytest.approx(
+        tuple(np.percentile(sampled_values, [2.5, 97.5]))
+    )
+
+
+def test_plot_stuck_segment_sits_at_the_fixed_value(
+    sampled_values: np.ndarray,
+) -> None:
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, 2.0, "horizontal", "C0")
+
+    (line,) = ax.lines
+    assert list(line.get_ydata()) == [2.0, 2.0]
+
+
+def test_plot_stuck_segment_vertical_swaps_the_axes(
+    sampled_values: np.ndarray,
+) -> None:
+    """Vertical means the sampled coefficient is on the y-axis, at the fixed
+    value of the frozen one on x."""
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, -1.0, "vertical", "C0")
+
+    (line,) = ax.lines
+    assert list(line.get_xdata()) == [-1.0, -1.0]
+    assert line.get_ydata() == pytest.approx(
+        tuple(np.percentile(sampled_values, [2.5, 97.5]))
+    )
+
+
+def test_plot_stuck_segment_follows_the_confidence_level(
+    sampled_values: np.ndarray,
+) -> None:
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, 0.0, "horizontal", "C0", confidence_level=68)
+
+    (line,) = ax.lines
+    assert line.get_xdata() == pytest.approx(
+        tuple(np.percentile(sampled_values, [16, 84]))
+    )
+
+
+def test_plot_stuck_segment_draws_both_levels(sampled_values: np.ndarray) -> None:
+    """Two levels on one line: the wider drawn thin and faded, the narrower
+    thick and opaque, so the inner one stays visible on top of the outer."""
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(
+        ax,
+        sampled_values,
+        0.0,
+        "horizontal",
+        "C0",
+        confidence_level=95,
+        dashed_confidence_level=68,
+    )
+
+    outer, inner = ax.lines
+    assert np.ptp(outer.get_xdata()) > np.ptp(inner.get_xdata())
+    assert outer.get_linewidth() < inner.get_linewidth()
+    assert outer.get_alpha() < 1.0
+    assert inner.get_alpha() == 1.0
+
+
+def test_plot_stuck_segment_orders_the_levels_by_width(
+    sampled_values: np.ndarray,
+) -> None:
+    """Which argument a level arrived in does not decide how it is drawn: the
+    wider interval is the faded one either way."""
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(
+        ax,
+        sampled_values,
+        0.0,
+        "horizontal",
+        "C0",
+        confidence_level=68,
+        dashed_confidence_level=95,
+    )
+
+    outer, inner = ax.lines
+    assert np.ptp(outer.get_xdata()) > np.ptp(inner.get_xdata())
+    assert outer.get_alpha() < 1.0
+
+
+def test_plot_stuck_segment_marks_the_central_value(
+    sampled_values: np.ndarray,
+) -> None:
+    """show_best_fit marks the mean along the segment, as a contour marks the
+    best-fit point."""
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, 2.0, "horizontal", "C0", show_best_fit=True)
+
+    marker = ax.collections[0].get_offsets()[0]
+    assert marker[0] == pytest.approx(np.mean(sampled_values))
+    assert marker[1] == 2.0
+
+
+def test_plot_stuck_segment_without_best_fit_marks_nothing(
+    sampled_values: np.ndarray,
+) -> None:
+    _, ax = plt.subplots()
+
+    plot_stuck_segment(ax, sampled_values, 2.0, "horizontal", "C0")
+
+    assert len(ax.collections) == 0
+
+
+def test_plot_stuck_segment_returns_a_handle_per_level(
+    sampled_values: np.ndarray,
+) -> None:
+    """The handles go into the figure legend, one group per fit."""
+    _, ax = plt.subplots()
+
+    handles = plot_stuck_segment(
+        ax,
+        sampled_values,
+        0.0,
+        "horizontal",
+        "C0",
+        dashed_confidence_level=68,
+    )
+
+    assert len(handles) == 2
+    assert all(handle in ax.lines for handle in handles)
+
+
+def test_plot_stuck_segment_rejects_an_unknown_orientation(
+    sampled_values: np.ndarray,
+) -> None:
+    _, ax = plt.subplots()
+
+    with pytest.raises(ValueError, match="orientation"):
+        plot_stuck_segment(ax, sampled_values, 0.0, "sideways", "C0")
+
+
+def test_plot_stuck_point_marks_both_fixed_values() -> None:
+    """Neither coefficient was sampled: one cross, no extent."""
+    _, ax = plt.subplots()
+
+    plot_stuck_point(ax, 1.5, -2.5, "C0")
+
+    (line,) = ax.lines
+    assert list(line.get_xdata()) == [1.5]
+    assert list(line.get_ydata()) == [-2.5]
+    assert line.get_linestyle() == "None"
+
+
+def test_plot_stuck_point_returns_its_handle() -> None:
+    _, ax = plt.subplots()
+
+    handles = plot_stuck_point(ax, 0.0, 0.0, "C0")
+
+    assert len(handles) == 1
+    assert handles[0] in ax.lines
 
 
 # ---------------------------------------------------------------------------

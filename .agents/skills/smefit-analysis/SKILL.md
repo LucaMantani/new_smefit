@@ -81,7 +81,9 @@ draws one fit and goes under `{@with fits@}`. The 1D routines accept a
 entry rather than an option; the contour and correlation actions reject one,
 since those coefficients were never sampled together. Every figure and the
 table read the same percentile intervals, so a report cannot quote one number
-and draw another. Templates: `posterior_histograms.yaml`,
+and draw another — including a contour panel where a fit held a coefficient
+fixed, which it draws as a bar at that value spanning the other coefficient's
+interval (a cross where both were fixed), rather than dropping the panel. Templates: `posterior_histograms.yaml`,
 `coefficient_bounds.yaml`, `mass_reach.yaml`, `posterior_contours.yaml`,
 `posterior_correlations.yaml`, `coefficient_bounds_table.yaml`.
 

@@ -8,7 +8,9 @@
 # chosen for the analysis at hand — do not carry them over verbatim.
 # Pairwise 2D marginalised confidence contours of fits that have already been
 # run: no fit is run here, the samples are read back from each fit's
-# fit_results.json. The panels are the lower triangle of the coefficient matrix.
+# fit_results.json. The panels are the lower triangle of the coefficient matrix,
+# over the coefficients free in at least one fit — a fit that fixed one of them
+# is drawn at the value it was stuck at rather than left out of the figure.
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
@@ -41,8 +43,12 @@ fits:
 # Confidence level in percent. Two values draw the first dashed, fill the second.
 confidence_level: 95
 
-# Restrict the panels to these coefficients, in this order. Default: the free
-# coefficients common to every fit. At least two must be left.
+# Restrict the panels to these coefficients, in this order. Default: every
+# coefficient at least one fit floated. At least two must be left. A fit that
+# held one of them fixed is drawn where it held it — a bar spanning the other
+# coefficient's confidence interval, or a cross where two fixed values meet.
+# A coefficient NO fit floated is not drawn by default, but naming it here
+# adds its panels, showing every fit stuck at the value it fixed it to.
 # params_to_plot: [OpWB, OpD]
 
 # Kernel density estimate instead of a Gaussian ellipse. Default: each fit's

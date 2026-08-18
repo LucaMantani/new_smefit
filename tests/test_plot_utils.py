@@ -18,8 +18,10 @@ from smefit.plot_utils import (
     coeff_limits,
     common_free_coefficients,
     compact_tick_labels,
+    contour_coefficients,
     per_fit_option,
     select_params,
+    stuck_values,
 )
 
 # ---------------------------------------------------------------------------
@@ -88,16 +90,34 @@ def make_fit(
     free: list[str],
     best: dict[str, float] | None = None,
     baselines: dict[str, float] | None = None,
+    fixed: dict[str, float] | None = None,
 ) -> Fit:
     """A Fit as the contour helpers see one: joint samples, a name, maybe a
     best-fit point, and the coefficients block of the runcard it was run with
-    when a coefficient's baseline is not the origin."""
-    runcard: dict = {}
+    when a coefficient's baseline is not the origin.
+
+    ``fixed`` names coefficients the runcard froze, as smefit records them: a
+    ``free: False, value: v`` entry in the runcard, and the constant ``v``
+    resolved into every posterior sample."""
+    coefficients: dict[str, dict] = {}
     if baselines is not None:
-        runcard["coefficients"] = {
-            coeff: {"free": True, "baseline_value": value}
-            for coeff, value in baselines.items()
+        coefficients.update(
+            {
+                coeff: {"free": True, "baseline_value": value}
+                for coeff, value in baselines.items()
+            }
+        )
+    if fixed is not None:
+        coefficients.update(
+            {coeff: {"free": False, "value": value} for coeff, value in fixed.items()}
+        )
+        length = len(next(iter(samples.values()))) if samples else 2
+        samples = {
+            **samples,
+            **{coeff: [value] * length for coeff, value in fixed.items()},
         }
+
+    runcard: dict = {"coefficients": coefficients} if coefficients else {}
     return Fit(
         fit_results=FitResult(
             free_parameters=free,
@@ -248,6 +268,153 @@ def test_common_free_coefficients_rejects_disjoint_fits(fit_pair: list[Fit]) -> 
         common_free_coefficients([fit_pair[0], other])
 
 
+# --- contour_coefficients ---------------------------------------------------
+
+
+@pytest.fixture
+def stuck_pair() -> list[Fit]:
+    """Two fits over the same operators, the second having frozen OpQM at 0.5
+    and never having heard of OtW."""
+    first = make_fit(
+        "fit_a",
+        {"OtG": [0.1, 0.2, 0.3], "OpQM": [1.0, 2.0, 3.0], "OtW": [5.0, 6.0, 7.0]},
+        ["OtG", "OpQM", "OtW"],
+        baselines={"OtG": 0.0, "OpQM": 0.0, "OtW": 0.0},
+    )
+    second = make_fit(
+        "fit_b",
+        {"OtG": [-0.1, 0.0, 0.1]},
+        ["OtG"],
+        fixed={"OpQM": 0.5},
+    )
+    return [first, second]
+
+
+def test_contour_coefficients_take_the_union(fit_pair: list[Fit]) -> None:
+    """A coefficient only one fit floated still has a panel: the other is
+    drawn where it held it, which is the comparison worth seeing."""
+    assert contour_coefficients(fit_pair) == ["OtG", "OpQM", "OtW"]
+
+
+def test_contour_coefficients_follow_the_first_fit_then_the_newcomers() -> None:
+    """Order is the first fit's, and a coefficient only a later fit floated
+    joins at the end rather than reshuffling the grid."""
+    first = make_fit("fit_a", {"OtG": [0.1, 0.2]}, ["OtG"])
+    second = make_fit("fit_b", {"OpQM": [1.0, 2.0], "OtG": [0.0, 0.3]}, ["OpQM", "OtG"])
+
+    assert contour_coefficients([first, second]) == ["OtG", "OpQM"]
+
+
+def test_contour_coefficients_do_not_warn_about_a_frozen_one(
+    stuck_pair: list[Fit], caplog: pytest.LogCaptureFixture
+) -> None:
+    """What common_free_coefficients warns about dropping is now drawn."""
+    with caplog.at_level(logging.WARNING):
+        assert contour_coefficients(stuck_pair) == ["OtG", "OpQM", "OtW"]
+
+    assert caplog.text == ""
+
+
+def test_contour_coefficients_apply_params_to_plot(fit_pair: list[Fit]) -> None:
+    assert contour_coefficients(fit_pair, ["OpQM", "OtG"]) == ["OpQM", "OtG"]
+
+
+def test_contour_coefficients_accept_one_no_fit_floated(
+    stuck_pair: list[Fit],
+) -> None:
+    """OpDerived is free nowhere, so it is not drawn by default — but naming
+    it is a legitimate request, and every fit is then drawn stuck on it."""
+    frozen = make_fit("fit_c", {"OtG": [0.1, 0.2]}, ["OtG"], fixed={"OpDerived": 2.0})
+
+    assert contour_coefficients([frozen], ["OtG", "OpDerived"]) == [
+        "OtG",
+        "OpDerived",
+    ]
+
+
+def test_contour_coefficients_reject_fewer_than_two(fit_pair: list[Fit]) -> None:
+    with pytest.raises(ValueError, match="at least 2"):
+        contour_coefficients(fit_pair, ["OtG"])
+
+
+def test_contour_coefficients_reject_fits_without_a_free_one() -> None:
+    """Nothing was sampled anywhere, so there is no posterior in the figure at
+    all — a runcard mistake rather than a figure."""
+    frozen = make_fit("fit_a", {}, [], fixed={"OtG": 1.0, "OpQM": 2.0})
+
+    with pytest.raises(ValueError, match="fit_a.*free coefficient"):
+        contour_coefficients([frozen])
+
+
+# --- stuck_values -----------------------------------------------------------
+
+
+def test_stuck_values_report_a_frozen_coefficient(stuck_pair: list[Fit]) -> None:
+    """A fixed coefficient reaches the posterior as its constant value, which
+    is where the fit is stuck."""
+    first, second = stuck_values(stuck_pair, ["OtG", "OpQM"])
+
+    assert first == {}  # both sampled
+    assert second == {"OpQM": 0.5}
+
+
+def test_stuck_values_place_an_undeclared_coefficient_at_its_baseline(
+    stuck_pair: list[Fit],
+) -> None:
+    """fit_b never mentions OtW, so it sits where its SM does — the baseline
+    the fit that does declare it gives."""
+    first, second = stuck_values(stuck_pair, ["OtW"], {"OtW": 1.5})
+
+    assert first == {}
+    assert second == {"OtW": 1.5}
+
+
+def test_stuck_values_compute_the_baselines_when_not_given() -> None:
+    """The default is the same SM point the marker is drawn at."""
+    declaring = make_fit(
+        "fit_a",
+        {"OtG": [0.1, 0.2], "OtW": [5.0, 6.0]},
+        ["OtG", "OtW"],
+        baselines={"OtW": -2.0},
+    )
+    other = make_fit("fit_b", {"OtG": [0.0, 0.3]}, ["OtG"])
+
+    assert stuck_values([declaring, other], ["OtW"]) == [{}, {"OtW": -2.0}]
+
+
+def test_stuck_values_keep_a_derived_coefficient_that_moves() -> None:
+    """An expr-constrained coefficient follows the free ones: its samples are
+    a posterior to contour, not a point to mark."""
+    fit = make_fit(
+        "fit",
+        {"OtG": [0.1, 0.2, 0.3], "OpDerived": [0.01, 0.04, 0.09]},
+        ["OtG"],
+    )
+
+    assert stuck_values([fit], ["OtG", "OpDerived"]) == [{}]
+
+
+def test_stuck_values_warn_about_a_free_coefficient_that_never_moved(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A sampler that left a free coefficient where it started has no density
+    to estimate; it is drawn as fixed, but not silently."""
+    fit = make_fit("fit", {"OtG": [0.1, 0.2], "OpQM": [1.0, 1.0]}, ["OtG", "OpQM"])
+
+    with caplog.at_level(logging.WARNING):
+        assert stuck_values([fit], ["OtG", "OpQM"]) == [{"OpQM": 1.0}]
+
+    assert "OpQM" in caplog.text
+    assert "fit" in caplog.text
+
+
+def test_stuck_values_return_plain_floats(stuck_pair: list[Fit]) -> None:
+    """The values are handed to matplotlib as coordinates, not as arrays."""
+    _, second = stuck_values(stuck_pair, ["OpQM"])
+
+    assert isinstance(second["OpQM"], float)
+
+
 # --- coeff_limits -----------------------------------------------------------
 
 
@@ -288,11 +455,59 @@ def test_coeff_limits_without_a_point_keep_the_sample_range(
     assert low > 0.0
 
 
-def test_coeff_limits_pad_a_zero_width_range_by_one() -> None:
-    """A fraction of a zero-wide range would leave nothing to draw in."""
+def test_coeff_limits_pad_a_zero_width_range_by_its_own_scale() -> None:
+    """A fraction of a zero-wide range would leave nothing to draw in, and a
+    flat unit would swamp a coefficient of 1e-3 — a coefficient every fit held
+    fixed is one of the cases this covers."""
     flat = make_fit("flat", {"OtG": [2.0, 2.0]}, ["OtG"])
 
-    assert coeff_limits([flat], ["OtG"])["OtG"] == (1.0, 3.0)
+    assert coeff_limits([flat], ["OtG"])["OtG"] == (0.0, 4.0)
+
+
+def test_coeff_limits_pad_a_zero_width_range_at_the_origin_by_one() -> None:
+    """Nothing to scale by there, so the unit comes back."""
+    flat = make_fit("flat", {"OtG": [0.0, 0.0]}, ["OtG"])
+
+    assert coeff_limits([flat], ["OtG"])["OtG"] == (-1.0, 1.0)
+
+
+def test_coeff_limits_skip_a_fit_that_lacks_the_coefficient(
+    fit_pair: list[Fit],
+) -> None:
+    """Only fit_a sampled OtW; fit_b is drawn at a point instead, which
+    reaches the range as an included point, not as samples it does not have."""
+    low, high = coeff_limits(fit_pair, ["OtW"])["OtW"]
+
+    assert (low, high) == pytest.approx((5.0 - 0.2, 7.0 + 0.2))
+
+
+def test_coeff_limits_stretch_to_every_included_point(fit_pair: list[Fit]) -> None:
+    """Several points per coefficient: the SM marker and the value each fit
+    that did not sample it was stuck at."""
+    low, high = coeff_limits(fit_pair, ["OtW"], include_points={"OtW": [0.0, 9.0]})[
+        "OtW"
+    ]
+
+    assert low < 0.0
+    assert high > 9.0
+
+
+def test_coeff_limits_frame_a_coefficient_no_fit_sampled(
+    fit_pair: list[Fit],
+) -> None:
+    """Every fit stuck on it: the frame comes from the points alone."""
+    low, high = coeff_limits(fit_pair, ["OpFrozen"], include_points={"OpFrozen": 0.5})[
+        "OpFrozen"
+    ]
+
+    assert (low, high) == pytest.approx((0.0, 1.0))
+
+
+def test_coeff_limits_reject_a_coefficient_with_nothing_to_place_it_by(
+    fit_pair: list[Fit],
+) -> None:
+    with pytest.raises(ValueError, match="OpFrozen"):
+        coeff_limits(fit_pair, ["OpFrozen"])
 
 
 def test_coeff_limits_padding_is_a_fraction_of_the_range() -> None:
@@ -374,6 +589,21 @@ def test_baseline_point_takes_the_first_fit_and_warns_on_disagreement(
     assert baselines == {"OtG": 1.5, "OpQM": 0.0}
     assert "OtG" in caplog.text
     assert "fit_b" in caplog.text
+
+
+def test_baseline_point_asks_the_first_fit_that_declares_the_coefficient(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A fit that never declared a coefficient has no baseline to offer: it
+    must not drag the SM point back to the origin, nor be warned about."""
+    samples = {"OtG": [0.1, 0.2]}
+    silent = make_fit("fit_a", samples, ["OtG"])
+    declaring = make_fit("fit_b", samples, ["OtG"], baselines={"OtG": 0.0, "OtW": 1.5})
+
+    with caplog.at_level(logging.WARNING):
+        assert baseline_point([silent, declaring], ["OtW"]) == {"OtW": 1.5}
+
+    assert caplog.text == ""
 
 
 # --- best_fit_pair ----------------------------------------------------------

@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib import patches
+from matplotlib.lines import Line2D
 from matplotlib.ticker import ScalarFormatter
 
 from smefit import figures as figures_mod
@@ -205,14 +207,38 @@ def _fit(
     action="run_analytic_fit",
     use_quad=False,
     baselines=None,
+    fixed=None,
 ):
     """A joint fit holding the given posterior samples.
 
     The default pair is perfectly anti-correlated, which keeps the expected
     matrix obvious in tests that are about the drawing rather than the numbers.
+
+    ``fixed`` names coefficients the runcard froze, as smefit records them: a
+    ``free: False, value: v`` runcard entry, and the constant ``v`` resolved
+    into every posterior sample.
     """
     if samples is None:
         samples = {"OpA": [0.0, 1.0, 2.0, 3.0], "OpZZ": [0.0, -1.0, -2.0, -3.0]}
+
+    coefficients = {}
+    if baselines is not None:
+        coefficients.update(
+            {
+                name: {"free": True, "baseline_value": value}
+                for name, value in baselines.items()
+            }
+        )
+    if fixed is not None:
+        coefficients.update(
+            {name: {"free": False, "value": value} for name, value in fixed.items()}
+        )
+        length = len(next(iter(samples.values())))
+        samples = {
+            **samples,
+            **{name: [value] * length for name, value in fixed.items()},
+        }
+
     return Fit(
         fit_results=FitResult(
             free_parameters=list(free),
@@ -226,16 +252,7 @@ def _fit(
         fit_runcard={
             "actions_": [action],
             "use_quad": use_quad,
-            **(
-                {
-                    "coefficients": {
-                        name: {"free": True, "baseline_value": value}
-                        for name, value in baselines.items()
-                    }
-                }
-                if baselines is not None
-                else {}
-            ),
+            **({"coefficients": coefficients} if coefficients else {}),
         },
     )
 
@@ -581,6 +598,165 @@ def test_contours_without_sm_show_neither_marker_nor_legend_entry() -> None:
     assert len(fig.axes[0].collections) == 0
     texts = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
     assert r"$\mathrm{SM}$" not in texts
+
+
+def _stuck_pair() -> list:
+    """Two fits over the same three coefficients, the second having frozen
+    OpC at 1.5 instead of fitting it."""
+    return [
+        _fit(
+            fit_name="fit_a",
+            free=["OpA", "OpZZ", "OpC"],
+            samples=_three_coeff_samples(),
+        ),
+        _fit(
+            fit_name="fit_b",
+            free=["OpA", "OpZZ"],
+            samples=_two_coeff_gaussians(),
+            fixed={"OpC": 1.5},
+        ),
+    ]
+
+
+def test_contours_span_the_union_of_the_fitted_coefficients() -> None:
+    """A coefficient only one fit floated keeps its panels: the other is drawn
+    where it held it, which is the comparison the figure is for."""
+    fig = plot_fits_posterior_contours(_stuck_pair())
+
+    # three coefficients: three pairwise panels, plus the legend cell
+    assert len(fig.axes) == 4
+
+
+def test_contours_draw_a_frozen_coefficient_as_a_segment() -> None:
+    """fit_b fixed OpC, so in the OpA/OpC panel it is a horizontal bar at that
+    value spanning OpA's confidence interval — beside fit_a's contour."""
+    fig = plot_fits_posterior_contours(_stuck_pair(), show_sm=False)
+
+    panel = fig.axes[1]  # panels come in (OpA, OpZZ), (OpA, OpC), (OpZZ, OpC)
+    assert len(panel.patches) == 3  # fit_a's contour: outline, fill and hatch
+    (segment,) = panel.lines
+    assert list(segment.get_ydata()) == [1.5, 1.5]
+
+    samples = np.asarray(_two_coeff_gaussians()["OpA"])
+    assert segment.get_xdata() == pytest.approx(
+        tuple(np.percentile(samples, [2.5, 97.5]))
+    )
+
+
+def test_contours_orient_the_segment_along_the_sampled_coefficient() -> None:
+    """The same fit in the OpC/OpZZ panel: OpC is on the x-axis now, so the
+    bar is vertical, at the value OpC was frozen at."""
+    fig = plot_fits_posterior_contours(
+        _stuck_pair(), params_to_plot=["OpC", "OpZZ"], show_sm=False
+    )
+
+    (segment,) = fig.axes[0].lines
+    assert list(segment.get_xdata()) == [1.5, 1.5]
+
+
+def test_contours_draw_a_coefficient_a_fit_never_declared_at_its_baseline() -> None:
+    """fit_b's runcard never mentions OpC: it is stuck where its SM is, which
+    the fit that does declare it puts at 1.0."""
+    fits = [
+        _fit(
+            fit_name="fit_a",
+            free=["OpA", "OpZZ", "OpC"],
+            samples=_three_coeff_samples(),
+            baselines={"OpC": 1.0},
+        ),
+        _fit(fit_name="fit_b", free=["OpA", "OpZZ"], samples=_two_coeff_gaussians()),
+    ]
+
+    fig = plot_fits_posterior_contours(fits, params_to_plot=["OpA", "OpC"])
+
+    (segment,) = fig.axes[0].lines
+    assert list(segment.get_ydata()) == [1.0, 1.0]
+
+
+def test_contours_draw_two_frozen_coefficients_as_a_point() -> None:
+    """Neither coefficient was sampled, so the fit has a position and no
+    extent: one cross, no bar."""
+    fit = _fit(
+        free=["OpA", "OpZZ"],
+        samples=_two_coeff_gaussians(),
+        fixed={"OpC": 1.5, "OpD": -2.0},
+    )
+
+    fig = plot_fits_posterior_contours(
+        [fit], params_to_plot=["OpA", "OpC", "OpD"], show_sm=False
+    )
+
+    panel = fig.axes[2]  # (OpC, OpD): both frozen
+    (marker,) = panel.lines
+    assert list(marker.get_xdata()) == [1.5]
+    assert list(marker.get_ydata()) == [-2.0]
+    assert marker.get_linestyle() == "None"
+
+
+def test_contours_leave_a_coefficient_no_fit_fitted_out_by_default() -> None:
+    """A runcard freezing twenty operators must not add twenty panels: only a
+    coefficient asked for by name is drawn when no fit floated it."""
+    fit = _fit(free=["OpA", "OpZZ"], samples=_two_coeff_gaussians(), fixed={"OpC": 1.5})
+
+    assert len(plot_fits_posterior_contours([fit]).axes) == 2  # panel + legend
+    assert (
+        len(plot_fits_posterior_contours([fit], params_to_plot=["OpA", "OpC"]).axes)
+        == 2
+    )
+
+
+def test_contours_frame_a_coefficient_every_fit_froze() -> None:
+    """No samples set its range, so the frame comes from the value itself."""
+    fit = _fit(free=["OpA", "OpZZ"], samples=_two_coeff_gaussians(), fixed={"OpC": 1.5})
+
+    fig = plot_fits_posterior_contours(
+        [fit], params_to_plot=["OpA", "OpC"], show_sm=False
+    )
+
+    low, high = fig.axes[0].get_ylim()
+    assert low < 1.5 < high
+
+
+def test_contours_legend_keeps_the_richest_handle_of_every_fit() -> None:
+    """fit_b is a bar in the last panel drawn and a contour in the first; the
+    legend describes the fit, not the panel that happened to come last."""
+    fig = plot_fits_posterior_contours(_stuck_pair())
+
+    legend = fig.axes[-1].get_legend()
+    texts = [t.get_text() for t in legend.get_texts()]
+    assert texts == ["fit_a", "fit_b", r"$\mathrm{SM}$"]
+    # a contour's key is a patch, a bar's is a line: fit_b keeps the patch it
+    # earned in the OpA/OpZZ panel, though its last panel is a bar
+    assert isinstance(legend.legend_handles[1], patches.Patch)
+
+
+def test_contours_legend_key_is_a_bar_for_a_fit_that_only_ever_bars() -> None:
+    """The other way round: a fit that sampled nothing jointly here has no
+    contour to advertise, and its key says so."""
+    fits = [
+        _fit(fit_name="fit_a", samples=_two_coeff_gaussians()),
+        _fit(
+            fit_name="fit_b",
+            free=["OpA"],
+            samples={"OpA": _two_coeff_gaussians()["OpA"]},
+            fixed={"OpZZ": 0.3},
+        ),
+    ]
+
+    fig = plot_fits_posterior_contours(fits)
+
+    assert isinstance(fig.axes[-1].get_legend().legend_handles[1], Line2D)
+
+
+def test_contours_say_what_a_bar_means_when_one_is_drawn() -> None:
+    """A bar is not a contour of anything; the legend cell says so, once."""
+    caption = r"$\mathrm{Bars\:and\:crosses\:mark\:fixed\:coefficients}$"
+
+    stuck = plot_fits_posterior_contours(_stuck_pair())
+    assert caption in [t.get_text() for t in stuck.axes[-1].texts]
+
+    plain = plot_fits_posterior_contours([_fit(samples=_two_coeff_gaussians())])
+    assert caption not in [t.get_text() for t in plain.axes[-1].texts]
 
 
 def test_contours_keep_the_legend_off_the_panels() -> None:

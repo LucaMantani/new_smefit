@@ -67,9 +67,28 @@ A report can also be run over fits that already exist on disk, refitting
 nothing: list them under `fits:`, and run an action once per fit by putting it
 in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
 the fit's name, without which the report gives no clue which output belongs to
-which fit. `plot_posterior_correlations` is the action, drawing the posterior
-correlations of each fit's free coefficients. Template:
-`posterior_correlations.yaml`.
+which fit.
+
+What such a report can draw from the posterior samples: 1D histograms
+(`plot_fits_posterior_histograms`), central values with confidence intervals
+(`plot_fits_coefficient_bounds`), the mass reach `Λ/√cᵢ`
+(`plot_fits_mass_reach`), 2D contours (`plot_fits_posterior_contours`),
+correlations (`plot_posterior_correlations`), and the bounds table
+(`coefficient_bounds_table`). Each figure comes as a pair — the `plot_fits_*`
+form overlays every fit in one figure and is called bare, the `plot_*` form
+draws one fit and goes under `{@with fits@}`. The 1D routines accept a
+`run_individual_*_fits` output, so an "individual" figure is a second `fits:`
+entry rather than an option; the contour and correlation actions reject one,
+since those coefficients were never sampled together. Every figure and the
+table read the same percentile intervals, so a report cannot quote one number
+and draw another. Templates: `posterior_histograms.yaml`,
+`coefficient_bounds.yaml`, `mass_reach.yaml`, `posterior_contours.yaml`,
+`posterior_correlations.yaml`, `coefficient_bounds_table.yaml`.
+
+`coefficient_bounds_table` also writes `tables/<name>.tex` and puts a "Copy
+LaTeX" button above the table in the report, so a table can go straight into a
+paper. It needs `tabularx`, `multirow` and `amssymb` — the emitted comment
+says so, `amssymb` because some operator names carry `\Box`.
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

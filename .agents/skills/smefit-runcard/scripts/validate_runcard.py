@@ -38,7 +38,19 @@ SAMPLER_BLOCKS = {
 # Actions that report on fits read back off disk, so a runcard running only
 # these needs no fit setup of its own. Taken from runcard-keys.json when it is
 # there; this is the fallback.
-FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
+FIT_READING_ACTIONS = {
+    "report",
+    "plot_posterior_correlations",
+    "plot_fits_posterior_contours",
+    "plot_posterior_contours",
+    "plot_fits_posterior_histograms",
+    "plot_posterior_histograms",
+    "plot_fits_coefficient_bounds",
+    "plot_coefficient_bounds",
+    "plot_fits_mass_reach",
+    "plot_mass_reach",
+    "coefficient_bounds_table",
+}
 
 
 def action_name(action):

@@ -6,6 +6,7 @@ All fixtures are fully in-memory; no real I/O or reportengine integration.
 from pathlib import Path
 
 import jax.numpy as jnp
+import matplotlib as mpl
 import pytest
 
 from smefit.core import (
@@ -16,6 +17,48 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+
+# ---------------------------------------------------------------------------
+# Matplotlib
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rc_params():
+    """Keep one test's rc settings out of the next test's figures.
+
+    The figure routines set the report's font and ``text.usetex`` globally, as
+    matplotlib's rc is global; without this a test that only ever draws a bare
+    ``plt.subplots()`` still renders through whatever the last figure routine
+    left behind.
+    """
+    with mpl.rc_context():
+        yield
+
+
+@pytest.fixture
+def draw():
+    """Render a figure, so that what the tick formatters produce can be read.
+
+    Rendering goes through mathtext rather than LaTeX: the figure routines turn
+    ``text.usetex`` on for the report's own labels, and CI has no LaTeX
+    installed, while every label these tests read back is plain enough for
+    matplotlib to typeset itself.
+
+    The rc setting alone is not enough — a Text takes its ``usetex`` from the
+    rc in force when it was *created*, which for a tick label is when the axes
+    were built — so the labels already in the figure are turned over one by
+    one, and the rc covers whatever the draw creates.
+    """
+
+    def _draw(fig):
+        mpl.rcParams["text.usetex"] = False
+        for text in fig.findobj(mpl.text.Text):
+            text.set_usetex(False)
+        fig.canvas.draw()
+
+    return _draw
+
 
 # ---------------------------------------------------------------------------
 # Path helpers

@@ -644,14 +644,14 @@ def test_helpers_leave_the_fit_samples_untouched(fit_pair: list[Fit]) -> None:
 # --- compact_tick_labels ----------------------------------------------------
 
 
-def test_compact_tick_labels_factors_the_power_out_of_small_numbers() -> None:
+def test_compact_tick_labels_factors_the_power_out_of_small_numbers(draw) -> None:
     """A coefficient of 1e-4 would otherwise print five leading zeros in every
     label, and a panel has room for about four characters."""
     fig, ax = plt.subplots()
     ax.set_xlim(-5e-4, 5e-4)
 
     compact_tick_labels(ax)
-    fig.canvas.draw()
+    draw(fig)
 
     # the labels come out as mathtext, so the digits are what to look at
     digits = [
@@ -667,14 +667,14 @@ def test_compact_tick_labels_factors_the_power_out_of_small_numbers() -> None:
     plt.close(fig)
 
 
-def test_compact_tick_labels_leave_ordinary_numbers_alone() -> None:
+def test_compact_tick_labels_leave_ordinary_numbers_alone(draw) -> None:
     """Nothing is factored out of a range that reads perfectly well as it
     is — the power would be one more thing to look up."""
     fig, ax = plt.subplots()
     ax.set_xlim(-0.5, 0.5)
 
     compact_tick_labels(ax)
-    fig.canvas.draw()
+    draw(fig)
 
     assert not ax.xaxis.get_offset_text().get_text()
     plt.close(fig)

@@ -1664,7 +1664,7 @@ def test_bounds_leave_a_gap_for_a_coefficient_a_fit_never_sampled() -> None:
     assert len(_intervals(ax)) == 1  # only the sampled one is drawn
 
 
-def test_contours_keep_small_tick_labels_readable() -> None:
+def test_contours_keep_small_tick_labels_readable(draw) -> None:
     """A coefficient of 1e-4 prints five leading zeros per label under the
     default formatter, and the labels of one panel run into each other."""
     rng = np.random.default_rng(7)
@@ -1673,7 +1673,7 @@ def test_contours_keep_small_tick_labels_readable() -> None:
     }
 
     fig = plot_fits_posterior_contours([_fit(samples=tiny)])
-    fig.canvas.draw()
+    draw(fig)
 
     ax = fig.axes[0]
     digits = [
@@ -1710,7 +1710,7 @@ def _tick_digits(ticklabels) -> list[str]:
     return [re.sub(r"[^0-9.]", "", t.get_text()) for t in ticklabels if t.get_text()]
 
 
-def test_histograms_keep_small_tick_labels_readable() -> None:
+def test_histograms_keep_small_tick_labels_readable(draw) -> None:
     """Each panel is a different coefficient on its own range, so each carries
     its own power — unlike a contour grid, where a column shares one."""
     rng = np.random.default_rng(8)
@@ -1719,7 +1719,7 @@ def test_histograms_keep_small_tick_labels_readable() -> None:
     }
 
     fig = plot_fits_posterior_histograms([_fit(samples=tiny)], show_sm=False)
-    fig.canvas.draw()
+    draw(fig)
 
     for ax in _panels(fig):
         digits = _tick_digits(ax.get_xticklabels())
@@ -1727,14 +1727,14 @@ def test_histograms_keep_small_tick_labels_readable() -> None:
         assert ax.xaxis.offsetText.get_visible()
 
 
-def test_bounds_keep_small_tick_labels_readable() -> None:
+def test_bounds_keep_small_tick_labels_readable(draw) -> None:
     rng = np.random.default_rng(9)
     tiny = {
         name: rng.normal(0.0, 1.5e-4, size=300).tolist() for name in ("OpA", "OpZZ")
     }
 
     fig = plot_fits_coefficient_bounds([_fit(samples=tiny)])
-    fig.canvas.draw()
+    draw(fig)
 
     ax = fig.axes[0]
     digits = _tick_digits(ax.get_xticklabels())
@@ -1742,11 +1742,11 @@ def test_bounds_keep_small_tick_labels_readable() -> None:
     assert "10" in ax.xaxis.get_offset_text().get_text()
 
 
-def test_bounds_keep_the_coefficient_names_on_the_rows() -> None:
+def test_bounds_keep_the_coefficient_names_on_the_rows(draw) -> None:
     """The y axis is not a numeric scale: reformatting it would label the rows
     with the positions they sit at instead of the coefficients."""
     fig = plot_fits_coefficient_bounds([_uniform_fit()])
-    fig.canvas.draw()
+    draw(fig)
 
     labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
     assert coeff_info_latex.get("OpA", "OpA") in labels
@@ -1761,11 +1761,11 @@ def test_bounds_log_scale_keeps_its_own_formatter() -> None:
     assert not isinstance(fig.axes[0].xaxis.get_major_formatter(), ScalarFormatter)
 
 
-def test_mass_reach_keeps_the_coefficient_names_on_the_groups() -> None:
+def test_mass_reach_keeps_the_coefficient_names_on_the_groups(draw) -> None:
     """Same as the bounds plot, the other way round: here it is x that names
     coefficients and y that is numeric."""
     fig = plot_fits_mass_reach([_uniform_fit()])
-    fig.canvas.draw()
+    draw(fig)
 
     ax = fig.axes[0]
     labels = [t.get_text() for t in ax.get_xticklabels()]

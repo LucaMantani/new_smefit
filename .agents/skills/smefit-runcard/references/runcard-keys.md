@@ -10,7 +10,7 @@ with `scripts/validate_runcard.py`.
 ## Path resolution (shareable runcards)
 
 Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,
-`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,
+`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update[.path]`,
 `fits[*].path`) support prefix-relative form,
 resolved via the machine-specific `.config/paths.yaml` (created by
 `smefit_setup_local`). Standard prefixes: `new_smefit`, `smefit_database`, `smefit_results`.
@@ -44,7 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
-- `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`)
+- `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
 
@@ -61,13 +61,28 @@ Notes:
 
 ## Keys with dedicated parsers
 
-### `bayesian_update_path`
+### `bayesian_update`
 
-Parse and validate the path to a previous fit for Bayesian updating.
+Parse and validate the previous fit used as prior for a Bayesian update.
 
-Accepts an absolute path or the prefix-relative form
-(`smefit_results/fits/my_fit`); a fit that is not there yet is
-downloaded from the server, as for `fits`.
+The entry is the name of the fit, or a mapping
+
+    bayesian_update:
+      name: my_previous_fit            # mandatory, the fit directory name
+      path: smefit_results/fits        # optional, where to look for it
+
+Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+downloaded from the server if it is not there yet, exactly as for
+``fits``. ``path`` is resolved through ``.config/paths.yaml`` like any
+other path.
+
+Returns the entry with ``path`` replaced by the resolved directory of
+the fit itself, so downstream nodes read it straight off the mapping.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `name`
+- `path` — default: `(no default)`
 
 ### `blackjax_settings`
 
@@ -111,6 +126,19 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 Validation errors raised while parsing:
 
 - blackjax_settings.algorithm is not a known BlackJAX algorithm.
+
+### `chi2_scan_settings`
+
+Parse optional chi2 scan settings.
+
+Keys
+----
+n_points : int, default 50
+    Number of scan points per coefficient.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `n_points` — default: `50`
 
 ### `coefficients`
 
@@ -363,10 +391,15 @@ which runcard keys each action ultimately needs.
 - `individual_eft_model`(theory, individual_coefficients, rge_matrix, use_quad) — Produce EFT model for a single-free-parameter individual fit.
 - `individual_ext_chi2_func`(individual_coefficients, external_chi2, rge) — Load and wrap external chi2 modules for a single-free-parameter individual fit.
 - `individual_fit_coefficients`(coefficients) — Produce an NSList of free coefficient names for individual fits.
+- `individual_mass_chi2`(individual_mass_eft_model, data, fit_covmat, individual_mass_ext_chi2_func) — Produce the total chi2 for a single mass scan point.
+- `individual_mass_eft_model`(theory, coefficients, individual_mass_rge_matrix, use_quad) — Produce EFT model for a single mass scan point.
+- `individual_mass_ext_chi2_func`(coefficients, external_chi2, individual_mass_scale, rge) — Load external chi2 for a single mass scan point with init_scale overridden.
+- `individual_mass_rge_matrix`(rge, coefficients, theory, individual_mass_scale) — Produce RGE matrix with init_scale set to the current mass scan point.
+- `individual_mass_scales`(coefficients, chi2_scan_settings) — Produce an NSList of mass scan points from the single free coefficient's prior.
 - `individual_prior`(individual_coefficients) — Produce prior for a single-free-parameter individual fit.
 - `init_scale`(rge) — Produce the initial scale (in GeV) at which Wilson coefficients are defined.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
-- `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update_path) — Produce joint prior over all free coefficients.
+- `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.

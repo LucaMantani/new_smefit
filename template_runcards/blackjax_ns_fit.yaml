@@ -60,6 +60,13 @@ external_chi2:
       use_projection_L0: False
 
 
+# If bayesian_update is specified, the fit will use as prior the posterior
+# from a previous fit done in smefit.
+# bayesian_update:
+#   name: my_previous_fit
+#   # optional: directory containing the fit, defaults to smefit_results/fits
+#   path: smefit_results/fits
+
 # whitening:
 #   sigma_prior: 5.0
 #   eps: 1e-8

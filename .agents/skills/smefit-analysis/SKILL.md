@@ -1,6 +1,6 @@
 ---
 name: smefit-analysis
-description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information tables and heatmaps, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
+description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information tables and heatmaps, scanning the chi2 over a coefficient or a new-physics mass scale, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
 ---
 
 # Running and interpreting smefit analyses
@@ -69,6 +69,39 @@ chain (`fisher_diagonals_normalised`, `plot_fisher_diagonals_heatmap`)
 evaluates at the gradient-descent best fit; group datasets with `group:` labels
 to aggregate rows. See the smefit-runcard skill's `recipes.md` for the runcard
 side.
+
+A report can also be run over fits that already exist on disk, refitting
+nothing: list them under `fits:`, and run an action once per fit by putting it
+in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
+the fit's name, without which the report gives no clue which output belongs to
+which fit. `plot_posterior_correlations` is the action, drawing the posterior
+correlations of each fit's free coefficients. Template:
+`posterior_correlations.yaml`.
+
+Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
+parameters, so a runcard sets them with no settings block — as a top-level key
+or as an action argument, which wins. `recipes.md` has the details and the two
+ways it can bite.
+
+## chi2 scans
+
+`chi2_scan_table` / `plot_chi2_scan` (per free coefficient, others held at
+zero) and `mass_scan_table` (chi2 vs. a new-physics mass scale) evaluate the
+chi2 on a grid rather than fitting. They write into `tables/` and `figures/`
+and produce **no `fit_results.json`** — do not look for one. Grid size is
+`chi2_scan_settings.n_points`, and the range comes from each scanned
+coefficient's `uniform` prior; see the smefit-runcard skill's `recipes.md`.
+
+Reading them:
+- The scan minimum is a best-fit estimate only along that one direction; it
+  does not equal a joint best fit unless the coefficients are uncorrelated.
+- `Δchi2 = 1` / `3.84` around the minimum give the 68% / 95% 1D intervals for
+  a Gaussian likelihood — a scan whose curve is visibly non-parabolic
+  (common with `use_quad: True`) invalidates that reading, and a real fit is
+  needed.
+- A flat scan means the data does not constrain that direction.
+- A mass scan is the expensive one: the scanned scale is used as
+  `rge.init_scale`, so the RGE matrix is recomputed at every point.
 
 ## Performance checklist
 

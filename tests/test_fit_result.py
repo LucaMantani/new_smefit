@@ -96,6 +96,83 @@ def test_std_with_samples():
 
 
 # ---------------------------------------------------------------------------
+# correlations property
+# ---------------------------------------------------------------------------
+
+
+def test_correlations_no_samples():
+    fr = _make_result(samples=None)
+    with pytest.raises(ValueError, match="no posterior samples"):
+        fr.correlations
+
+
+def test_correlations_of_perfectly_dependent_samples():
+    """A parameter correlates perfectly with itself, and with a copy of itself
+    either way round."""
+    samples = {
+        "OpA": jnp.array([0.0, 1.0, 2.0, 3.0]),
+        "OpB": jnp.array([0.0, 1.0, 2.0, 3.0]),
+        "OpC": jnp.array([0.0, -1.0, -2.0, -3.0]),
+    }
+    fr = _make_result(free=["OpA", "OpB", "OpC"], samples=samples)
+
+    corr = fr.correlations
+    assert corr.loc["OpA", "OpA"] == pytest.approx(1.0, abs=1e-5)
+    assert corr.loc["OpA", "OpB"] == pytest.approx(1.0, abs=1e-5)
+    assert corr.loc["OpA", "OpC"] == pytest.approx(-1.0, abs=1e-5)
+
+
+def test_correlations_covers_the_free_parameters_in_order():
+    """Derived coefficients are in `samples` too, and are left out: they are
+    functions of the free ones."""
+    samples = {
+        "OpB": jnp.array([0.0, 1.0, 2.0]),
+        "OpA": jnp.array([2.0, 0.0, 1.0]),
+        "OpDerived": jnp.array([0.0, 1.0, 4.0]),
+    }
+    fr = _make_result(free=["OpB", "OpA"], samples=samples)
+
+    corr = fr.correlations
+    assert corr.index.tolist() == ["OpB", "OpA"]
+    assert corr.columns.tolist() == ["OpB", "OpA"]
+
+
+def test_correlations_is_symmetric():
+    samples = {
+        "OpA": jnp.array([0.0, 1.0, 2.0, 5.0]),
+        "OpB": jnp.array([2.0, 0.0, 1.0, 1.5]),
+    }
+    fr = _make_result(free=["OpA", "OpB"], samples=samples)
+
+    corr = fr.correlations
+    assert corr.loc["OpA", "OpB"] == pytest.approx(corr.loc["OpB", "OpA"])
+
+
+def test_correlations_of_a_single_free_parameter_is_one_by_one():
+    """corrcoef gives a scalar for one variable; it is still a 1x1 matrix."""
+    fr = _make_result(free=["OpA"], samples={"OpA": jnp.array([0.0, 1.0, 2.0])})
+
+    corr = fr.correlations
+    assert corr.shape == (1, 1)
+    assert corr.loc["OpA", "OpA"] == pytest.approx(1.0, abs=1e-5)
+
+
+def test_correlations_of_a_frozen_parameter_are_nan():
+    """A parameter whose samples never moved correlates with nothing, and says
+    so rather than failing the whole fit's correlations."""
+    samples = {
+        "OpA": jnp.array([0.0, 1.0, 2.0]),
+        "OpB": jnp.array([1.0, 1.0, 1.0]),
+    }
+    fr = _make_result(free=["OpA", "OpB"], samples=samples)
+
+    corr = fr.correlations
+    assert corr.loc["OpA", "OpA"] == pytest.approx(1.0, abs=1e-5)
+    assert math.isnan(corr.loc["OpA", "OpB"])
+    assert math.isnan(corr.loc["OpB", "OpB"])
+
+
+# ---------------------------------------------------------------------------
 # write / JSON round-trip
 # ---------------------------------------------------------------------------
 
@@ -129,8 +206,8 @@ def test_write_json_roundtrip(tmp_path):
 
 
 def test_from_json_names_an_unparsable_file(tmp_path):
-    """from_json is also called on its own, by smefit.utils for a Bayesian
-    update, so it must fail as informatively as Fit.from_folder does."""
+    """from_json reads a fit_results.json on its own, without the rest of the
+    fit directory, so it must fail as informatively as Fit.from_folder does."""
     (tmp_path / "fit_results.json").write_text("{not json")
 
     with pytest.raises(ValueError, match=r"fit_results\.json' is not valid JSON"):
@@ -245,6 +322,25 @@ def test_fit_holds_its_fit_result():
     assert fit.fit_results is result
     assert fit.fit_results.ndof == 6
     assert fit.fit_results.chi2_val == pytest.approx(6.0)
+
+
+def test_fit_is_named_by_its_fit_name():
+    """str(fit) is the fit name: reportengine builds the file name of a per-fit
+    figure or table out of it, and the dataclass repr would be unusable there.
+    """
+    fit = Fit(fit_results=_make_written_result(), fit_name="my_fit")
+    assert str(fit) == "my_fit"
+
+
+def test_plot_label_prefers_the_label_and_falls_back_to_the_name():
+    """A plot has to say which fit it is drawn from; the runcard's label is how
+    the fit is presented, and the name is the fallback when it gave none."""
+    result = _make_written_result()
+    assert Fit(fit_results=result, fit_name="my_fit").plot_label == "my_fit"
+    assert (
+        Fit(fit_results=result, fit_name="my_fit", label=r"$\mathrm{Mine}$").plot_label
+        == r"$\mathrm{Mine}$"
+    )
 
 
 def test_fit_metadata_defaults():

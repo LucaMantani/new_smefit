@@ -10,6 +10,7 @@ import pathlib
 from collections.abc import Mapping
 
 import jax.numpy as jnp
+import numpy as np
 import optax
 from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
@@ -710,25 +711,59 @@ class smefitConfig(Config):
             "seed": int(settings.get("seed", 42)),
         }
 
-    def parse_bayesian_update_path(self, bayesian_update_path):
-        """Parse and validate the path to a previous fit for Bayesian updating.
+    def parse_chi2_scan_settings(self, chi2_scan_settings):
+        """Parse optional chi2 scan settings.
 
-        Accepts an absolute path or the prefix-relative form
-        (`smefit_results/fits/my_fit`); a fit that is not there yet is
-        downloaded from the server, as for `fits`.
+        Keys
+        ----
+        n_points : int, default 50
+            Number of scan points per coefficient.
         """
+        known_keys = {"n_points"}
+        for k in set(chi2_scan_settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in chi2_scan_settings.", k)
+        return {"n_points": int(chi2_scan_settings.get("n_points", 50))}
+
+    def parse_bayesian_update(self, bayesian_update: str | Mapping):
+        """Parse and validate the previous fit used as prior for a Bayesian update.
+
+        The entry is the name of the fit, or a mapping
+
+            bayesian_update:
+              name: my_previous_fit            # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet, exactly as for
+        ``fits``. ``path`` is resolved through ``.config/paths.yaml`` like any
+        other path.
+
+        Returns the entry with ``path`` replaced by the resolved directory of
+        the fit itself, so downstream nodes read it straight off the mapping.
+        """
+        entry = (
+            {"name": bayesian_update}
+            if isinstance(bayesian_update, str)
+            else dict(bayesian_update)
+        )
+        if "name" not in entry:
+            raise ConfigError(f"bayesian_update requires a 'name': {entry}")
+
+        known_keys = {"name", "path"}
+        for k in set(entry.keys()) - known_keys:
+            log.warning("Unknown key '%s' in bayesian_update.", k)
+
         try:
-            p = pathlib.Path(resolve_path(str(bayesian_update_path)))
-            fetch_fit_if_missing(p)
+            fit_dir = resolve_fit_dir(entry["name"], entry.get("path"))
         except (FileNotFoundError, ValueError) as e:
             raise ConfigError(str(e)) from e
-        if not p.exists():
-            raise ConfigError(f"Directory not found at {p}")
-        if not (p / "fit_results.json").exists():
-            raise ConfigError(f"fit_results.json not found at {p}")
-        if not (p / "input" / "runcard.yaml").exists():
-            raise ConfigError(f"input/runcard.yaml not found at {p}")
-        return p
+        if not (fit_dir / "fit_results.json").exists():
+            raise ConfigError(f"fit_results.json not found at {fit_dir}")
+        if not (fit_dir / "input" / "runcard.yaml").exists():
+            raise ConfigError(f"input/runcard.yaml not found at {fit_dir}")
+
+        entry["path"] = fit_dir
+        return entry
 
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""
@@ -745,24 +780,26 @@ class smefitConfig(Config):
         datasets=None,
         external_chi2=None,
         whitening=None,
-        bayesian_update_path=None,
+        bayesian_update=None,
     ):
         """Produce joint prior over all free coefficients.
 
-        When ``bayesian_update_path`` is set, returns an ExactPosteriorPrior
+        When ``bayesian_update`` is set, returns an ExactPosteriorPrior
         that encodes the exact posterior from the previous fit.
         """
-        if bayesian_update_path is not None:
+        if bayesian_update is not None:
             log.info(
-                f"Producing ExactPosteriorPrior from previous fit at {bayesian_update_path}"
+                "Producing ExactPosteriorPrior from previous fit '%s' at %s",
+                bayesian_update["name"],
+                bayesian_update["path"],
             )
             if whitening is not None:
                 raise ConfigError(
-                    "whitening is not compatible with bayesian_update_path: "
+                    "whitening is not compatible with bayesian_update: "
                     "ExactPosteriorPrior is defined in physical space and cannot be whitened."
                 )
             return build_exact_posterior_prior(
-                bayesian_update_path, coefficients, datasets, external_chi2
+                bayesian_update, coefficients, datasets, external_chi2
             )
 
         if whitening is not None:
@@ -912,3 +949,82 @@ class smefitConfig(Config):
     def produce_individual_prior(self, individual_coefficients):
         """Produce prior for a single-free-parameter individual fit."""
         return self._build_prior_impl(individual_coefficients)
+
+    # ------------------------------------------------------------------
+    # Mass-scan producers
+    # ------------------------------------------------------------------
+
+    def produce_individual_mass_scales(self, coefficients, chi2_scan_settings):
+        """Produce an NSList of mass scan points from the single free coefficient's prior."""
+        free_names = coefficients.free_names
+        if len(free_names) != 1:
+            raise ConfigError(
+                "mass_scan",
+                free_names,
+                f"mass_scan requires exactly one free coefficient, got {len(free_names)}: {free_names}",
+            )
+        mass_name = free_names[0]
+        n_points = chi2_scan_settings.get("n_points", 50)
+        spec = coefficients.prior_specs().get(mass_name)
+        if spec is not None and spec.get("dist") == "uniform":
+            low, high = float(spec["low"]), float(spec["high"])
+        else:
+            log.warning(
+                "Coefficient '%s' lacks a uniform prior; using default range [-1, 1].",
+                mass_name,
+            )
+            low, high = -1.0, 1.0
+        scan_points = np.linspace(low, high, n_points).tolist()
+        return NSList(scan_points, nskey="individual_mass_scale")
+
+    def produce_individual_mass_rge_matrix(
+        self, rge, coefficients, theory, individual_mass_scale
+    ):
+        """Produce RGE matrix with init_scale set to the current mass scan point.
+
+        Scan points are masses in TeV, matching the TeV^-2 Wilson coefficients
+        they feed through the ``expr:`` constraints; ``init_scale`` is in GeV.
+        """
+        rge_dict = dict(rge)
+        # 1e3 converts the scan point from TeV to GeV
+        rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
+        return build_rge_matrix(
+            rge_dict=rge_dict,
+            coeff_list=sorted(coefficients.names),
+            theory_group=theory,
+        )
+
+    def produce_individual_mass_eft_model(
+        self, theory, coefficients, individual_mass_rge_matrix, use_quad=False
+    ):
+        """Produce EFT model for a single mass scan point."""
+        return EFTModel(theory, coefficients, use_quad, individual_mass_rge_matrix)
+
+    def produce_individual_mass_ext_chi2_func(
+        self, coefficients, external_chi2, individual_mass_scale, rge=None
+    ):
+        """Load external chi2 for a single mass scan point with init_scale overridden.
+
+        Same TeV (scan point) -> GeV (``init_scale``) conversion as
+        :meth:`produce_individual_mass_rge_matrix`.
+        """
+        rge_dict = dict(rge) if rge is not None else None
+        if rge_dict is not None:
+            # 1e3 converts the scan point from TeV to GeV
+            rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
+        return load_external_chi2(external_chi2, coefficients, rge_dict=rge_dict)
+
+    def produce_individual_mass_chi2(
+        self,
+        individual_mass_eft_model=None,
+        data=None,
+        fit_covmat=None,
+        individual_mass_ext_chi2_func=None,
+    ):
+        """Produce the total chi2 for a single mass scan point."""
+        return self._build_chi2_impl(
+            individual_mass_eft_model,
+            data,
+            fit_covmat,
+            individual_mass_ext_chi2_func,
+        )

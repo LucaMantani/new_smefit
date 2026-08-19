@@ -24,6 +24,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 | BlackJAX (nested sampling or NUTS, via blackjax_settings.algorithm) | `run_blackjax_fit` | blackjax_settings |
 | Hessian / Laplace approximation | `run_hessian_fit` | optimizer_settings, gradient_descent_settings, hessian_settings |
 | Individual (one free coefficient at a time) | `run_individual_<analytic|ultranest|blackjax|hessian>_fits` | same blocks as the joint variant |
+| 1D chi2 scan, one free coefficient at a time | `chi2_scan_table, plot_chi2_scan` | chi2_scan_settings |
+| Mass scan (one free mass parameter, others constrained to it) | `mass_scan_table` | chi2_scan_settings (+ `rge`, re-run per scan point) |
 | Pseudodata / projections | `write_pseudodata` | pseudodata_settings |
 | Likelihood timing benchmark | `chi2_timing` | none |
 | Report (Fisher information, tables, plots) | `report` | template_text + optimizer_settings/gradient_descent_settings (Fisher needs gd_best_fit) |
@@ -60,13 +62,21 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices)`
+- `chi2_scan_table(individual_chi2_scans)`
+  - Per-coefficient 1D chi2 scan results as a table.
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
+- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
+  - Mass scan results as a table.
 
 ### `smefit.figures`
 
-- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised)`
+- `plot_chi2_scan(individual_chi2_scans)`
+  - Plot the 1D chi2 scan for each free coefficient.
+- `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
+  - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`
 
@@ -85,7 +95,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update_path, coefficients, datasets, external_chi2=None)`
+- `build_exact_posterior_prior(bayesian_update, coefficients, datasets, external_chi2=None)`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
@@ -131,6 +141,13 @@ names in tracebacks. They are resolved for you.
   - Hessian fit for a single free coefficient.
 - `individual_ultranest_fit(individual_prior, individual_chi2, individual_coefficients, ultranest_settings, individual_fit_coefficient)`
   - UltraNest fit for a single free coefficient.
+
+### `smefit.chi2_scan`
+
+- `individual_chi2_scan(individual_chi2, individual_coefficients, individual_fit_coefficient, chi2_scan_settings=None)`
+  - Scan the chi2 along one free coefficient, holding all others at zero.
+- `individual_mass_scan_point(individual_mass_chi2, individual_mass_scale)`
+  - Evaluate chi2 at a single mass scan point.
 
 ### `smefit.fisher`
 

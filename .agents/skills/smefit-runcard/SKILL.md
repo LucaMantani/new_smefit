@@ -1,6 +1,6 @@
 ---
 name: smefit-runcard
-description: Use this skill when creating, editing, or validating a smefit runcard — the YAML configuration for a SMEFT fit. Covers choosing the fit action (analytic, ultranest, blackjax, hessian, individual fits, projections, reports), defining Wilson coefficients and priors, RGE running, covariance flags (use_t0, use_theory_covmat, use_quad), external chi2, whitening, and every settings block (ultranest_settings, blackjax_settings, optimizer_settings, gradient_descent_settings, hessian_settings, pseudodata_settings).
+description: Use this skill when creating, editing, or validating a smefit runcard — the YAML configuration for a SMEFT fit. Covers choosing the fit action (analytic, ultranest, blackjax, hessian, individual fits, chi2/mass scans, projections, reports), defining Wilson coefficients and priors, RGE running, covariance flags (use_t0, use_theory_covmat, use_quad), external chi2, whitening, and every settings block (ultranest_settings, blackjax_settings, optimizer_settings, gradient_descent_settings, hessian_settings, pseudodata_settings, chi2_scan_settings).
 ---
 
 # smefit runcard authoring
@@ -23,10 +23,15 @@ code and kept in sync by CI:
 ## Workflow
 
 1. **Start from a template** in `templates/` — one per fit type
-   (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
-   `blackjax_nuts_fit.yaml`, `blackjax_individual_fit.yaml`, `hessian_fit.yaml`,
-   `projections.yaml`, `time_likelihood.yaml`, `report.yaml`). Do not write a
-   runcard from scratch.
+   (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_ns_fit.yaml`,
+   `blackjax_nuts_fit.yaml`, `blackjax_individual_fit.yaml`,
+   `hessian_fit.yaml`), `mass_scan.yaml` for a scan evaluating the chi2 on a
+   grid instead, plus the runcards that fit nothing: `projections.yaml`,
+   `time_likelihood.yaml`, `report.yaml`, and `posterior_correlations.yaml`
+   (reports on fits already on disk — it needs no `datasets` or `coefficients`
+   at all, so steps 2–5 do not apply to it). Do not write a runcard from
+   scratch. The 1D chi2 scan has no template of its own: start from
+   `mass_scan.yaml` and follow the recipe in `recipes.md`.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test
@@ -118,7 +123,7 @@ systematics/theory errors are present — just say so, don't ask.
 - A free coefficient needs a `prior` only for sampler actions (`run_ultranest_fit`,
   `run_blackjax_fit`, or their `individual_*` variants) — `run_analytic_fit`,
   `run_hessian_fit`, and gradient-descent fits never consume it. `whitening`/
-  `bayesian_update_path` synthesize a prior automatically either way. Only
+  `bayesian_update` synthesize a prior automatically either way. Only
   `uniform` and `gaussian`/`normal` exist (`references/priors.md`).
 - `run_blackjax_fit` runs whichever algorithm `blackjax_settings.algorithm`
   names: `nested_sampling` (the default, and the only one that produces a

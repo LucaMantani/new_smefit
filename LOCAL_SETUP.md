@@ -49,7 +49,9 @@ Any key in `.config/paths.yaml` can be used as a path prefix in runcard YAML fil
 ```yaml
 data_path: smefit_database/commondata
 theory_path: smefit_database/theory
-bayesian_update_path: smefit_results/fits/my_previous_fit
+bayesian_update:
+  name: my_previous_fit
+  path: smefit_results/fits   # optional, this is the default
 
 external_chi2:
   CMS_DYMee_13TeV:

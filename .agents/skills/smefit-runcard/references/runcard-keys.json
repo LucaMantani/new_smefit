@@ -26,6 +26,11 @@
     "individual_eft_model",
     "individual_ext_chi2_func",
     "individual_fit_coefficients",
+    "individual_mass_chi2",
+    "individual_mass_eft_model",
+    "individual_mass_ext_chi2_func",
+    "individual_mass_rge_matrix",
+    "individual_mass_scales",
     "individual_prior",
     "init_scale",
     "optimizer",
@@ -34,6 +39,10 @@
     "rge_matrix",
     "theory",
     "whitening_transformation"
+  ],
+  "fit_reading_actions": [
+    "plot_posterior_correlations",
+    "report"
   ],
   "path_prefixes": [
     "new_smefit",
@@ -57,11 +66,15 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "cmap",
+    "colorbar",
     "n_eval",
     "n_samples",
     "n_steps",
+    "params_to_plot",
     "seed",
-    "tol"
+    "tol",
+    "value_fmt"
   ],
   "raw_keys": {
     "datasets": {
@@ -77,7 +90,8 @@
       "default": "False",
       "used_by": [
         "eft_model",
-        "individual_eft_model"
+        "individual_eft_model",
+        "individual_mass_eft_model"
       ]
     },
     "use_t0": {
@@ -95,9 +109,14 @@
     }
   },
   "settings_blocks": {
-    "bayesian_update_path": {
-      "defaults": {},
-      "known_keys": null
+    "bayesian_update": {
+      "defaults": {
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "name",
+        "path"
+      ]
     },
     "blackjax_settings": {
       "defaults": {
@@ -127,6 +146,14 @@
         "repeats",
         "seed",
         "target_acceptance_rate"
+      ]
+    },
+    "chi2_scan_settings": {
+      "defaults": {
+        "n_points": "50"
+      },
+      "known_keys": [
+        "n_points"
       ]
     },
     "coefficients": {
@@ -253,9 +280,12 @@
   "top_level_keys": [
     "actions_",
     "batch_sample_sizes",
-    "bayesian_update_path",
+    "bayesian_update",
     "blackjax_settings",
+    "chi2_scan_settings",
+    "cmap",
     "coefficients",
+    "colorbar",
     "data_path",
     "datasets",
     "external_chi2",
@@ -267,6 +297,7 @@
     "n_samples",
     "n_steps",
     "optimizer_settings",
+    "params_to_plot",
     "pseudodata_settings",
     "rge",
     "seed",
@@ -277,6 +308,7 @@
     "use_quad",
     "use_t0",
     "use_theory_covmat",
+    "value_fmt",
     "whitening"
   ]
 }

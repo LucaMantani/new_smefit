@@ -155,6 +155,55 @@ Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
 `reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
 → `_make_node((name, val.value))` → `_make_callspec`.
 
+## Fanning a node out over a list: `NSList` + `collect`
+
+The other way to make the graph depend on the runcard is to build *many* copies
+of a subgraph, one per element of a list. A `produce_` returns an `NSList`
+(`reportengine.namespaces`) carrying an `nskey`; reportengine then runs the
+dependent nodes once per element, with `nskey` bound to that element in the
+namespace. A `collect(...)` at module level gathers the per-element results
+back into a plain list.
+
+Two instances, both in `smefit/config.py` + `smefit/chi2_scan.py`:
+
+```python
+# config.py — the fan-out point
+def produce_individual_fit_coefficients(self, coefficients):
+    return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
+
+
+# chi2_scan.py — the fan-in point
+individual_chi2_scans = collect(
+    "individual_chi2_scan", ("individual_fit_coefficients",)
+)
+```
+
+Rules:
+
+- **The `nskey` becomes a resolvable resource name.** Any node under the
+  fan-out may take `individual_fit_coefficient` (singular) as a parameter and
+  receives the current element. Nodes *outside* the fan-out cannot — asking for
+  it there is the "cannot find a way to compute" case.
+- **Pass `nskey` as a string literal, in `config.py`.**
+  `scripts/generate_skill_reference.py` AST-scans that file for
+  `NSList(..., nskey="...")` and excludes the names it finds
+  (`_extract_nskeys`) — a computed or imported `nskey`, or one created in
+  another module, is invisible to it. This matters because an nskey looks
+  exactly like a raw runcard key to the generator (a `produce_` parameter
+  satisfied by neither a `parse_` nor a `produce_` — the plural-producer →
+  singular-parameter hop happens inside reportengine, not in any signature).
+  Missed, it gets published in `runcard-keys.md` as a user-writable key, and
+  `validate_runcard.py` stops warning when someone writes it in a runcard.
+- **Everything downstream is duplicated, including the expensive parts.** The
+  mass scan re-derives `individual_mass_rge_matrix` per scan point on purpose
+  (each point *is* a different `init_scale`); make sure that is what you want
+  before hanging a node off a fan-out, and say so in the docstring.
+- **Name the collected result plural** (`individual_chi2_scans`) and let the
+  consuming table/figure action take that. Merging per-element dicts belongs in
+  the consumer, not in a shared mutable accumulator.
+- Fan-out plus `@figuregen` (`smefit/figures.py`) is the natural pairing for
+  per-element plots: yield `(fig, name)` and reportengine writes
+  `figures/<action>_<name>.png`.
 ## List-valued runcard keys: `element_of`
 
 A runcard key that is a **list of independent things** must never be parsed by
@@ -174,9 +223,14 @@ Three things come with it that a loop inside a `parse_`/`produce_` pair cannot
 have:
 
 - **`fits` becomes a namespace list** — `NSList(..., nskey="fit")`. A provider
-  can take a single `fit` and be collected over `("fits",)`
-  (`collect("fit_plot", ("fits",))`), one output per fit, instead of every
-  consumer taking the whole list and looping internally.
+  then takes a single `fit` and is run once per entry, instead of taking the
+  whole list and looping internally. Two ways to drive it, and the runcard
+  picks, not the provider: a runcard names the namespace at the call site
+  (`{@with fits@}`…`{@endwith@}` in a report, or `- fits <action>` in
+  `actions_`), which is what `plot_posterior_correlations` in
+  `smefit/figures.py` relies on; or another *provider* gathers the per-entry
+  results with `collect("<provider>", ("fits",))`, the way
+  `individual_fit.py` collects over `individual_fit_coefficients`.
 - **Type checking, free** — the generated plural is annotated `param: list`, so
   `fits: my_fit` (missing dash) raises `BadInputType` instead of iterating the
   characters of the string. The singular's own annotation checks each element.
@@ -207,6 +261,42 @@ cross-coefficient constraints), not a bag of independent entries.
 
 ## Adding a runcard key
 
+**First ask whether it needs adding at all.** reportengine resolves a
+provider's parameters by name, so a keyword parameter with a default is
+*already* a runcard key — settable three ways with no configuration code
+behind it:
+
+```yaml
+cmap: PuOr                                     # top-level key
+template_text: |
+  {@fits plot_posterior_correlations(cmap="PuOr")@}   # action argument, wins
+actions_:
+  - fits plot_posterior_correlations(cmap="PuOr")     # the same in actions_
+```
+
+That is how `use_quad`, `n_samples`, `seed`, `tol` and the heatmap options
+(`cmap`, `value_fmt`, `colorbar` on both figures in `smefit/figures.py`)
+work. Prefer it for anything that tunes a provider — above all presentation
+— and reach for a settings block only when the extra surface pays for
+itself. What it costs you:
+
+- **An argument that is not a parameter is silently ignored.** `_make_callspec`
+  (`reportengine/resourcebuilder.py`) matches arguments against the signature
+  and drops the rest, so `cmpa="PuOr"` does nothing and says nothing. A
+  settings block's `known_keys` would have warned.
+- **The name is global.** Two providers with a `cmap` parameter both take the
+  same top-level key; only an action argument separates them. Keep names
+  specific enough to mean one thing.
+- **The same action cannot appear twice with different arguments** — the node
+  key is built from the action's name only (`_create_default_key`), so the
+  calls collapse onto one output and the first arguments win.
+- Anything that must not vary — a colour scale that makes two plots
+  comparable, an invariant of the maths — should stay hardcoded rather than
+  become a parameter. Being settable is a decision, not a default.
+
+When a block really is warranted (several related keys, validation, defaults
+that depend on each other):
+
 1. **A settings block** (`<thing>_settings:`) → add `parse_<thing>_settings`
    to `smefit/config.py`, following `parse_hessian_settings`:
    - a `known_keys = {...}` set literal, then
@@ -221,7 +311,7 @@ cross-coefficient constraints), not a bag of independent entries.
    documented surface.
 
 2. **A raw scalar** (like `use_quad`) → no parser needed; just take it as a
-   provider/`produce_` parameter with a default. It is picked up automatically.
+   provider/`produce_` parameter with a default, as above.
 
 3. **A path** → resolve it through `smefit.paths.resolve_path` so the shareable
    prefix form (`smefit_database/...`, `smefit_results/...`) keeps working; see
@@ -261,6 +351,12 @@ protection against misspelling it.
    knows which sampler produced it and how it was driven — the action in
    `input/runcard.yaml` is the only record — so a name outside the convention
    silently leaves `fit_type` unset.
+6. **An action that reports on finished fits** takes the `fit` (or `fits`)
+   resource, which is how you would write it anyway. `collect_fit_reading_actions`
+   (`scripts/generate_skill_reference.py`) reads that parameter name to build
+   the `fit_reading_actions` list in `runcard-keys.json`: it is what tells
+   `validate_runcard.py` that a `fits:`-only runcard running this action needs
+   no `datasets`/`coefficients` of its own.
 
 ## Coefficients, priors, external chi2
 

@@ -383,18 +383,27 @@ protection against misspelling it.
   `tests/test_priors.py` — a test asserts that dict covers `_DIST_REGISTRY`
   exactly, and the contract tests keyed off it then check round-trip, log-det
   against autodiff, and that the bijector lands inside the support.
-  `Prior` then lifts that trio to the joint
-  distribution (`from_unconstrained`, `log_prob_unconstrained`,
-  `sample_unconstrained`) — these live on `Prior` itself rather than in a
-  wrapper class, because they are pure functions of its own `dists`.
-  The two derived methods live on the `_UnconstrainedMixin`, so
-  `_WhitenedToPhysicalPrior` (bijector composed with the affine transform) and
-  `ExactPosteriorPrior` (bijector delegated to its base prior — reweighting by
-  a likelihood changes the density, not the support) get them too. That is what
-  lets `smefit.blackjax_samplers.nuts.run` sample a `bayesian_update`. UltraNest
-  is the remaining exception: it needs `prior_transform`, an inverse CDF that a
-  posterior known through samples does not have, so `ultranest_fit` raises a
-  `ConfigError` up front and the `smefit-runcard` validator flags the pairing.
+- **Adding a joint prior**: subclass `JointPrior`, the ABC that declares what
+  samplers consume. Supply the five abstract primitives (`log_prob`, `sample`,
+  and the bijector trio `from_unconstrained`/`to_unconstrained`/
+  `log_det_jacobian`), pass `param_names` and `prior_specs` up through
+  `super().__init__` (the base class owns them, since `param_names` fixes the
+  coordinate order of every array the prior returns), and
+  `log_prob_unconstrained`/`sample_unconstrained` come derived — do not
+  override them. `Prior` lifts the per-parameter trio over its own `dists`;
+  `WhitenedToPhysicalPrior` composes the bijector with the affine transform;
+  `ExactPosteriorPrior` delegates it to its base prior, since reweighting by a
+  likelihood changes the density, not the support. That uniformity is what lets
+  `smefit.blackjax_samplers.nuts.run` sample a `bayesian_update`.
+  `prior_transform` is the one **optional** capability: UltraNest needs that
+  inverse CDF, which a prior known through samples cannot supply, so the base
+  class raises `NotImplementedError` with the explanation and the
+  `smefit-runcard` validator flags the pairing up front.
+- **Building a `Prior` from runcard specs**: use `Prior.from_specs(specs,
+  param_names)`, never `Prior(dists, names, specs=...)` with the two paired by
+  hand. `dists` and `prior_specs` are two representations of the same prior and
+  `prior_specs` is what lands in `fit_results.json`, so a mismatch means a fit
+  whose recorded prior is not the one that ran.
 - **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
   `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers/__init__.py` — the same
   registry pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG

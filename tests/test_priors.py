@@ -1,4 +1,4 @@
-"""Unit tests for smefit.priors — _UniformDist, _GaussianDist, _build_dist, Prior."""
+"""Unit tests for smefit.priors — _UniformDist, _GaussianDist, build_dist, Prior."""
 
 import math
 
@@ -9,11 +9,12 @@ import pytest
 from smefit.priors import (
     _DIST_REGISTRY,
     ExactPosteriorPrior,
+    JointPrior,
     Prior,
-    _build_dist,
+    WhitenedToPhysicalPrior,
     _GaussianDist,
     _UniformDist,
-    _WhitenedToPhysicalPrior,
+    build_dist,
 )
 from smefit.whitening import WhitenTransform
 
@@ -57,12 +58,12 @@ def test_gaussian_log_prob_at_mean():
 
 
 # ---------------------------------------------------------------------------
-# _build_dist
+# build_dist
 # ---------------------------------------------------------------------------
 
 
 def test_build_dist_uniform():
-    d = _build_dist({"dist": "uniform", "low": -1.0, "high": 1.0})
+    d = build_dist({"dist": "uniform", "low": -1.0, "high": 1.0})
     assert isinstance(d, _UniformDist)
     assert d.low == pytest.approx(-1.0)
     assert d.high == pytest.approx(1.0)
@@ -70,13 +71,13 @@ def test_build_dist_uniform():
 
 def test_build_dist_gaussian():
     for name in ("gaussian", "normal"):
-        d = _build_dist({"dist": name, "mean": 0.0, "std": 1.0})
+        d = build_dist({"dist": name, "mean": 0.0, "std": 1.0})
         assert isinstance(d, _GaussianDist)
 
 
 def test_build_dist_unknown():
     with pytest.raises(ValueError, match="Unknown prior"):
-        _build_dist({"dist": "laplace"})
+        build_dist({"dist": "laplace"})
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +163,7 @@ def test_contract_specs_cover_the_registry():
 @pytest.mark.parametrize("name", sorted(_CONTRACT_SPECS))
 @pytest.mark.parametrize("u", [-5.0, -3.0, -0.5, 0.0, 0.5, 3.0, 5.0])
 def test_bijector_round_trip_contract(name, u):
-    d = _build_dist(_CONTRACT_SPECS[name])
+    d = build_dist(_CONTRACT_SPECS[name])
     assert float(d.to_unconstrained(d.from_unconstrained(u))) == pytest.approx(
         u, abs=1e-3
     )
@@ -171,7 +172,7 @@ def test_bijector_round_trip_contract(name, u):
 @pytest.mark.parametrize("name", sorted(_CONTRACT_SPECS))
 @pytest.mark.parametrize("u", [-5.0, -2.0, 0.0, 2.0, 5.0])
 def test_bijector_log_det_matches_autodiff_contract(name, u):
-    d = _build_dist(_CONTRACT_SPECS[name])
+    d = build_dist(_CONTRACT_SPECS[name])
     expected = jnp.log(jnp.abs(jax.grad(d.from_unconstrained)(u)))
     assert float(d.log_det_jacobian(u)) == pytest.approx(
         float(expected), rel=1e-5, abs=1e-5
@@ -195,7 +196,7 @@ def test_bijector_maps_into_support_contract(name, u):
     because its log_prob uses inclusive bounds — which is why the extreme case
     is checked in test_uniform_bijector_stays_in_bounds instead of here.
     """
-    d = _build_dist(_CONTRACT_SPECS[name])
+    d = build_dist(_CONTRACT_SPECS[name])
     x = d.from_unconstrained(u)
     assert math.isfinite(
         float(d.log_prob(x))
@@ -206,7 +207,7 @@ def test_bijector_maps_into_support_contract(name, u):
 @pytest.mark.parametrize("u", [-1e3, 0.0, 1e3])
 def test_bijector_log_det_gradient_finite_contract(name, u):
     """A NaN or inf here poisons the whole NUTS trajectory."""
-    d = _build_dist(_CONTRACT_SPECS[name])
+    d = build_dist(_CONTRACT_SPECS[name])
     assert math.isfinite(float(d.log_det_jacobian(u)))
     assert math.isfinite(float(jax.grad(d.log_det_jacobian)(u)))
 
@@ -325,7 +326,7 @@ _TRANSFORM = WhitenTransform(
 
 @pytest.fixture
 def whitened_to_physical(mixed_prior):
-    return _WhitenedToPhysicalPrior(mixed_prior, _TRANSFORM)
+    return WhitenedToPhysicalPrior(mixed_prior, _TRANSFORM)
 
 
 @pytest.fixture
@@ -407,3 +408,75 @@ def test_exact_posterior_chains_start_on_fit1_posterior(exact_posterior):
     stored = exact_posterior._posterior_samples
     for draw in physical:
         assert bool(jnp.min(jnp.linalg.norm(stored - draw, axis=-1)) < 1e-4)
+
+
+# ---------------------------------------------------------------------------
+# The JointPrior contract
+# ---------------------------------------------------------------------------
+
+
+def test_from_specs_pairs_dists_with_the_specs_it_records():
+    """The whole point of the classmethod: what runs and what gets written to
+    fit_results.json are built from one source."""
+    specs = {
+        "a": {"dist": "uniform", "low": -2.0, "high": 3.0},
+        "b": {"dist": "gaussian", "mean": 1.0, "std": 0.5},
+    }
+    prior = Prior.from_specs(specs, ["a", "b"])
+    assert prior.prior_specs == specs
+    assert [str(d) for d in prior.dists] == [str(build_dist(specs[n])) for n in "ab"]
+
+
+def test_from_specs_orders_dists_by_param_names_not_by_spec_order():
+    """param_names fixes the coordinate order of every array the prior returns,
+    so a specs mapping in a different order must not silently transpose it."""
+    specs = {
+        "b": {"dist": "uniform", "low": 10.0, "high": 11.0},
+        "a": {"dist": "uniform", "low": -1.0, "high": 1.0},
+    }
+    prior = Prior.from_specs(specs, ["a", "b"])
+    assert prior.param_names == ["a", "b"]
+    draw = prior.sample(jax.random.PRNGKey(0), 32)
+    assert bool(jnp.all(draw[:, 0] < 1.0)) and bool(jnp.all(draw[:, 1] > 10.0))
+
+
+def test_prior_specs_default_is_not_shared_between_instances():
+    """Regression guard: a mutable default would alias every Prior built
+    without specs onto one dict."""
+    first = Prior([_UniformDist(-1.0, 1.0)], ["a"])
+    first.prior_specs["a"] = {"dist": "uniform"}
+    assert Prior([_UniformDist(-1.0, 1.0)], ["a"]).prior_specs == {}
+
+
+@pytest.mark.parametrize(
+    "prior_factory",
+    [
+        lambda: WhitenedToPhysicalPrior(
+            Prior([_UniformDist(-1.0, 1.0)], ["a"]),
+            WhitenTransform(matrix=jnp.eye(1) * 2.0, shift=jnp.zeros(1)),
+        ),
+        lambda: ExactPosteriorPrior(
+            base_prior=Prior([_UniformDist(-1.0, 1.0)], ["a"]),
+            log_likelihood_1=lambda x: 0.0,
+            samples_dict={"a": jnp.zeros(4)},
+            param_names=["a"],
+        ),
+    ],
+    ids=["whitened_to_physical", "exact_posterior"],
+)
+def test_priors_without_an_inverse_cdf_explain_themselves(prior_factory):
+    """prior_transform is the one optional capability; UltraNest is the only
+    consumer, and the message has to point somewhere useful."""
+    with pytest.raises(NotImplementedError, match="run_blackjax_fit"):
+        prior_factory().prior_transform(jnp.array([0.5]))
+
+
+def test_joint_prior_subclass_must_implement_every_primitive():
+    """The ABC is what keeps a new prior from reaching a sampler half-built."""
+
+    class Incomplete(JointPrior):
+        def log_prob(self, x):
+            return 0.0
+
+    with pytest.raises(TypeError, match="abstract"):
+        Incomplete()

@@ -25,8 +25,8 @@ from smefit.blackjax_fit import blackjax_fit
 from smefit.priors import (
     ExactPosteriorPrior,
     Prior,
+    WhitenedToPhysicalPrior,
     _UniformDist,
-    _WhitenedToPhysicalPrior,
 )
 from tests.gaussian_problem import correlated_problem  # noqa: F401  (pytest fixture)
 from tests.gaussian_problem import (
@@ -133,7 +133,7 @@ def test_bayes_update_with_whitening(correlated_problem, tmp_path):
     )
     assert_posterior(fr_fit1_w, names, Sigma1)
 
-    prior_1_phys = _WhitenedToPhysicalPrior(prior_w, transform)
+    prior_1_phys = WhitenedToPhysicalPrior(prior_w, transform)
     prior_upd = ExactPosteriorPrior(
         base_prior=prior_1_phys,
         log_likelihood_1=jax.jit(lambda t: -chi2_D1(t) / 2.0),

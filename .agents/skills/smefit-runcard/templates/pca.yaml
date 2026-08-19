@@ -47,23 +47,3 @@ pca_settings:
 
 actions_:
   - run_pca
-
-# Prints the spectrum and writes <output>/pca.json. For the same analysis as a
-# report — a spectrum plot, and a heatmap of which coefficients make up each
-# direction — swap the action above for the block below.
-#
-# Note there is no params_to_plot here: a principal direction is a combination
-# of every free coefficient, so the heatmap cannot show a subset of them. To ask
-# about a subset, free only those coefficients above.
-#
-# template_text: |
-#     PCA spectrum
-#     ============
-#     {@plot_pca_spectrum@}
-#     Principal directions
-#     ====================
-#     {@pca_spectrum@}
-#     {@plot_pca_components_heatmap@}
-#
-# actions_:
-#   - report(main=True)

@@ -188,7 +188,7 @@
     "pca_settings": {
       "defaults": {
         "min_weight": "0.01",
-        "threshold": "0.001"
+        "threshold": "1e-12"
       },
       "known_keys": [
         "min_weight",

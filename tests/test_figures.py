@@ -452,24 +452,29 @@ def test_plot_pca_spectrum_axis_and_threshold():
     assert thresholds == [_pca().threshold]
 
 
-def _scatter_sizes(ax):
-    return [
-        len(coll.get_offsets())
-        for coll in ax.collections
-        if isinstance(coll, PathCollection)
-    ]
+def _bar_sizes(ax):
+    return [len(container) for container in ax.containers]
 
 
 def test_plot_pca_spectrum_separates_flat_from_constrained():
-    """The flat direction is drawn as its own, labelled, set of points."""
+    """The flat direction is drawn as its own, labelled, set of bars."""
     fig = plot_pca_spectrum(_pca())
 
     ax = fig.axes[0]
-    assert _scatter_sizes(ax) == [2, 1]
+    assert _bar_sizes(ax) == [2, 1]
     assert [t.get_text() for t in ax.get_legend().get_texts()] == [
         "constrained",
         "flat",
     ]
+
+
+def test_plot_pca_spectrum_marks_the_exactly_flat_direction():
+    """A zero eigenvalue leaves a bar of no length, so it gets a marker too."""
+    fig = plot_pca_spectrum(_pca())
+
+    ax = fig.axes[0]
+    markers = [coll for coll in ax.collections if isinstance(coll, PathCollection)]
+    assert [len(coll.get_offsets()) for coll in markers] == [1]
 
 
 def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
@@ -483,5 +488,6 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
     fig = plot_pca_spectrum(pca_obj)
 
     ax = fig.axes[0]
-    assert _scatter_sizes(ax) == [2]
+    assert _bar_sizes(ax) == [2]
+    assert not [coll for coll in ax.collections if isinstance(coll, PathCollection)]
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ["constrained"]

@@ -107,7 +107,7 @@ gradient_descent_settings:
 
 # Required by the PCA actions; every sub-key is optional.
 pca_settings:
-    threshold: 1.0e-3
+    threshold: 1.0e-12
     min_weight: 0.01
 
 # Coefficients to fit

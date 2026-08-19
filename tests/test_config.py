@@ -809,7 +809,7 @@ def test_parse_hessian_settings_unknown_key_warns(cfg, caplog):
 
 
 def test_parse_pca_settings_defaults(cfg):
-    assert cfg.parse_pca_settings({}) == {"threshold": 1.0e-3, "min_weight": 0.01}
+    assert cfg.parse_pca_settings({}) == {"threshold": 1.0e-12, "min_weight": 0.01}
 
 
 def test_parse_pca_settings_accepts_a_bare_block(cfg):

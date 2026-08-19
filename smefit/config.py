@@ -662,7 +662,7 @@ class smefitConfig(Config):
 
         Keys
         ----
-        threshold : float, default 1e-3
+        threshold : float, default 1e-12
             A direction whose eigenvalue is below this fraction of the largest
             one is reported as flat, i.e. unconstrained by the data.
         min_weight : float, default 0.01
@@ -676,7 +676,7 @@ class smefitConfig(Config):
             log.warning("Unknown key '%s' in pca_settings.", k)
 
         parsed = {
-            "threshold": float(settings.get("threshold", 1.0e-3)),
+            "threshold": float(settings.get("threshold", 1.0e-12)),
             "min_weight": float(settings.get("min_weight", 0.01)),
         }
         if not 0.0 <= parsed["threshold"] < 1.0:

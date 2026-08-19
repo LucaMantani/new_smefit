@@ -194,8 +194,8 @@ def plot_pca_components_heatmap(
 def plot_pca_spectrum(pca):
     """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 
-    The one picture of the whole analysis: points below the dashed line are the
-    directions the data do not constrain.
+    The one picture of the whole analysis: bars falling below the dashed line
+    are the directions the data do not constrain.
 
     Parameters
     ----------
@@ -207,29 +207,55 @@ def plot_pca_spectrum(pca):
     index = np.arange(1, pca.n_components + 1)
     flat = np.array(pca.flat_mask)
 
-    # An exactly flat direction sits at zero, which a log axis cannot place. Put
-    # the floor a decade below everything of interest and draw such a point on
-    # it, as a downward triangle: the reading is "off the bottom of the scale",
-    # which is what an unconstrained direction is.
+    # An exactly flat direction sits at zero, which a log axis cannot place, so
+    # the bars grow from a floor a decade below everything of interest. That
+    # floor follows the spectrum rather than the threshold: the threshold is far
+    # below any physical scale by design, and anchoring the axis to it would
+    # spend a dozen empty decades on a plot whose bars all sit at the top. Only
+    # when something is actually flagged flat does the floor drop below it, so
+    # that the dashed line and the bars it condemns are in view together.
     positive = ratios[ratios > 0]
-    floor = min(pca.threshold, positive.min() if positive.size else pca.threshold) / 10
+    lowest = positive.min() if positive.size else pca.threshold
+    if flat.any():
+        lowest = min(lowest, pca.threshold)
+    floor = lowest / 10
     shown = np.clip(ratios, floor, None)
+    heights = shown - floor
 
     fig, ax = plt.subplots(figsize=(max(6, pca.n_components * 0.4), 5))
-    ax.vlines(index, floor, shown, color="gray", linewidth=1)
-    ax.scatter(
-        index[~flat], shown[~flat], s=60, color="C0", zorder=3, label="constrained"
+    ax.set_axisbelow(True)
+    ax.bar(
+        index[~flat],
+        heights[~flat],
+        bottom=floor,
+        width=0.7,
+        color="C0",
+        label="constrained",
     )
     if flat.any():
-        ax.scatter(
+        ax.bar(
             index[flat],
-            shown[flat],
-            s=60,
+            heights[flat],
+            bottom=floor,
+            width=0.7,
             color="C3",
-            marker="v",
-            zorder=3,
             label="flat",
         )
+        # A direction with no curvature at all sits on the floor, leaving a bar
+        # of zero length; mark it with a downward triangle so it is still read
+        # as present and off the bottom of the scale.
+        off_scale = flat & (ratios <= floor)
+        if off_scale.any():
+            ax.scatter(
+                index[off_scale],
+                np.full(int(off_scale.sum()), floor),
+                s=60,
+                color="C3",
+                marker="v",
+                zorder=3,
+            )
+    # Below the bottom of the view when nothing is flat, which is the right
+    # reading: there is then no direction for the threshold to separate.
     ax.axhline(pca.threshold, color="black", linestyle="--", linewidth=1)
 
     ax.set_yscale("log")

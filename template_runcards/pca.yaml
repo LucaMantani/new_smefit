@@ -33,7 +33,7 @@ gradient_descent_settings:
 # empty to take the defaults written here.
 pca_settings:
     # eigenvalue below this fraction of the largest one -> the direction is flat
-    threshold: 1.0e-3
+    threshold: 1.0e-12
     # eigenvector components below this are left out of the printed combination
     min_weight: 0.01
 

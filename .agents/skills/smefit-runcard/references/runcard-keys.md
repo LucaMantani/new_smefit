@@ -250,7 +250,7 @@ Parse the settings for the principal component analysis.
 
 Keys
 ----
-threshold : float, default 1e-3
+threshold : float, default 1e-12
     A direction whose eigenvalue is below this fraction of the largest
     one is reported as flat, i.e. unconstrained by the data.
 min_weight : float, default 0.01
@@ -261,7 +261,7 @@ min_weight : float, default 0.01
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `min_weight` — default: `0.01`
-- `threshold` — default: `0.001`
+- `threshold` — default: `1e-12`
 
 ### `pseudodata_settings`
 

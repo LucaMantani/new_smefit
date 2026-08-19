@@ -32,7 +32,7 @@ from smefit.paths import (
     resolve_fit_dir,
     resolve_path,
 )
-from smefit.priors import Prior, _build_dist, _UniformDist
+from smefit.priors import Prior
 from smefit.projections import Projection
 from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
@@ -770,8 +770,7 @@ class smefitConfig(Config):
         for name, spec in specs.items():
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
-        dists = [_build_dist(spec) for spec in specs.values()]
-        return Prior(dists, coefficients.free_names, specs=specs)
+        return Prior.from_specs(specs, coefficients.free_names)
 
     def produce_prior(
         self,
@@ -805,8 +804,7 @@ class smefitConfig(Config):
             sigma = whitening["sigma_prior"]
             spec = {"dist": "uniform", "low": -sigma, "high": sigma}
             specs = {name: spec for name in coefficients.free_names}
-            dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
-            return Prior(dists, coefficients.free_names, specs=specs)
+            return Prior.from_specs(specs, coefficients.free_names)
 
         return self._build_prior_impl(coefficients)
 

@@ -134,7 +134,7 @@ _DIST_REGISTRY = {
 }
 
 
-def _build_dist(spec):
+def build_dist(spec):
     spec = dict(spec)
     dist_name = spec.pop("dist").lower()
     if dist_name not in _DIST_REGISTRY:
@@ -147,16 +147,36 @@ def _build_dist(spec):
 # --- Public interface ---
 
 
-class _UnconstrainedMixin:
-    """The unconstrained-space interface gradient-based samplers ask for.
+class JointPrior(ABC):
+    """What every sampler-facing prior must provide, at the joint level.
 
-    Everything here follows from primitives a prior supplies itself:
-    ``log_prob``, ``sample``, ``from_unconstrained``, ``to_unconstrained`` and
-    ``log_det_jacobian``. Sharing the derivation keeps the three priors from
-    drifting apart — `smefit.blackjax_samplers.nuts` calls only these two
-    methods plus ``from_unconstrained``, so a prior that mixes this in is
-    NUTS-ready by construction.
+    Subclasses must also carry ``param_names`` (ordered, defining the
+    coordinate order of every array here) and ``prior_specs`` (``{name: spec}``,
+    serialised into ``fit_results.json`` and rendered back by
+    ``FitResult``).
+
+    ``prior_transform`` is the one capability that is not universal: it is an
+    inverse CDF, which a prior known only through samples and a joint density
+    cannot supply. It is defined here so the failure is a clear error rather
+    than a missing attribute.
     """
+
+    @abstractmethod
+    def log_prob(self, x): ...  # joint log density at coefficient values x
+
+    @abstractmethod
+    def sample(self, rng_key, n_samples): ...  # draws, shape (n_samples, n_params)
+
+    @abstractmethod
+    def from_unconstrained(self, u): ...  # u in R^n -> coefficient values
+
+    @abstractmethod
+    def to_unconstrained(self, x): ...  # coefficient values -> u in R^n
+
+    @abstractmethod
+    def log_det_jacobian(self, u): ...  # log |dx/du|, summed over parameters
+
+    # --- derived from the above; do not override ---
 
     @jax.jit(static_argnames=("self",))
     def log_prob_unconstrained(self, u):
@@ -167,8 +187,18 @@ class _UnconstrainedMixin:
         """Prior draws mapped to u-space, shape (n_samples, n_params)."""
         return jax.vmap(self.to_unconstrained)(self.sample(rng_key, n_samples))
 
+    # --- optional capability ---
 
-class Prior(_UnconstrainedMixin):
+    def prior_transform(self, unit_cube):
+        """Map unit-cube coordinates to parameter values (UltraNest interface)."""
+        raise NotImplementedError(
+            f"{type(self).__name__} has no prior_transform: an inverse CDF is not "
+            "available for this prior. UltraNest samples through one, so run this "
+            "fit with 'run_blackjax_fit', whose samplers need only the density."
+        )
+
+
+class Prior(JointPrior):
     """Joint prior over all free coefficients.
 
     Compatible with ultranest (prior_transform), BlackJax nested sampling
@@ -176,10 +206,26 @@ class Prior(_UnconstrainedMixin):
     unconstrained reparametrisation below rather than in coefficient space.
     """
 
-    def __init__(self, dists, param_names, specs={}):
+    def __init__(self, dists, param_names, specs=None):
         self.dists = list(dists)
         self.param_names = list(param_names)
-        self.prior_specs = specs
+        self.prior_specs = {} if specs is None else specs
+
+    @classmethod
+    def from_specs(cls, specs, param_names):
+        """Build from ``{name: spec}`` runcard mappings.
+
+        ``dists`` and ``prior_specs`` are two representations of the same
+        prior, and ``prior_specs`` is what lands in ``fit_results.json`` — so
+        pairing them by hand at each call site risks recording a prior that is
+        not the one that ran. This is the only place that pairing happens.
+        Indexing by ``param_names`` also fixes the coordinate order, rather
+        than inheriting whatever order ``specs`` happens to have.
+        """
+        param_names = list(param_names)
+        return cls(
+            [build_dist(specs[name]) for name in param_names], param_names, specs
+        )
 
     @jax.jit(static_argnames=("self",))
     def prior_transform(self, unit_cube):
@@ -216,7 +262,7 @@ class Prior(_UnconstrainedMixin):
         )
 
 
-class _WhitenedToPhysicalPrior(_UnconstrainedMixin):
+class WhitenedToPhysicalPrior(JointPrior):
     """Wraps a whitened prior, evaluated at physical-space coordinates.
 
     When a previous fit used whitening (c = transform.to_physical(c_w) =
@@ -269,7 +315,7 @@ class _WhitenedToPhysicalPrior(_UnconstrainedMixin):
         return self._whitened_prior.log_det_jacobian(u) - self._log_abs_det_matrix_inv
 
 
-class ExactPosteriorPrior(_UnconstrainedMixin):
+class ExactPosteriorPrior(JointPrior):
     """Exact posterior prior for Bayesian sequential updates.
 
     Represents P(θ|D1) as the prior for a subsequent fit:
@@ -285,9 +331,9 @@ class ExactPosteriorPrior(_UnconstrainedMixin):
 
     Parameters
     ----------
-    base_prior : Prior or _WhitenedToPhysicalPrior
+    base_prior : JointPrior
         Prior representing P(θ|D1) in physical space. Pass a plain ``Prior``
-        when the previous fit had no whitening, or a ``_WhitenedToPhysicalPrior``
+        when the previous fit had no whitening, or a ``WhitenedToPhysicalPrior``
         when it did.
     log_likelihood_1 : callable
         Function θ -> scalar: log-likelihood of fit1's data.

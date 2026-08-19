@@ -120,7 +120,7 @@ systematics/theory errors are present — just say so, don't ask.
 - A free coefficient needs a `prior` only for sampler actions (`run_ultranest_fit`,
   `run_blackjax_fit`, or their `individual_*` variants) — `run_analytic_fit`,
   `run_hessian_fit`, and gradient-descent fits never consume it. `whitening`/
-  `bayesian_update_path` synthesize a prior automatically either way. Only
+  `bayesian_update` synthesize a prior automatically either way. Only
   `uniform` and `gaussian`/`normal` exist (`references/priors.md`).
 - `use_t0: True` is the statistically sound choice when multiplicative
   systematics are present; pair it with `use_theory_covmat: True` when theory

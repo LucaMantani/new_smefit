@@ -4,12 +4,13 @@ Covers:
 - _WhitenedToPhysicalPrior  (priors.py)
 - ExactPosteriorPrior        (priors.py)
 - FitResult.from_json        (fit_result.py)
-- parse_bayesian_update_path (config.py)
-- produce_prior with bayesian_update_path (config.py)
+- parse_bayesian_update      (config.py)
+- produce_prior with bayesian_update (config.py)
 - build_exact_posterior_prior (utils.py)
 """
 
 import json
+import logging
 import math
 from unittest.mock import MagicMock, patch
 
@@ -322,7 +323,7 @@ def test_fit_result_from_json_no_samples(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# parse_bayesian_update_path
+# parse_bayesian_update
 # ---------------------------------------------------------------------------
 
 
@@ -333,82 +334,126 @@ def cfg(tmp_path):
     return c
 
 
-def test_parse_bayesian_update_path_valid(cfg, tmp_path):
-    fit_dir = tmp_path / "fit1"
-    fit_dir.mkdir()
-    (fit_dir / "fit_results.json").write_text("{}")
-    (fit_dir / "input").mkdir()
-    (fit_dir / "input" / "runcard.yaml").write_text("")
-    result = cfg.parse_bayesian_update_path(str(fit_dir))
-    assert result == fit_dir
-
-
-def test_parse_bayesian_update_path_missing_dir(cfg, tmp_path):
-    with pytest.raises(ConfigError, match="Directory not found"):
-        cfg.parse_bayesian_update_path(str(tmp_path / "no_such_dir"))
-
-
-def test_parse_bayesian_update_path_missing_fit_results(cfg, tmp_path):
-    fit_dir = tmp_path / "fit1"
-    fit_dir.mkdir()
-    (fit_dir / "input").mkdir()
-    (fit_dir / "input" / "runcard.yaml").write_text("")
-    with pytest.raises(ConfigError, match="fit_results.json not found"):
-        cfg.parse_bayesian_update_path(str(fit_dir))
-
-
-def test_parse_bayesian_update_path_missing_runcard(cfg, tmp_path):
-    fit_dir = tmp_path / "fit1"
-    fit_dir.mkdir()
-    (fit_dir / "fit_results.json").write_text("{}")
-    with pytest.raises(ConfigError, match="runcard.yaml not found"):
-        cfg.parse_bayesian_update_path(str(fit_dir))
-
-
-def test_parse_bayesian_update_path_resolves_prefix(cfg, tmp_path):
-    fit_dir = tmp_path / "fits" / "fit1"
+def _previous_fit(base, name="fit1"):
+    """Minimal on-disk layout of a completed fit."""
+    fit_dir = base / name
     (fit_dir / "input").mkdir(parents=True)
     (fit_dir / "fit_results.json").write_text("{}")
     (fit_dir / "input" / "runcard.yaml").write_text("")
+    return fit_dir
+
+
+def test_parse_bayesian_update_name_and_path(cfg, tmp_path):
+    fit_dir = _previous_fit(tmp_path)
+    result = cfg.parse_bayesian_update({"name": "fit1", "path": str(tmp_path)})
+    assert result == {"name": "fit1", "path": fit_dir}
+
+
+def test_parse_bayesian_update_name_only(cfg, tmp_path):
+    """Without 'path' the fit is looked up under smefit_results/fits."""
+    fit_dir = _previous_fit(tmp_path / "fits")
 
     with patch(
         "smefit.paths.load_user_paths",
         return_value={"smefit_results": str(tmp_path)},
     ):
-        result = cfg.parse_bayesian_update_path("smefit_results/fits/fit1")
+        result = cfg.parse_bayesian_update({"name": "fit1"})
 
-    assert result == fit_dir
+    assert result == {"name": "fit1", "path": fit_dir}
 
 
-def test_parse_bayesian_update_path_unconfigured_prefix(cfg):
+def test_parse_bayesian_update_string_shorthand(cfg, tmp_path):
+    """A bare string is the fit name."""
+    fit_dir = _previous_fit(tmp_path / "fits")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_bayesian_update("fit1")
+
+    assert result == {"name": "fit1", "path": fit_dir}
+
+
+def test_parse_bayesian_update_resolves_prefix(cfg, tmp_path):
+    """'path' is prefix-resolved like any other runcard path."""
+    fit_dir = _previous_fit(tmp_path / "fits")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_bayesian_update(
+            {"name": "fit1", "path": "smefit_results/fits"}
+        )
+
+    assert result == {"name": "fit1", "path": fit_dir}
+
+
+def test_parse_bayesian_update_without_name(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="requires a 'name'"):
+        cfg.parse_bayesian_update({"path": str(tmp_path)})
+
+
+def test_parse_bayesian_update_unknown_key_warns(cfg, tmp_path, caplog):
+    _previous_fit(tmp_path)
+    with caplog.at_level(logging.WARNING):
+        cfg.parse_bayesian_update(
+            {"name": "fit1", "path": str(tmp_path), "label": "ignored"}
+        )
+    assert "Unknown key 'label'" in caplog.text
+
+
+def test_parse_bayesian_update_missing_dir(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="not found"):
+        cfg.parse_bayesian_update({"name": "no_such_fit", "path": str(tmp_path)})
+
+
+def test_parse_bayesian_update_missing_fit_results(cfg, tmp_path):
+    fit_dir = tmp_path / "fit1"
+    (fit_dir / "input").mkdir(parents=True)
+    (fit_dir / "input" / "runcard.yaml").write_text("")
+    with pytest.raises(ConfigError, match="fit_results.json not found"):
+        cfg.parse_bayesian_update({"name": "fit1", "path": str(tmp_path)})
+
+
+def test_parse_bayesian_update_missing_runcard(cfg, tmp_path):
+    fit_dir = tmp_path / "fit1"
+    fit_dir.mkdir()
+    (fit_dir / "fit_results.json").write_text("{}")
+    with pytest.raises(ConfigError, match="runcard.yaml not found"):
+        cfg.parse_bayesian_update({"name": "fit1", "path": str(tmp_path)})
+
+
+def test_parse_bayesian_update_unconfigured_prefix(cfg):
     with patch("smefit.paths.load_user_paths", return_value={}):
         with pytest.raises(ConfigError, match="smefit_setup_local"):
-            cfg.parse_bayesian_update_path("smefit_results/fits/fit1")
+            cfg.parse_bayesian_update({"name": "fit1"})
 
 
 # ---------------------------------------------------------------------------
-# produce_prior with bayesian_update_path
+# produce_prior with bayesian_update
 # ---------------------------------------------------------------------------
 
 
 def test_produce_prior_bayesian_update_returns_exact_posterior(cfg, coeff_group):
-    """produce_prior delegates to build_exact_posterior_prior when path is given."""
+    """produce_prior delegates to build_exact_posterior_prior when a fit is given."""
     mock_epp = MagicMock(spec=ExactPosteriorPrior)
     with patch("smefit.config.build_exact_posterior_prior", return_value=mock_epp):
         result = cfg.produce_prior(
             coeff_group,
-            bayesian_update_path="/some/path",
+            bayesian_update={"name": "fit1", "path": "/some/path"},
         )
     assert result is mock_epp
 
 
 def test_produce_prior_bayesian_update_with_whitening_raises(cfg, coeff_group):
-    """Combining bayesian_update_path with whitening is not allowed."""
+    """Combining bayesian_update with whitening is not allowed."""
     with pytest.raises(ConfigError, match="whitening is not compatible"):
         cfg.produce_prior(
             coeff_group,
             whitening={"sigma_prior": 3.0, "eps": 1e-8},
-            bayesian_update_path="/some/path",
+            bayesian_update={"name": "fit1", "path": "/some/path"},
         )
 
 
@@ -423,6 +468,11 @@ def _mock_coeff_group(free_names):
     return cg
 
 
+def _update(fit_dir):
+    """The mapping parse_bayesian_update hands to build_exact_posterior_prior."""
+    return {"name": fit_dir.name, "path": fit_dir}
+
+
 def test_build_param_mismatch_raises(tmp_path):
     """Mismatched free parameters between fit1 and current runcard raise ConfigError."""
     fit_dir = _make_fit_dir(
@@ -432,7 +482,7 @@ def test_build_param_mismatch_raises(tmp_path):
     )
     cg = _mock_coeff_group(["OpA", "OpB"])  # different
     with pytest.raises(ConfigError, match="Free parameters mismatch"):
-        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
 
 def test_build_no_samples_raises(tmp_path):
@@ -450,7 +500,7 @@ def test_build_no_samples_raises(tmp_path):
 
     cg = _mock_coeff_group(["OpA"])
     with pytest.raises(ConfigError, match="no posterior samples"):
-        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
 
 def test_build_dataset_overlap_raises(tmp_path):
@@ -464,7 +514,7 @@ def test_build_dataset_overlap_raises(tmp_path):
     cg = _mock_coeff_group(["OpA"])
     current_datasets = [{"name": "DS_SHARED", "order": "LO"}]
     with pytest.raises(ConfigError, match="double-count"):
-        build_exact_posterior_prior(fit_dir, cg, datasets=current_datasets)
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=current_datasets)
 
 
 def test_build_external_chi2_overlap_raises(tmp_path):
@@ -478,7 +528,7 @@ def test_build_external_chi2_overlap_raises(tmp_path):
     cg = _mock_coeff_group(["OpA"])
     with pytest.raises(ConfigError, match="double-count"):
         build_exact_posterior_prior(
-            fit_dir, cg, datasets=None, external_chi2={"EXT_A": {}}
+            _update(fit_dir), cg, datasets=None, external_chi2={"EXT_A": {}}
         )
 
 
@@ -499,7 +549,7 @@ def test_build_returns_exact_posterior_prior(tmp_path):
     with patch("smefit.api.smefitAPI") as mock_api:
         mock_api.chi2.return_value = mock_chi2_fn
         mock_api.prior.return_value = base_prior
-        result = build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        result = build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
     assert isinstance(result, ExactPosteriorPrior)
     assert result.param_names == ["OpA", "OpB"]
@@ -522,7 +572,7 @@ def test_build_whitening_wraps_prior(tmp_path):
     with patch("smefit.api.smefitAPI") as mock_api:
         mock_api.chi2.return_value = mock_chi2_fn
         mock_api.prior.return_value = base_prior
-        result = build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        result = build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
     # The prior inside ExactPosteriorPrior should be a _WhitenedToPhysicalPrior
     from smefit.priors import _WhitenedToPhysicalPrior
@@ -557,7 +607,7 @@ def test_build_individual_fit_raises(tmp_path):
 
     cg = _mock_coeff_group(["OpA", "OpB"])
     with pytest.raises(ConfigError, match="one coefficient at a time"):
-        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
 
 def test_build_unreadable_fit_dir_raises_config_error(tmp_path):
@@ -572,7 +622,7 @@ def test_build_unreadable_fit_dir_raises_config_error(tmp_path):
 
     cg = _mock_coeff_group(["OpA"])
     with pytest.raises(ConfigError, match="Could not load the previous fit"):
-        build_exact_posterior_prior(fit_dir, cg, datasets=None)
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
 
 def test_build_whitening_active_but_no_matrix_raises(tmp_path):
@@ -592,4 +642,4 @@ def test_build_whitening_active_but_no_matrix_raises(tmp_path):
         mock_api.chi2.return_value = mock_chi2_fn
         mock_api.prior.return_value = base_prior
         with pytest.raises(ConfigError, match="whitening_transformation was saved"):
-            build_exact_posterior_prior(fit_dir, cg, datasets=None)
+            build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)

@@ -158,25 +158,29 @@ def time_chi2_vec(
 
 
 def build_exact_posterior_prior(
-    bayesian_update_path, coefficients, datasets, external_chi2=None
+    bayesian_update, coefficients, datasets, external_chi2=None
 ):
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
+
+    ``bayesian_update`` is the mapping returned by
+    :meth:`smefitConfig.parse_bayesian_update`, whose ``path`` is the resolved
+    directory of the previous fit.
 
     Loads fit1 with :meth:`Fit.from_folder` — its numbers and the runcard it was
     run with — rebuilds chi2 for fit1's data from that runcard, and returns an
     ExactPosteriorPrior whose log_prob = log_prior_1 + log_likelihood_1.
     """
+    fit_path = bayesian_update["path"]
+
     # --- Load previous fit: its result and the runcard it was run with ---
     try:
-        prev_fit = Fit.from_folder(bayesian_update_path)
+        prev_fit = Fit.from_folder(fit_path)
     except (KeyError, OSError, ValueError) as e:
-        raise ConfigError(
-            f"Could not load the previous fit at {bayesian_update_path}: {e}"
-        ) from e
+        raise ConfigError(f"Could not load the previous fit at {fit_path}: {e}") from e
 
     if prev_fit.individual_fit:
         raise ConfigError(
-            f"The fit at {bayesian_update_path} was run one coefficient at a time, "
+            f"The fit at {fit_path} was run one coefficient at a time, "
             "so it holds an independent 1D posterior per coefficient rather than "
             "the joint posterior a Bayesian update needs as its prior."
         )
@@ -192,9 +196,7 @@ def build_exact_posterior_prior(
         )
 
     if prev.samples is None:
-        raise ConfigError(
-            f"Previous fit at {bayesian_update_path} has no posterior samples. "
-        )
+        raise ConfigError(f"Previous fit at {fit_path} has no posterior samples. ")
 
     # --- Check for dataset overlap ---
     if datasets:
@@ -230,7 +232,7 @@ def build_exact_posterior_prior(
     if prev.whitening_active:
         if prev.whitening_transformation is None:
             raise ConfigError(
-                f"Previous fit at {bayesian_update_path} used whitening but "
+                f"Previous fit at {fit_path} used whitening but "
                 "no whitening_transformation was saved."
             )
         prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
@@ -240,7 +242,7 @@ def build_exact_posterior_prior(
         log_likelihood_1=log_likelihood_1,
         samples_dict=prev.samples,
         param_names=prev.free_parameters,
-        source_path=str(bayesian_update_path),
+        source_path=str(fit_path),
     )
 
 

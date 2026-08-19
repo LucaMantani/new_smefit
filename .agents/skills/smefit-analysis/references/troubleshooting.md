@@ -16,14 +16,14 @@ of the actual exceptions raised by the code.
 | `KeyError: '<order>'` while loading theory | The requested `order` is not a key of that dataset's theory JSON. `smefit_db.py info <name>` lists the allowed orders. |
 | `Theory covariance type <type> not found for dataset <name>` | `theory_cov:` value not available for that dataset (types are per-dataset). |
 | `rge block requires 'init_scale'` | Add `init_scale:` (GeV) to the `rge` block. |
-| `Free coefficient '<name>' has no prior defined` | Every `free: True` coefficient needs a `prior` (unless whitening / bayesian_update_path is active). |
+| `Free coefficient '<name>' has no prior defined` | Every `free: True` coefficient needs a `prior` (unless whitening / bayesian_update is active). |
 | `<name>: free=True forbids 'value' and 'expr'` (and similar) | Coefficient kind invariants violated — see the smefit-runcard skill's `coefficients.md`. |
 | `Module <stem> not found in <path>` | `external_chi2` `path:` doesn't point at the module file (usually a stale `/path/to/smefit_database` placeholder). |
 | `No data provided and no external_chi2 configured` | Runcard has neither `datasets` nor `external_chi2`. |
 | `Could not find previous ultranest fit at <log_dir>` | `ReactiveNS_settings.resume: True` but no previous run in the output dir — drop `resume` or point `-o` at the old output. |
-| `fit_results.json not found at <path>` / `input/runcard.yaml not found` | `bayesian_update_path` must point at a *completed* smefit output directory. |
+| `fit_results.json not found at <path>` / `input/runcard.yaml not found` | The `bayesian_update` fit must be a *completed* smefit output directory. |
 | reportengine `ConfigError` about an unknown action | Action name not in `references/actions.md` (typo, or the runcard predates a rename). |
-| `whitening is not compatible with bayesian_update_path` | Exactly that — remove one of the two. |
+| `whitening is not compatible with bayesian_update` | Exactly that — remove one of the two. |
 
 ## Silent misbehavior (no crash)
 

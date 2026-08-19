@@ -8,7 +8,6 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import rc
 from reportengine.figure import figure, figuregen
 
 from smefit.op_to_latex import coeff_info_latex
@@ -127,19 +126,16 @@ def plot_chi2_scan(individual_chi2_scans):
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
     """
-    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-    rc("text", usetex=True)
-    rc("text.latex", preamble=r"\usepackage{amssymb}")
+    set_plot_style()
 
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     for name, data in results.items():
         label = coeff_info_latex.get(name, name)
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(6, 5), layout="constrained")
         ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
         ax.set_xlabel(label)
         ax.set_ylabel(r"$\chi^2$")
         ax.grid(alpha=0.3)
-        fig.tight_layout()
         yield fig, name
 
 

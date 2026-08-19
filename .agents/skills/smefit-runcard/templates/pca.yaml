@@ -1,0 +1,49 @@
+# AUTO-COPIED from template_runcards/pca.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Principal component analysis of the Fisher information matrix: which linear
+# combinations of coefficients the data constrain, and which are flat.
+#
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: False
+
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+
+coefficients:
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+
+# The Fisher matrix is evaluated at the gd_best_fit point. `sm_solution: true`
+# skips the minimisation and uses the coefficients' baseline values instead, so
+# the PCA costs a single Hessian evaluation and needs no fit — that is the usual
+# way to ask "what would this dataset constrain?" before running anything.
+gradient_descent_settings:
+    sm_solution: true
+
+# Required by the PCA actions, but every sub-key is optional: leave the block
+# empty to take the defaults written here.
+pca_settings:
+    # eigenvalue below this fraction of the largest one -> the direction is flat
+    threshold: 1.0e-12
+    # eigenvector components below this are left out of the printed combination
+    min_weight: 0.01
+
+actions_:
+  - run_pca

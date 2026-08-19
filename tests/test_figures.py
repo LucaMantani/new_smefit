@@ -1,10 +1,12 @@
-"""Unit tests for smefit.figures — _plot_heatmap and the heatmaps built on it.
+"""Unit tests for smefit.figures — the report figures and the heatmap they share.
 
-_plot_heatmap enables matplotlib's usetex globally, which would require a
-LaTeX installation to actually render text. Tests here never draw/save the
-figure (get_text() etc. only read stored attributes), and the module-level
-`rc` call is neutralised so running the suite never depends on LaTeX being
-installed (e.g. on CI runners).
+The figures enable matplotlib's usetex, which needs a LaTeX installation to
+render any text. CI has none, and installing one is expensive, so the suite must
+never invoke it — see the `_no_latex` fixture below.
+
+Most tests here also avoid drawing at all (get_text() and friends only read
+stored attributes), but that is not something to rely on — anything that
+measures text, `tight_layout()` above all, renders it.
 """
 
 import jax.numpy as jnp
@@ -13,24 +15,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
 
 from smefit import figures as figures_mod
 from smefit.figures import (
     _plot_heatmap,
     plot_chi2_scan,
     plot_fisher_diagonals_heatmap,
+    plot_pca_components_heatmap,
+    plot_pca_spectrum,
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
+from smefit.op_to_latex import coeff_info_latex
+from smefit.pca import PCA
 
 
 @pytest.fixture(autouse=True)
-def _no_matplotlib_rc(monkeypatch):
-    monkeypatch.setattr(figures_mod, "rc", lambda *args, **kwargs: None)
-    monkeypatch.setitem(plt.rcParams, "text.usetex", False)
-    monkeypatch.setattr(
-        matplotlib.figure.Figure, "tight_layout", lambda self, *a, **kw: None
-    )
+def _no_latex(monkeypatch):
+    """Keep matplotlib off LaTeX for the duration of a test.
+
+    Stubbing out `set_plot_style` is what stops the figures switching usetex on.
+    The rcParam is then forced off as well, so the invariant the suite needs —
+    "no LaTeX is invoked" — is asserted directly rather than inferred from
+    nobody having turned it on; that inference is exactly what broke when
+    `smefit.op_to_latex` used to do it at import time.
+    """
+    monkeypatch.setattr(figures_mod, "set_plot_style", lambda: None)
+    monkeypatch.setitem(matplotlib.rcParams, "text.usetex", False)
     yield
     plt.close("all")
 
@@ -421,3 +433,97 @@ def test_plot_posterior_correlations_skips_a_coefficient_this_fit_lacks():
 
     ax = fig.axes[0]
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA"]
+
+
+# ---------------------------------------------------------------------------
+# plot_pca_components_heatmap / plot_pca_spectrum
+# ---------------------------------------------------------------------------
+
+
+def _pca(**kwargs):
+    return PCA(
+        eigenvalues=np.array([4.0, 1.0, 0.0]),
+        eigenvectors=np.array([[0.8, -0.6, 0.0], [0.6, 0.8, 0.0], [0.0, 0.0, 1.0]]),
+        coeff_names=["OpA", "OpB", "OpC"],
+        **{"threshold": 1.0e-3, "min_weight": 0.01, **kwargs},
+    )
+
+
+def test_plot_pca_components_heatmap_axis_labels():
+    fig = plot_pca_components_heatmap(_pca().as_frame())
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
+    assert [t.get_text() for t in ax.get_yticklabels()] == [
+        coeff_info_latex.get(name, name) for name in ["OpA", "OpB", "OpC"]
+    ]
+
+
+def test_plot_pca_components_heatmap_keeps_zero_cells():
+    """A zero weight is a value, not an absent source, so it is drawn."""
+    fig = plot_pca_components_heatmap(_pca().as_frame())
+
+    ax = fig.axes[0]
+    assert len(ax.texts) == 9
+    assert "0.00" in [t.get_text() for t in ax.texts]
+
+
+def test_plot_pca_components_heatmap_uses_a_symmetric_scale():
+    fig = plot_pca_components_heatmap(_pca().as_frame())
+
+    im = fig.axes[0].images[0]
+    assert (im.norm.vmin, im.norm.vmax) == (-1, 1)
+
+
+def test_plot_pca_spectrum_axis_and_threshold():
+    fig = plot_pca_spectrum(_pca())
+
+    ax = fig.axes[0]
+    assert ax.get_yscale() == "log"
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
+    # the dashed line sits at the flat-direction threshold
+    thresholds = [
+        line.get_ydata()[0] for line in ax.lines if line.get_linestyle() == "--"
+    ]
+    assert thresholds == [_pca().threshold]
+
+
+def _bar_sizes(ax):
+    return [len(container) for container in ax.containers]
+
+
+def test_plot_pca_spectrum_separates_flat_from_constrained():
+    """The flat direction is drawn as its own, labelled, set of bars."""
+    fig = plot_pca_spectrum(_pca())
+
+    ax = fig.axes[0]
+    assert _bar_sizes(ax) == [2, 1]
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == [
+        "constrained",
+        "flat",
+    ]
+
+
+def test_plot_pca_spectrum_marks_the_exactly_flat_direction():
+    """A zero eigenvalue leaves a bar of no length, so it gets a marker too."""
+    fig = plot_pca_spectrum(_pca())
+
+    ax = fig.axes[0]
+    markers = [coll for coll in ax.collections if isinstance(coll, PathCollection)]
+    assert [len(coll.get_offsets()) for coll in markers] == [1]
+
+
+def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
+    pca_obj = PCA(
+        eigenvalues=np.array([4.0, 1.0]),
+        eigenvectors=np.eye(2),
+        coeff_names=["OpA", "OpB"],
+        threshold=1.0e-3,
+        min_weight=0.01,
+    )
+    fig = plot_pca_spectrum(pca_obj)
+
+    ax = fig.axes[0]
+    assert _bar_sizes(ax) == [2]
+    assert not [coll for coll in ax.collections if isinstance(coll, PathCollection)]
+    assert [t.get_text() for t in ax.get_legend().get_texts()] == ["constrained"]

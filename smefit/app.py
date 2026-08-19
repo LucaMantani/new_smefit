@@ -22,6 +22,7 @@ smefit_providers = [
     "smefit.chi2_scan",
     "smefit.fit_actions",
     "smefit.fisher",
+    "smefit.pca",
     "smefit.tables",
     "smefit.figures",
     "smefit.utils_actions",

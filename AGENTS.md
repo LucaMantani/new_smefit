@@ -103,10 +103,10 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
 
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
-`blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
-`external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
-`tables.py`, `wcxf.py`, `op_to_latex.py`, `utils_actions.py`, `constants.py`, `api.py` (the
-`reportengine` programmatic API).
+`blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`,
+`projections.py`, `external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`,
+`pca.py`, `figures.py`, `tables.py`, `plot_utils.py`, `wcxf.py`, `op_to_latex.py`,
+`utils_actions.py`, `constants.py`, `api.py` (the `reportengine` programmatic API).
 
 ### reportengine integration
 
@@ -189,8 +189,22 @@ which one: `baseline` (default) centres on the coefficients' baseline point
 `gd_best_fit` point instead, which additionally requires a
 `gradient_descent_settings` block in the runcard.
 
+A `pca_settings:` block configures the principal component analysis of the
+Fisher matrix (`pca.py`). Any runcard running a PCA action must carry it — there
+is no `produce_` supplying one — though it may be left empty, since every
+sub-key has a default: `threshold` is the fraction of the largest eigenvalue
+below which a direction counts as flat, `min_weight` the smallest eigenvector
+component still named when a direction is written out as a combination. The
+analysis is diagnostic — it reads the Fisher matrix and never feeds back into the
+likelihood — and with `gradient_descent_settings: {sm_solution: true}` it costs
+one Hessian evaluation, so it answers "what would this dataset constrain?"
+without running a fit.
+
 An optional `params_to_plot: [OtG, OpQM, ...]` list restricts a report to those
 coefficients, in that order. It is a plain provider parameter, global on purpose:
 every report routine taking one reads the same key, so figures and tables agree on
 which operators they are about. Each routine keeps whichever of the names it has —
 fits need not share coefficients — via `smefit.plot_utils.select_params`.
+A routine only takes the key where a subset is still the same quantity: not every
+one does, and `pca_components` is the counterexample, since a principal direction
+is a combination of all the free coefficients at once.

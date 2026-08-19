@@ -68,6 +68,10 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.
+- `pca_components(pca)`
+  - Weight of each coefficient in each principal direction.
+- `pca_spectrum(pca)`
+  - One row per principal direction, strongest first.
 
 ### `smefit.figures`
 
@@ -75,11 +79,17 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
+  - Plot the principal-direction weights as a heatmap.
+- `plot_pca_spectrum(pca)`
+  - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 - `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`
 
+- `run_pca(pca, output_path)`
+  - Print the principal-component analysis and save it.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 
@@ -155,3 +165,10 @@ names in tracebacks. They are resolved for you.
   - Aggregate Fisher matrices by summing within each group.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
+- `total_fisher_information_matrix(chi2, gd_best_fit)`
+  - Fisher information matrix of the full likelihood at the best-fit point.
+
+### `smefit.pca`
+
+- `pca(total_fisher_information_matrix, pca_settings) -> smefit.pca.PCA`
+  - Diagonalise the total Fisher matrix.

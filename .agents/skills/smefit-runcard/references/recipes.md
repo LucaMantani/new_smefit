@@ -42,7 +42,7 @@ the chi2 Hessian at the shift point is the identity, with a
 coefficients have wildly different sensitivities (badly conditioned
 posteriors). Individual `prior:` entries on free coefficients are ignored
 while whitening is active, but free coefficients still need `free: True`.
-Incompatible with `bayesian_update_path`.
+Incompatible with `bayesian_update`.
 
 `shift` picks the point the whitening transform is centred on:
 - `baseline` (default) — the coefficients' baseline point (`baseline_value`,
@@ -54,8 +54,14 @@ Incompatible with `bayesian_update_path`.
 ## Sequential Bayesian updating
 
 ```yaml
-bayesian_update_path: /path/to/previous_fit_output
+bayesian_update:
+  name: my_previous_fit          # the fit directory name
+  path: smefit_results/fits      # optional: where to look for it (this is the default)
 ```
+
+The shorthand `bayesian_update: my_previous_fit` is equivalent. The fit is
+looked up exactly like a `fits:` entry — under `smefit_results/fits/` unless
+`path` says otherwise, and downloaded from the server if it is not there yet.
 
 Uses the exact posterior of a previous fit as the prior of this one. The
 directory must contain `fit_results.json` and `input/runcard.yaml` (both are

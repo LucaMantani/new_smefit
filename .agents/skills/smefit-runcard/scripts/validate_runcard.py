@@ -161,6 +161,43 @@ class PathResolver:
         return path_str
 
 
+def check_bayesian_update(update, resolver, rep):
+    """Validate the `bayesian_update` entry: a fit name, or {name, path}."""
+    if update is None:
+        return
+    if isinstance(update, str):
+        entry = {"name": update}
+    elif isinstance(update, dict):
+        entry = update
+    else:
+        rep.error("bayesian_update: must be a fit name or a mapping with a 'name'")
+        return
+
+    if "name" not in entry:
+        rep.error("bayesian_update: needs a 'name' (the fit directory name)")
+        return
+    for k in set(entry) - {"name", "path"}:
+        rep.warn(f"bayesian_update: unknown sub-key '{k}' — it is ignored")
+
+    base = str(entry.get("path", "smefit_results/fits"))
+    resolved = resolver.resolve(base, rep, "bayesian_update.path")
+    if resolved is None:
+        return
+    fit_dir = Path(resolved) / str(entry["name"])
+    if not fit_dir.exists():
+        # Same auto-download rule as rg_matrix: a fit missing under
+        # smefit_results/ is fetched from the server at run time.
+        if resolver.has_prefix(base, "smefit_results"):
+            rep.warn(
+                f"bayesian_update: {fit_dir} not found locally — smefit "
+                "will try to download the fit from the server at run time"
+            )
+        else:
+            rep.error(f"bayesian_update: directory not found: {fit_dir}")
+    elif not (fit_dir / "fit_results.json").exists():
+        rep.error(f"bayesian_update: fit_results.json not found in {fit_dir}")
+
+
 def check_coefficient(
     name, spec, prior_dists, rep, coeff_keys=None, require_prior=True
 ):
@@ -184,7 +221,7 @@ def check_coefficient(
                 rep.error(
                     f"coefficients.{name}: free coefficient needs a prior — required "
                     "by a sampler action in 'actions_' (unless the runcard uses "
-                    "whitening or bayesian_update_path)"
+                    "whitening or bayesian_update)"
                 )
         elif isinstance(prior, dict):
             dist = prior.get("dist")
@@ -521,11 +558,11 @@ def main():
         # when a sampler action (run_*ultranest*/*blackjax*) needs the
         # `prior`/`individual_prior` node — run_analytic_fit, run_hessian_fit,
         # gradient-descent fits, and their individual variants never resolve
-        # it. Even then, `whitening`/`bayesian_update_path` make reportengine
+        # it. Even then, `whitening`/`bayesian_update` make reportengine
         # synthesize a prior itself, so per-coefficient priors are unneeded.
         needs_sampler_prior = any(a in SAMPLER_BLOCKS for a in action_names)
         require_prior = needs_sampler_prior and not (
-            "whitening" in runcard or "bayesian_update_path" in runcard
+            "whitening" in runcard or "bayesian_update" in runcard
         )
         for name, spec in coefficients.items():
             check_coefficient(
@@ -571,23 +608,7 @@ def main():
                         cfg["rg_matrix"], f"{label}.rg_matrix", resolver, rep
                     )
 
-    update_path = runcard.get("bayesian_update_path")
-    if update_path is not None:
-        # Same auto-download rule as rg_matrix: a fit missing under
-        # smefit_results/ is fetched from the server at run time.
-        resolved = resolver.resolve(update_path, rep, "bayesian_update_path")
-        if resolved is not None and not Path(resolved).exists():
-            if resolver.has_prefix(str(update_path), "smefit_results"):
-                rep.warn(
-                    f"bayesian_update_path: {resolved} not found locally — smefit "
-                    "will try to download the fit from the server at run time"
-                )
-            else:
-                rep.error(f"bayesian_update_path: directory not found: {resolved}")
-        elif (
-            resolved is not None and not (Path(resolved) / "fit_results.json").exists()
-        ):
-            rep.error(f"bayesian_update_path: fit_results.json not found in {resolved}")
+    check_bayesian_update(runcard.get("bayesian_update"), resolver, rep)
 
     operators = check_datasets(runcard, keys, rep, resolver)
     # An `rge` block evolves coefficients from a different scale, and external

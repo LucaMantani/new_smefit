@@ -164,7 +164,7 @@ def test_free_coefficient_needs_prior_for_sampler_action(tmp_path):
 
 
 def _previous_fit_dir(tmp_path):
-    """The minimal layout parse_bayesian_update_path insists on."""
+    """The minimal layout parse_bayesian_update insists on."""
     fit_dir = tmp_path / "previous_fit"
     (fit_dir / "input").mkdir(parents=True)
     (fit_dir / "fit_results.json").write_text("{}")
@@ -176,16 +176,17 @@ def _previous_fit_dir(tmp_path):
     "extra_key, extra_value",
     [
         ("whitening", {"sigma_prior": 5.0}),
-        ("bayesian_update_path", None),  # replaced by a real fit dir below
+        ("bayesian_update", None),  # replaced by a real fit dir below
     ],
 )
 def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_prior(
     tmp_path, extra_key, extra_value
 ):
-    """whitening/bayesian_update_path make reportengine build the `prior`
+    """whitening/bayesian_update make reportengine build the `prior`
     node itself, without needing a per-coefficient spec."""
-    if extra_key == "bayesian_update_path":
-        extra_value = str(_previous_fit_dir(tmp_path))
+    if extra_key == "bayesian_update":
+        fit_dir = _previous_fit_dir(tmp_path)
+        extra_value = {"name": fit_dir.name, "path": str(fit_dir.parent)}
     code, out = validate(
         tmp_path,
         coefficients={"OpA": {"free": True}},
@@ -195,16 +196,28 @@ def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_pr
     assert code == 0, out
 
 
-def test_missing_bayesian_update_path_errors(tmp_path):
-    code, out = validate(tmp_path, bayesian_update_path=str(tmp_path / "no_such_fit"))
+def test_missing_bayesian_update_errors(tmp_path):
+    code, out = validate(
+        tmp_path,
+        bayesian_update={"name": "no_such_fit", "path": str(tmp_path)},
+    )
     assert code == 1, out
-    assert "bayesian_update_path" in out
+    assert "bayesian_update" in out
 
 
-def test_bayesian_update_path_without_fit_results_errors(tmp_path):
+def test_bayesian_update_without_name_errors(tmp_path):
+    code, out = validate(tmp_path, bayesian_update={"path": str(tmp_path)})
+    assert code == 1, out
+    assert "needs a 'name'" in out
+
+
+def test_bayesian_update_without_fit_results_errors(tmp_path):
     fit_dir = tmp_path / "previous_fit"
     fit_dir.mkdir()
-    code, out = validate(tmp_path, bayesian_update_path=str(fit_dir))
+    code, out = validate(
+        tmp_path,
+        bayesian_update={"name": fit_dir.name, "path": str(tmp_path)},
+    )
     assert code == 1, out
     assert "fit_results.json not found" in out
 

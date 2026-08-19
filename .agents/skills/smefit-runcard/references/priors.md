@@ -16,4 +16,4 @@ Special cases (selected automatically, never via `dist`):
 
 - `whitening:` block — every free coefficient gets `uniform[-sigma_prior, sigma_prior]`
   in whitened space.
-- `bayesian_update_path:` — the previous fit's exact posterior becomes the prior.
+- `bayesian_update:` — the previous fit's exact posterior becomes the prior.

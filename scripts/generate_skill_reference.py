@@ -428,7 +428,7 @@ def render_runcard_keys_md(surface, paths_info, coeff_keys):
         "## Path resolution (shareable runcards)",
         "",
         "Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,",
-        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,",
+        "`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update[.path]`,",
         "`fits[*].path`) support prefix-relative form,",
         f"resolved via the machine-specific `{paths_info['config_file']}` (created by",
         "`smefit_setup_local`). Standard prefixes: "
@@ -572,7 +572,7 @@ def render_priors_md(priors):
         "",
         "- `whitening:` block — every free coefficient gets `uniform[-sigma_prior, sigma_prior]`",
         "  in whitened space.",
-        "- `bayesian_update_path:` — the previous fit's exact posterior becomes the prior.",
+        "- `bayesian_update:` — the previous fit's exact posterior becomes the prior.",
         "",
     ]
     return "\n".join(lines)

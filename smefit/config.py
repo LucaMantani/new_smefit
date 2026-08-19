@@ -522,8 +522,7 @@ class smefitConfig(Config):
         """Parse optional settings for a BlackJAX fit.
 
         ``algorithm`` picks the sampler: "nested_sampling" (the only one that
-        estimates the log evidence) or "nuts" (incompatible with
-        ``bayesian_update_path``).
+        estimates the log evidence) or "nuts". Both support ``bayesian_update``.
 
         - shared — ``seed``; ``log_dir``, which receives the algorithm's draws
           (``nested_samples.csv`` / ``nuts_samples.csv``) and its diagnostics

@@ -128,8 +128,8 @@ systematics/theory errors are present — just say so, don't ask.
 - `run_blackjax_fit` runs whichever algorithm `blackjax_settings.algorithm`
   names: `nested_sampling` (the default, and the only one that produces a
   `logz`) or `nuts` (gradient MCMC — faster on smooth high-dimensional
-  posteriors, writes `logz: null`, and cannot be combined with
-  `bayesian_update_path`). See "Choosing a BlackJAX algorithm" in
+  posteriors, writes `logz: null`). Both accept `bayesian_update`;
+  `run_ultranest_fit` does not. See "Choosing a BlackJAX algorithm" in
   `references/recipes.md`.
 - `use_t0: True` is the statistically sound choice when multiplicative
   systematics are present; pair it with `use_theory_covmat: True` when theory

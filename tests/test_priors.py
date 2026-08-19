@@ -312,24 +312,98 @@ def test_sample_unconstrained_shape(mixed_prior):
     assert bool(jnp.all(jnp.isfinite(samples)))
 
 
-@pytest.mark.parametrize(
-    "joint_only_prior",
-    [
-        ExactPosteriorPrior(
-            base_prior=Prior([_UniformDist(-1.0, 1.0)], ["a"]),
-            log_likelihood_1=lambda x: 0.0,
-            samples_dict={"a": jnp.zeros(4)},
-            param_names=["a"],
-        ),
-        _WhitenedToPhysicalPrior(
-            Prior([_UniformDist(-1.0, 1.0)], ["a"]),
-            WhitenTransform(matrix=jnp.eye(1) * 2.0, shift=jnp.zeros(1)),
-        ),
-    ],
-    ids=["exact_posterior", "whitened_to_physical"],
+# ---------------------------------------------------------------------------
+# The derived priors: same unconstrained interface, so NUTS can sample them
+# ---------------------------------------------------------------------------
+
+# Non-diagonal on purpose: a whitening matrix that is merely a rescaling would
+# not catch a bijector composed in the wrong order.
+_TRANSFORM = WhitenTransform(
+    matrix=jnp.array([[2.0, 0.3], [0.0, 1.5]]), shift=jnp.array([0.1, -0.2])
 )
-def test_joint_only_priors_have_no_unconstrained_interface(joint_only_prior):
-    """These know a joint log_prob and nothing more, so they cannot be
-    reparametrised per parameter. `_run_nuts` rejects them on that basis."""
-    assert not isinstance(joint_only_prior, Prior)
-    assert not hasattr(joint_only_prior, "log_prob_unconstrained")
+
+
+@pytest.fixture
+def whitened_to_physical(mixed_prior):
+    return _WhitenedToPhysicalPrior(mixed_prior, _TRANSFORM)
+
+
+@pytest.fixture
+def exact_posterior(whitened_to_physical):
+    """An update whose fit1 was itself whitened — the deepest composition."""
+    samples = whitened_to_physical.sample(jax.random.PRNGKey(1), 64)
+    return ExactPosteriorPrior(
+        base_prior=whitened_to_physical,
+        log_likelihood_1=lambda x: -0.5 * jnp.sum(x**2),
+        samples_dict={"a": samples[:, 0], "b": samples[:, 1]},
+        param_names=["a", "b"],
+    )
+
+
+@pytest.fixture(params=["whitened_to_physical", "exact_posterior"])
+def derived_prior(request):
+    return request.getfixturevalue(request.param)
+
+
+def test_derived_prior_bijector_round_trips(derived_prior):
+    u = jnp.array([0.7, -1.3])
+    back = derived_prior.to_unconstrained(derived_prior.from_unconstrained(u))
+    assert back == pytest.approx(u, rel=1e-5, abs=1e-5)
+
+
+def test_derived_prior_log_det_matches_numerical_jacobian(derived_prior):
+    """The one place a composed transform can silently pick up a wrong sign."""
+    u = jnp.array([0.7, -1.3])
+    jac = jax.jacobian(derived_prior.from_unconstrained)(u)
+    numerical = float(jnp.log(jnp.abs(jnp.linalg.det(jac))))
+    assert float(derived_prior.log_det_jacobian(u)) == pytest.approx(
+        numerical, rel=1e-5, abs=1e-5
+    )
+
+
+def test_derived_prior_unconstrained_log_prob_finite_far_from_origin(derived_prior):
+    """Same requirement as for Prior: no -inf and no NaN gradient at the walls."""
+    u = jnp.array([1e3, 5.0])
+    assert math.isfinite(float(derived_prior.log_prob_unconstrained(u)))
+    grad = jax.grad(derived_prior.log_prob_unconstrained)(u)
+    assert bool(jnp.all(jnp.isfinite(grad)))
+
+
+def test_derived_prior_sample_unconstrained_shape(derived_prior):
+    samples = derived_prior.sample_unconstrained(jax.random.PRNGKey(0), 17)
+    assert samples.shape == (17, 2)
+    assert bool(jnp.all(jnp.isfinite(samples)))
+
+
+def test_whitened_to_physical_unconstrained_log_prob_equals_whitened(
+    mixed_prior, whitened_to_physical
+):
+    """The +-log|det matrix| from log_prob and log_det_jacobian cancel, so in u
+    coordinates the wrapper is exactly the prior it wraps."""
+    u = jnp.array([0.7, -1.3])
+    assert float(whitened_to_physical.log_prob_unconstrained(u)) == pytest.approx(
+        float(mixed_prior.log_prob_unconstrained(u)), rel=1e-5
+    )
+
+
+def test_exact_posterior_unconstrained_log_prob_adds_the_likelihood(
+    whitened_to_physical, exact_posterior
+):
+    u = jnp.array([0.7, -1.3])
+    x = whitened_to_physical.from_unconstrained(u)
+    expected = float(whitened_to_physical.log_prob_unconstrained(u)) + float(
+        -0.5 * jnp.sum(x**2)
+    )
+    assert float(exact_posterior.log_prob_unconstrained(u)) == pytest.approx(
+        expected, rel=1e-5
+    )
+
+
+def test_exact_posterior_chains_start_on_fit1_posterior(exact_posterior):
+    """sample_unconstrained resamples fit1's draws rather than the base prior,
+    which is what gives NUTS over-dispersed starts for the D1+D2 target."""
+    starts = exact_posterior.sample_unconstrained(jax.random.PRNGKey(3), 8)
+    physical = jax.vmap(exact_posterior.from_unconstrained)(starts)
+    stored = exact_posterior._posterior_samples
+    for draw in physical:
+        assert bool(jnp.min(jnp.linalg.norm(stored - draw, axis=-1)) < 1e-4)

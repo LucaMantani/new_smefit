@@ -35,6 +35,10 @@ SAMPLER_BLOCKS = {
     "run_individual_blackjax_fits": "blackjax_settings",
 }
 
+# UltraNest drives the prior through an inverse CDF, which the exact-posterior
+# prior of a Bayesian update cannot provide.
+ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
+
 # Actions that report on fits read back off disk, so a runcard running only
 # these needs no fit setup of its own. Taken from runcard-keys.json when it is
 # there; this is the fallback.
@@ -421,7 +425,7 @@ BLACKJAX_ALGORITHMS = ("nested_sampling", "nuts")
 
 
 def check_blackjax_algorithm(runcard, rep):
-    """Validate blackjax_settings.algorithm and its incompatibilities.
+    """Validate blackjax_settings.algorithm.
 
     check_settings_blocks only checks that sub-keys are known, not that their
     values are legal, so the enum needs its own check here.
@@ -434,13 +438,6 @@ def check_blackjax_algorithm(runcard, rep):
         rep.error(
             f"blackjax_settings.algorithm: '{algorithm}' is not a known algorithm "
             f"(allowed: {list(BLACKJAX_ALGORITHMS)})"
-        )
-        return
-    if algorithm == "nuts" and "bayesian_update_path" in runcard:
-        rep.error(
-            "blackjax_settings.algorithm: 'nuts' is incompatible with "
-            "'bayesian_update_path' — the exact-posterior prior has no "
-            "per-parameter bijectors. Use algorithm: nested_sampling."
         )
 
 
@@ -482,6 +479,12 @@ def check_actions(runcard, rep, nonlinear_exprs=()):
         ):
             rep.error(
                 "actions_: 'report' requires a 'template_text' (or 'template') key"
+            )
+        if action in ULTRANEST_ACTIONS and "bayesian_update" in runcard:
+            rep.error(
+                f"actions_: '{action}' is incompatible with 'bayesian_update' — "
+                "UltraNest samples through an inverse CDF, which a posterior "
+                "known only through samples does not have. Use run_blackjax_fit."
             )
         if action in ("run_analytic_fit", "run_individual_analytic_fits"):
             if runcard.get("use_quad", False):

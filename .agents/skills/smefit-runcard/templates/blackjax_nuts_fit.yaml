@@ -11,7 +11,7 @@
 # Same action as blackjax_fit.yaml — the algorithm is chosen in
 # blackjax_settings. Unlike nested sampling, NUTS produces no log evidence
 # (fit_results.json has "logz": null), so use nested sampling if you need logz
-# for model comparison. NUTS is also incompatible with bayesian_update_path.
+# for model comparison. `bayesian_update` works with either algorithm.
 #
 # path to data and theory: prefixes are resolved via the machine-specific
 # .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)

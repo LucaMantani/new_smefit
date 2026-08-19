@@ -7,11 +7,12 @@ Run explicitly with:  pytest -m slow tests/test_bayes_update_blackjax.py
 The problem definition, coefficient stubs and posterior assertions live in
 tests/gaussian_problem.py, shared with tests/test_blackjax_nuts.py.
 
-These settings dicts deliberately carry no ``algorithm`` key: they are the
-regression guard that runcards and code predating the key still run nested
-sampling.
+The ``_bj_cfg`` settings dicts deliberately carry no ``algorithm`` key: they
+are the regression guard that runcards and code predating the key still run
+nested sampling. ``_nuts_cfg`` covers the same update under gradient MCMC.
 """
 
+import json
 import os
 
 import jax
@@ -38,6 +39,7 @@ from tests.gaussian_problem import (
 )
 
 N_LIVE = 4000
+NUM_CHAINS = 4
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +55,20 @@ def _bj_cfg(log_dir):
         "delete_fraction": 0.1,
         "repeats": 5,
         "log_precision": -4,
+        "log_dir": str(log_dir),
+    }
+
+
+def _nuts_cfg(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+    return {
+        "algorithm": "nuts",
+        "seed": SEED,
+        "num_chains": NUM_CHAINS,
+        "num_warmup": 1000,
+        "num_samples": 2500,
+        "target_acceptance_rate": 0.8,
+        "max_num_doublings": 10,
         "log_dir": str(log_dir),
     }
 
@@ -147,3 +163,42 @@ def test_nested_sampling_still_default_without_algorithm_key(
 
     assert fr.logz is not None
     assert (tmp_path / "ns" / "nested_samples.csv").exists()
+
+
+@pytest.mark.slow
+def test_bayes_update_nuts(correlated_problem, tmp_path):
+    """The same update under gradient MCMC: NUTS reparametrises the
+    ExactPosteriorPrior through the bijector it delegates to its base prior,
+    and starts its chains on fit1's posterior draws."""
+    names = correlated_problem["names"]
+    chi2_D1 = correlated_problem["chi2_D1"]
+    chi2_D2 = correlated_problem["chi2_D2"]
+    Sigma1 = correlated_problem["Sigma1"]
+    Sigma_exact = correlated_problem["Sigma_exact"]
+    sigma1_marg = correlated_problem["sigma1_marg"]
+
+    coeffs = _Coeffs(names)
+    prior = Prior([_UniformDist(-5 * s, 5 * s) for s in sigma1_marg], names)
+
+    fr_fit1 = blackjax_fit(
+        prior, chi2_D1, coeffs, _nuts_cfg(tmp_path / "fit1"), n_samples=N_SAMPLES
+    )
+    assert_posterior(fr_fit1, names, Sigma1)
+
+    prior_upd = ExactPosteriorPrior(
+        base_prior=prior,
+        log_likelihood_1=jax.jit(lambda t: -chi2_D1(t) / 2.0),
+        samples_dict=fr_fit1.samples,
+        param_names=names,
+    )
+    log_dir = tmp_path / "update"
+    fr_upd = blackjax_fit(
+        prior_upd, chi2_D2, coeffs, _nuts_cfg(log_dir), n_samples=N_SAMPLES
+    )
+    assert_posterior(fr_upd, names, Sigma_exact)
+
+    # NUTS estimates no evidence, whichever prior it is given.
+    assert fr_upd.logz is None
+    diag = json.loads((log_dir / "nuts_diagnostics.json").read_text())
+    assert diag["max_rhat"] < 1.01, f"max R-hat = {diag['max_rhat']}"
+    assert diag["divergences"] == 0, f"{diag['divergences']} divergent transitions"

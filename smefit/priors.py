@@ -147,7 +147,28 @@ def _build_dist(spec):
 # --- Public interface ---
 
 
-class Prior:
+class _UnconstrainedMixin:
+    """The unconstrained-space interface gradient-based samplers ask for.
+
+    Everything here follows from primitives a prior supplies itself:
+    ``log_prob``, ``sample``, ``from_unconstrained``, ``to_unconstrained`` and
+    ``log_det_jacobian``. Sharing the derivation keeps the three priors from
+    drifting apart — `smefit.blackjax_samplers.nuts` calls only these two
+    methods plus ``from_unconstrained``, so a prior that mixes this in is
+    NUTS-ready by construction.
+    """
+
+    @jax.jit(static_argnames=("self",))
+    def log_prob_unconstrained(self, u):
+        """Log prior density in the unconstrained space."""
+        return self.log_prob(self.from_unconstrained(u)) + self.log_det_jacobian(u)
+
+    def sample_unconstrained(self, rng_key, n_samples):
+        """Prior draws mapped to u-space, shape (n_samples, n_params)."""
+        return jax.vmap(self.to_unconstrained)(self.sample(rng_key, n_samples))
+
+
+class Prior(_UnconstrainedMixin):
     """Joint prior over all free coefficients.
 
     Compatible with ultranest (prior_transform), BlackJax nested sampling
@@ -194,17 +215,8 @@ class Prior:
             jnp.array([d.log_det_jacobian(u[i]) for i, d in enumerate(self.dists)])
         )
 
-    @jax.jit(static_argnames=("self",))
-    def log_prob_unconstrained(self, u):
-        """Log prior density in the unconstrained space."""
-        return self.log_prob(self.from_unconstrained(u)) + self.log_det_jacobian(u)
 
-    def sample_unconstrained(self, rng_key, n_samples):
-        """Prior draws mapped to u-space, shape (n_samples, n_params)."""
-        return jax.vmap(self.to_unconstrained)(self.sample(rng_key, n_samples))
-
-
-class _WhitenedToPhysicalPrior:
+class _WhitenedToPhysicalPrior(_UnconstrainedMixin):
     """Wraps a whitened prior, evaluated at physical-space coordinates.
 
     When a previous fit used whitening (c = transform.to_physical(c_w) =
@@ -216,6 +228,11 @@ class _WhitenedToPhysicalPrior:
     The additive ``shift`` only translates coordinates and leaves the
     Jacobian determinant unchanged, so the log-det term depends only on
     ``transform.matrix``.
+
+    The unconstrained coordinates u are the whitened prior's own: the bijector
+    below is that prior's composed with the affine map, so the ±log|det matrix|
+    picked up by ``log_prob`` and ``log_det_jacobian`` cancel and
+    ``log_prob_unconstrained`` reduces to the whitened prior's.
     """
 
     def __init__(self, whitened_prior, transform):
@@ -231,14 +248,40 @@ class _WhitenedToPhysicalPrior:
         x_w = self._transform.to_whitened(x_phys)
         return self._whitened_prior.log_prob(x_w) + self._log_abs_det_matrix_inv
 
+    def sample(self, rng_key, n_samples):
+        """Draw from the whitened prior and push the draws to physical space."""
+        x_w = self._whitened_prior.sample(rng_key, n_samples)
+        return jax.vmap(self._transform.to_physical)(x_w)
 
-class ExactPosteriorPrior:
+    @jax.jit(static_argnames=("self",))
+    def from_unconstrained(self, u):
+        return self._transform.to_physical(self._whitened_prior.from_unconstrained(u))
+
+    @jax.jit(static_argnames=("self",))
+    def to_unconstrained(self, x_phys):
+        return self._whitened_prior.to_unconstrained(
+            self._transform.to_whitened(x_phys)
+        )
+
+    @jax.jit(static_argnames=("self",))
+    def log_det_jacobian(self, u):
+        """log|dx_phys/du| = log|dx_w/du| + log|det matrix|."""
+        return self._whitened_prior.log_det_jacobian(u) - self._log_abs_det_matrix_inv
+
+
+class ExactPosteriorPrior(_UnconstrainedMixin):
     """Exact posterior prior for Bayesian sequential updates.
 
     Represents P(θ|D1) as the prior for a subsequent fit:
 
         log_prob(θ) = log_prior_1(θ) + log_likelihood_1(θ)
         sample()    → returns fit1 posterior samples directly.
+
+    The unconstrained reparametrisation is the base prior's: reweighting by
+    ``log_likelihood_1`` changes the density, not the support, so the same
+    bijector applies. That is what lets gradient-based samplers run an update —
+    and ``sample_unconstrained`` then starts their chains on fit1's posterior
+    draws, which is over-dispersed relative to the D1+D2 target.
 
     Parameters
     ----------
@@ -291,3 +334,18 @@ class ExactPosteriorPrior:
             rng_key, n_avail, shape=(n_samples,), replace=replace
         )
         return self._posterior_samples[indices]
+
+    # The bijector is a property of the support, which the likelihood
+    # reweighting leaves untouched, so it is the base prior's unchanged.
+
+    @jax.jit(static_argnames=("self",))
+    def from_unconstrained(self, u):
+        return self._base_prior.from_unconstrained(u)
+
+    @jax.jit(static_argnames=("self",))
+    def to_unconstrained(self, x):
+        return self._base_prior.to_unconstrained(x)
+
+    @jax.jit(static_argnames=("self",))
+    def log_det_jacobian(self, u):
+        return self._base_prior.log_det_jacobian(u)

@@ -65,10 +65,10 @@ blackjax_settings:
   target_acceptance_rate: 0.8
 ```
 
-Pick `nested_sampling` when you need the log evidence for model comparison,
-when the posterior may be multimodal, or when the runcard uses
-`bayesian_update_path` (whose exact-posterior prior has no per-parameter
-bijectors, so `nuts` refuses it).
+Pick `nested_sampling` when you need the log evidence for model comparison, or
+when the posterior may be multimodal. Both algorithms accept `bayesian_update`,
+but only `nested_sampling` gives the evidence that makes the update comparable
+to the fit it updates.
 
 Pick `nuts` for smooth, unimodal, high-dimensional posteriors: it exploits the
 JAX gradient of the chi2 and typically reaches a given effective sample size far

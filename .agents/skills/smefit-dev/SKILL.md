@@ -387,11 +387,14 @@ protection against misspelling it.
   distribution (`from_unconstrained`, `log_prob_unconstrained`,
   `sample_unconstrained`) — these live on `Prior` itself rather than in a
   wrapper class, because they are pure functions of its own `dists`.
-  `ExactPosteriorPrior` and `_WhitenedToPhysicalPrior` know only a joint
-  `log_prob`, so they have no unconstrained interface. Nothing in the fit path
-  checks this: `algorithm: nuts` with `bayesian_update_path` fails inside
-  `_run_nuts` with `AttributeError: no attribute 'sample_unconstrained'`. Only
-  the `smefit-runcard` validator flags the combination up front.
+  The two derived methods live on the `_UnconstrainedMixin`, so
+  `_WhitenedToPhysicalPrior` (bijector composed with the affine transform) and
+  `ExactPosteriorPrior` (bijector delegated to its base prior — reweighting by
+  a likelihood changes the density, not the support) get them too. That is what
+  lets `smefit.blackjax_samplers.nuts.run` sample a `bayesian_update`. UltraNest
+  is the remaining exception: it needs `prior_transform`, an inverse CDF that a
+  posterior known through samples does not have, so `ultranest_fit` raises a
+  `ConfigError` up front and the `smefit-runcard` validator flags the pairing.
 - **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
   `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers/__init__.py` — the same
   registry pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG

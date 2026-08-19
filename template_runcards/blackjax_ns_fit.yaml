@@ -9,6 +9,7 @@ use_t0: True
 use_quad: True
 
 blackjax_settings:
+  algorithm: nested_sampling  # nested_sampling or nuts (see blackjax_nuts_fit.yaml)
   n_live: 500
   repeats: 3
   delete_fraction: 0.5

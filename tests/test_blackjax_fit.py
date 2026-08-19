@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import pytest
 
 from smefit.blackjax_fit import blackjax_fit
+from smefit.blackjax_samplers import _SAMPLER_REGISTRY, SamplerOutput
 from smefit.fit_result import FitResult
 from smefit.whitening import WhitenTransform
 
@@ -24,17 +25,18 @@ def _make_final_states():
     return fs
 
 
-def _blackjax_settings(log_dir):
-    return {
-        "n_posterior_samples": 1000,
+def _blackjax_settings(log_dir, **overrides):
+    settings = {
+        "algorithm": "nested_sampling",
         "n_live": 10,
         "repeats": 1,
         "delete_fraction": 0.5,
         "log_precision": -2,
         "seed": 0,
-        "posterior_resampling_seed": 0,
         "log_dir": str(log_dir),
     }
+    settings.update(overrides)
+    return settings
 
 
 _MOCK_SAMPLES = {"OpA": jnp.zeros(2), "OpB": jnp.full(2, 2.0), "OpC": jnp.zeros(2)}
@@ -47,7 +49,7 @@ _MOCK_BEST = {"OpA": 0.0, "OpB": 2.0, "OpC": 0.0}
 
 
 def _run_blackjax_fit(
-    prior, chi2, coeff_group, settings, whitening_transformation=None
+    prior, chi2, coeff_group, settings, whitening_transformation=None, n_samples=10000
 ):
     """Helper that patches external dependencies and calls blackjax_fit."""
     final_states = _make_final_states()
@@ -66,12 +68,27 @@ def _run_blackjax_fit(
     mock_sample_result.position = jnp.zeros((2, 1))
 
     with (
-        patch("smefit.blackjax_fit.blackjax.nss", return_value=mock_algo),
-        patch("smefit.blackjax_fit.finalise", return_value=final_states),
-        patch("smefit.blackjax_fit.ess", return_value=2),
-        patch("smefit.blackjax_fit.log_weights", return_value=jnp.zeros(3)),
-        patch("smefit.blackjax_fit.sample", return_value=mock_sample_result),
-        patch("smefit.blackjax_fit.anesthetic.NestedSamples", return_value=mock_nested),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.blackjax.nss",
+            return_value=mock_algo,
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.finalise",
+            return_value=final_states,
+        ),
+        patch("smefit.blackjax_samplers.nested_sampling.ess", return_value=2),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.log_weights",
+            return_value=jnp.zeros(3),
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.sample",
+            return_value=mock_sample_result,
+        ),
+        patch(
+            "smefit.blackjax_samplers.nested_sampling.anesthetic.NestedSamples",
+            return_value=mock_nested,
+        ),
         patch(
             "smefit.blackjax_fit.resolve_posterior",
             return_value=(_MOCK_SAMPLES, _MOCK_BEST),
@@ -83,6 +100,7 @@ def _run_blackjax_fit(
             coefficients=coeff_group,
             blackjax_settings=settings,
             whitening_transformation=whitening_transformation,
+            n_samples=n_samples,
         )
     return result, mock_nested
 
@@ -133,9 +151,100 @@ def test_blackjax_fit_posterior_truncation_warning(
 ):
     """When n_samples > available posterior samples, a warning is logged."""
     settings = _blackjax_settings(tmp_path / "bj_logs")
-    settings["n_posterior_samples"] = 10000  # far more than 2 available
 
     with caplog.at_level("WARNING"):
-        _run_blackjax_fit(minimal_prior, minimal_chi2, coeff_group, settings)
+        _run_blackjax_fit(
+            minimal_prior,
+            minimal_chi2,
+            coeff_group,
+            settings,
+            n_samples=10000,  # far more than the 2 mock samples available
+        )
 
     assert any("posterior samples" in msg.lower() for msg in caplog.messages)
+
+
+# ---------------------------------------------------------------------------
+# Algorithm dispatch
+# ---------------------------------------------------------------------------
+
+
+def _patched_runner(monkeypatch, algorithm, output=None):
+    """Swap one registry entry for a recording stub; returns the calls list."""
+    calls = []
+
+    def _stub(rng_key, prior, log_likelihood, n_samples, settings):
+        calls.append(
+            {
+                "prior": prior,
+                "log_likelihood": log_likelihood,
+                "n_samples": n_samples,
+                "settings": settings,
+            }
+        )
+        return output or SamplerOutput(
+            samples=jnp.zeros((2, 1)),
+            best_point=jnp.zeros(1),
+            max_loglikelihood=-1.0,
+            logz=None,
+        )
+
+    monkeypatch.setitem(_SAMPLER_REGISTRY, algorithm, _stub)
+    return calls
+
+
+def test_blackjax_fit_dispatches_to_nuts(
+    minimal_prior, minimal_chi2, coeff_group, tmp_path, monkeypatch
+):
+    """algorithm: nuts routes to the NUTS runner and yields logz=None."""
+    calls = _patched_runner(monkeypatch, "nuts")
+    settings = _blackjax_settings(tmp_path / "bj_logs", algorithm="nuts")
+
+    result = blackjax_fit(
+        prior=minimal_prior,
+        chi2=minimal_chi2,
+        coefficients=coeff_group,
+        blackjax_settings=settings,
+        n_samples=123,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["n_samples"] == 123
+    assert result.logz is None
+    # log_likelihood must be -chi2/2 in sampler space
+    x = jnp.array([2.0])
+    assert float(calls[0]["log_likelihood"](x)) == pytest.approx(
+        -float(minimal_chi2(x)) / 2.0
+    )
+
+
+def test_blackjax_fit_defaults_to_nested_sampling_when_key_absent(
+    minimal_prior, minimal_chi2, coeff_group, tmp_path, monkeypatch
+):
+    """Settings dicts built before `algorithm` existed still run nested sampling."""
+    calls = _patched_runner(monkeypatch, "nested_sampling")
+    settings = _blackjax_settings(tmp_path / "bj_logs")
+    del settings["algorithm"]
+
+    blackjax_fit(
+        prior=minimal_prior,
+        chi2=minimal_chi2,
+        coefficients=coeff_group,
+        blackjax_settings=settings,
+    )
+
+    assert len(calls) == 1
+
+
+def test_blackjax_fit_unknown_algorithm_raises(
+    minimal_prior, minimal_chi2, coeff_group, tmp_path
+):
+    settings = _blackjax_settings(tmp_path / "bj_logs", algorithm="metropolis")
+
+    with pytest.raises(ValueError, match="Unknown BlackJAX algorithm"):
+        blackjax_fit(
+            prior=minimal_prior,
+            chi2=minimal_chi2,
+            coefficients=coeff_group,
+            blackjax_settings=settings,
+        )

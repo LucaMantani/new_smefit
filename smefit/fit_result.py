@@ -39,7 +39,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from smefit.priors import _build_dist
+from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
 log = logging.getLogger(__name__)
@@ -165,8 +165,8 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     if spec is None:
         return "-"
     if spec.get("dist") == "exact_posterior":
-        return f"ExactPosterior"
-    return str(_build_dist(spec))
+        return "ExactPosterior"
+    return str(build_dist(spec))
 
 
 @dataclass

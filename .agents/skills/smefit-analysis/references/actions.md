@@ -21,7 +21,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 |---|---|---|
 | Analytic (linear/Gaussian posterior) | `run_analytic_fit` | none (optional n_samples/seed via analytic_fit defaults) |
 | UltraNest nested sampling | `run_ultranest_fit` | ultranest_settings |
-| BlackJAX nested sampling | `run_blackjax_fit` | blackjax_settings |
+| BlackJAX (nested sampling or NUTS, via blackjax_settings.algorithm) | `run_blackjax_fit` | blackjax_settings |
 | Hessian / Laplace approximation | `run_hessian_fit` | optimizer_settings, gradient_descent_settings, hessian_settings |
 | Individual (one free coefficient at a time) | `run_individual_<analytic|ultranest|blackjax|hessian>_fits` | same blocks as the joint variant |
 | 1D chi2 scan, one free coefficient at a time | `chi2_scan_table, plot_chi2_scan` | chi2_scan_settings |
@@ -127,7 +127,7 @@ names in tracebacks. They are resolved for you.
 ### `smefit.blackjax_fit`
 
 - `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_transformation=None, n_samples=10000)`
-  - Run BlackJAX nested sampling and return a FitResult.
+  - Run a BlackJAX sampler and return a FitResult.
 
 ### `smefit.individual_fit`
 

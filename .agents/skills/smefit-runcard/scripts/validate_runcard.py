@@ -35,6 +35,10 @@ SAMPLER_BLOCKS = {
     "run_individual_blackjax_fits": "blackjax_settings",
 }
 
+# UltraNest drives the prior through an inverse CDF, which the exact-posterior
+# prior of a Bayesian update cannot provide.
+ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
+
 # Actions that report on fits read back off disk, so a runcard running only
 # these needs no fit setup of its own. Taken from runcard-keys.json when it is
 # there; this is the fallback.
@@ -417,6 +421,26 @@ def check_settings_blocks(runcard, keys, rep):
             rep.warn(f"{block}: unknown sub-key '{k}' (known: {info['known_keys']})")
 
 
+BLACKJAX_ALGORITHMS = ("nested_sampling", "nuts")
+
+
+def check_blackjax_algorithm(runcard, rep):
+    """Validate blackjax_settings.algorithm.
+
+    check_settings_blocks only checks that sub-keys are known, not that their
+    values are legal, so the enum needs its own check here.
+    """
+    settings = runcard.get("blackjax_settings")
+    if not isinstance(settings, dict):
+        return
+    algorithm = settings.get("algorithm", "nested_sampling")
+    if algorithm not in BLACKJAX_ALGORITHMS:
+        rep.error(
+            f"blackjax_settings.algorithm: '{algorithm}' is not a known algorithm "
+            f"(allowed: {list(BLACKJAX_ALGORITHMS)})"
+        )
+
+
 def check_rg_matrix(value, label, resolver, rep):
     """Check an rg_matrix path. Missing files under smefit_results/ are only a
     warning: smefit auto-downloads the fit from the server before failing."""
@@ -455,6 +479,12 @@ def check_actions(runcard, rep, nonlinear_exprs=()):
         ):
             rep.error(
                 "actions_: 'report' requires a 'template_text' (or 'template') key"
+            )
+        if action in ULTRANEST_ACTIONS and "bayesian_update" in runcard:
+            rep.error(
+                f"actions_: '{action}' is incompatible with 'bayesian_update' — "
+                "UltraNest samples through an inverse CDF, which a posterior "
+                "known only through samples does not have. Use run_blackjax_fit."
             )
         if action in ("run_analytic_fit", "run_individual_analytic_fits"):
             if runcard.get("use_quad", False):
@@ -617,6 +647,7 @@ def main():
     if isinstance(coefficients, dict) and not ("rge" in runcard or external):
         check_coefficients_against_theory(coefficients, operators, rep)
     check_settings_blocks(runcard, keys, rep)
+    check_blackjax_algorithm(runcard, rep)
     check_actions(runcard, rep, nonlinear_exprs)
     check_top_level(runcard, keys, rep)
     # Only relevant once a path in this runcard actually needed the config: a

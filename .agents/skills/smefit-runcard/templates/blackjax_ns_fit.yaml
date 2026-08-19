@@ -1,0 +1,84 @@
+# AUTO-COPIED from template_runcards/blackjax_ns_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+blackjax_settings:
+  algorithm: nested_sampling  # nested_sampling or nuts (see blackjax_nuts_fit.yaml)
+  n_live: 500
+  repeats: 3
+  delete_fraction: 0.5
+  log_precision: -2
+
+rge:
+  init_scale: 10000.0
+  obs_scale: 91.0  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+# # Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+    # ATLAS_CMS
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+
+# Coefficients to fit
+coefficients:
+  OtG:
+    free: False
+    vars: [y, OpWB]
+    expr: "y**2 + 0.5*OpWB**2"
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpBox:
+    free: False
+    # prior: {dist: uniform, low: -1.0, high: 1.0}
+    vars: [y]
+    expr: "100*y"
+  y:
+    free: True
+    prior: {dist: gaussian, mean: 0.0, std: 1.0}
+
+
+external_chi2:
+  CMS_DYMee_13TeV:
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      use_quad: True
+      order: NLO_QCD
+      # save_rge_path: "./CMS_DYMee_rge_matrix"
+      # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
+      use_projection_L0: False
+
+
+# If bayesian_update is specified, the fit will use as prior the posterior
+# from a previous fit done in smefit.
+# bayesian_update:
+#   name: my_previous_fit
+#   # optional: directory containing the fit, defaults to smefit_results/fits
+#   path: smefit_results/fits
+
+# whitening:
+#   sigma_prior: 5.0
+#   eps: 1e-8
+#   shift: baseline  # baseline or gradient_descent
+
+actions_:
+- run_blackjax_fit

@@ -370,7 +370,59 @@ protection against misspelling it.
 - **Priors**: add the distribution class to `_DIST_REGISTRY` in
   `smefit/priors.py`; the constructor signature becomes the required prior
   parameters in the generated `priors.md` and in the validator. Implement all
-  of `ppf`, `log_prob`, `sample`, `__str__`.
+  of `ppf`, `log_prob`, `sample`, `__str__`, plus the bijector trio
+  `to_unconstrained` / `from_unconstrained` / `log_det_jacobian` that gradient
+  samplers need — identity is the right answer for any distribution already
+  supported on all of R. Keep the log-det in a form that survives the tails
+  (`_UniformDist` uses `log_sigmoid(u) + log_sigmoid(-u)` for exactly that
+  reason) and make any epsilon dtype-aware: the test suite runs float32, where
+  a hardcoded `1e-12` rounds away. The trio is deliberately `@abstractmethod`
+  and **must not** gain a default identity implementation: a bounded
+  distribution that inherited one would not crash, it would quietly return a
+  biased posterior. Add the new distribution to `_CONTRACT_SPECS` in
+  `tests/test_priors.py` — a test asserts that dict covers `_DIST_REGISTRY`
+  exactly, and the contract tests keyed off it then check round-trip, log-det
+  against autodiff, and that the bijector lands inside the support.
+- **Adding a joint prior**: subclass `JointPrior`, the ABC that declares what
+  samplers consume. Supply the five abstract primitives (`log_prob`, `sample`,
+  and the bijector trio `from_unconstrained`/`to_unconstrained`/
+  `log_det_jacobian`), pass `param_names` and `prior_specs` up through
+  `super().__init__` (the base class owns them, since `param_names` fixes the
+  coordinate order of every array the prior returns), and
+  `log_prob_unconstrained`/`sample_unconstrained` come derived — do not
+  override them. `Prior` lifts the per-parameter trio over its own `dists`;
+  `WhitenedToPhysicalPrior` composes the bijector with the affine transform;
+  `ExactPosteriorPrior` delegates it to its base prior, since reweighting by a
+  likelihood changes the density, not the support. That uniformity is what lets
+  `smefit.blackjax_samplers.nuts.run` sample a `bayesian_update`.
+  `prior_transform` is the one **optional** capability: UltraNest needs that
+  inverse CDF, which a prior known through samples cannot supply, so the base
+  class raises `NotImplementedError` with the explanation and the
+  `smefit-runcard` validator flags the pairing up front.
+- **Building a `Prior` from runcard specs**: use `Prior.from_specs(specs,
+  param_names)`, never `Prior(dists, names, specs=...)` with the two paired by
+  hand. `dists` and `prior_specs` are two representations of the same prior and
+  `prior_specs` is what lands in `fit_results.json`, so a mismatch means a fit
+  whose recorded prior is not the one that ran.
+- **BlackJAX algorithms**: `blackjax_settings.algorithm` dispatches through
+  `_SAMPLER_REGISTRY` in `smefit/blackjax_samplers/__init__.py` — the same
+  registry pattern as `_DIST_REGISTRY`, since every algorithm has identical DAG
+  dependencies (this is why it is *not* an `@explicit_node`). Each algorithm is
+  one module in the package, exposing exactly two names:
+  `run(rng_key, prior, log_likelihood, n_samples, settings)` returning a
+  `SamplerOutput`, and `SETTINGS`, the frozenset of `blackjax_settings` keys it
+  owns. `__init__.py` derives both `_SAMPLER_REGISTRY` and
+  `BJ_ALGORITHM_SETTINGS` from the `_ALGORITHM_MODULES` map, so a new algorithm
+  is one new module plus one entry there — the two cannot drift apart. Its keys
+  still have to be added to the literal `known_keys` set in
+  `parse_blackjax_settings`; that set must stay an inline set literal (the
+  generator AST-extracts it), and
+  `tests/test_config.py::test_parse_blackjax_known_keys_cover_all_algorithm_settings`
+  is what keeps it in step with `BJ_ALGORITHM_SETTINGS`. Shared pieces
+  (`SamplerOutput`, the `_HealthReport` fail/warn/verdict scaffolding,
+  `_write_diagnostics`) live in `_common.py`; per-algorithm diagnostics stay
+  with their runner, because no statistic transfers between algorithms. Do not
+  register the package in `smefit_providers` — it holds helpers, not nodes.
 - **Expression constraints**: functions available inside `expr:` are exactly
   `_EXPR_NAMESPACE` in `smefit/core.py` (JAX-backed, so constraints stay
   differentiable). Adding one there widens the runcard language — update

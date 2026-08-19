@@ -671,25 +671,46 @@ class smefitConfig(Config):
             log.warning("Unknown key '%s' in chi2_scan_settings.", k)
         return {"n_points": int(chi2_scan_settings.get("n_points", 50))}
 
-    def parse_bayesian_update_path(self, bayesian_update_path):
-        """Parse and validate the path to a previous fit for Bayesian updating.
+    def parse_bayesian_update(self, bayesian_update: str | Mapping):
+        """Parse and validate the previous fit used as prior for a Bayesian update.
 
-        Accepts an absolute path or the prefix-relative form
-        (`smefit_results/fits/my_fit`); a fit that is not there yet is
-        downloaded from the server, as for `fits`.
+        The entry is the name of the fit, or a mapping
+
+            bayesian_update:
+              name: my_previous_fit            # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet, exactly as for
+        ``fits``. ``path`` is resolved through ``.config/paths.yaml`` like any
+        other path.
+
+        Returns the entry with ``path`` replaced by the resolved directory of
+        the fit itself, so downstream nodes read it straight off the mapping.
         """
+        entry = (
+            {"name": bayesian_update}
+            if isinstance(bayesian_update, str)
+            else dict(bayesian_update)
+        )
+        if "name" not in entry:
+            raise ConfigError(f"bayesian_update requires a 'name': {entry}")
+
+        known_keys = {"name", "path"}
+        for k in set(entry.keys()) - known_keys:
+            log.warning("Unknown key '%s' in bayesian_update.", k)
+
         try:
-            p = pathlib.Path(resolve_path(str(bayesian_update_path)))
-            fetch_fit_if_missing(p)
+            fit_dir = resolve_fit_dir(entry["name"], entry.get("path"))
         except (FileNotFoundError, ValueError) as e:
             raise ConfigError(str(e)) from e
-        if not p.exists():
-            raise ConfigError(f"Directory not found at {p}")
-        if not (p / "fit_results.json").exists():
-            raise ConfigError(f"fit_results.json not found at {p}")
-        if not (p / "input" / "runcard.yaml").exists():
-            raise ConfigError(f"input/runcard.yaml not found at {p}")
-        return p
+        if not (fit_dir / "fit_results.json").exists():
+            raise ConfigError(f"fit_results.json not found at {fit_dir}")
+        if not (fit_dir / "input" / "runcard.yaml").exists():
+            raise ConfigError(f"input/runcard.yaml not found at {fit_dir}")
+
+        entry["path"] = fit_dir
+        return entry
 
     def _build_prior_impl(self, coefficients):
         """Shared prior build logic used by both joint and individual producers."""
@@ -706,24 +727,26 @@ class smefitConfig(Config):
         datasets=None,
         external_chi2=None,
         whitening=None,
-        bayesian_update_path=None,
+        bayesian_update=None,
     ):
         """Produce joint prior over all free coefficients.
 
-        When ``bayesian_update_path`` is set, returns an ExactPosteriorPrior
+        When ``bayesian_update`` is set, returns an ExactPosteriorPrior
         that encodes the exact posterior from the previous fit.
         """
-        if bayesian_update_path is not None:
+        if bayesian_update is not None:
             log.info(
-                f"Producing ExactPosteriorPrior from previous fit at {bayesian_update_path}"
+                "Producing ExactPosteriorPrior from previous fit '%s' at %s",
+                bayesian_update["name"],
+                bayesian_update["path"],
             )
             if whitening is not None:
                 raise ConfigError(
-                    "whitening is not compatible with bayesian_update_path: "
+                    "whitening is not compatible with bayesian_update: "
                     "ExactPosteriorPrior is defined in physical space and cannot be whitened."
                 )
             return build_exact_posterior_prior(
-                bayesian_update_path, coefficients, datasets, external_chi2
+                bayesian_update, coefficients, datasets, external_chi2
             )
 
         if whitening is not None:

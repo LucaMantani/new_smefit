@@ -95,7 +95,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update_path, coefficients, datasets, external_chi2=None)`
+- `build_exact_posterior_prior(bayesian_update, coefficients, datasets, external_chi2=None)`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.

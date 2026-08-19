@@ -109,9 +109,14 @@
     }
   },
   "settings_blocks": {
-    "bayesian_update_path": {
-      "defaults": {},
-      "known_keys": null
+    "bayesian_update": {
+      "defaults": {
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "name",
+        "path"
+      ]
     },
     "blackjax_settings": {
       "defaults": {
@@ -267,7 +272,7 @@
   "top_level_keys": [
     "actions_",
     "batch_sample_sizes",
-    "bayesian_update_path",
+    "bayesian_update",
     "blackjax_settings",
     "chi2_scan_settings",
     "cmap",

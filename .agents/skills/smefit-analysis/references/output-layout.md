@@ -7,7 +7,7 @@
 <output>/
   input/
     runcard.yaml          # copy of the runcard (reportengine bookkeeping;
-                          #  required later by bayesian_update_path)
+                          #  required later by bayesian_update)
     lockfile.yaml         # reportengine lockfile
   figures/  tables/       # created on every run; populated by table/figure actions
                           #  (Fisher, chi2_scan_table, mass_scan_table,

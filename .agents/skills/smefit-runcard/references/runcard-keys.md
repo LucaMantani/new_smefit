@@ -10,7 +10,7 @@ with `scripts/validate_runcard.py`.
 ## Path resolution (shareable runcards)
 
 Runcard paths (`data_path`, `theory_path`, `external_chi2[*].path`,
-`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update_path`,
+`external_chi2[*].rg_matrix`, `rge.rg_matrix`, `bayesian_update[.path]`,
 `fits[*].path`) support prefix-relative form,
 resolved via the machine-specific `.config/paths.yaml` (created by
 `smefit_setup_local`). Standard prefixes: `new_smefit`, `smefit_database`, `smefit_results`.
@@ -61,13 +61,28 @@ Notes:
 
 ## Keys with dedicated parsers
 
-### `bayesian_update_path`
+### `bayesian_update`
 
-Parse and validate the path to a previous fit for Bayesian updating.
+Parse and validate the previous fit used as prior for a Bayesian update.
 
-Accepts an absolute path or the prefix-relative form
-(`smefit_results/fits/my_fit`); a fit that is not there yet is
-downloaded from the server, as for `fits`.
+The entry is the name of the fit, or a mapping
+
+    bayesian_update:
+      name: my_previous_fit            # mandatory, the fit directory name
+      path: smefit_results/fits        # optional, where to look for it
+
+Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+downloaded from the server if it is not there yet, exactly as for
+``fits``. ``path`` is resolved through ``.config/paths.yaml`` like any
+other path.
+
+Returns the entry with ``path`` replaced by the resolved directory of
+the fit itself, so downstream nodes read it straight off the mapping.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `name`
+- `path` — default: `(no default)`
 
 ### `blackjax_settings`
 
@@ -361,7 +376,7 @@ which runcard keys each action ultimately needs.
 - `individual_prior`(individual_coefficients) — Produce prior for a single-free-parameter individual fit.
 - `init_scale`(rge) — Produce the initial scale (in GeV) at which Wilson coefficients are defined.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
-- `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update_path) — Produce joint prior over all free coefficients.
+- `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.

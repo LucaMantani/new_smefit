@@ -68,7 +68,7 @@ external_chi2:
 
 
 # If bayesian_update is specified, the fit will use as prior the posterior
-# from a previous fit done ins smefit. Only available for NS Blackjax fits.
+# from a previous fit done in smefit.
 # bayesian_update:
 #   name: my_previous_fit
 #   # optional: directory containing the fit, defaults to smefit_results/fits

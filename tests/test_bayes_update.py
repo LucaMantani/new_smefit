@@ -234,6 +234,17 @@ def test_format_prior_exact_posterior():
     assert _format_prior(spec) == "ExactPosterior"
 
 
+def test_format_prior_ordinary_dist():
+    """Any other spec is rendered by the distribution itself."""
+    assert (
+        _format_prior({"dist": "uniform", "low": -1.0, "high": 1.0}) == "U[-1.0, 1.0]"
+    )
+
+
+def test_format_prior_missing_spec():
+    assert _format_prior(None) == "-"
+
+
 # ---------------------------------------------------------------------------
 # FitResult.from_json
 # ---------------------------------------------------------------------------

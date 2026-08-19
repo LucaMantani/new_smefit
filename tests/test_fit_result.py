@@ -206,8 +206,8 @@ def test_write_json_roundtrip(tmp_path):
 
 
 def test_from_json_names_an_unparsable_file(tmp_path):
-    """from_json is also called on its own, by smefit.utils for a Bayesian
-    update, so it must fail as informatively as Fit.from_folder does."""
+    """from_json reads a fit_results.json on its own, without the rest of the
+    fit directory, so it must fail as informatively as Fit.from_folder does."""
     (tmp_path / "fit_results.json").write_text("{not json")
 
     with pytest.raises(ValueError, match=r"fit_results\.json' is not valid JSON"):

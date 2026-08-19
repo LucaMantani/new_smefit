@@ -44,7 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
-- `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`)
+- `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
 
@@ -103,6 +103,19 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `posterior_resampling_seed` — default: `123456`
 - `repeats` — default: `3`
 - `seed` — default: `0`
+
+### `chi2_scan_settings`
+
+Parse optional chi2 scan settings.
+
+Keys
+----
+n_points : int, default 50
+    Number of scan points per coefficient.
+
+Recognized sub-keys (unknown sub-keys only produce a warning):
+
+- `n_points` — default: `50`
 
 ### `coefficients`
 
@@ -374,6 +387,11 @@ which runcard keys each action ultimately needs.
 - `individual_eft_model`(theory, individual_coefficients, rge_matrix, use_quad) — Produce EFT model for a single-free-parameter individual fit.
 - `individual_ext_chi2_func`(individual_coefficients, external_chi2, rge) — Load and wrap external chi2 modules for a single-free-parameter individual fit.
 - `individual_fit_coefficients`(coefficients) — Produce an NSList of free coefficient names for individual fits.
+- `individual_mass_chi2`(individual_mass_eft_model, data, fit_covmat, individual_mass_ext_chi2_func) — Produce the total chi2 for a single mass scan point.
+- `individual_mass_eft_model`(theory, coefficients, individual_mass_rge_matrix, use_quad) — Produce EFT model for a single mass scan point.
+- `individual_mass_ext_chi2_func`(coefficients, external_chi2, individual_mass_scale, rge) — Load external chi2 for a single mass scan point with init_scale overridden.
+- `individual_mass_rge_matrix`(rge, coefficients, theory, individual_mass_scale) — Produce RGE matrix with init_scale set to the current mass scan point.
+- `individual_mass_scales`(coefficients, chi2_scan_settings) — Produce an NSList of mass scan points from the single free coefficient's prior.
 - `individual_prior`(individual_coefficients) — Produce prior for a single-free-parameter individual fit.
 - `init_scale`(rge) — Produce the initial scale (in GeV) at which Wilson coefficients are defined.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.

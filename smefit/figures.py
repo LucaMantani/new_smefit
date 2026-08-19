@@ -8,7 +8,8 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from reportengine.figure import figure
+from matplotlib import rc
+from reportengine.figure import figure, figuregen
 
 from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import select_params, set_plot_style
@@ -112,6 +113,34 @@ def _plot_heatmap(
             )
 
     return fig
+
+
+@figuregen
+def plot_chi2_scan(individual_chi2_scans):
+    """Plot the 1D chi2 scan for each free coefficient.
+
+    Yields one ``(figure, coeff_name)`` per scanned coefficient, with the
+    coefficient value on the x axis and chi2 on the y axis.
+
+    Parameters
+    ----------
+    individual_chi2_scans : list[dict]
+        Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    """
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
+
+    results = {k: v for d in individual_chi2_scans for k, v in d.items()}
+    for name, data in results.items():
+        label = coeff_info_latex.get(name, name)
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
+        ax.set_xlabel(label)
+        ax.set_ylabel(r"$\chi^2$")
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        yield fig, name
 
 
 @figure

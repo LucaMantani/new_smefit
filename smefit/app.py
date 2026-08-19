@@ -19,6 +19,7 @@ smefit_providers = [
     "smefit.ultranest_fit",
     "smefit.blackjax_fit",
     "smefit.individual_fit",
+    "smefit.chi2_scan",
     "smefit.fit_actions",
     "smefit.fisher",
     "smefit.pca",

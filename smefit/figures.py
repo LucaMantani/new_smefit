@@ -207,13 +207,14 @@ def plot_pca_spectrum(pca):
     index = np.arange(1, pca.n_components + 1)
     flat = np.array(pca.flat_mask)
 
-    # An exactly flat direction sits at zero, which a log axis cannot place, so
-    # the bars grow from a floor a decade below everything of interest. That
-    # floor follows the spectrum rather than the threshold: the threshold is far
-    # below any physical scale by design, and anchoring the axis to it would
-    # spend a dozen empty decades on a plot whose bars all sit at the top. Only
-    # when something is actually flagged flat does the floor drop below it, so
-    # that the dashed line and the bars it condemns are in view together.
+    # A log axis has no zero to grow the bars from, so the bottom of the axis
+    # plays that role: every bar starts on it, and its length is how many
+    # decades the direction stands above it. That floor follows the spectrum
+    # rather than the threshold — the threshold is far below any physical scale
+    # by design, and anchoring the axis to it would spend a dozen empty decades
+    # on a plot whose bars all sit at the top. Only when something is actually
+    # flagged flat does the floor drop below it, so that the dashed line and the
+    # bars it condemns are in view together.
     positive = ratios[ratios > 0]
     lowest = positive.min() if positive.size else pca.threshold
     if flat.any():
@@ -242,13 +243,14 @@ def plot_pca_spectrum(pca):
             label="flat",
         )
         # A direction with no curvature at all sits on the floor, leaving a bar
-        # of zero length; mark it with a downward triangle so it is still read
-        # as present and off the bottom of the scale.
+        # of zero length; mark it with a downward triangle just above the
+        # baseline so it is still read as present and off the bottom of the
+        # scale.
         off_scale = flat & (ratios <= floor)
         if off_scale.any():
             ax.scatter(
                 index[off_scale],
-                np.full(int(off_scale.sum()), floor),
+                np.full(int(off_scale.sum()), floor * 2.0),
                 s=60,
                 color="C3",
                 marker="v",
@@ -259,8 +261,9 @@ def plot_pca_spectrum(pca):
     ax.axhline(pca.threshold, color="black", linestyle="--", linewidth=1)
 
     ax.set_yscale("log")
-    # a little room under the floor so a marker drawn on it is not half-clipped
-    ax.set_ylim(floor / 3, 2.0)
+    # exactly the floor, so the bars sit on the bottom axis rather than hanging
+    # above it
+    ax.set_ylim(floor, 2.0)
     ax.set_xticks(index)
     ax.set_xticklabels(pca.component_names, rotation=90, fontsize=12)
     ax.set_ylabel(r"$\lambda_i / \lambda_{\rm max}$", fontsize=16)

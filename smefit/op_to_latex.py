@@ -172,4 +172,6 @@ coeff_info_latex = {
     "Ol3u": r"$c_{l_3 u}$",
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
+    "Vud": r"$V_{ud}$",
+    "Lprime": r"$L^\prime$",
 }

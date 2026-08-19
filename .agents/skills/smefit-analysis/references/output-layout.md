@@ -9,7 +9,9 @@
     runcard.yaml          # copy of the runcard (reportengine bookkeeping;
                           #  required later by bayesian_update)
     lockfile.yaml         # reportengine lockfile
-  figures/  tables/       # created on every run; populated by report actions
+  figures/  tables/       # created on every run; populated by table/figure actions
+                          #  (Fisher, chi2_scan_table, mass_scan_table,
+                          #   plot_chi2_scan_<coefficient>.*)
   fit_results.json        # written by every run_*_fit action
   individual_fits/        # only for run_individual_*_fits actions
     <coefficient>/
@@ -23,6 +25,12 @@
   index.html              # report action output, alongside the index.md it was
   index.md                #  rendered from, plus report.css / report.template
 ```
+
+Table and figure actions (Fisher, chi2/mass scans) write only into `tables/`
+and `figures/` — a run whose `actions_:` contains no `run_*_fit` produces no
+`fit_results.json` at all. `@figuregen` actions such as `plot_chi2_scan` emit
+one file per yielded item, suffixed with its name
+(`figures/plot_chi2_scan_<coefficient>.png`).
 
 ## fit_results.json schema (joint fit)
 

@@ -8,6 +8,7 @@ installed (e.g. on CI runners).
 """
 
 import jax.numpy as jnp
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ import pytest
 from smefit import figures as figures_mod
 from smefit.figures import (
     _plot_heatmap,
+    plot_chi2_scan,
     plot_fisher_diagonals_heatmap,
     plot_posterior_correlations,
 )
@@ -25,6 +27,10 @@ from smefit.fit_result import Fit, FitResult, FitResultGroup
 @pytest.fixture(autouse=True)
 def _no_matplotlib_rc(monkeypatch):
     monkeypatch.setattr(figures_mod, "rc", lambda *args, **kwargs: None)
+    monkeypatch.setitem(plt.rcParams, "text.usetex", False)
+    monkeypatch.setattr(
+        matplotlib.figure.Figure, "tight_layout", lambda self, *a, **kw: None
+    )
     yield
     plt.close("all")
 
@@ -154,6 +160,41 @@ def test_plot_fisher_diagonals_heatmap_scales_values_to_percent():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
     texts = {t.get_text() for t in ax.texts}
     assert texts == {"30.0", "70.0", "60.0", "40.0"}
+
+
+def test_plot_chi2_scan_yields_one_figure_per_coefficient():
+    scans = [
+        {"OpA": {"points": [-1.0, 0.0, 1.0], "chi2": [4.0, 0.0, 4.0]}},
+        {"OpZZ": {"points": [-2.0, 2.0], "chi2": [1.0, 1.0]}},
+    ]
+
+    result = plot_chi2_scan(scans)
+
+    assert [name for _, name in result] == ["OpA", "OpZZ"]
+    for fig, _ in result:
+        ax = fig.axes[0]
+        assert ax.get_ylabel() == r"$\chi^2$"
+
+
+def test_plot_chi2_scan_plots_points_against_chi2():
+    scans = [{"OpA": {"points": [-1.0, 0.0, 1.0], "chi2": [4.0, 0.0, 4.0]}}]
+
+    result = plot_chi2_scan(scans)
+
+    fig, name = result[0]
+    assert name == "OpA"
+    line = fig.axes[0].lines[0]
+    assert line.get_xdata().tolist() == [-1.0, 0.0, 1.0]
+    assert line.get_ydata().tolist() == [4.0, 0.0, 4.0]
+
+
+def test_plot_chi2_scan_uses_latex_label_when_known():
+    scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
+
+    result = plot_chi2_scan(scans)
+
+    fig, _ = result[0]
+    assert fig.axes[0].get_xlabel() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
 
 
 def test_plot_fisher_diagonals_heatmap_presentation_is_overridable():

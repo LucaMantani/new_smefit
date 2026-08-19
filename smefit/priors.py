@@ -150,16 +150,24 @@ def build_dist(spec):
 class JointPrior(ABC):
     """What every sampler-facing prior must provide, at the joint level.
 
-    Subclasses must also carry ``param_names`` (ordered, defining the
-    coordinate order of every array here) and ``prior_specs`` (``{name: spec}``,
-    serialised into ``fit_results.json`` and rendered back by
-    ``FitResult``).
-
     ``prior_transform`` is the one capability that is not universal: it is an
     inverse CDF, which a prior known only through samples and a joint density
     cannot supply. It is defined here so the failure is a clear error rather
     than a missing attribute.
+
+    Parameters
+    ----------
+    param_names : list[str]
+        Ordered names of the free parameters. This fixes the coordinate order
+        of every array the prior accepts or returns.
+    prior_specs : dict[str, Mapping], optional
+        ``{name: spec}``, serialised into ``fit_results.json`` and rendered
+        back by ``FitResult``.
     """
+
+    def __init__(self, param_names, prior_specs=None):
+        self.param_names = list(param_names)
+        self.prior_specs = {} if prior_specs is None else prior_specs
 
     @abstractmethod
     def log_prob(self, x): ...  # joint log density at coefficient values x
@@ -207,9 +215,8 @@ class Prior(JointPrior):
     """
 
     def __init__(self, dists, param_names, specs=None):
+        super().__init__(param_names, specs)
         self.dists = list(dists)
-        self.param_names = list(param_names)
-        self.prior_specs = {} if specs is None else specs
 
     @classmethod
     def from_specs(cls, specs, param_names):
@@ -282,8 +289,7 @@ class WhitenedToPhysicalPrior(JointPrior):
     """
 
     def __init__(self, whitened_prior, transform):
-        self.param_names = whitened_prior.param_names
-        self.prior_specs = whitened_prior.prior_specs
+        super().__init__(whitened_prior.param_names, whitened_prior.prior_specs)
         self._whitened_prior = whitened_prior
         self._transform = transform
         matrix_inv = jnp.linalg.inv(transform.matrix)
@@ -348,18 +354,20 @@ class ExactPosteriorPrior(JointPrior):
     def __init__(
         self, base_prior, log_likelihood_1, samples_dict, param_names, source_path=""
     ):
-        self.param_names = list(param_names)
+        # prior_specs records that this is an exact-posterior prior (for display)
+        super().__init__(
+            param_names,
+            {
+                name: {"dist": "exact_posterior", "source": source_path}
+                for name in param_names
+            },
+        )
         self._base_prior = base_prior
         self._log_likelihood_1 = log_likelihood_1
         # Stack free-parameter samples: shape (n_available, n_params)
         self._posterior_samples = jnp.stack(
             [jnp.array(samples_dict[name]) for name in param_names], axis=-1
         )
-        # prior_specs records that this is an exact-posterior prior (for display)
-        self.prior_specs = {
-            name: {"dist": "exact_posterior", "source": source_path}
-            for name in param_names
-        }
 
     @jax.jit(static_argnames=("self",))
     def log_prob(self, x):

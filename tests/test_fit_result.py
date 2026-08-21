@@ -1,9 +1,10 @@
-"""Unit tests for smefit.fit_result — FitResult and Fit dataclasses."""
+"""Unit tests for smefit.fit_result — FitResult, FitResultGroup and Fit."""
 
 import json
 import math
 
 import jax.numpy as jnp
+import numpy as np
 import pytest
 import yaml
 
@@ -611,3 +612,169 @@ def test_a_joint_payload_under_an_individual_action_is_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="inconsistent"):
         Fit.from_folder(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# FitResultGroup — the per-coefficient fields read under the FitResult names
+# ---------------------------------------------------------------------------
+
+
+def test_group_free_parameters_lists_every_coefficient_fitted():
+    """Under the FitResult name, so that a routine reading one coefficient at
+    a time — the bounds — reads both kinds of fit the same way."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.2])
+
+    assert FitResultGroup([r1, r2]).free_parameters == ["OpA", "OpB"]
+
+
+def test_group_samples_merges_the_individual_posteriors():
+    """Each coefficient's samples come from its own single-parameter fit."""
+    r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.2])
+    r2 = _make_individual_result("OpB", best_val=2.0, samples_vals=[1.8, 2.2])
+
+    samples = FitResultGroup([r1, r2]).samples
+
+    assert list(samples) == ["OpA", "OpB"]
+    assert samples["OpA"] == pytest.approx([0.8, 1.2])
+    assert samples["OpB"] == pytest.approx([1.8, 2.2])
+
+
+def test_group_samples_is_none_when_no_fit_kept_any():
+    """Same absent-samples signal as FitResult, so consumers test it once."""
+    result = _make_result(free=("OpA",), samples=None)
+
+    assert FitResultGroup([result]).samples is None
+
+
+# ---------------------------------------------------------------------------
+# Fit.confidence_bounds / Fit.bounds
+# ---------------------------------------------------------------------------
+
+
+def _joint_fit(name, samples):
+    """A joint fit as the bounds see one: samples for every free coefficient,
+    drawn together."""
+    return Fit(
+        fit_results=_make_result(
+            free=tuple(samples),
+            samples={key: jnp.array(vals) for key, vals in samples.items()},
+        ),
+        fit_name=name,
+    )
+
+
+def _individual_fit(name, samples):
+    """A one-coefficient-at-a-time fit: one single-parameter FitResult each,
+    which is what a `fits:` entry pointing at an individual_fits output loads
+    as."""
+    return Fit(
+        fit_results=FitResultGroup(
+            [
+                _make_individual_result(key, best_val=0.0, samples_vals=vals)
+                for key, vals in samples.items()
+            ]
+        ),
+        fit_name=name,
+    )
+
+
+# percentile p of 0..1000 is 10 * p, so the 68% interval is [160, 840], the
+# 95% one [25, 975], around a mean of 500
+_RAMP = list(range(0, 1001))
+
+
+@pytest.fixture
+def joint_fit():
+    return _joint_fit("fit_a", {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]})
+
+
+def test_confidence_bounds_are_equal_tailed_percentiles(joint_fit):
+    """68% means 16/84 — the convention the old report pipeline used, and the
+    one the tables have always quoted."""
+    assert joint_fit.confidence_bounds(68)["OtG"] == pytest.approx(
+        (160.0, 500.0, 840.0)
+    )
+
+
+def test_confidence_bounds_at_95_percent(joint_fit):
+    assert joint_fit.confidence_bounds(95)["OtG"] == pytest.approx((25.0, 500.0, 975.0))
+
+
+def test_confidence_bounds_central_value_is_the_mean():
+    """Not the median: an asymmetric posterior has to report the same central
+    value everywhere it is quoted."""
+    fit = _joint_fit("fit", {"OtG": [0.0, 0.0, 0.0, 4.0]})
+
+    assert fit.confidence_bounds(68)["OtG"][1] == pytest.approx(1.0)
+
+
+def test_confidence_bounds_cover_every_free_coefficient_in_order(joint_fit):
+    """Consumers iterate the result directly, so it keeps the fit's order."""
+    assert list(joint_fit.confidence_bounds(68)) == ["OtG", "OpQM"]
+
+
+def test_confidence_bounds_ignore_nans():
+    """A sampler that wrote a NaN should shrink the sample, not the bounds to
+    NaN."""
+    with_nan = _joint_fit("fit", {"OtG": [0.0, 1.0, 2.0, math.nan]})
+    without = _joint_fit("fit", {"OtG": [0.0, 1.0, 2.0]})
+
+    assert with_nan.confidence_bounds(68)["OtG"] == pytest.approx(
+        without.confidence_bounds(68)["OtG"]
+    )
+
+
+def test_confidence_bounds_reproduce_a_gaussian_sigma():
+    """The percentile bounds of a Gaussian posterior are the familiar
+    +-sigma."""
+    rng = np.random.default_rng(0)
+    fit = _joint_fit("fit", {"OtG": rng.normal(loc=2.0, scale=0.5, size=200_000)})
+
+    low, mean, high = fit.confidence_bounds(68.27)["OtG"]
+
+    assert mean == pytest.approx(2.0, abs=0.01)
+    assert (high - low) / 2 == pytest.approx(0.5, rel=0.02)
+
+
+@pytest.mark.parametrize("level", [0, 100, -5, 0.95, 120])
+def test_confidence_bounds_reject_a_level_that_is_not_a_percentage(joint_fit, level):
+    """`confidence_level: 0.95` is the plausible mistake, and it would
+    silently give a 0.95% interval."""
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        joint_fit.confidence_bounds(level)
+
+
+def test_confidence_bounds_reject_a_fit_without_samples():
+    """A Hessian fit that kept no posterior has nothing to take a percentile
+    of, and the error has to name which fit that was."""
+    fit = Fit(fit_results=_make_result(free=("OtG",)), fit_name="sample_less")
+
+    with pytest.raises(ValueError, match="sample_less.*no posterior samples"):
+        fit.confidence_bounds(68)
+
+
+def test_confidence_bounds_read_an_individual_fit():
+    """The whole point of going through Fit: individual bounds are a fits:
+    entry pointing at an individual_fits output, not a mode switch."""
+    fit = _individual_fit("individual", {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]})
+
+    assert fit.confidence_bounds(68)["OtG"] == pytest.approx((160.0, 500.0, 840.0))
+
+
+def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():
+    """Same samples, same numbers, whichever container they arrived in."""
+    samples = {"OtG": [0.0, 1.0, 2.0, 3.0], "OpQM": [-1.0, 0.0, 1.0]}
+
+    assert _joint_fit("j", samples).confidence_bounds(95) == _individual_fit(
+        "i", samples
+    ).confidence_bounds(95)
+
+
+def test_bounds_property_quotes_the_two_report_levels(joint_fit):
+    """68 and 95, keyed by level, each exactly what confidence_bounds gives."""
+    bounds = joint_fit.bounds
+
+    assert list(bounds) == [68.0, 95.0]
+    assert bounds[68.0] == joint_fit.confidence_bounds(68)
+    assert bounds[95.0] == joint_fit.confidence_bounds(95)

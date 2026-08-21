@@ -30,9 +30,10 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
+import numpy as np
 import pandas as pd
 import yaml
 from rich import box
@@ -396,6 +397,40 @@ class FitResultGroup:
     def __init__(self, results: List[FitResult]):
         self.results = results
 
+    # ------------------------------------------------------------------
+    # The FitResult fields that still mean something one at a time
+    # ------------------------------------------------------------------
+    #
+    # A group is not a FitResult and deliberately does not pretend to be one:
+    # it has no joint likelihood, no single best-fit point, no correlations.
+    # These two fields are the ones a coefficient answers on its own, and they
+    # are exposed under their FitResult names so that a consumer looking at one
+    # coefficient at a time — the bounds — reads both kinds of fit the same
+    # way. Anything reading two coefficients *together* (a contour, a
+    # correlation) must not: individual posteriors were sampled independently,
+    # so pairing them up would draw a correlation that was never fitted.
+
+    @property
+    def free_parameters(self) -> List[str]:
+        """The coefficients fitted, in the order they were fitted.
+
+        One per individual fit, each free in its own.
+        """
+        return [result.free_parameters[0] for result in self.results]
+
+    @property
+    def samples(self) -> Optional[Dict[str, jnp.ndarray]]:
+        """Posterior samples per coefficient, from its own individual fit.
+
+        ``None`` when no individual fit kept any, as for :class:`FitResult`.
+        """
+        samples = {}
+        for result in self.results:
+            name = result.free_parameters[0]
+            if result.samples is not None and name in result.samples:
+                samples[name] = result.samples[name]
+        return samples or None
+
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
         console = Console()
@@ -657,6 +692,65 @@ class Fit:
             "fit_type": None,
             "is_individual_fit": False,
         }
+
+    # ------------------------------------------------------------------
+    # What the fit constrained — derived from the posterior samples
+    # ------------------------------------------------------------------
+
+    @property
+    def bounds(self) -> Dict[float, Dict[str, Tuple[float, float, float]]]:
+        """The 68% and 95% confidence bounds of every free coefficient.
+
+        The two levels every report quotes, keyed by level, each as
+        :meth:`confidence_bounds` computes it. Any other level goes through
+        that method directly.
+        """
+        return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
+
+    def confidence_bounds(
+        self, confidence_level: float
+    ) -> Dict[str, Tuple[float, float, float]]:
+        """The ``confidence_level`` percent bounds of every free coefficient.
+
+        Parameters
+        ----------
+        confidence_level : float
+            In percent: 95, not 0.95.
+
+        Returns
+        -------
+        dict of str to tuple of float
+            ``(low, mean, high)`` per free coefficient, in the fit's order.
+            Coefficients with no samples are left out.
+
+        Raises
+        ------
+        ValueError
+            If the level is outside ``[1, 100)``, or if the fit stored no
+            posterior samples.
+        """
+        if not 1.0 <= confidence_level < 100.0:
+            raise ValueError(
+                f"confidence_level is a percentage between 1 and 100, got "
+                f"{confidence_level}. Write 95, not 0.95."
+            )
+
+        samples = self.fit_results.samples
+        if not samples:
+            raise ValueError(
+                f"The fit '{self.fit_name}' stored no posterior samples, so it "
+                "has no bounds to report."
+            )
+
+        tail = (100.0 - confidence_level) / 2.0
+        bounds = {}
+        for name in self.fit_results.free_parameters:
+            if name not in samples:
+                continue
+            values = np.asarray(samples[name], dtype=float)
+            low, high = np.nanpercentile(values, [tail, 100.0 - tail])
+            bounds[name] = (float(low), float(np.nanmean(values)), float(high))
+        return bounds
 
     # ------------------------------------------------------------------
     # I/O

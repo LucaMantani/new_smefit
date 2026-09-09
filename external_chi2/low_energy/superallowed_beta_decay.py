@@ -81,11 +81,11 @@ _DEFAULT_SCALE = 10000.0
 # coefficients but carry no SMEFT operator, so they are excluded from the RGE
 # translation (which would otherwise warn about them being unknown WCs).
 _BD_PARAM_DEFAULTS: dict[str, float] = {
-    "DRV": 0.02467,
+    "DRV": 0.02471,
     "eta1": 0.0,
     "eta2": 0.0,
     "eta3": 0.0,
-    "Vud": 0.9737,
+    "Vud": 0.97367,
 }
 
 

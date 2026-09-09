@@ -72,6 +72,11 @@ _CONV = 1.519267e24
 _PREF = 4 * jnp.pi**3 * jnp.log(2.0) / (2 * (0.5109989e-3) ** 5)  # GeV^-1
 _GF = 1.16637859e-5  # GeV^-2
 
+# Default SMEFT scale used when the runcard supplies neither an rge: block with
+# an init_scale nor a starting_scale override. Deliberately not RGE's own 1e3
+# default: it matches the old-format module in smefit_database.
+_DEFAULT_SCALE = 10000.0
+
 # Nuisance parameters of the beta-decay likelihood. They are ordinary runcard
 # coefficients but carry no SMEFT operator, so they are excluded from the RGE
 # translation (which would otherwise warn about them being unknown WCs).
@@ -137,6 +142,7 @@ class SA_beta_decays:
         # documents. Only the translation comes from here; the SMEFT -> WET
         # matching below is rgevolve's.
         settings = dict(rge_dict) if rge_dict is not None else {}
+        settings.setdefault("init_scale", _DEFAULT_SCALE)
         if starting_scale is not None:
             settings["init_scale"] = float(starting_scale)
 

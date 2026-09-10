@@ -40,6 +40,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from smefit.credible_intervals import equal_tailed_interval, highest_density_interval
 from smefit.priors import _build_dist
 from smefit.whitening import WhitenTransform
 
@@ -168,6 +169,22 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     if spec.get("dist") == "exact_posterior":
         return f"ExactPosterior"
     return str(_build_dist(spec))
+
+
+def _prior_bound(
+    spec: Optional[Mapping],
+) -> Optional[Tuple[Optional[float], Optional[float]]]:
+    """The hard ``(low, high)`` physical bound a prior spec carries, if any.
+
+    Feeds :func:`smefit.credible_intervals.highest_density_interval`'s
+    ``bounds`` so a boundary the prior enforces (e.g. a positivity bound,
+    ``low=0``) is pinned exactly rather than left for the HDI to leak past.
+    Only a ``low``/``high`` key means a bound; a prior spec without either
+    (e.g. ``gaussian``, ``exact_posterior``) is unbounded.
+    """
+    if spec is None or ("low" not in spec and "high" not in spec):
+        return None
+    return spec.get("low"), spec.get("high")
 
 
 @dataclass
@@ -430,6 +447,22 @@ class FitResultGroup:
             if result.samples is not None and name in result.samples:
                 samples[name] = result.samples[name]
         return samples or None
+
+    @property
+    def prior_specs(self) -> Optional[Dict[str, Mapping]]:
+        """The prior spec per coefficient, from its own individual fit.
+
+        Under the same :class:`FitResult` name as :attr:`samples`, so a
+        consumer reading one coefficient at a time — the bounds — reads both
+        kinds of fit the same way. ``None`` when no individual fit recorded
+        one.
+        """
+        specs = {}
+        for result in self.results:
+            name = result.free_parameters[0]
+            if result.prior_specs and name in result.prior_specs:
+                specs[name] = result.prior_specs[name]
+        return specs or None
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
@@ -697,42 +730,66 @@ class Fit:
     # What the fit constrained — derived from the posterior samples
     # ------------------------------------------------------------------
 
-    @property
-    def bounds(self) -> Dict[float, Dict[str, Tuple[float, float, float]]]:
+    def bounds(
+        self, interval_type: str = "eti"
+    ) -> Dict[float, Dict[str, Tuple[float, List[Tuple[float, float]]]]]:
         """The 68% and 95% confidence bounds of every free coefficient.
 
         The two levels every report quotes, keyed by level, each as
         :meth:`confidence_bounds` computes it. Any other level goes through
         that method directly.
+
+        Parameters
+        ----------
+        interval_type : str
+            ``"eti"`` (equal-tailed, default) or ``"hdi"`` (highest-density).
+            See :meth:`confidence_bounds`.
         """
-        return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
+        return {
+            level: self.confidence_bounds(level, interval_type=interval_type)
+            for level in (68.0, 95.0)
+        }
 
     def confidence_bounds(
-        self, confidence_level: float
-    ) -> Dict[str, Tuple[float, float, float]]:
+        self, confidence_level: float, interval_type: str = "eti"
+    ) -> Dict[str, Tuple[float, List[Tuple[float, float]]]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
         Parameters
         ----------
         confidence_level : float
             In percent: 95, not 0.95.
+        interval_type : str
+            ``"eti"`` (equal-tailed, default) — the ``[tail, 100-tail]``
+            percentiles, as this method has always computed. ``"hdi"``
+            (highest-density) — the narrowest interval(s) containing
+            ``confidence_level`` percent of the posterior mass, boundary- and
+            multimodality-corrected; see :mod:`smefit.credible_intervals`.
 
         Returns
         -------
-        dict of str to tuple of float
-            ``(low, mean, high)`` per free coefficient, in the fit's order.
-            Coefficients with no samples are left out.
+        dict of str to (float, list of (float, float))
+            ``(mean, segments)`` per free coefficient, in the fit's order.
+            ``segments`` is a list of disjoint ``(low, high)`` intervals: one
+            element for ``"eti"`` and for a unimodal ``"hdi"``, more than one
+            for a multimodal ``"hdi"``. Coefficients with no samples are left
+            out.
 
         Raises
         ------
         ValueError
-            If the level is outside ``[1, 100)``, or if the fit stored no
+            If the level is outside ``[1, 100)``, if ``interval_type`` is
+            neither ``"eti"`` nor ``"hdi"``, or if the fit stored no
             posterior samples.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
                 f"confidence_level is a percentage between 1 and 100, got "
                 f"{confidence_level}. Write 95, not 0.95."
+            )
+        if interval_type not in ("eti", "hdi"):
+            raise ValueError(
+                f"interval_type must be 'eti' or 'hdi', got {interval_type!r}."
             )
 
         samples = self.fit_results.samples
@@ -742,14 +799,22 @@ class Fit:
                 "has no bounds to report."
             )
 
-        tail = (100.0 - confidence_level) / 2.0
+        prior_specs = self.fit_results.prior_specs or {}
         bounds = {}
         for name in self.fit_results.free_parameters:
             if name not in samples:
                 continue
             values = np.asarray(samples[name], dtype=float)
-            low, high = np.nanpercentile(values, [tail, 100.0 - tail])
-            bounds[name] = (float(low), float(np.nanmean(values)), float(high))
+            mean = float(np.nanmean(values))
+            if interval_type == "eti":
+                segments = [equal_tailed_interval(values, confidence_level)]
+            else:
+                segments = highest_density_interval(
+                    values,
+                    confidence_level,
+                    bounds=_prior_bound(prior_specs.get(name)),
+                )
+            bounds[name] = (mean, segments)
         return bounds
 
     # ------------------------------------------------------------------

@@ -17,6 +17,7 @@ def _make_result(
     max_loglikelihood=-5.0,
     num_data=10,
     samples=None,
+    prior_specs=None,
 ):
     if best_fit is None:
         best_fit = {name: 1.0 for name in free}
@@ -26,6 +27,7 @@ def _make_result(
         max_loglikelihood=max_loglikelihood,
         num_data=num_data,
         samples=samples,
+        prior_specs=prior_specs,
     )
 
 
@@ -221,7 +223,12 @@ def test_from_json_names_an_unparsable_file(tmp_path):
 
 
 def _make_individual_result(
-    name, best_val, samples_vals, max_loglikelihood=-5.0, num_data=10
+    name,
+    best_val,
+    samples_vals,
+    max_loglikelihood=-5.0,
+    num_data=10,
+    prior_spec=None,
 ):
     """Build a single-free-parameter result as produced by an individual fit."""
     return FitResult(
@@ -230,6 +237,7 @@ def _make_individual_result(
         max_loglikelihood=max_loglikelihood,
         num_data=num_data,
         samples={name: jnp.array(samples_vals)},
+        prior_specs={name: prior_spec} if prior_spec is not None else None,
     )
 
 
@@ -652,13 +660,14 @@ def test_group_samples_is_none_when_no_fit_kept_any():
 # ---------------------------------------------------------------------------
 
 
-def _joint_fit(name, samples):
+def _joint_fit(name, samples, prior_specs=None):
     """A joint fit as the bounds see one: samples for every free coefficient,
     drawn together."""
     return Fit(
         fit_results=_make_result(
             free=tuple(samples),
             samples={key: jnp.array(vals) for key, vals in samples.items()},
+            prior_specs=prior_specs,
         ),
         fit_name=name,
     )
@@ -691,14 +700,17 @@ def joint_fit():
 
 def test_confidence_bounds_are_equal_tailed_percentiles(joint_fit):
     """68% means 16/84 — the convention the old report pipeline used, and the
-    one the tables have always quoted."""
-    assert joint_fit.confidence_bounds(68)["OtG"] == pytest.approx(
-        (160.0, 500.0, 840.0)
-    )
+    one the tables have always quoted. Default interval_type is "eti", one
+    segment."""
+    mean, segments = joint_fit.confidence_bounds(68)["OtG"]
+    assert mean == pytest.approx(500.0)
+    assert segments == pytest.approx([(160.0, 840.0)])
 
 
 def test_confidence_bounds_at_95_percent(joint_fit):
-    assert joint_fit.confidence_bounds(95)["OtG"] == pytest.approx((25.0, 500.0, 975.0))
+    mean, segments = joint_fit.confidence_bounds(95)["OtG"]
+    assert mean == pytest.approx(500.0)
+    assert segments == pytest.approx([(25.0, 975.0)])
 
 
 def test_confidence_bounds_central_value_is_the_mean():
@@ -706,7 +718,7 @@ def test_confidence_bounds_central_value_is_the_mean():
     value everywhere it is quoted."""
     fit = _joint_fit("fit", {"OtG": [0.0, 0.0, 0.0, 4.0]})
 
-    assert fit.confidence_bounds(68)["OtG"][1] == pytest.approx(1.0)
+    assert fit.confidence_bounds(68)["OtG"][0] == pytest.approx(1.0)
 
 
 def test_confidence_bounds_cover_every_free_coefficient_in_order(joint_fit):
@@ -731,7 +743,8 @@ def test_confidence_bounds_reproduce_a_gaussian_sigma():
     rng = np.random.default_rng(0)
     fit = _joint_fit("fit", {"OtG": rng.normal(loc=2.0, scale=0.5, size=200_000)})
 
-    low, mean, high = fit.confidence_bounds(68.27)["OtG"]
+    mean, segments = fit.confidence_bounds(68.27)["OtG"]
+    low, high = segments[0]
 
     assert mean == pytest.approx(2.0, abs=0.01)
     assert (high - low) / 2 == pytest.approx(0.5, rel=0.02)
@@ -743,6 +756,13 @@ def test_confidence_bounds_reject_a_level_that_is_not_a_percentage(joint_fit, le
     silently give a 0.95% interval."""
     with pytest.raises(ValueError, match="between 1 and 100"):
         joint_fit.confidence_bounds(level)
+
+
+def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
+    """Mirrors the confidence_level range check: fail loudly, not silently
+    fall back to "eti"."""
+    with pytest.raises(ValueError, match="'eti' or 'hdi'"):
+        joint_fit.confidence_bounds(68, interval_type="hpd")
 
 
 def test_confidence_bounds_reject_a_fit_without_samples():
@@ -759,7 +779,9 @@ def test_confidence_bounds_read_an_individual_fit():
     entry pointing at an individual_fits output, not a mode switch."""
     fit = _individual_fit("individual", {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]})
 
-    assert fit.confidence_bounds(68)["OtG"] == pytest.approx((160.0, 500.0, 840.0))
+    mean, segments = fit.confidence_bounds(68)["OtG"]
+    assert mean == pytest.approx(500.0)
+    assert segments == pytest.approx([(160.0, 840.0)])
 
 
 def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():
@@ -771,10 +793,103 @@ def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():
     ).confidence_bounds(95)
 
 
-def test_bounds_property_quotes_the_two_report_levels(joint_fit):
+def test_bounds_quotes_the_two_report_levels(joint_fit):
     """68 and 95, keyed by level, each exactly what confidence_bounds gives."""
-    bounds = joint_fit.bounds
+    bounds = joint_fit.bounds()
 
     assert list(bounds) == [68.0, 95.0]
     assert bounds[68.0] == joint_fit.confidence_bounds(68)
     assert bounds[95.0] == joint_fit.confidence_bounds(95)
+
+
+def test_bounds_passes_interval_type_through():
+    """bounds() is a thin wrapper: the interval_type it's given is what
+    confidence_bounds computes with.
+
+    Uses its own well-behaved (unimodal, several-thousand-sample) fixture
+    rather than `joint_fit`: this is a plumbing check, not a numerical one,
+    and `joint_fit`'s tiny/degenerate samples make arviz's KDE-based mode
+    detection noisy for no benefit here.
+    """
+    rng = np.random.default_rng(0)
+    fit = _joint_fit("fit", {"OtG": rng.normal(loc=2.0, scale=0.5, size=5000)})
+
+    bounds = fit.bounds(interval_type="hdi")
+
+    assert bounds[68.0] == fit.confidence_bounds(68, interval_type="hdi")
+
+
+# ---------------------------------------------------------------------------
+# Fit.confidence_bounds — interval_type="hdi"
+# ---------------------------------------------------------------------------
+
+
+def test_confidence_bounds_hdi_on_a_unimodal_gaussian_is_one_segment():
+    rng = np.random.default_rng(0)
+    fit = _joint_fit("fit", {"OtG": rng.normal(loc=2.0, scale=0.5, size=5000)})
+
+    mean, segments = fit.confidence_bounds(68, interval_type="hdi")["OtG"]
+
+    assert mean == pytest.approx(2.0, abs=0.05)
+    assert len(segments) == 1
+    low, high = segments[0]
+    assert low < 2.0 < high
+
+
+def test_confidence_bounds_hdi_on_a_bimodal_posterior_is_two_segments():
+    """Two well-separated modes: exactly two disjoint segments, and neither
+    swallows the gap between them, mimicking the linear+quadratic EFT
+    degeneracy."""
+    rng = np.random.default_rng(0)
+    values = np.concatenate([rng.normal(-5.0, 0.2, 3000), rng.normal(5.0, 0.2, 3000)])
+    fit = _joint_fit("fit", {"OtG": values})
+
+    _mean, segments = fit.confidence_bounds(68, interval_type="hdi")["OtG"]
+
+    assert len(segments) == 2
+    (low1, high1), (low2, high2) = sorted(segments)
+    assert high1 < -1.0
+    assert low2 > 1.0
+
+
+def test_confidence_bounds_hdi_picks_up_a_uniform_prior_bound():
+    """A positivity-bound coefficient: the HDI's lower edge is pinned at the
+    prior's low, not left to leak below it."""
+    rng = np.random.default_rng(0)
+    values = np.abs(rng.normal(0.0, 1.0, 5000))
+    fit = _joint_fit(
+        "fit",
+        {"OtG": values},
+        prior_specs={"OtG": {"dist": "uniform", "low": 0.0, "high": 10.0}},
+    )
+
+    _mean, segments = fit.confidence_bounds(95, interval_type="hdi")["OtG"]
+
+    assert len(segments) == 1
+    low, _high = segments[0]
+    assert low == pytest.approx(0.0, abs=1e-9)
+    assert low >= 0.0
+
+
+def test_confidence_bounds_hdi_reads_an_individual_fit():
+    """FitResultGroup exposes prior_specs the same way FitResult does, so the
+    HDI path works whichever container the fit arrived in."""
+    rng = np.random.default_rng(0)
+    values = np.abs(rng.normal(0.0, 1.0, 5000))
+    fit = Fit(
+        fit_results=FitResultGroup(
+            [
+                _make_individual_result(
+                    "OtG",
+                    best_val=0.0,
+                    samples_vals=values,
+                    prior_spec={"dist": "uniform", "low": 0.0, "high": 10.0},
+                )
+            ]
+        ),
+        fit_name="individual",
+    )
+
+    _mean, segments = fit.confidence_bounds(95, interval_type="hdi")["OtG"]
+
+    assert segments[0][0] == pytest.approx(0.0, abs=1e-9)

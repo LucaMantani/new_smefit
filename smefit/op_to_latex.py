@@ -173,5 +173,9 @@ coeff_info_latex = {
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
     "Vud": r"$V_{ud}$",
-    "Lprime": r"$L^\prime$",
+    "Lprime": r"$L^{\prime (1111)}$",
+    "eta1": r"$\eta_1$",
+    "eta2": r"$\eta_2$",
+    "eta3": r"$\eta_3$",
+    "DRV": r"$\Delta_R^V$",
 }

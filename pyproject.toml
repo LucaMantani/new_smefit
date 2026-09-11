@@ -30,6 +30,8 @@ anesthetic = "^2.10.2"
 ipython = "*"
 pytest = "*"
 hypothesis = "*"
+arviz = "*"
+getdist = "*"
 
 # Mark Sphinx and its extensions optional:
 sphinx = {version="*", optional=true}

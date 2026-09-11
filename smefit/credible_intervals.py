@@ -1,8 +1,8 @@
 """
 smefit.credible_intervals — ETI / HDI credible interval calculators.
 
-Numerical core only: takes and returns plain arrays/tuples, 
-unit-testable on raw sample arrays. Dispatch: az.hdi(samples, hdi_prob=level, multimodal=True) first. 
+Numerical core only: takes and returns plain arrays/tuples,
+unit-testable on raw sample arrays. Dispatch: az.hdi(samples, prob=level, method="multimodal") first.
 If it reports >1 segment, that's the answer. Otherwise discard it and use
 getdist's Density1D.getLimits on the same samples instead, passing
 `bounds` through as getdist's `ranges` so a hard prior edge (e.g.
@@ -56,7 +56,7 @@ def highest_density_interval(
 
     Dispatch:
 
-    1. Run ``arviz.hdi(..., multimodal=True)`` — If it reports more than one segment, that is the answer.
+    1. Run ``arviz.hdi(..., method="multimodal")`` — if it reports more than one segment, that is the answer.
     2. Otherwise the posterior is unimodal; re-derive that single segment
        from getdist's boundary-corrected KDE (``Density1D.getLimits``)
        instead, passing ``bounds`` through as getdist's ``ranges`` so a hard
@@ -83,7 +83,7 @@ def highest_density_interval(
     values = np.asarray(samples, dtype=float)
     hdi_prob = level / 100.0
 
-    segments = np.atleast_2d(az.hdi(values, hdi_prob=hdi_prob, multimodal=True))
+    segments = np.atleast_2d(az.hdi(values, prob=hdi_prob, method="multimodal"))
     if len(segments) > 1:
         return [(float(low), float(high)) for low, high in segments]
 

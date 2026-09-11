@@ -27,7 +27,7 @@ from smefit.contours_2d import (
     plot_uncorrelated_contours,
 )
 from smefit.fit_result import FitResult
-from smefit.op_to_latex import coeff_info_latex
+from smefit.op_to_latex import coeff_info_latex, group_info_latex
 from smefit.plot_utils import (
     baseline_point,
     best_fit_pair,
@@ -164,7 +164,8 @@ def plot_fisher_diagonals_heatmap(
     Parameters
     ----------
     fisher_diagonals_normalised : pd.DataFrame
-        Index = coeff_names, columns = source_names.
+        Index = coeff_names, columns = source_names. Source names found in
+        ``group_info_latex`` (the ``group:`` labels) are drawn in LaTeX.
     cmap : str, optional
         Colormap. Sequential by default: the values are percentage shares, so
         they run one way from zero and a diverging map would invent a midpoint.
@@ -178,7 +179,7 @@ def plot_fisher_diagonals_heatmap(
     return _plot_heatmap(
         fd.values * 100,
         fd.index.tolist(),
-        fd.columns.tolist(),
+        [group_info_latex.get(name, name) for name in fd.columns],
         vmin=0,
         vmax=100,
         cmap=cmap,

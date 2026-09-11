@@ -179,3 +179,11 @@ coeff_info_latex = {
     "eta3": r"$\eta_3$",
     "DRV": r"$\Delta_R^V$",
 }
+
+group_info_latex = {
+    "LEP": r"$\mathrm{LEP}$",
+    "LHC": r"$\mathrm{LHC}$",
+    "HL-LHC": r"$\mathrm{HL\textrm{-}LHC}$",
+    "FCC-ee": r"$\mathrm{FCC\textrm{-}ee}$",
+    "Beta decay": r"$\beta\,\mathrm{decay}$",
+}

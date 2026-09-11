@@ -15,10 +15,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib import patches
+from matplotlib.collections import PathCollection
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 from matplotlib.ticker import ScalarFormatter
 
 from smefit import figures as figures_mod
+from smefit.core import ReferencePoint
 from smefit.figures import (
     _ROW_GAP_RATIO,
     _plot_heatmap,
@@ -479,21 +482,83 @@ def test_contours_mark_the_sm_at_the_coefficient_baselines() -> None:
     assert sm_marker.get_offsets().tolist() == [[1.5, -2.0]]
 
 
+def test_contours_draw_the_runcard_reference_points_beside_the_sm() -> None:
+    """reference_points add to the SM marker rather than replacing it, each
+    with its own legend entry."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 2.0}),
+        ReferencePoint(label="$B$", values={"OpA": -2.0, "OpZZ": 1.0}),
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points
+    )
+
+    ax = fig.axes[0]
+    drawn = [c.get_offsets().tolist()[0] for c in ax.collections[-3:]]
+    assert drawn == [[0.0, 0.0], [2.0, 0.0], [-2.0, 1.0]]
+    legend_labels = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
+    assert legend_labels[-3:] == [r"$\mathrm{SM}$", "$A$", "$B$"]
+
+
+def test_contours_reference_point_replaces_the_sm_when_it_is_off() -> None:
+    """show_sm: False with one entry is how a runcard moves the marker."""
+    points = [ReferencePoint(label="$A$", values={"OpA": 2.0, "OpZZ": 1.0})]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=points,
+        show_sm=False,
+    )
+
+    assert fig.axes[0].collections[-1].get_offsets().tolist() == [[2.0, 1.0]]
+    legend_labels = [t.get_text() for t in fig.axes[-1].get_legend().get_texts()]
+    assert legend_labels[-1] == "$A$"
+
+
+def test_contours_draw_an_ellipse_when_both_coefficients_have_a_std() -> None:
+    """A point given with an uncertainty on both axes of a panel also gets the
+    confidence ellipse of the uncorrelated Gaussian it describes."""
+    points = [
+        ReferencePoint(
+            label="$A$", values={"OpA": 1.0, "OpZZ": 0.0}, std={"OpA": 0.4, "OpZZ": 0.2}
+        )
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ax = fig.axes[0]
+    # the fit's three patches, then the reference point's, drawn the same way
+    assert len(ax.patches) == 6
+    outline, fill, _hatch = ax.patches[-3:]
+    assert fill.get_center() == (1.0, 0.0)
+    assert fill.get_width() > fill.get_height()  # 0.4 against 0.2
+    assert fill.get_alpha() == pytest.approx(0.3)
+    assert outline.get_facecolor()[3] == 0.0
+
+
 def test_contours_hatch_every_filled_contour_differently() -> None:
-    """Two fits: two fills, two textures, so the figure survives greyscale
-    and colour blindness."""
+    """Two fits and a reference point: three fills, three textures, so the
+    figure survives greyscale and colour blindness."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 3.0}, std={"OpA": 0.4, "OpZZ": 0.4})
+    ]
+
     fig = plot_fits_posterior_contours(
         [
             _fit(fit_name="fit_a", samples=_two_coeff_gaussians()),
             _fit(fit_name="fit_b", samples=_three_coeff_samples()),
         ],
         params_to_plot=["OpA", "OpZZ"],
+        reference_points=points,
         show_sm=False,
     )
 
     hatched = [p.get_hatch() for p in fig.axes[0].patches if p.get_hatch()]
-    assert len(hatched) == 2  # one per fill
-    assert len(set(hatched)) == 2
+    assert len(hatched) == 3  # one per fill: two fits and the point
+    assert len(set(hatched)) == 3
 
 
 def test_contours_hatch_can_be_turned_off() -> None:
@@ -502,6 +567,121 @@ def test_contours_hatch_can_be_turned_off() -> None:
     )
 
     assert all(p.get_hatch() is None for p in fig.axes[0].patches)
+
+
+def test_contours_legend_key_of_a_point_with_a_contour_is_a_filled_patch() -> None:
+    """A point that draws a contour is legended like the fits — a filled patch
+    — with its own marker in the middle, rather than by a bare marker."""
+    values = {"OpA": 1.0, "OpZZ": 0.0}
+    keyed = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[
+            ReferencePoint(label="$A$", values=values, std={"OpA": 0.4, "OpZZ": 0.2})
+        ],
+        show_sm=False,
+    )
+    bare = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[ReferencePoint(label="$A$", values=values)],
+        show_sm=False,
+    )
+
+    keyed_legend = keyed.axes[-1].get_legend()
+    bare_legend = bare.axes[-1].get_legend()
+    # the outline, fill and hatch layer the fits' keys are made of, on top of
+    # what the bare marker key already draws
+    assert (
+        len(keyed_legend.findobj(Rectangle)) == len(bare_legend.findobj(Rectangle)) + 3
+    )
+    # and the marker itself survives, drawn over them
+    assert len(keyed_legend.findobj(PathCollection)) == 1
+
+
+def test_contours_legend_marker_sits_at_the_centre_of_its_key() -> None:
+    """Overlaid on a patch, a marker placed anywhere but the middle reads as a
+    mistake — and matplotlib's default for a single scatter key is 3/8 up."""
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())],
+        reference_points=[
+            ReferencePoint(
+                label="$A$", values={"OpA": 1.0}, std={"OpA": 0.4, "OpZZ": 0.2}
+            )
+        ],
+        show_sm=False,
+    )
+    fig.canvas.draw()  # the key artists are positioned at draw time
+
+    legend = fig.axes[-1].get_legend()
+    key = [r for r in legend.findobj(Rectangle) if r.get_width() > 0][-1]
+    marker = legend.findobj(PathCollection)[0]
+
+    box = key.get_window_extent()
+    position = marker.get_offset_transform().transform(marker.get_offsets())[0]
+    assert position[0] == pytest.approx((box.x0 + box.x1) / 2, abs=0.5)
+    assert position[1] == pytest.approx((box.y0 + box.y1) / 2, abs=0.5)
+
+
+def test_contours_skip_the_ellipse_when_a_std_is_missing() -> None:
+    """One std describes a band, not an ellipse: the panel keeps the marker
+    and draws nothing around it."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 1.0}, std={"OpA": 0.4}),
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ax = fig.axes[0]
+    assert len(ax.patches) == 3  # the fit's three, none of the point's
+    assert ax.collections[-1].get_offsets().tolist() == [[1.0, 0.0]]
+
+
+def test_contours_ellipse_follows_the_confidence_level() -> None:
+    """The ellipse is drawn at the level the panels are read with, so it can
+    be compared against the contours beside it."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 0.0}, std={"OpA": 0.4, "OpZZ": 0.2})
+    ]
+    kwargs = {
+        "reference_points": points,
+        "show_sm": False,
+    }
+
+    narrow = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=68, **kwargs
+    )
+    wide = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], confidence_level=95, **kwargs
+    )
+
+    assert wide.axes[0].patches[-1].get_width() > narrow.axes[0].patches[-1].get_width()
+
+
+def test_contours_keep_the_whole_reference_ellipse_inside_the_frame() -> None:
+    """Stretching to the centre alone would clip an ellipse whose edge reaches
+    further than the samples."""
+    points = [
+        ReferencePoint(label="$A$", values={"OpA": 8.0}, std={"OpA": 2.0, "OpZZ": 0.5})
+    ]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points, show_sm=False
+    )
+
+    ellipse = fig.axes[0].patches[-1]
+    assert fig.axes[0].get_xlim()[1] > 8.0 + ellipse.get_width() / 2
+
+
+def test_contours_keep_a_reference_point_inside_the_frame() -> None:
+    """Points stretch the axes exactly as the SM marker does."""
+    points = [ReferencePoint(label="$A$", values={"OpA": 14.0})]
+
+    fig = plot_fits_posterior_contours(
+        [_fit(samples=_two_coeff_gaussians())], reference_points=points
+    )
+
+    assert fig.axes[0].get_xlim()[1] > 14.0
 
 
 def test_contours_keep_a_non_zero_sm_point_inside_the_frame() -> None:

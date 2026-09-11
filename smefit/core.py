@@ -5,7 +5,7 @@ Core module of smefit, containing the main data classes for the framework.
 """
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
@@ -222,6 +222,45 @@ class Coefficient:
         fn = self._expr_fn
 
         return fn(*args)
+
+
+@dataclass(frozen=True)
+class ReferencePoint:
+    """A point in coefficient space, to be marked on a figure.
+
+    Built by ``parse_reference_point`` from one entry of the ``reference_points``
+    runcard key, and resolved against the fits' baselines before it is drawn:
+    the coefficients ``values`` does not name keep their ``baseline_value``, so
+    an entry marks a benchmark by naming only what moves.
+
+    A point may also carry an uncertainty. Where both coefficients of a panel
+    have a ``std``, the figure adds the confidence ellipse of the uncorrelated
+    Gaussian they describe — uncorrelated because a standard deviation per
+    coefficient says nothing about how they covary. Where either is missing,
+    only the marker is drawn: there is no ellipse to speak of on that plane.
+
+    Attributes
+    ----------
+    label : str
+        Legend entry, passed to matplotlib verbatim, so it may be raw LaTeX.
+    values : Mapping[str, float]
+        Central value by coefficient name. Coefficients left out fall back to
+        their baseline; coefficients not plotted are ignored.
+    std : Mapping[str, float]
+        Standard deviation by coefficient name, for as many of them as are
+        known. Unlike ``values`` these have no default: a coefficient without
+        one simply has no ellipse.
+    marker : str, optional
+        Matplotlib marker. None takes the next one of the figure's cycle.
+    color : str, optional
+        Matplotlib colour. None is black, as the SM marker has always been.
+    """
+
+    label: str
+    values: Mapping[str, float] = field(default_factory=dict)
+    std: Mapping[str, float] = field(default_factory=dict)
+    marker: Optional[str] = None
+    color: Optional[str] = None
 
 
 class DataGroup:

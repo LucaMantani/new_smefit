@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from matplotlib.ticker import ScalarFormatter
 
+from smefit.contours_2d import fit_colors
+from smefit.core import ReferencePoint
 from smefit.fit_result import FitResult
 
 if TYPE_CHECKING:
@@ -87,6 +89,10 @@ def compact_tick_labels(
         target.set_major_formatter(formatter)
         target.offsetText.set_visible(show)
         target.offsetText.set_fontsize(fontsize)
+
+
+# Markers handed out to points that do not choose one, the SM's "+" first.
+_MARKER_CYCLE = ("+", "x", "*", "s", "D")
 
 
 def _joint_results(fit: Fit) -> FitResult:
@@ -568,6 +574,88 @@ def baseline_point(fits: Sequence[Fit], coeffs: Sequence[str]) -> dict[str, floa
             )
 
     return baselines
+
+
+def marker_points(
+    fits: Sequence[Fit],
+    coeffs: Sequence[str],
+    reference_points: Sequence[ReferencePoint] | None = None,
+    show_sm: bool = True,
+) -> list[ReferencePoint]:
+    """Every point to mark on the panels, with its coordinates filled in.
+
+    The SM comes first when ``show_sm`` is on, at the fits' baselines; the
+    runcard's ``reference_points`` follow, each falling back to those same
+    baselines for the coefficients it does not name. What comes back is one
+    :class:`ReferencePoint` per marker whose ``values`` covers every plotted
+    coefficient and whose ``marker``/``color`` are settled, so a caller can
+    scatter it without further defaulting. A ``std`` is carried over only for
+    the coefficients that have one — it has no baseline to fall back on, and
+    its absence is what tells a panel it has no ellipse to draw.
+
+    Parameters
+    ----------
+    fits : sequence of Fit
+        The fits being plotted, which locate the baselines.
+    coeffs : sequence of str
+        The coefficients drawn, and so the coordinates each point needs.
+    reference_points : sequence of ReferencePoint, optional
+        The runcard's extra points, in the order they were written. They add
+        to the SM marker rather than replacing it — drop it with
+        ``show_sm: False`` to move it somewhere else.
+    show_sm : bool, optional
+        Whether the SM marker is drawn at all. On by default.
+
+    Notes
+    -----
+    A point that chose no colour takes one from the plot cycle, continuing
+    past the colours the fits used so that no point wears a fit's. The SM
+    keeps black: it is the reference every panel is read against, not one
+    more thing being compared.
+
+    Returns
+    -------
+    list of ReferencePoint
+        The resolved points, in drawing and legend order.
+    """
+    baselines = baseline_point(fits, coeffs)
+
+    sm = [ReferencePoint(label=r"$\mathrm{SM}$", color="k")] if show_sm else []
+    requested = [*sm, *(reference_points or [])]
+    # the colours after the fits', so a point is never mistaken for one
+    colors = fit_colors(len(requested), offset=len(fits))
+
+    resolved = []
+    for index, point in enumerate(requested):
+        unknown = [
+            name
+            for name in dict.fromkeys([*point.values, *point.std])
+            if name not in baselines
+        ]
+        if unknown:
+            log.warning(
+                "Reference point %s gives a value for %s, which %s not among "
+                "the coefficients plotted (%s) — ignored.",
+                point.label,
+                ", ".join(unknown),
+                "is" if len(unknown) == 1 else "are",
+                ", ".join(coeffs),
+            )
+        resolved.append(
+            ReferencePoint(
+                label=point.label,
+                values={
+                    name: float(point.values.get(name, baselines[name]))
+                    for name in coeffs
+                },
+                std={
+                    name: float(point.std[name]) for name in coeffs if name in point.std
+                },
+                marker=point.marker or _MARKER_CYCLE[index % len(_MARKER_CYCLE)],
+                color=point.color or colors[index],
+            )
+        )
+    return resolved
 
 
 def best_fit_pair(fit: Fit, coeff1: str, coeff2: str) -> tuple[float, float] | None:

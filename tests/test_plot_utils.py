@@ -11,6 +11,8 @@ import numpy as np
 import pytest
 from matplotlib.ticker import ScalarFormatter
 
+from smefit.contours_2d import fit_colors
+from smefit.core import ReferencePoint
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.plot_utils import (
     baseline_point,
@@ -19,6 +21,7 @@ from smefit.plot_utils import (
     common_free_coefficients,
     compact_tick_labels,
     contour_coefficients,
+    marker_points,
     per_fit_option,
     select_params,
     stuck_values,
@@ -447,6 +450,17 @@ def test_coeff_limits_stretch_to_a_non_zero_included_point(
     assert low == pytest.approx(-0.1 - 0.1 * (5.0 + 0.1))
 
 
+def test_coeff_limits_ignore_a_point_that_skips_the_coefficient(
+    fit_pair: list[Fit],
+) -> None:
+    """Points need not name every coefficient — a benchmark that only moves
+    OtG leaves the OpQM frame to the samples."""
+    limits = coeff_limits(fit_pair, ["OtG", "OpQM"], include_points={"OtG": 5.0})
+
+    assert limits["OtG"][1] > 5.0
+    assert limits["OpQM"][0] > 0.0
+
+
 def test_coeff_limits_without_a_point_keep_the_sample_range(
     fit_pair: list[Fit],
 ) -> None:
@@ -604,6 +618,139 @@ def test_baseline_point_asks_the_first_fit_that_declares_the_coefficient(
         assert baseline_point([silent, declaring], ["OtW"]) == {"OtW": 1.5}
 
     assert caplog.text == ""
+
+
+# --- marker_points ----------------------------------------------------------
+
+
+def test_marker_points_is_the_sm_alone_by_default(fit_pair: list[Fit]) -> None:
+    """What the figures drew before reference_points existed: one marker, at
+    the baselines, labelled SM."""
+    points = marker_points(fit_pair, ["OtG", "OpQM"])
+
+    assert len(points) == 1
+    assert points[0].values == {"OtG": 0.0, "OpQM": 0.0}
+    assert points[0].marker == "+"
+
+
+def test_marker_points_adds_the_runcard_points_after_the_sm(
+    fit_pair: list[Fit],
+) -> None:
+    """reference_points come in addition to the SM, in the order written."""
+    extra = [ReferencePoint(label="$A$"), ReferencePoint(label="$B$")]
+
+    labels = [p.label for p in marker_points(fit_pair, ["OtG", "OpQM"], extra)]
+
+    assert labels == [r"$\mathrm{SM}$", "$A$", "$B$"]
+
+
+def test_marker_points_fills_unnamed_coefficients_from_the_baseline() -> None:
+    """A benchmark names only what moves; the rest of the point is the SM."""
+    fit = make_fit(
+        "fit",
+        {"OtG": [0.1, 0.2], "OpQM": [1.0, 2.0]},
+        ["OtG", "OpQM"],
+        baselines={"OpQM": -0.5},
+    )
+    extra = [ReferencePoint(label="$A$", values={"OtG": 3.0})]
+
+    point = marker_points([fit], ["OtG", "OpQM"], extra)[1]
+
+    assert point.values == {"OtG": 3.0, "OpQM": -0.5}
+
+
+def test_marker_points_drop_the_sm_when_it_is_off(fit_pair: list[Fit]) -> None:
+    """show_sm: False plus one entry is how a runcard moves the SM marker."""
+    extra = [ReferencePoint(label="$A$", values={"OtG": 3.0})]
+
+    points = marker_points(fit_pair, ["OtG", "OpQM"], extra, show_sm=False)
+
+    assert [p.label for p in points] == ["$A$"]
+    assert points[0].marker == "+"  # first drawn point takes the first marker
+
+
+def test_marker_points_hand_out_distinct_markers(fit_pair: list[Fit]) -> None:
+    """Shape tells the points apart even where colour cannot."""
+    extra = [ReferencePoint(label="$A$"), ReferencePoint(label="$B$")]
+
+    points = marker_points(fit_pair, ["OtG", "OpQM"], extra)
+
+    assert [p.marker for p in points] == ["+", "x", "*"]
+
+
+def test_marker_points_colour_the_points_after_the_fits(
+    fit_pair: list[Fit],
+) -> None:
+    """A point wearing a fit's colour would read as one of the contours, so
+    the cycle continues past the colours the fits took."""
+    extra = [ReferencePoint(label="$A$"), ReferencePoint(label="$B$")]
+
+    points = marker_points(fit_pair, ["OtG", "OpQM"], extra)
+
+    _, first, second = points
+    assert {first.color, second.color}.isdisjoint(fit_colors(len(fit_pair)))
+    assert first.color != second.color
+
+
+def test_marker_points_keep_the_sm_black(fit_pair: list[Fit]) -> None:
+    """The SM is what every panel is read against, not one more thing being
+    compared, so it stays out of the colour cycle."""
+    assert marker_points(fit_pair, ["OtG", "OpQM"])[0].color == "k"
+
+
+def test_marker_points_keep_an_explicit_style(fit_pair: list[Fit]) -> None:
+    extra = [ReferencePoint(label="$A$", marker="D", color="firebrick")]
+
+    point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert (point.marker, point.color) == ("D", "firebrick")
+
+
+def test_marker_points_warn_about_a_coefficient_not_plotted(
+    fit_pair: list[Fit], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Naming a coefficient the panels do not show is a typo more often than a
+    point about another figure."""
+    extra = [ReferencePoint(label="$A$", values={"OtTypo": 3.0})]
+
+    with caplog.at_level(logging.WARNING):
+        point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert "OtTypo" in caplog.text
+    assert point.values == {"OtG": 0.0, "OpQM": 0.0}
+
+
+def test_marker_points_carry_the_std_of_the_plotted_coefficients(
+    fit_pair: list[Fit],
+) -> None:
+    """The std has no baseline to fall back on: it comes through for the
+    coefficients that have one and nowhere else."""
+    extra = [ReferencePoint(label="$A$", std={"OtG": 0.05})]
+
+    point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert point.std == {"OtG": 0.05}
+    assert point.values == {"OtG": 0.0, "OpQM": 0.0}
+
+
+def test_marker_points_drop_a_std_for_a_coefficient_not_plotted(
+    fit_pair: list[Fit], caplog: pytest.LogCaptureFixture
+) -> None:
+    """Same warning as a stray value: naming a coefficient the panels do not
+    show is a typo more often than anything else."""
+    extra = [ReferencePoint(label="$A$", std={"OtTypo": 0.05})]
+
+    with caplog.at_level(logging.WARNING):
+        point = marker_points(fit_pair, ["OtG", "OpQM"], extra)[1]
+
+    assert "OtTypo" in caplog.text
+    assert point.std == {}
+
+
+def test_marker_points_give_the_sm_no_std(fit_pair: list[Fit]) -> None:
+    """The SM marker is a point: the baselines say where it is, not how well
+    it is known."""
+    assert marker_points(fit_pair, ["OtG", "OpQM"])[0].std == {}
 
 
 # --- best_fit_pair ----------------------------------------------------------

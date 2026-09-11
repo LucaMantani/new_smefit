@@ -205,6 +205,71 @@ def degenerate_direction(
     return np.asarray(eigenvectors[:, -1], dtype=float)
 
 
+def ellipse_half_axis(std: float, confidence_level: float = 95) -> float:
+    """Half-axis of the confidence ellipse of an uncorrelated Gaussian.
+
+    The same scaling :func:`confidence_ellipse` applies to the square root of a
+    covariance eigenvalue — here the standard deviation is given directly.
+
+    Parameters
+    ----------
+    std : float
+        Standard deviation along the axis.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+
+    Returns
+    -------
+    float
+        Half the extent of the ellipse along that axis.
+    """
+    return float(np.sqrt(scipy.stats.chi2.ppf(confidence_level / 100.0, 2)) * std)
+
+
+def uncorrelated_ellipse(
+    center: tuple[float, float],
+    std: tuple[float, float],
+    ax: Axes,
+    facecolor: ColorType = "none",
+    confidence_level: float = 95,
+    **kwargs: Any,
+) -> Ellipse:
+    """Draw the confidence ellipse of an uncorrelated Gaussian on ``ax``.
+
+    The counterpart of :func:`confidence_ellipse` for a point known by a
+    central value and a standard deviation per coefficient rather than by
+    samples: with no correlation to orient it, the ellipse is axis-aligned.
+
+    Parameters
+    ----------
+    center : tuple of two floats
+        Central value on each axis.
+    std : tuple of two floats
+        Standard deviation on each axis.
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    facecolor : ColorType, optional
+        Fill colour of the ellipse, ``"none"`` by default.
+    confidence_level : float, optional
+        Confidence level in percent, 95 by default.
+    **kwargs
+        Additional settings passed to ``matplotlib.patches.Ellipse``.
+
+    Returns
+    -------
+    matplotlib.patches.Ellipse
+        The ellipse added to ``ax``.
+    """
+    ellipse = Ellipse(
+        center,
+        width=2 * ellipse_half_axis(std[0], confidence_level),
+        height=2 * ellipse_half_axis(std[1], confidence_level),
+        facecolor=facecolor,
+        **kwargs,
+    )
+    return ax.add_patch(ellipse)
+
+
 def kde_grid(
     x_values: ArrayLike,
     y_values: ArrayLike,
@@ -800,12 +865,118 @@ def plot_stuck_point(
     return (line,)
 
 
-def fit_colors(n_fits: int) -> list[ColorType]:
-    """Return ``n_fits`` colours from the current matplotlib colour cycle."""
+def plot_uncorrelated_contours(
+    ax: Axes,
+    center: tuple[float, float],
+    std: tuple[float, float],
+    color: ColorType,
+    confidence_level: float = 95,
+    dashed_confidence_level: float | None = None,
+    hatch: str | None = None,
+) -> tuple[Ellipse, ...]:
+    """Draw a point known by a central value and a std as a filled contour.
+
+    The three layers :func:`plot_contours` gives a linear fit — a dashed
+    outline at the outer level, then a solid outline and a translucent fill at
+    the inner one — so a reference point is read exactly like the posteriors
+    beside it. What differs is only what the ellipse comes from: a standard
+    deviation per coefficient, which says nothing about how the two covary, so
+    this one is axis-aligned where a fit's follows its sample covariance.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to plot on.
+    center : tuple of two floats
+        Central value on each axis.
+    std : tuple of two floats
+        Standard deviation on each axis.
+    color : ColorType
+        Colour of the outline and of the fill.
+    confidence_level : float, optional
+        Confidence level in percent of the filled contour, 95 by default.
+    dashed_confidence_level : float, optional
+        Confidence level in percent of an additional dashed outline.
+    hatch : str, optional
+        Matplotlib hatch pattern for the fill, from :func:`fit_hatches`. None
+        fills it flat.
+
+    Returns
+    -------
+    tuple of matplotlib.patches.Ellipse
+        The outline and the fill, in the order :func:`plot_contours` returns
+        its handles, followed by the hatch layer when there is one — every
+        patch the legend key has to repeat.
+    """
+    if dashed_confidence_level is not None:
+        uncorrelated_ellipse(
+            center,
+            std,
+            ax,
+            edgecolor=color,
+            confidence_level=dashed_confidence_level,
+            linestyle="dashed",
+            linewidth=2,
+        )
+    outline = uncorrelated_ellipse(
+        center,
+        std,
+        ax,
+        alpha=1,
+        edgecolor=color,
+        confidence_level=confidence_level,
+    )
+    fill = uncorrelated_ellipse(
+        center,
+        std,
+        ax,
+        alpha=0.3,
+        facecolor=color,
+        edgecolor=None,
+        confidence_level=confidence_level,
+    )
+    hatch_layer = ()
+    if hatch:
+        hatch_layer = (
+            uncorrelated_ellipse(
+                center,
+                std,
+                ax,
+                facecolor="none",
+                edgecolor=color,
+                hatch=hatch,
+                linewidth=0,
+                confidence_level=confidence_level,
+            ),
+        )
+    return outline, fill, *hatch_layer
+
+
+def fit_colors(n_fits: int, offset: int = 0) -> list[ColorType]:
+    """Return ``n_fits`` colours from the current matplotlib colour cycle.
+
+    Parameters
+    ----------
+    n_fits : int
+        How many colours to return.
+    offset : int, optional
+        Where to start in the cycle. Whatever else is drawn on the same axes —
+        reference points beside the fits — takes the colours after them by
+        offsetting past what the fits already used.
+    """
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    return [colors[i % len(colors)] for i in range(n_fits)]
+    return [colors[(offset + i) % len(colors)] for i in range(n_fits)]
 
 
-def fit_hatches(n_fits: int) -> list[str]:
-    """Return ``n_fits`` hatch patterns, the counterpart of :func:`fit_colors`."""
-    return [_HATCH_CYCLE[i % len(_HATCH_CYCLE)] for i in range(n_fits)]
+def fit_hatches(n_fits: int, offset: int = 0) -> list[str]:
+    """Return ``n_fits`` hatch patterns, the counterpart of :func:`fit_colors`.
+
+    Parameters
+    ----------
+    n_fits : int
+        How many patterns to return.
+    offset : int, optional
+        Where to start in the cycle, as in :func:`fit_colors`, so a fit and a
+        reference point drawn in different colours also differ in texture.
+    """
+    return [_HATCH_CYCLE[(offset + i) % len(_HATCH_CYCLE)] for i in range(n_fits)]

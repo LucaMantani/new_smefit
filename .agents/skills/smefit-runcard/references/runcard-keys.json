@@ -230,6 +230,22 @@
         "seed"
       ]
     },
+    "reference_points": {
+      "defaults": {
+        "color": "(no default)",
+        "label": "(no default)",
+        "marker": "(no default)",
+        "std": "(no default)",
+        "values": "(no default)"
+      },
+      "known_keys": [
+        "color",
+        "label",
+        "marker",
+        "std",
+        "values"
+      ]
+    },
     "rge": {
       "defaults": {
         "obs_scale": "'dynamic'",
@@ -310,6 +326,7 @@
     "optimizer_settings",
     "params_to_plot",
     "pseudodata_settings",
+    "reference_points",
     "rge",
     "round_val",
     "seed",

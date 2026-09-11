@@ -108,7 +108,7 @@ def _chi2_smeft(
     Lf = -2.0 * jnp.sqrt(2.0) * _GF + L
     CV = -0.5 * Vud * Lf * jnp.sqrt(1.0 + DRV)
     Ft = _PREF / CV**2
-    Ftt = Ft - mean * (eta1 * _DELTA_R + eta2 * 3.3e-4 + eta3 * 8.0e-5 * Q)
+    Ftt = Ft + mean * (eta1 * _DELTA_R + eta2 + eta3 * Q)
     return jnp.sum((Ftt - mean) ** 2 / std**2)
 
 

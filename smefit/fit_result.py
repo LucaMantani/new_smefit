@@ -414,31 +414,16 @@ class FitResultGroup:
     def __init__(self, results: List[FitResult]):
         self.results = results
 
-    # ------------------------------------------------------------------
-    # The FitResult fields that still mean something one at a time
-    # ------------------------------------------------------------------
-    #
-    # A group is not a FitResult and deliberately does not pretend to be one:
-    # it has no joint likelihood, no single best-fit point, no correlations.
-    # These two fields are the ones a coefficient answers on its own, and they
-    # are exposed under their FitResult names so that a consumer looking at one
-    # coefficient at a time — the bounds — reads both kinds of fit the same
-    # way. Anything reading two coefficients *together* (a contour, a
-    # correlation) must not: individual posteriors were sampled independently,
-    # so pairing them up would draw a correlation that was never fitted.
-
     @property
     def free_parameters(self) -> List[str]:
         """The coefficients fitted, in the order they were fitted.
-
-        One per individual fit, each free in its own.
+        One per individual fit.
         """
         return [result.free_parameters[0] for result in self.results]
 
     @property
     def samples(self) -> Optional[Dict[str, jnp.ndarray]]:
         """Posterior samples per coefficient, from its own individual fit.
-
         ``None`` when no individual fit kept any, as for :class:`FitResult`.
         """
         samples = {}
@@ -858,9 +843,7 @@ class Fit:
         """
         path = pathlib.Path(path)
 
-        # The numbers the fit produced, and — from the runcard, the
-        # authoritative record of it and the only source — how it was
-        # configured. Each is decoded once and dispatched on below.
+        # The numbers the fit produced and how it was configured.
         fit_results_payload = _load_json(path / "fit_results.json")
         fit_runcard = _load_yaml(path / "input" / "runcard.yaml")
 

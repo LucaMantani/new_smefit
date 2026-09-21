@@ -291,12 +291,13 @@ def _posterior_contours(
     fits: Sequence[Fit],
     params_to_plot: list[str] | str | None = None,
     confidence_level: float | Sequence[float] = 95,
-    subplot_size: float = 4,
+    subplot_size: float | None = None,
     kde: bool | Mapping[str, bool] | None = None,
     show_sm: bool = True,
     show_best_fit: bool = False,
     reference_points: Sequence[ReferencePoint] | None = None,
     hatch: bool = True,
+    title: str | None = None,
 ) -> Figure:
     """Draw the pairwise 2D confidence contours of *fits* in one figure.
 
@@ -375,10 +376,16 @@ def _posterior_contours(
     coeff_labels = [coeff_info_latex.get(name, name) for name in coeffs]
 
     n_cells = n_par - 1  # pairwise panels: the lower triangle has one row less
-    # the legend lives in a cell of its own, which the lower triangle leaves
-    # free from three coefficients on; two coefficients fill their only cell,
-    # so the grid gains the column the legend would otherwise be drawn over
-    n_cols = max(n_cells, 2)
+    # a single panel (two coefficients) is drawn like an ordinary plot instead
+    # — legend inside the axes, title above the figure — so it needs no cell
+    # set aside for either; from three coefficients on, the lower triangle
+    # leaves one free, and the grid gains the column the legend goes in instead
+    single_panel = n_par == 2
+    if subplot_size is None:
+        # a lone panel has no neighbouring cells to lean on for scale, and
+        # reads as cramped at the size that suits one row of a larger corner
+        subplot_size = 6 if single_panel else 4
+    n_cols = n_cells if single_panel else max(n_cells, 2)
     fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
     grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
 
@@ -475,13 +482,19 @@ def _posterior_contours(
         ax.minorticks_on()
         ax.grid(linestyle="dotted", linewidth=0.5)
 
-        # only the outer panels carry axis labels and tick labels
+        # only the outer panels carry axis labels and tick labels; a single
+        # panel is smaller than a corner's outer row/column, so its labels —
+        # and the tick numbers themselves, otherwise left at the rc default
+        # sized for a multi-panel grid — are sized down to match
+        label_fontsize = 22 if single_panel else 26
+        if single_panel:
+            ax.tick_params(axis="both", which="major", labelsize=14)
         if j == n_par - 1:
-            ax.set_xlabel(coeff_labels[i], fontsize=26)
+            ax.set_xlabel(coeff_labels[i], fontsize=label_fontsize)
         else:
             ax.tick_params(axis="x", which="both", labelbottom=False)
         if i == 0:
-            ax.set_ylabel(coeff_labels[j], fontsize=26)
+            ax.set_ylabel(coeff_labels[j], fontsize=label_fontsize)
         else:
             ax.tick_params(axis="y", which="both", labelleft=False)
 
@@ -489,49 +502,60 @@ def _posterior_contours(
         # every label, and the labels of one panel would run into each other
         compact_tick_labels(ax, show_x_offset=j == n_par - 1, show_y_offset=i == 0)
 
-    # the legend, and the confidence level it is read with, go in the free
-    # upper-right corner — never over a panel, whatever the figure's size
-    ax = fig.add_subplot(grid[0, 1:])
-    ax.axis("off")
-
     legend_labels = [fit.plot_label for fit in fits]
     legend_labels.extend(point.label for point in points)
     handles = [handle for _, handle in legend_handles + point_handles]
 
-    ax.legend(
-        labels=legend_labels,
-        handles=handles,
-        loc="lower left",
-        frameon=False,
-        fontsize=20,
-        handlelength=1,
-        borderpad=0.5,
-        handletextpad=1,
-        title_fontsize=24,
-        # matplotlib puts a single scatter key at 3/8 of the key height, which
-        # reads as off-centre once the marker sits on top of a filled patch
-        scatteryoffsets=[0.5],
-    )
-    ax.text(
-        0.05,
-        0.95,
-        rf"$\mathrm{{Marginalised}}\:{cl}\:\%\:\mathrm{{C.I.}}$",
-        fontsize=24,
-        transform=ax.transAxes,
-        verticalalignment="top",
-    )
-    if any(stuck):
-        # said once, in the legend cell: a bar or a cross is not a contour of
-        # anything, it is where a fit held a coefficient it did not fit
-        ax.text(
+    if title is None:
+        title = rf"$\mathrm{{Marginalised}}\:{cl}\:\%\:\mathrm{{C.I.}}$"
+
+    if single_panel:
+        # ``ax`` is still the one panel the loop above drew — an ordinary
+        # plot's legend sits inside its own axes, and its title above the
+        # figure, rather than in a cell set aside for a grid that no longer
+        # has room to spare
+        ax.legend(
+            labels=legend_labels,
+            handles=handles,
+            loc="best",
+            fontsize=12,
+            handlelength=1,
+            labelspacing=0.3,
+            borderpad=0.3,
+            handletextpad=0.5,
+            framealpha=0.9,
+            scatteryoffsets=[0.5],
+        )
+        fig.suptitle(title, fontsize=20)
+    else:
+        # the legend, and the confidence level it is read with, go in the
+        # free upper-right corner — never over a panel, whatever the figure's
+        # size
+        legend_ax = fig.add_subplot(grid[0, 1:])
+        legend_ax.axis("off")
+        legend_ax.legend(
+            labels=legend_labels,
+            handles=handles,
+            loc="lower left",
+            frameon=False,
+            fontsize=20,
+            handlelength=1,
+            borderpad=0.5,
+            handletextpad=1,
+            title_fontsize=24,
+            # matplotlib puts a single scatter key at 3/8 of the key height,
+            # which reads as off-centre once the marker sits on top of a
+            # filled patch
+            scatteryoffsets=[0.5],
+        )
+        legend_ax.text(
             0.05,
-            0.85,
-            r"$\mathrm{Bars\:and\:crosses\:mark\:fixed\:coefficients}$",
-            fontsize=18,
-            transform=ax.transAxes,
+            0.95,
+            title,
+            fontsize=24,
+            transform=legend_ax.transAxes,
             verticalalignment="top",
         )
-
     return fig
 
 
@@ -547,12 +571,13 @@ def plot_fits_posterior_contours(
     fits,
     params_to_plot=None,
     confidence_level=95,
-    subplot_size=4,
+    subplot_size=None,
     kde=None,
     show_sm=True,
     show_best_fit=False,
     reference_points=None,
     hatch=True,
+    title=None,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
 
@@ -584,7 +609,9 @@ def plot_fits_posterior_contours(
         of the other one's 1D posterior at the same level, the interval the
         bounds figures and the CL table report.
     subplot_size : float, optional
-        Size in inches of a single panel.
+        Size in inches of a single panel. Defaults to 6 when only two
+        coefficients are drawn (one panel, with the legend and title drawn
+        like an ordinary plot's) and to 4 in a multi-panel corner.
     kde : bool or dict, optional
         Estimate the contours with a kernel density estimate instead of a
         Gaussian ellipse. Defaults to each fit's ``use_quad``, since
@@ -609,6 +636,14 @@ def plot_fits_posterior_contours(
         Texture every filled contour, one pattern per fit and per reference
         point, so they stay distinguishable in greyscale and to a reader who
         cannot separate the colours. On by default; False fills them flat.
+    title : str, optional
+        In place of the default ``"Marginalised {confidence_level}% C.I."``.
+        Rendered as-is (LaTeX-capable, like a fit's ``label``), so a runcard
+        can pass e.g. ``'$95\\%\\ \\mathrm{CL}$'``. With three or more
+        coefficients it sits above the legend, in the cell the lower triangle
+        leaves free; with exactly two — a single panel — there is no such
+        cell, so it becomes the figure's title instead, and the legend moves
+        inside the panel, as an ordinary plot's would.
 
     Raises
     ------
@@ -628,6 +663,7 @@ def plot_fits_posterior_contours(
         show_best_fit=show_best_fit,
         reference_points=reference_points,
         hatch=hatch,
+        title=title,
     )
 
 
@@ -636,12 +672,13 @@ def plot_posterior_contours(
     fit,
     params_to_plot=None,
     confidence_level=95,
-    subplot_size=4,
+    subplot_size=None,
     kde=None,
     show_sm=True,
     show_best_fit=False,
     reference_points=None,
     hatch=True,
+    title=None,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
 
@@ -669,7 +706,9 @@ def plot_posterior_contours(
         drawn for a coefficient held fixed spans the equal-tailed percentiles
         of the other one's 1D posterior at the same level.
     subplot_size : float, optional
-        Size in inches of a single panel.
+        Size in inches of a single panel. Defaults to 6 when only two
+        coefficients are drawn (one panel, with the legend and title drawn
+        like an ordinary plot's) and to 4 in a multi-panel corner.
     kde : bool or dict, optional
         Estimate the contours with a kernel density estimate instead of a
         Gaussian ellipse. Defaults to the fit's ``use_quad``. A dict keyed by
@@ -688,6 +727,14 @@ def plot_posterior_contours(
         ``reference_points`` key, in addition to the SM marker.
     hatch : bool, optional
         Texture every filled contour, on by default. False fills them flat.
+    title : str, optional
+        In place of the default ``"Marginalised {confidence_level}% C.I."``.
+        Rendered as-is (LaTeX-capable, like a fit's ``label``), so a runcard
+        can pass e.g. ``'$95\\%\\ \\mathrm{CL}$'``. With three or more
+        coefficients it sits above the legend, in the cell the lower triangle
+        leaves free; with exactly two — a single panel — there is no such
+        cell, so it becomes the figure's title instead, and the legend moves
+        inside the panel, as an ordinary plot's would.
 
     Raises
     ------
@@ -705,6 +752,7 @@ def plot_posterior_contours(
         show_best_fit=show_best_fit,
         reference_points=reference_points,
         hatch=hatch,
+        title=title,
     )
 
 

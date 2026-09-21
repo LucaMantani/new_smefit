@@ -456,7 +456,7 @@ def _two_coeff_gaussians() -> dict[str, list[float]]:
 
 def test_contours_overlay_every_fit_in_one_panel() -> None:
     """Two fits and two coefficients: one panel holding both fits' ellipses
-    (two patches each) and the SM marker, beside the legend's own cell."""
+    (two patches each) and the SM marker, legend inside the same panel."""
     fig = plot_fits_posterior_contours(
         [
             _fit(fit_name="fit_a", samples=_two_coeff_gaussians()),
@@ -464,7 +464,7 @@ def test_contours_overlay_every_fit_in_one_panel() -> None:
         ]
     )
 
-    assert len(fig.axes) == 2  # the panel and the legend cell
+    assert len(fig.axes) == 1  # a single panel, legend inside
     ax = fig.axes[0]
     assert len(ax.patches) == 6  # outline, fill and hatch layer, for each fit
     assert len(ax.collections) == 1  # the SM marker
@@ -714,7 +714,7 @@ def test_contours_per_fit_action_draws_a_single_fit() -> None:
     """The per-fit action wraps one fit: same figure, one fit's contours."""
     fig = plot_posterior_contours(_fit(samples=_two_coeff_gaussians()))
 
-    assert len(fig.axes) == 2  # the panel and the legend cell
+    assert len(fig.axes) == 1  # a single panel, legend inside
     assert len(fig.axes[0].patches) == 3  # outline, fill and hatch layer
 
 
@@ -724,7 +724,7 @@ def test_contours_restrict_to_params_to_plot() -> None:
 
     fig = plot_fits_posterior_contours(fits, params_to_plot=["OpC", "OpA"])
 
-    assert len(fig.axes) == 2  # the panel and the legend cell
+    assert len(fig.axes) == 1  # a single panel, legend inside
     assert fig.axes[0].get_xlabel()  # OpC, the first requested, is the x-axis
 
 
@@ -918,10 +918,10 @@ def test_contours_leave_a_coefficient_no_fit_fitted_out_by_default() -> None:
     coefficient asked for by name is drawn when no fit floated it."""
     fit = _fit(free=["OpA", "OpZZ"], samples=_two_coeff_gaussians(), fixed={"OpC": 1.5})
 
-    assert len(plot_fits_posterior_contours([fit]).axes) == 2  # panel + legend
+    assert len(plot_fits_posterior_contours([fit]).axes) == 1  # single panel
     assert (
         len(plot_fits_posterior_contours([fit], params_to_plot=["OpA", "OpC"]).axes)
-        == 2
+        == 1
     )
 
 
@@ -968,24 +968,25 @@ def test_contours_legend_key_is_a_bar_for_a_fit_that_only_ever_bars() -> None:
     assert isinstance(fig.axes[-1].get_legend().legend_handles[1], Line2D)
 
 
-def test_contours_say_what_a_bar_means_when_one_is_drawn() -> None:
-    """A bar is not a contour of anything; the legend cell says so, once."""
-    caption = r"$\mathrm{Bars\:and\:crosses\:mark\:fixed\:coefficients}$"
+def test_contours_put_the_legend_inside_a_single_panel() -> None:
+    """Two coefficients leave no cell to spare for the legend, so a single
+    panel is drawn like an ordinary plot: legend inside its own axes."""
+    fig = plot_fits_posterior_contours([_fit()])
 
-    stuck = plot_fits_posterior_contours(_stuck_pair())
-    assert caption in [t.get_text() for t in stuck.axes[-1].texts]
-
-    plain = plot_fits_posterior_contours([_fit(samples=_two_coeff_gaussians())])
-    assert caption not in [t.get_text() for t in plain.axes[-1].texts]
+    assert len(fig.axes) == 1
+    panel = fig.axes[0]
+    assert panel.get_legend() is not None
 
 
 def test_contours_keep_the_legend_off_the_panels() -> None:
-    """Two coefficients fill their only grid cell, so the legend gets a column
-    of its own instead of being drawn over the contours, as it does in the
-    upper-right corner a larger figure leaves free."""
-    fig = plot_fits_posterior_contours([_fit()])
+    """From three coefficients on, the legend still gets a cell of its own
+    instead of being drawn over a panel, as it does in the upper-right corner
+    a larger figure leaves free."""
+    fig = plot_fits_posterior_contours(
+        [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())]
+    )
 
-    panel, legend_cell = fig.axes
+    panel, legend_cell = fig.axes[0], fig.axes[-1]
     assert panel.get_legend() is None
     assert legend_cell.get_legend() is not None
     assert not legend_cell.axison  # it carries the legend, not a plot
@@ -993,10 +994,40 @@ def test_contours_keep_the_legend_off_the_panels() -> None:
 
 
 def test_contours_state_the_confidence_level() -> None:
-    """The figure has to say which confidence level is filled."""
-    fig = plot_fits_posterior_contours([_fit()], confidence_level=90)
+    """From three coefficients on, the legend cell has to say which
+    confidence level is filled."""
+    fig = plot_fits_posterior_contours(
+        [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())],
+        confidence_level=90,
+    )
 
     assert any("90" in t.get_text() for t in fig.axes[-1].texts)
+
+
+def test_contours_state_the_confidence_level_in_a_single_panel_title() -> None:
+    """A single panel has no legend cell to carry the confidence level, so it
+    becomes the figure's title instead."""
+    fig = plot_fits_posterior_contours([_fit()], confidence_level=90)
+
+    assert fig._suptitle is not None
+    assert "90" in fig._suptitle.get_text()
+
+
+def test_contours_title_overrides_the_single_panel_suptitle() -> None:
+    """A caller-supplied title replaces the default confidence-level text."""
+    fig = plot_fits_posterior_contours([_fit()], title="My title")
+
+    assert fig._suptitle.get_text() == "My title"
+
+
+def test_contours_title_overrides_the_legend_cell_text() -> None:
+    """Same override, but read from the legend cell once there is one."""
+    fig = plot_fits_posterior_contours(
+        [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())],
+        title="My title",
+    )
+
+    assert any(t.get_text() == "My title" for t in fig.axes[-1].texts)
 
 
 def test_contours_reject_an_individual_fit() -> None:

@@ -505,6 +505,19 @@ def _posterior_contours(
         # every label, and the labels of one panel would run into each other
         compact_tick_labels(ax, show_x_offset=j == n_par - 1, show_y_offset=i == 0)
 
+    # From four coefficients on, the upper triangle has a cell of the last
+    # column below the legend row that nothing uses: the logo goes in its
+    # lower-right corner, just above the last diagonal panel. With fewer, the
+    # only free cell holds the legend and its title, so the logo goes behind
+    # the bottom-right panel instead — ``ax`` is still that panel, the last
+    # pair the loop drew.
+    if n_par >= 4:
+        logo_ax = fig.add_subplot(grid[n_cells - 2, n_cells - 1])
+        logo_ax.axis("off")
+        draw_logo(logo_ax, width=0.6)
+    else:
+        draw_logo(ax, width=0.3)
+
     legend_labels = [fit.plot_label for fit in fits]
     legend_labels.extend(point.label for point in points)
     handles = [handle for _, handle in legend_handles + point_handles]

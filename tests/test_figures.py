@@ -713,6 +713,39 @@ def test_contours_three_coefficients_form_the_lower_triangle() -> None:
     assert [bool(ax.get_ylabel()) for ax in panels] == [True, True, False]
 
 
+def test_contours_carry_the_logo_behind_the_bottom_right_panel() -> None:
+    """Up to three coefficients the only free cell holds the legend and its
+    title, so the logo goes behind the last panel."""
+    fits = [_fit(free=["OpA", "OpZZ", "OpC"], samples=_three_coeff_samples())]
+
+    fig = plot_fits_posterior_contours(fits)
+
+    bottom_right = fig.axes[2]
+    (logo,) = bottom_right.child_axes
+    assert logo.images
+    assert logo.get_zorder() < 0
+
+
+def test_contours_put_the_logo_in_a_free_cell_from_four_coefficients() -> None:
+    """The cell of the last column below the legend row is empty from four
+    coefficients on: the logo gets it, over no panel."""
+    rng = np.random.default_rng(0)
+    names = ["OpA", "OpZZ", "OpC", "OpD"]
+    samples = {name: rng.normal(0.0, 1.0, size=50).tolist() for name in names}
+
+    fig = plot_fits_posterior_contours([_fit(free=names, samples=samples)])
+
+    panels = fig.axes[:6]
+    assert not any(panel.child_axes for panel in panels)
+    logo_cell = fig.axes[6]
+    assert not logo_cell.axison
+    (logo,) = logo_cell.child_axes
+    assert logo.images
+    # row 1, last column of the 3x3 grid: right of every panel of that row
+    assert logo_cell.get_subplotspec().rowspan.start == 1
+    assert logo_cell.get_subplotspec().colspan.start == 2
+
+
 def test_contours_per_fit_action_draws_a_single_fit() -> None:
     """The per-fit action wraps one fit: same figure, one fit's contours."""
     fig = plot_posterior_contours(_fit(samples=_two_coeff_gaussians()))

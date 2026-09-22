@@ -1260,6 +1260,10 @@ def _coefficient_bounds(
         handles=handles,
         labels=labels,
         title=levels_title,
+        # below the rc size of 22 the tick labels use: at that size a few fits
+        # and reference points make the legend taller than the rows it keys
+        fontsize=16,
+        title_fontsize=18,
         loc="lower center",
         bbox_to_anchor=(0, 1.02, 1.0, 0.05),
         frameon=False,

@@ -11,8 +11,10 @@ reportengine resolves.
 from __future__ import annotations
 
 import logging
+import pathlib
 from typing import TYPE_CHECKING, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import ScalarFormatter
 
@@ -89,6 +91,50 @@ def compact_tick_labels(
         target.set_major_formatter(formatter)
         target.offsetText.set_visible(show)
         target.offsetText.set_fontsize(fontsize)
+
+
+_LOGO_PATH = pathlib.Path(__file__).parent / "logo.png"
+
+
+def draw_logo(ax: Axes, width: float = 0.2) -> Axes:
+    """Stamp the SMEFiT logo in the lower-right corner of *ax*.
+
+    The old ``CoefficientsPlotter._plot_logo`` drew it with a fixed extent in
+    axes coordinates, which stretched it with the axes' aspect ratio — flat in
+    a wide figure, tall in one with many rows. Here only the *width* is a
+    fraction of the axes; the height follows from the figure's size, so the
+    logo keeps its own proportions whatever the shape of the plot.
+
+    It goes on an inset axes behind everything *ax* draws, so it never hides
+    an interval that runs into the corner.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The axes to stamp. Its position in the figure must be final.
+    width : float, optional
+        Width of the logo as a fraction of the width of *ax*.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The inset axes the logo is drawn on.
+    """
+    logo = plt.imread(_LOGO_PATH)
+    logo_height, logo_width = logo.shape[:2]
+    bbox = ax.get_position()
+    fig_width, fig_height = ax.figure.get_size_inches()
+    height = (
+        width
+        * (bbox.width * fig_width)
+        / (bbox.height * fig_height)
+        * logo_height
+        / logo_width
+    )
+    inset = ax.inset_axes((1.0 - width, 0.0, width, height), zorder=-1)
+    inset.imshow(logo, aspect="auto")
+    inset.axis("off")
+    return inset
 
 
 # Markers handed out to points that do not choose one, the SM's "+" first.

@@ -67,6 +67,27 @@ confidence_level: [68, 95]
 # x_min: -0.5
 # x_max: 0.5
 
+# Draw the dashed SM line at each coefficient's `baseline_value`, from the
+# runcard the fit was run with — the origin unless it was parametrised around a
+# non-zero SM value. Default true.
+# show_sm: False
+
+# Mark further values beside the SM, each with its own legend entry. Every row
+# gets a vertical line at the point's value — `values` names only the
+# coefficients that move, every other one keeps its baseline, as in the
+# contours. `std` greys the whole row out over the Gaussian interval at each
+# `confidence_level` (1.96 std either side at 95), so the fits' intervals are
+# read against a band of the same confidence; with two levels the narrower band
+# darkens the wider one. A coefficient without `std` gets the line alone. Grey unless `color` is set, which several points should, to be
+# told apart; `marker` is ignored here. Default: none.
+# reference_points:
+#   - label: '$\mathrm{Measurement}$'
+#     values: {OpD: 0.1}
+#     std: {OpD: 0.03}
+#   - label: '$\mathrm{Benchmark\ A}$'
+#     values: {OpWB: -0.02}
+#     color: firebrick
+
 # `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
 template_text: |
     Coefficient bounds

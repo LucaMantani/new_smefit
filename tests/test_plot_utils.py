@@ -21,6 +21,7 @@ from smefit.plot_utils import (
     common_free_coefficients,
     compact_tick_labels,
     contour_coefficients,
+    draw_logo,
     marker_points,
     per_fit_option,
     select_params,
@@ -869,4 +870,33 @@ def test_compact_tick_labels_rejects_an_unknown_axis() -> None:
 
     with pytest.raises(ValueError, match="'both', 'x' or 'y'"):
         compact_tick_labels(ax, axis="z")
+    plt.close(fig)
+
+
+# --- draw_logo --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("figsize", [(10, 3), (10, 30)])
+def test_draw_logo_keeps_its_proportions_whatever_the_figure(figsize) -> None:
+    """The old logo had a fixed extent in axes coordinates and stretched with
+    the figure; a bounds plot's height grows with its number of rows."""
+    fig, ax = plt.subplots(figsize=figsize)
+
+    inset = draw_logo(ax, width=0.2)
+
+    logo = inset.images[0].get_array()
+    box = inset.get_window_extent()
+    assert box.width / box.height == pytest.approx(logo.shape[1] / logo.shape[0])
+    assert box.width == pytest.approx(0.2 * ax.get_window_extent().width)
+    plt.close(fig)
+
+
+def test_draw_logo_sits_in_the_lower_right_corner() -> None:
+    fig, ax = plt.subplots()
+
+    inset = draw_logo(ax)
+
+    box, frame = inset.get_window_extent(), ax.get_window_extent()
+    assert box.x1 == pytest.approx(frame.x1)
+    assert box.y0 == pytest.approx(frame.y0)
     plt.close(fig)

@@ -37,6 +37,7 @@ from smefit.plot_utils import (
     common_free_coefficients,
     compact_tick_labels,
     contour_coefficients,
+    draw_logo,
     marker_points,
     per_fit_option,
     select_params,
@@ -1251,6 +1252,7 @@ def _coefficient_bounds(
         frameon=False,
         ncol=2,
     )
+    draw_logo(ax)
 
     return fig
 

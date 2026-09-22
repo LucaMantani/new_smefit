@@ -1574,6 +1574,14 @@ def test_bounds_mark_the_origin() -> None:
     assert zero_line
 
 
+def test_bounds_carry_the_logo_behind_the_intervals() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+
+    (logo,) = fig.axes[0].child_axes
+    assert logo.images
+    assert logo.get_zorder() < 0
+
+
 def test_bounds_log_scale_is_symmetric_about_zero() -> None:
     """Bounds run either side of zero, so a plain log scale cannot show
     them."""

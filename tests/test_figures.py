@@ -15,10 +15,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib import patches
-from matplotlib.collections import PathCollection
+from matplotlib.axes import Axes
+from matplotlib.collections import PathCollection, PolyCollection
+from matplotlib.colors import to_hex
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import ScalarFormatter
+from scipy.stats import norm
 
 from smefit import figures as figures_mod
 from smefit.core import ReferencePoint
@@ -1616,6 +1619,7 @@ def test_bounds_legend_names_every_fit_and_the_levels() -> None:
     assert [t.get_text() for t in legend.get_texts()] == [
         r"$\mathrm{Analytic}$",
         "fit_b",
+        r"$\mathrm{SM}$",
     ]
     assert "68" in legend.get_title().get_text()
     assert "95" in legend.get_title().get_text()
@@ -1640,7 +1644,10 @@ def test_bounds_accept_a_single_coefficient() -> None:
 def test_bounds_per_fit_action_draws_a_single_fit() -> None:
     fig = plot_coefficient_bounds(_uniform_fit())
 
-    assert [t.get_text() for t in fig.axes[0].get_legend().get_texts()] == ["my_fit"]
+    assert [t.get_text() for t in fig.axes[0].get_legend().get_texts()] == [
+        "my_fit",
+        r"$\mathrm{SM}$",
+    ]
 
 
 def test_bounds_reject_an_empty_fits_list() -> None:
@@ -1663,6 +1670,175 @@ def test_bounds_reject_a_fit_without_samples() -> None:
 
     with pytest.raises(ValueError, match="no posterior samples"):
         plot_fits_coefficient_bounds([fit])
+
+
+def _reference_lines(ax: Axes, color: str = "grey") -> list[tuple[float, float, float]]:
+    """The solid reference lines of *color*, as (x, y_low, y_high)."""
+    return sorted(
+        (line.get_xdata()[0], *sorted(line.get_ydata()))
+        for line in ax.lines
+        if line.get_linestyle() == "-" and to_hex(line.get_color()) == to_hex(color)
+    )
+
+
+def _reference_band_extents(ax: Axes) -> list[tuple[float, float, float, float]]:
+    """The shaded bands, as (x_low, x_high, y_low, y_high)."""
+    extents = []
+    for collection in ax.collections:
+        if not isinstance(collection, PolyCollection):
+            continue
+        vertices = collection.get_paths()[0].vertices
+        extents.append(
+            (
+                vertices[:, 0].min(),
+                vertices[:, 0].max(),
+                vertices[:, 1].min(),
+                vertices[:, 1].max(),
+            )
+        )
+    return sorted(extents)
+
+
+def test_bounds_show_sm_false_drops_the_sm_line() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], show_sm=False)
+
+    ax = fig.axes[0]
+    assert not [line for line in ax.lines if line.get_linestyle() == "--"]
+    assert r"$\mathrm{SM}$" not in [t.get_text() for t in ax.get_legend().get_texts()]
+
+
+def test_bounds_reference_point_draws_a_line_per_row_at_its_value() -> None:
+    """A coefficient the point does not name keeps its baseline_value, as in
+    the contours."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit(baselines={"OpA": 3.0, "OpZZ": 3.0})],
+        reference_points=[ReferencePoint(label="$A$", values={"OpA": 100.0})],
+    )
+
+    xs = sorted(x for x, _, _ in _reference_lines(fig.axes[0]))
+    assert xs == pytest.approx([3.0, 100.0])
+
+
+def test_bounds_reference_band_matches_the_confidence_level() -> None:
+    """The band is the point's Gaussian interval at the fits' level, so a
+    95 % bar is read against a 95 % band: 1.96 std either side."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        params_to_plot=["OpA"],
+        confidence_level=95,
+        reference_points=[
+            ReferencePoint(label="$A$", values={"OpA": 500.0}, std={"OpA": 50.0})
+        ],
+    )
+
+    ((x_low, x_high, _, _),) = _reference_band_extents(fig.axes[0])
+    assert (x_low, x_high) == pytest.approx((402.0, 598.0), abs=0.1)
+    band = next(c for c in fig.axes[0].collections if isinstance(c, PolyCollection))
+    assert to_hex(band.get_facecolor()[0]) == to_hex("grey")
+
+
+def test_bounds_reference_point_draws_one_band_per_confidence_level() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        params_to_plot=["OpA"],
+        confidence_level=[95, 68],
+        reference_points=[
+            ReferencePoint(label="$A$", values={"OpA": 500.0}, std={"OpA": 50.0})
+        ],
+    )
+
+    widths = sorted(
+        x_high - x_low for x_low, x_high, _, _ in _reference_band_extents(fig.axes[0])
+    )
+    assert widths == pytest.approx(
+        [2 * 50.0 * norm.ppf(0.84), 2 * 50.0 * norm.ppf(0.975)]
+    )
+
+
+def test_bounds_reference_band_fills_a_single_row_top_to_bottom() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        params_to_plot=["OpA"],
+        reference_points=[
+            ReferencePoint(label="$A$", values={"OpA": 500.0}, std={"OpA": 50.0})
+        ],
+    )
+
+    ax = fig.axes[0]
+    ((_, _, y_low, y_high),) = _reference_band_extents(ax)
+    assert (y_low, y_high) == pytest.approx(ax.get_ylim())
+
+
+def test_bounds_reference_bands_split_the_rows_between_them() -> None:
+    """Each coefficient's band stays on its own row, so one row's reference
+    is never read against another's intervals."""
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        reference_points=[
+            ReferencePoint(
+                label="$A$",
+                values={"OpA": 500.0, "OpZZ": 200.0},
+                std={"OpA": 50.0, "OpZZ": 20.0},
+            )
+        ],
+    )
+
+    ax = fig.axes[0]
+    bottom, top = ax.get_ylim()
+    spans = sorted(
+        (y_low, y_high) for _, _, y_low, y_high in _reference_band_extents(ax)
+    )
+    assert spans == pytest.approx([(bottom, 0.5), (0.5, top)])
+
+
+def test_bounds_reference_point_without_std_draws_no_band() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        reference_points=[ReferencePoint(label="$A$", values={"OpA": 500.0})],
+    )
+
+    assert not _reference_band_extents(fig.axes[0])
+    assert len(_reference_lines(fig.axes[0])) == 2
+
+
+def test_bounds_reference_point_keeps_its_own_colour() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        params_to_plot=["OpA"],
+        reference_points=[
+            ReferencePoint(
+                label="$A$", values={"OpA": 500.0}, std={"OpA": 50.0}, color="red"
+            )
+        ],
+    )
+
+    assert _reference_lines(fig.axes[0], color="red")
+    band = next(c for c in fig.axes[0].collections if isinstance(c, PolyCollection))
+    assert to_hex(band.get_facecolor()[0]) == to_hex("red")
+
+
+def test_bounds_legend_names_the_reference_points_after_the_sm() -> None:
+    fig = plot_fits_coefficient_bounds(
+        [_uniform_fit()],
+        reference_points=[
+            ReferencePoint(label="$A$", values={"OpA": 1.0}, std={"OpA": 0.5}),
+            ReferencePoint(label="$B$", values={"OpA": 2.0}),
+        ],
+    )
+
+    labels = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert labels == ["my_fit", r"$\mathrm{SM}$", "$A$", "$B$"]
+
+
+def test_bounds_per_fit_action_draws_the_reference_points() -> None:
+    fig = plot_coefficient_bounds(
+        _uniform_fit(),
+        show_sm=False,
+        reference_points=[ReferencePoint(label="$A$", values={"OpA": 1.0})],
+    )
+
+    labels = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert labels == ["my_fit", "$A$"]
 
 
 def test_bounds_group_the_fits_of_one_coefficient_together() -> None:

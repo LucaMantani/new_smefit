@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import itertools
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats
 from matplotlib import patches, rc
 from matplotlib.lines import Line2D
 from reportengine.figure import figure
@@ -1010,6 +1012,42 @@ _ROW_GAP_RATIO = 3.0
 # side of zero, as the old `plot_coeffs` drew them.
 _SYMLOG_DECADES = np.concatenate([-np.logspace(-4, 2, 7), np.logspace(-4, 2, 7)])
 
+# Opacity of one of a reference point's bands: enough to grey the row out,
+# little enough that the intervals drawn over it stay sharp — and that the
+# second band of two confidence levels still darkens the first visibly.
+_REFERENCE_BAND_ALPHA = 0.25
+
+
+def _gaussian_half_width(std: float, confidence_level: float) -> float:
+    """Half-width of the central *confidence_level* % interval of a Gaussian.
+
+    The one-dimensional counterpart of
+    :func:`~smefit.contours_2d.ellipse_half_axis`: the same chi-squared
+    quantile, with one degree of freedom instead of two, so a 95 % band is
+    1.96 standard deviations wide either side.
+    """
+    return float(np.sqrt(scipy.stats.chi2.ppf(confidence_level / 100.0, 1)) * std)
+
+
+def _reference_bands(
+    fits: Sequence[Fit],
+    coeffs: Sequence[str],
+    reference_points: Sequence[ReferencePoint] | None,
+) -> list[ReferencePoint]:
+    """The runcard's reference points, resolved for the bounds plot.
+
+    :func:`~smefit.plot_utils.marker_points` fills in the coefficients a point
+    does not name from the fits' baselines, exactly as for the contours; only
+    the colour default differs. A band is a background to read the fits
+    against, so an uncoloured point is grey, not one more colour of the cycle.
+    The SM is left out: the bounds plot draws it as its dashed line.
+    """
+    resolved = marker_points(fits, coeffs, reference_points, show_sm=False)
+    return [
+        replace(point, color=requested.color or "grey")
+        for point, requested in zip(resolved, reference_points or [])
+    ]
+
 
 def _symlog_minor_ticks(lin_thr: float) -> np.ndarray:
     """Minor tick positions of a symlog axis with threshold *lin_thr*.
@@ -1030,6 +1068,8 @@ def _coefficient_bounds(
     lin_thr: float = 1e-2,
     x_min: float | None = None,
     x_max: float | None = None,
+    show_sm: bool = True,
+    reference_points: Sequence[ReferencePoint] | None = None,
 ) -> Figure:
     """Draw the confidence intervals of *fits* one coefficient per row.
 
@@ -1110,7 +1150,8 @@ def _coefficient_bounds(
                 else:
                     ax.plot(outer.mid, y, ".", color=colors[fit_idx])
 
-    ax.set_ylim(rows.min() - 1, rows.max() + 1)
+    y_limits = (rows.min() - 1, rows.max() + 1)
+    ax.set_ylim(*y_limits)
     ax.set_yticks(rows, [coeff_info_latex.get(name, name) for name in coeffs])
 
     # the SM is not always the origin: a coefficient parametrised around a
@@ -1118,19 +1159,54 @@ def _coefficient_bounds(
     # to agree with the histograms and contours of the same fits. One line
     # across the figure while every coefficient shares a baseline — the usual
     # case — and one tick per row otherwise, since the rows then disagree.
-    baselines = baseline_point(fits, coeffs)
-    if len(set(baselines.values())) == 1:
-        ax.axvline(
-            next(iter(baselines.values())), ls="dashed", color="black", alpha=0.7
+    if show_sm:
+        baselines = baseline_point(fits, coeffs)
+        if len(set(baselines.values())) == 1:
+            ax.axvline(
+                next(iter(baselines.values())), ls="dashed", color="black", alpha=0.7
+            )
+        else:
+            for coeff_idx, name in enumerate(coeffs):
+                ax.plot(
+                    [baselines[name]] * 2,
+                    [rows[coeff_idx] - 0.5, rows[coeff_idx] + 0.5],
+                    ls="dashed",
+                    color="black",
+                    alpha=0.7,
+                )
+
+    # Each reference point shades its whole row, so every fit's interval in
+    # that row is read against it at a glance. A row reaches halfway to its
+    # neighbours, and the outer rows run on to the frame, so a one-coefficient
+    # figure is shaded top to bottom.
+    row_spans = [
+        (
+            y_limits[0] if row == rows.min() else row - 0.5,
+            y_limits[1] if row == rows.max() else row + 0.5,
         )
-    else:
+        for row in rows
+    ]
+    points = _reference_bands(fits, coeffs, reference_points)
+    for point in points:
         for coeff_idx, name in enumerate(coeffs):
+            center = point.values[name]
+            low, high = row_spans[coeff_idx]
+            # one band per level, at the same confidence as the fits' bars;
+            # the narrower one lands on top of the wider and reads darker, as
+            # the thick bar does over the thin one
+            for cl in levels if name in point.std else []:
+                half_width = _gaussian_half_width(point.std[name], cl)
+                ax.fill_betweenx(
+                    [low, high],
+                    center - half_width,
+                    center + half_width,
+                    color=point.color,
+                    alpha=_REFERENCE_BAND_ALPHA,
+                    linewidth=0,
+                    zorder=0,
+                )
             ax.plot(
-                [baselines[name]] * 2,
-                [rows[coeff_idx] - 0.5, rows[coeff_idx] + 0.5],
-                ls="dashed",
-                color="black",
-                alpha=0.7,
+                [center, center], [low, high], color=point.color, lw=1.5, zorder=0.5
             )
 
     if x_log:
@@ -1149,11 +1225,26 @@ def _coefficient_bounds(
         if inner_cl is None
         else rf"${inner_cl:g}\:\%\:\mathrm{{and}}\:{outer_cl:g}\:\%\:\mathrm{{C.I.}}$"
     )
+    handles: list[Any] = [
+        Line2D([], [], color=color, marker=".", linewidth=3) for color in colors
+    ]
+    labels = [fit.plot_label for fit in fits]
+    if show_sm:
+        handles.append(Line2D([], [], color="black", linestyle="dashed", alpha=0.7))
+        labels.append(r"$\mathrm{SM}$")
+    for point in points:
+        line = Line2D([], [], color=point.color, lw=1.5)
+        if point.std:
+            band = patches.Patch(
+                facecolor=point.color, alpha=_REFERENCE_BAND_ALPHA, linewidth=0
+            )
+            handles.append((band, line))
+        else:
+            handles.append(line)
+        labels.append(point.label)
     ax.legend(
-        handles=[
-            Line2D([], [], color=color, marker=".", linewidth=3) for color in colors
-        ],
-        labels=[fit.plot_label for fit in fits],
+        handles=handles,
+        labels=labels,
         title=levels_title,
         loc="lower center",
         bbox_to_anchor=(0, 1.02, 1.0, 0.05),
@@ -1174,6 +1265,8 @@ def plot_fits_coefficient_bounds(
     lin_thr=1e-2,
     x_min=None,
     x_max=None,
+    show_sm=True,
+    reference_points=None,
 ) -> Figure:
     """Overlay the coefficient bounds of every fit — central value and C.I.
 
@@ -1211,6 +1304,18 @@ def plot_fits_coefficient_bounds(
         Ignored unless ``x_log``.
     x_min, x_max : float, optional
         Axis limits. Chosen from the intervals drawn by default.
+    show_sm : bool, optional
+        Draw the dashed SM line at each coefficient's ``baseline_value``, as
+        the histograms and contours of the same fits do. On by default.
+    reference_points : list of ReferencePoint, optional
+        Points of coefficient space from the runcard's ``reference_points``
+        key, in addition to the SM line. Each draws a vertical line across
+        every row at its value — a coefficient it does not name keeps its
+        ``baseline_value`` — and, where it has a ``std``, greys the row out
+        over the Gaussian interval at each ``confidence_level``, so the fits'
+        intervals are read against a band of the same confidence. With two
+        levels the narrower band darkens the wider one. Grey unless the entry sets a ``color``, which several
+        points should, to be told apart; ``marker`` has no use here.
 
     Raises
     ------
@@ -1227,6 +1332,8 @@ def plot_fits_coefficient_bounds(
         lin_thr=lin_thr,
         x_min=x_min,
         x_max=x_max,
+        show_sm=show_sm,
+        reference_points=reference_points,
     )
 
 
@@ -1240,6 +1347,8 @@ def plot_coefficient_bounds(
     lin_thr=1e-2,
     x_min=None,
     x_max=None,
+    show_sm=True,
+    reference_points=None,
 ) -> Figure:
     """Plot the coefficient bounds of one fit — central value and C.I.
 
@@ -1263,6 +1372,8 @@ def plot_coefficient_bounds(
         lin_thr=lin_thr,
         x_min=x_min,
         x_max=x_max,
+        show_sm=show_sm,
+        reference_points=reference_points,
     )
 
 

@@ -53,6 +53,12 @@ confidence_level: 95
 # Size in inches of one panel. Default 4.
 # subplot_size: 5
 
+# Font sizes in points. Both scale with `subplot_size` by default: the tick
+# numbers follow the axis labels, the title above the legend follows the
+# legend entries.
+# label_fontsize: 26
+# legend_fontsize: 20
+
 # Mark the SM in every panel, at each coefficient's `baseline_value` in the
 # runcard the fit was run with — the origin unless it was parametrised around a
 # non-zero SM value. Default true.

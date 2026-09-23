@@ -100,16 +100,19 @@ def individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings
 
 
 def individual_hessian_fit(
-    individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
+    individual_coefficients, individual_chi2, individual_gd_best_fit, hessian_settings
 ):
     """Hessian fit for a single free coefficient.
 
-    Pure pass-through to ``hessian_fit`` — the DAG has already built an
-    ``individual_eft_model``, ``individual_chi2``, and ``individual_gd_best_fit``
-    scoped to one free parameter.
+    Pure pass-through to ``hessian_fit`` — the DAG has already built
+    ``individual_coefficients``, ``individual_chi2``, and
+    ``individual_gd_best_fit`` scoped to one free parameter.
     """
     return hessian_fit(
-        individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings
+        individual_coefficients,
+        individual_chi2,
+        individual_gd_best_fit,
+        hessian_settings,
     )
 
 

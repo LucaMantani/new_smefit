@@ -88,6 +88,16 @@ confidence_level: [68, 95]
 #     values: {OpWB: -0.02}
 #     color: firebrick
 
+# Size in points of the legend entries. Default 16, the C.I. title above the
+# legend following it at the ratio the two are drawn at.
+# legend_fontsize: 12
+
+# How much wider the gap between two coefficients is than the gap between two
+# fits of the same one — what makes the intervals of one coefficient read as a
+# group rather than as neighbours. Default 3. Raise it to spread the rows apart
+# and pack each row's fits together, lower it to spread the fits within a row.
+# row_gap_ratio: 5
+
 # `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name.
 template_text: |
     Coefficient bounds

@@ -120,7 +120,7 @@ def test_hessian_fit_sm_zero_residual():
     """When data == SM predictions the minimum is at c=0 — SM solution should recover it."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[0.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(0.0, abs=1e-8)
 
 
@@ -128,7 +128,7 @@ def test_hessian_fit_sm_solution_chi2():
     """With data=[0,0] and SM=[0,0], chi2 at c=0 should be 0."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[0.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.chi2_val == pytest.approx(0.0, abs=1e-6)
 
 
@@ -136,7 +136,7 @@ def test_hessian_fit_sm_solution_ignores_true_minimum():
     """With data != SM, the SM solution pins the best-fit to c=0 regardless."""
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(0.0, abs=1e-8)
 
 
@@ -153,7 +153,7 @@ def test_hessian_fit_gd_finds_known_minimum():
     """
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.best_fit_point["OpA"] == pytest.approx(2.0, abs=1e-2)
 
 
@@ -162,8 +162,8 @@ def test_hessian_fit_gd_lower_chi2_than_sm():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[2.0, 0.0], lin_op=[1.0, 0.0])
     c_gd = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
     c_sm = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result_gd = hessian_fit(model, chi2, c_gd, _HESSIAN_SETTINGS)
-    result_sm = hessian_fit(model, chi2, c_sm, _HESSIAN_SETTINGS)
+    result_gd = hessian_fit(model.coefficients, chi2, c_gd, _HESSIAN_SETTINGS)
+    result_sm = hessian_fit(model.coefficients, chi2, c_sm, _HESSIAN_SETTINGS)
     assert result_gd.chi2_val < result_sm.chi2_val
 
 
@@ -175,14 +175,14 @@ def test_hessian_fit_gd_lower_chi2_than_sm():
 def test_hessian_fit_returns_fit_result():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert isinstance(result, FitResult)
 
 
 def test_hessian_fit_sample_shape():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.samples is not None
     assert result.samples["OpA"].shape == (50,)
 
@@ -190,14 +190,14 @@ def test_hessian_fit_sample_shape():
 def test_hessian_fit_free_parameters():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.free_parameters == ["OpA"]
 
 
 def test_hessian_fit_num_data():
     model, chi2 = _make_setup(sm=[0.0, 0.0], data_cv=[1.0, 0.0], lin_op=[1.0, 0.0])
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
     assert result.num_data == 2
 
 
@@ -221,7 +221,7 @@ def test_hessian_fit_resolves_derived_coefficients():
     chi2 = Chi2(build_chi2(model, data, fit_covmat), ["OpA"], num_data=2)
 
     c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_SM)
-    result = hessian_fit(model, chi2, c_best, _HESSIAN_SETTINGS)
+    result = hessian_fit(model.coefficients, chi2, c_best, _HESSIAN_SETTINGS)
 
     assert "OpA" in result.best_fit_point
     assert "OpB" in result.best_fit_point
@@ -229,3 +229,38 @@ def test_hessian_fit_resolves_derived_coefficients():
     assert "OpB" in result.samples
     # At c=0: OpB = OpA**2 = 0
     assert result.best_fit_point["OpB"] == pytest.approx(0.0, abs=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# hessian_fit without datasets — external-chi2-only fits
+# ---------------------------------------------------------------------------
+
+
+def test_hessian_fit_without_eft_model():
+    """A chi2 that needs no data at all still fits.
+
+    hessian_fit takes the CoefficientGroup directly rather than reaching it
+    through an EFTModel, so a runcard whose likelihood is entirely in
+    external_chi2 -- no datasets, hence no theory and no model -- is fitted like
+    any other. Guards the reportengine dependency, not just the call.
+    """
+    cg = CoefficientGroup([_free("OpA")])
+    chi2 = Chi2(lambda c: ((c[0] - 2.0) / 0.5) ** 2, ["OpA"], num_data=1)
+
+    c_best = gd_best_fit(chi2, _OPTIMIZER, _GD_SETTINGS_GD)
+    result = hessian_fit(cg, chi2, c_best, _HESSIAN_SETTINGS)
+
+    assert isinstance(result, FitResult)
+    assert result.free_parameters == ["OpA"]
+    assert result.best_fit_point["OpA"] == pytest.approx(2.0, abs=1e-2)
+    # cov = inv(0.5 * d2chi2/dc2) = sigma^2
+    assert float(jnp.std(jnp.array(result.samples["OpA"]))) == pytest.approx(
+        0.5, rel=0.3
+    )
+
+
+def test_hessian_fit_signature_takes_no_model():
+    """The node must not depend on eft_model: that would drag in datasets."""
+    import inspect
+
+    assert "eft_model" not in inspect.signature(hessian_fit).parameters

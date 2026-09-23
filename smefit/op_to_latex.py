@@ -174,16 +174,16 @@ coeff_info_latex = {
     "Old": r"$c_{\ell d}$",
     "Vud": r"$V_{ud}$",
     "Lprime": r"$L^{\prime (1111)}(\mu = 2\,\mathrm{GeV})$",
-    "eta1": r"$\eta_1 \Delta\delta'^i_R$",
-    "eta2": r"$\eta_2 \Delta\delta_{\rm NS}^{(0)}$",
-    "eta3": r"$\eta_3 \Delta\delta_{\rm NS,E}^i$",
+    "eta1": r"$\eta_1$",
+    "eta2": r"$\eta_2$",
+    "eta3": r"$\eta_3$",
     "DRV": r"$\Delta_R^V$",
 }
 
 group_info_latex = {
     "LEP": r"$\mathrm{LEP}$",
     "LHC": r"$\mathrm{LHC}$",
-    "HL-LHC": r"$\mathrm{HL\textrm{-}LHC}$",
-    "FCC-ee": r"$\mathrm{FCC\textrm{-}ee}$",
-    "Beta decay": r"$\beta\,\mathrm{decay}$",
+    "HL-LHC": r"$\mathrm{HL\mbox{-}LHC}$",
+    "FCC-ee": r"$\mathrm{FCC\mbox{-}ee}$",
+    "Beta decay": r"$\beta\,\mathrm{\mbox{-}decay}$",
 }

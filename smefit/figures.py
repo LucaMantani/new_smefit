@@ -301,6 +301,8 @@ def _posterior_contours(
     reference_points: Sequence[ReferencePoint] | None = None,
     hatch: bool = True,
     title: str | None = None,
+    label_fontsize: float | None = None,
+    legend_fontsize: float | None = None,
 ) -> Figure:
     """Draw the pairwise 2D confidence contours of *fits* in one figure.
 
@@ -384,10 +386,28 @@ def _posterior_contours(
     # set aside for either; from three coefficients on, the lower triangle
     # leaves one free, and the grid gains the column the legend goes in instead
     single_panel = n_par == 2
+    # a lone panel has no neighbouring cells to lean on for scale, and reads
+    # as cramped at the size that suits one row of a larger corner
+    default_subplot_size = 6 if single_panel else 4
     if subplot_size is None:
-        # a lone panel has no neighbouring cells to lean on for scale, and
-        # reads as cramped at the size that suits one row of a larger corner
-        subplot_size = 6 if single_panel else 4
+        subplot_size = default_subplot_size
+    # every fontsize below is in points, so a figure drawn at a larger
+    # subplot_size would keep its text at the size that suits the default one
+    # and read as shrunken beside the panels: they scale with the panels
+    # unless the runcard asked for a size of its own, and the sizes that go
+    # with each — tick numbers with the axis labels, the title with the
+    # legend — follow it at the ratio they are drawn at by default
+    size_scale = subplot_size / default_subplot_size
+    base_label, base_tick = (22, 14) if single_panel else (26, 22)
+    base_legend, base_title = (12, 20) if single_panel else (20, 24)
+    if label_fontsize is None:
+        label_fontsize = base_label * size_scale
+    label_scale = label_fontsize / base_label
+    tick_fontsize = base_tick * label_scale
+    offset_fontsize = 18 * label_scale
+    if legend_fontsize is None:
+        legend_fontsize = base_legend * size_scale
+    title_fontsize = base_title * legend_fontsize / base_legend
     n_cols = n_cells if single_panel else max(n_cells, 2)
     fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
     grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
@@ -485,13 +505,10 @@ def _posterior_contours(
         ax.minorticks_on()
         ax.grid(linestyle="dotted", linewidth=0.5)
 
-        # only the outer panels carry axis labels and tick labels; a single
-        # panel is smaller than a corner's outer row/column, so its labels —
-        # and the tick numbers themselves, otherwise left at the rc default
-        # sized for a multi-panel grid — are sized down to match
-        label_fontsize = 22 if single_panel else 26
-        if single_panel:
-            ax.tick_params(axis="both", which="major", labelsize=14)
+        # only the outer panels carry axis labels and tick labels; the tick
+        # numbers are set here rather than left at the rc default, which is
+        # sized for a multi-panel grid at its default panel size
+        ax.tick_params(axis="both", which="major", labelsize=tick_fontsize)
         if j == n_par - 1:
             ax.set_xlabel(coeff_labels[i], fontsize=label_fontsize)
         else:
@@ -503,7 +520,12 @@ def _posterior_contours(
 
         # a coefficient of 1e-4 would otherwise print five leading zeros in
         # every label, and the labels of one panel would run into each other
-        compact_tick_labels(ax, show_x_offset=j == n_par - 1, show_y_offset=i == 0)
+        compact_tick_labels(
+            ax,
+            show_x_offset=j == n_par - 1,
+            show_y_offset=i == 0,
+            fontsize=offset_fontsize,
+        )
 
     # From four coefficients on, the upper triangle has a cell of the last
     # column below the legend row that nothing uses: the logo goes in its
@@ -534,7 +556,7 @@ def _posterior_contours(
             labels=legend_labels,
             handles=handles,
             loc="best",
-            fontsize=12,
+            fontsize=legend_fontsize,
             handlelength=1,
             labelspacing=0.3,
             borderpad=0.3,
@@ -542,7 +564,7 @@ def _posterior_contours(
             framealpha=0.9,
             scatteryoffsets=[0.5],
         )
-        fig.suptitle(title, fontsize=20)
+        fig.suptitle(title, fontsize=title_fontsize)
     else:
         # the legend, and the confidence level it is read with, go in the
         # free upper-right corner — never over a panel, whatever the figure's
@@ -554,11 +576,11 @@ def _posterior_contours(
             handles=handles,
             loc="lower left",
             frameon=False,
-            fontsize=20,
+            fontsize=legend_fontsize,
             handlelength=1,
             borderpad=0.5,
             handletextpad=1,
-            title_fontsize=24,
+            title_fontsize=title_fontsize,
             # matplotlib puts a single scatter key at 3/8 of the key height,
             # which reads as off-centre once the marker sits on top of a
             # filled patch
@@ -568,7 +590,7 @@ def _posterior_contours(
             0.05,
             0.95,
             title,
-            fontsize=24,
+            fontsize=title_fontsize,
             transform=legend_ax.transAxes,
             verticalalignment="top",
         )
@@ -594,6 +616,8 @@ def plot_fits_posterior_contours(
     reference_points=None,
     hatch=True,
     title=None,
+    label_fontsize=None,
+    legend_fontsize=None,
 ) -> Figure:
     """Overlay the 2D marginalised confidence contours of every fit.
 
@@ -660,6 +684,15 @@ def plot_fits_posterior_contours(
         leaves free; with exactly two — a single panel — there is no such
         cell, so it becomes the figure's title instead, and the legend moves
         inside the panel, as an ordinary plot's would.
+    label_fontsize : float, optional
+        Size in points of the axis labels. Scales with ``subplot_size`` by
+        default, the tick numbers and the shared power at the end of an axis
+        following it at the ratio they are drawn at by default — fontsizes
+        being absolute, a figure enlarged through ``subplot_size`` would
+        otherwise keep text sized for the default panel.
+    legend_fontsize : float, optional
+        Size in points of the legend entries, scaling with ``subplot_size``
+        the same way, the title above the legend following it.
 
     Raises
     ------
@@ -680,6 +713,8 @@ def plot_fits_posterior_contours(
         reference_points=reference_points,
         hatch=hatch,
         title=title,
+        label_fontsize=label_fontsize,
+        legend_fontsize=legend_fontsize,
     )
 
 
@@ -695,6 +730,8 @@ def plot_posterior_contours(
     reference_points=None,
     hatch=True,
     title=None,
+    label_fontsize=None,
+    legend_fontsize=None,
 ) -> Figure:
     """Plot the 2D marginalised confidence contours of one fit.
 
@@ -751,6 +788,15 @@ def plot_posterior_contours(
         leaves free; with exactly two — a single panel — there is no such
         cell, so it becomes the figure's title instead, and the legend moves
         inside the panel, as an ordinary plot's would.
+    label_fontsize : float, optional
+        Size in points of the axis labels. Scales with ``subplot_size`` by
+        default, the tick numbers and the shared power at the end of an axis
+        following it at the ratio they are drawn at by default — fontsizes
+        being absolute, a figure enlarged through ``subplot_size`` would
+        otherwise keep text sized for the default panel.
+    legend_fontsize : float, optional
+        Size in points of the legend entries, scaling with ``subplot_size``
+        the same way, the title above the legend following it.
 
     Raises
     ------
@@ -769,6 +815,8 @@ def plot_posterior_contours(
         reference_points=reference_points,
         hatch=hatch,
         title=title,
+        label_fontsize=label_fontsize,
+        legend_fontsize=legend_fontsize,
     )
 
 
@@ -1022,6 +1070,9 @@ def plot_posterior_histograms(
 # coefficient read as a group rather than as neighbours.
 _ROW_GAP_RATIO = 3.0
 
+# Default size in points of the bounds legend entries.
+_BOUNDS_LEGEND_FONTSIZE = 16
+
 # Decade ticks of a symlog x-axis, at 1..9 times every power of ten either
 # side of zero, as the old `plot_coeffs` drew them.
 _SYMLOG_DECADES = np.concatenate([-np.logspace(-4, 2, 7), np.logspace(-4, 2, 7)])
@@ -1084,6 +1135,8 @@ def _coefficient_bounds(
     x_max: float | None = None,
     show_sm: bool = True,
     reference_points: Sequence[ReferencePoint] | None = None,
+    legend_fontsize: float | None = None,
+    row_gap_ratio: float = _ROW_GAP_RATIO,
 ) -> Figure:
     """Draw the confidence intervals of *fits* one coefficient per row.
 
@@ -1127,7 +1180,7 @@ def _coefficient_bounds(
     # coefficient, and with a fixed spread the two gaps close on each other as
     # fits are added until the grouping reads backwards.
     rows = np.arange(len(coeffs))[::-1]
-    spread = (len(fits) - 1) / (len(fits) - 1 + _ROW_GAP_RATIO)
+    spread = (len(fits) - 1) / (len(fits) - 1 + row_gap_ratio)
     shifts = np.linspace(spread / 2, -spread / 2, len(fits))
 
     fig, ax = plt.subplots(
@@ -1256,14 +1309,18 @@ def _coefficient_bounds(
         else:
             handles.append(line)
         labels.append(point.label)
+    # below the rc size of 22 the tick labels use: at that size a few fits
+    # and reference points make the legend taller than the rows it keys
+    if legend_fontsize is None:
+        legend_fontsize = _BOUNDS_LEGEND_FONTSIZE
+    # the title follows the entries at the ratio the two are drawn at by default
+    title_fontsize = 18 * legend_fontsize / _BOUNDS_LEGEND_FONTSIZE
     ax.legend(
         handles=handles,
         labels=labels,
         title=levels_title,
-        # below the rc size of 22 the tick labels use: at that size a few fits
-        # and reference points make the legend taller than the rows it keys
-        fontsize=16,
-        title_fontsize=18,
+        fontsize=legend_fontsize,
+        title_fontsize=title_fontsize,
         loc="lower center",
         bbox_to_anchor=(0, 1.02, 1.0, 0.05),
         frameon=False,
@@ -1286,6 +1343,8 @@ def plot_fits_coefficient_bounds(
     x_max=None,
     show_sm=True,
     reference_points=None,
+    legend_fontsize=None,
+    row_gap_ratio=_ROW_GAP_RATIO,
 ) -> Figure:
     """Overlay the coefficient bounds of every fit — central value and C.I.
 
@@ -1335,6 +1394,15 @@ def plot_fits_coefficient_bounds(
         intervals are read against a band of the same confidence. With two
         levels the narrower band darkens the wider one. Grey unless the entry sets a ``color``, which several
         points should, to be told apart; ``marker`` has no use here.
+    legend_fontsize : float, optional
+        Size in points of the legend entries, 16 by default, the title above
+        the legend following it at the ratio the two are drawn at.
+    row_gap_ratio : float, optional
+        How much wider the gap between two coefficients is than the gap
+        between two fits of the same one, 3 by default — what makes the
+        intervals of one coefficient read as a group rather than as
+        neighbours. Raise it to spread the rows apart and pack each row's
+        fits together, lower it to spread the fits within a row.
 
     Raises
     ------
@@ -1353,6 +1421,8 @@ def plot_fits_coefficient_bounds(
         x_max=x_max,
         show_sm=show_sm,
         reference_points=reference_points,
+        legend_fontsize=legend_fontsize,
+        row_gap_ratio=row_gap_ratio,
     )
 
 
@@ -1368,6 +1438,8 @@ def plot_coefficient_bounds(
     x_max=None,
     show_sm=True,
     reference_points=None,
+    legend_fontsize=None,
+    row_gap_ratio=_ROW_GAP_RATIO,
 ) -> Figure:
     """Plot the coefficient bounds of one fit — central value and C.I.
 
@@ -1393,6 +1465,8 @@ def plot_coefficient_bounds(
         x_max=x_max,
         show_sm=show_sm,
         reference_points=reference_points,
+        legend_fontsize=legend_fontsize,
+        row_gap_ratio=row_gap_ratio,
     )
 
 

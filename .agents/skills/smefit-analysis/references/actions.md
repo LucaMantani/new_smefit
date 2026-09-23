@@ -67,11 +67,11 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.figures`
 
-- `plot_coefficient_bounds(fit, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None, show_sm=True, reference_points=None, legend_fontsize=None, row_gap_ratio=3.0) -> 'Figure'`
+- `plot_coefficient_bounds(fit, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None, show_sm=True, reference_points=None, legend_fontsize=None, row_gap_ratio=3.0, x_label=None) -> 'Figure'`
   - Plot the coefficient bounds of one fit — central value and C.I.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
-- `plot_fits_coefficient_bounds(fits, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None, show_sm=True, reference_points=None, legend_fontsize=None, row_gap_ratio=3.0) -> 'Figure'`
+- `plot_fits_coefficient_bounds(fits, params_to_plot=None, confidence_level=95, double_solution=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None, show_sm=True, reference_points=None, legend_fontsize=None, row_gap_ratio=3.0, x_label=None) -> 'Figure'`
   - Overlay the coefficient bounds of every fit — central value and C.I.
 - `plot_fits_mass_reach(fits, params_to_plot=None, confidence_level=95, full_interval=False, y_log=False) -> 'Figure'`
   - Overlay the mass reach of every fit, one group of bars per coefficient.
@@ -126,7 +126,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.hessian_fit`
 
-- `hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings)`
+- `hessian_fit(coefficients, chi2, gd_best_fit, hessian_settings)`
   - Approximate the posterior with a Gaussian around the chi2 minimum.
 
 ### `smefit.ultranest_fit`
@@ -147,7 +147,7 @@ names in tracebacks. They are resolved for you.
   - BlackJAX fit for a single free coefficient.
 - `individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings)`
   - Best-fit point for a single free coefficient.
-- `individual_hessian_fit(individual_eft_model, individual_chi2, individual_gd_best_fit, hessian_settings)`
+- `individual_hessian_fit(individual_coefficients, individual_chi2, individual_gd_best_fit, hessian_settings)`
   - Hessian fit for a single free coefficient.
 - `individual_ultranest_fit(individual_prior, individual_chi2, individual_coefficients, ultranest_settings, individual_fit_coefficient)`
   - UltraNest fit for a single free coefficient.

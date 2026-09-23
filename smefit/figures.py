@@ -1137,6 +1137,7 @@ def _coefficient_bounds(
     reference_points: Sequence[ReferencePoint] | None = None,
     legend_fontsize: float | None = None,
     row_gap_ratio: float = _ROW_GAP_RATIO,
+    x_label: str | None = None,
 ) -> Figure:
     """Draw the confidence intervals of *fits* one coefficient per row.
 
@@ -1219,7 +1220,14 @@ def _coefficient_bounds(
 
     y_limits = (rows.min() - 1, rows.max() + 1)
     ax.set_ylim(*y_limits)
-    ax.set_yticks(rows, [coeff_info_latex.get(name, name) for name in coeffs])
+    # a named x-axis says what the figure is about, so repeating the
+    # coefficient on every row would say it twice — the rows then carry no
+    # tick at all, since a tick with nothing written next to it reads as a
+    # label that failed to draw
+    if x_label is not None:
+        ax.set_yticks([])
+    else:
+        ax.set_yticks(rows, [coeff_info_latex.get(name, name) for name in coeffs])
 
     # the SM is not always the origin: a coefficient parametrised around a
     # non-zero baseline_value has its SM elsewhere, and the reference line has
@@ -1285,7 +1293,10 @@ def _coefficient_bounds(
         compact_tick_labels(ax, axis="x")
     ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
     ax.set_xlim(x_min, x_max)
-    ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
+    ax.set_xlabel(
+        x_label if x_label is not None else r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$",
+        fontsize=20,
+    )
 
     levels_title = (
         rf"${outer_cl:g}\:\%\:\mathrm{{C.I.}}$"
@@ -1345,6 +1356,7 @@ def plot_fits_coefficient_bounds(
     reference_points=None,
     legend_fontsize=None,
     row_gap_ratio=_ROW_GAP_RATIO,
+    x_label=None,
 ) -> Figure:
     """Overlay the coefficient bounds of every fit — central value and C.I.
 
@@ -1403,6 +1415,12 @@ def plot_fits_coefficient_bounds(
         intervals of one coefficient read as a group rather than as
         neighbours. Raise it to spread the rows apart and pack each row's
         fits together, lower it to spread the fits within a row.
+    x_label : str, optional
+        Label of the x-axis, replacing the default
+        :math:`c_i/\\Lambda^2\\ ({\\rm TeV}^{-2})` — for a figure whose rows
+        are not Wilson coefficients in TeV\\ :sup:`-2`, e.g. ``'$V_{ud}$'``.
+        Setting it also drops the row ticks and their coefficient names,
+        which a named axis would only repeat.
 
     Raises
     ------
@@ -1423,6 +1441,7 @@ def plot_fits_coefficient_bounds(
         reference_points=reference_points,
         legend_fontsize=legend_fontsize,
         row_gap_ratio=row_gap_ratio,
+        x_label=x_label,
     )
 
 
@@ -1440,6 +1459,7 @@ def plot_coefficient_bounds(
     reference_points=None,
     legend_fontsize=None,
     row_gap_ratio=_ROW_GAP_RATIO,
+    x_label=None,
 ) -> Figure:
     """Plot the coefficient bounds of one fit — central value and C.I.
 
@@ -1467,6 +1487,7 @@ def plot_coefficient_bounds(
         reference_points=reference_points,
         legend_fontsize=legend_fontsize,
         row_gap_ratio=row_gap_ratio,
+        x_label=x_label,
     )
 
 

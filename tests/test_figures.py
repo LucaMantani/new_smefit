@@ -1527,6 +1527,23 @@ def test_bounds_rows_run_top_to_bottom_in_the_requested_order() -> None:
     ]
 
 
+def test_bounds_default_x_label_names_the_wilson_coefficient_scale() -> None:
+    fig = plot_fits_coefficient_bounds([_uniform_fit()])
+
+    assert fig.axes[0].get_xlabel() == r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$"
+
+
+def test_bounds_x_label_replaces_it_and_clears_the_row_ticks() -> None:
+    """A row that is not a Wilson coefficient is named on the axis instead,
+    and the name is not then repeated on every row — nor is a bare tick left
+    where the name would have been."""
+    fig = plot_fits_coefficient_bounds([_uniform_fit()], x_label="$V_{ud}$")
+
+    ax = fig.axes[0]
+    assert ax.get_xlabel() == "$V_{ud}$"
+    assert list(ax.get_yticks()) == []
+
+
 def test_bounds_offset_the_fits_within_a_row() -> None:
     """Two fits of the same coefficient would otherwise draw over each
     other."""

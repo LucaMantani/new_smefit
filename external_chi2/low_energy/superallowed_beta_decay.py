@@ -18,6 +18,8 @@ Example runcard entry::
     external_chi2:
       SA_beta_decays:
         path: new_smefit/external_chi2/low_energy/superallowed_beta_decay.py
+        eta2_prefactor: 3.3e-4  # optional, default shown
+        eta3_prefactor: 8.0e-5  # optional, default shown
 """
 
 from __future__ import annotations
@@ -77,6 +79,11 @@ _GF = 1.16637859e-5  # GeV^-2
 # default: it matches the old-format module in smefit_database.
 _DEFAULT_SCALE = 10000.0
 
+# Default prefactors of eta2 and eta3 in the nuisance shift of Ft (see
+# _chi2_smeft); the runcard overrides them with eta2_prefactor/eta3_prefactor.
+_DEFAULT_ETA2_PREFACTOR = 3.3e-4
+_DEFAULT_ETA3_PREFACTOR = 8.0e-5
+
 # Nuisance parameters of the beta-decay likelihood. They are ordinary runcard
 # coefficients but carry no SMEFT operator, so they are excluded from the RGE
 # translation (which would otherwise warn about them being unknown WCs).
@@ -97,6 +104,8 @@ def _chi2_smeft(
     eta3: jnp.ndarray,
     Vud: jnp.ndarray,
     L: jnp.ndarray,
+    eta2_prefactor: float,
+    eta3_prefactor: float,
 ) -> jnp.ndarray:
     """Beta-decay chi2 for a given LEC shift ``L``.
 
@@ -108,7 +117,9 @@ def _chi2_smeft(
     Lf = -2.0 * jnp.sqrt(2.0) * _GF + L
     CV = -0.5 * Vud * Lf * jnp.sqrt(1.0 + DRV)
     Ft = _PREF / CV**2
-    Ftt = Ft + mean * (eta1 * _DELTA_R + eta2 + eta3 * Q)
+    Ftt = Ft + mean * (
+        eta1 * _DELTA_R + eta2 * eta2_prefactor + eta3 * eta3_prefactor * Q
+    )
     return jnp.sum((Ftt - mean) ** 2 / std**2)
 
 
@@ -125,8 +136,12 @@ class SA_beta_decays:
         coefficients: CoefficientGroup,
         rge_dict: Mapping[str, Any] | None = None,
         starting_scale: float | None = None,
+        eta2_prefactor: float = _DEFAULT_ETA2_PREFACTOR,
+        eta3_prefactor: float = _DEFAULT_ETA3_PREFACTOR,
     ) -> None:
         self.coefficients = coefficients
+        self._eta2_prefactor = float(eta2_prefactor)
+        self._eta3_prefactor = float(eta3_prefactor)
 
         # Indices into the *full* coefficient vector returned by resolve().
         self._bd_idx: dict[str, int] = {
@@ -241,4 +256,6 @@ class SA_beta_decays:
             _get("eta3"),
             _get("Vud"),
             L,
+            self._eta2_prefactor,
+            self._eta3_prefactor,
         )

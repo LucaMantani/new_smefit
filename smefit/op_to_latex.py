@@ -174,9 +174,9 @@ coeff_info_latex = {
     "Old": r"$c_{\ell d}$",
     "Vud": r"$V_{ud}$",
     "Lprime": r"$L^{\prime (1111)}(\mu = 2\,\mathrm{GeV})$",
-    "eta1": r"$\eta_1$",
-    "eta2": r"$\eta_2$",
-    "eta3": r"$\eta_3$",
+    "eta1": r"$\eta_1 \Delta\delta'^i_R$",
+    "eta2": r"$\eta_2 \Delta\delta_{\rm NS}^{(0)}$",
+    "eta3": r"$\eta_3 \Delta\delta_{\rm NS,E}^i$",
     "DRV": r"$\Delta_R^V$",
 }
 

@@ -397,19 +397,6 @@ class FitResultGroup:
     def __init__(self, results: List[FitResult]):
         self.results = results
 
-    # ------------------------------------------------------------------
-    # The FitResult fields that still mean something one at a time
-    # ------------------------------------------------------------------
-    #
-    # A group is not a FitResult and deliberately does not pretend to be one:
-    # it has no joint likelihood, no single best-fit point, no correlations.
-    # These two fields are the ones a coefficient answers on its own, and they
-    # are exposed under their FitResult names so that a consumer looking at one
-    # coefficient at a time — the bounds — reads both kinds of fit the same
-    # way. Anything reading two coefficients *together* (a contour, a
-    # correlation) must not: individual posteriors were sampled independently,
-    # so pairing them up would draw a correlation that was never fitted.
-
     @property
     def free_parameters(self) -> List[str]:
         """The coefficients fitted, in the order they were fitted.

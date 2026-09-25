@@ -30,9 +30,10 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
+import numpy as np
 import pandas as pd
 import yaml
 from rich import box
@@ -167,6 +168,22 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     if spec.get("dist") == "exact_posterior":
         return f"ExactPosterior"
     return str(_build_dist(spec))
+
+
+def _equal_tailed_interval(values: np.ndarray, level: float) -> Tuple[float, float]:
+    """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
+    each side. NaNs are ignored."""
+    tail = (100.0 - level) / 2.0
+    low, high = np.nanpercentile(values, [tail, 100.0 - tail])
+    return float(low), float(high)
+
+
+# The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
+# name its ``interval_type`` takes. Each maps one coefficient's samples and a
+# level in percent to ``(low, high)``; a new interval type is one more entry.
+_INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], Tuple[float, float]]] = {
+    "eti": _equal_tailed_interval,
+}
 
 
 @dataclass
@@ -395,6 +412,27 @@ class FitResultGroup:
 
     def __init__(self, results: List[FitResult]):
         self.results = results
+
+    @property
+    def free_parameters(self) -> List[str]:
+        """The coefficients fitted, in the order they were fitted.
+
+        One per individual fit, each free in its own.
+        """
+        return [result.free_parameters[0] for result in self.results]
+
+    @property
+    def samples(self) -> Optional[Dict[str, jnp.ndarray]]:
+        """Posterior samples per coefficient, from its own individual fit.
+
+        ``None`` when no individual fit kept any, as for :class:`FitResult`.
+        """
+        samples = {}
+        for result in self.results:
+            name = result.free_parameters[0]
+            if result.samples is not None and name in result.samples:
+                samples[name] = result.samples[name]
+        return samples or None
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
@@ -659,6 +697,68 @@ class Fit:
         }
 
     # ------------------------------------------------------------------
+    # What the fit constrained — derived from the posterior samples
+    # ------------------------------------------------------------------
+
+    @property
+    def bounds(self) -> Dict[float, Dict[str, Tuple[float, float, float]]]:
+        """The 68% and 95% confidence bounds of every free coefficient.
+
+        The two levels every report quotes, keyed by level, each as
+        :meth:`confidence_bounds` computes it. Any other level goes through
+        that method directly.
+        """
+        return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
+
+    def confidence_bounds(
+        self, confidence_level: float, interval_type: str = "eti"
+    ) -> Dict[str, Tuple[float, float, float]]:
+        """The ``confidence_level`` percent bounds of every free coefficient.
+
+        Parameters
+        ----------
+        confidence_level : float
+            In percent: 95, not 0.95.
+        interval_type : str
+            How the interval is chosen among those holding
+            ``confidence_level`` percent of the posterior. ``"eti"``
+            (equal-tailed, the default) is the only one so far.
+
+        Returns
+        -------
+        dict of str to tuple of float
+            ``(low, mean, high)`` per free coefficient, in the fit's order.
+            Coefficients with no samples are left out.
+        """
+        if not 1.0 <= confidence_level < 100.0:
+            raise ValueError(
+                f"confidence_level is a percentage between 1 and 100, got "
+                f"{confidence_level}. Write 95, not 0.95."
+            )
+        if interval_type not in _INTERVAL_TYPES:
+            raise ValueError(
+                f"Unknown interval_type {interval_type!r}; expected one of "
+                f"{sorted(_INTERVAL_TYPES)}."
+            )
+        interval = _INTERVAL_TYPES[interval_type]
+
+        samples = self.fit_results.samples
+        if not samples:
+            raise ValueError(
+                f"The fit '{self.fit_name}' stored no posterior samples, so it "
+                "has no bounds to report."
+            )
+
+        bounds = {}
+        for name in self.fit_results.free_parameters:
+            if name not in samples:
+                continue
+            values = np.asarray(samples[name], dtype=float)
+            low, high = interval(values, confidence_level)
+            bounds[name] = (low, float(np.nanmean(values)), high)
+        return bounds
+
+    # ------------------------------------------------------------------
     # I/O
     # ------------------------------------------------------------------
 
@@ -666,16 +766,8 @@ class Fit:
     def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
         """Load a Fit from a fit directory.
 
-        The whole directory is read, not just one file of it: the numbers come
-        from ``fit_results.json`` and how the fit was run from
-        ``input/runcard.yaml``.
-
-        Both payloads written by this module are accepted, and the runcard
-        action says which one to expect: a ``run_individual_*_fits`` action
-        wrote the summary of :meth:`FitResultGroup.write_summary`, which is
-        read back as the :class:`FitResultGroup` it was aggregated from so that
-        every coefficient keeps its own chi2 and evidence; any other fit action
-        wrote the standard payload of :meth:`FitResult.write`.
+        The posterior samples are read from ``fit_results.json``
+        and how the fit was run from ``input/runcard.yaml``.
 
         ``label`` is how the caller chooses to present the fit; the directory
         knows nothing about it, so it is the one piece of metadata passed in
@@ -684,30 +776,20 @@ class Fit:
         Raises
         ------
         FileNotFoundError
-            If either file is missing. Both are written by every smefit run, so
-            a directory without them is not a fit: either the run never
-            finished, or this is not a fit directory at all. Loading it half
-            way — numbers without the runcard that says how they were produced
-            — would only push the failure to whichever consumer needs the
-            metadata.
+            If either file is missing.
         ValueError
             If either file is present but cannot be read as a fit: unparsable
             JSON or YAML, or a runcard and a payload that disagree about
-            whether the fit was run one coefficient at a time. Reading a fit
-            fails the same way whichever of its files is at fault; naming that
-            file is left to :func:`_load_json` and :func:`_load_yaml`.
+            whether the fit was run one coefficient at a time.
         """
         path = pathlib.Path(path)
 
-        # The numbers the fit produced, and — from the runcard, the
-        # authoritative record of it and the only source — how it was
-        # configured. Each is decoded once and dispatched on below.
+        # Loading the fit info
         fit_results_payload = _load_json(path / "fit_results.json")
         fit_runcard = _load_yaml(path / "input" / "runcard.yaml")
 
-        # Whether a fit was run one coefficient at a time is something about
-        # how it was run, so the action it ran is what says so — never the
-        # shape of the payload, which is only a consequence of it.
+        # Whether the coefficients are fitted individually or jointly.
+        # The info is inferred from the runcard action.
         fit_action = _runcard_fit_action(fit_runcard)
         if fit_action is None:
             log.warning(

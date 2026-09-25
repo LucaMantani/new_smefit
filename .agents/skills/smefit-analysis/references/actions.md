@@ -60,6 +60,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
+- `coefficient_bounds_table(fit, params_to_plot=None, round_val=3) -> 'pd.DataFrame'`
+  - Tabulate the posterior mean and the 68% and 95% CL bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 

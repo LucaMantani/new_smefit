@@ -1,0 +1,15 @@
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+template_text: |
+    Coefficient bounds
+    ==================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@coefficient_bounds_table@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

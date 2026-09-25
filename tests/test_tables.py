@@ -1,9 +1,15 @@
-"""Unit tests for smefit.tables — fisher_diagonals_normalised."""
+"""Unit tests for smefit.tables — fisher_diagonals_normalised and
+coefficient_bounds_table."""
 
+from __future__ import annotations
+
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+import pytest
 
-from smefit.tables import fisher_diagonals_normalised
+from smefit.fit_result import Fit, FitResult, FitResultGroup
+from smefit.tables import coefficient_bounds_table, fisher_diagonals_normalised
 
 
 def _fim_entry(coeff_names, diag):
@@ -71,3 +77,75 @@ def test_fisher_diagonals_normalised_single_source_is_all_ones():
 
     assert result.columns.tolist() == ["DS_A"]
     assert result["DS_A"].tolist() == [1.0, 1.0]
+
+
+# ---------------------------------------------------------------------------
+# coefficient_bounds_table
+# ---------------------------------------------------------------------------
+
+# 1001 evenly spaced samples: the p-th percentile is exactly 10 * p
+_RAMP: list[float] = [float(value) for value in range(1001)]
+
+
+def _result(samples: dict[str, list[float]]) -> FitResult:
+    return FitResult(
+        free_parameters=list(samples),
+        best_fit_point={name: 0.0 for name in samples},
+        max_loglikelihood=0.0,
+        num_data=1,
+        samples={name: jnp.array(values) for name, values in samples.items()},
+    )
+
+
+def _joint_fit(samples: dict[str, list[float]]) -> Fit:
+    return Fit(fit_results=_result(samples), fit_name="joint")
+
+
+def _individual_fit(samples: dict[str, list[float]]) -> Fit:
+    return Fit(
+        fit_results=FitResultGroup(
+            [_result({name: values}) for name, values in samples.items()]
+        ),
+        fit_name="individual",
+    )
+
+
+def test_coefficient_bounds_table_quotes_the_mean_and_both_intervals() -> None:
+    table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}))
+
+    assert table.columns.tolist() == ["mean", "68% CL", "95% CL"]
+    assert table.index.tolist() == [r"$c_{tG}$"]
+    assert table.iloc[0].tolist() == [
+        "500.000",
+        "[160.000, 840.000]",
+        "[25.000, 975.000]",
+    ]
+
+
+def test_coefficient_bounds_table_rounds_to_round_val_without_a_negative_zero() -> None:
+    """-0.0004 at two decimals is written 0.00, not -0.00."""
+    table = coefficient_bounds_table(_joint_fit({"OtG": [-0.0004] * 10}), round_val=2)
+
+    assert table.iloc[0].tolist() == ["0.00", "[0.00, 0.00]", "[0.00, 0.00]"]
+
+
+def test_coefficient_bounds_table_keeps_params_to_plot_in_its_order() -> None:
+    fit = _joint_fit({"OtG": _RAMP, "OpQM": _RAMP, "OpA": _RAMP})
+
+    table = coefficient_bounds_table(fit, params_to_plot=["OpA", "OtG"])
+
+    assert table.index.tolist() == ["OpA", r"$c_{tG}$"]
+
+
+@pytest.mark.parametrize("params_to_plot", [None, ["OpQM"]])
+def test_coefficient_bounds_table_reads_an_individual_fit_like_a_joint_one(
+    params_to_plot: list[str] | None,
+) -> None:
+    samples = {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]}
+
+    pd.testing.assert_frame_equal(
+        coefficient_bounds_table(
+            _individual_fit(samples), params_to_plot=params_to_plot
+        ),
+        coefficient_bounds_table(_joint_fit(samples), params_to_plot=params_to_plot),
+    )

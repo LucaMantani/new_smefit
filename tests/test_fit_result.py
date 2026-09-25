@@ -714,6 +714,17 @@ def test_confidence_bounds_cover_every_free_coefficient_in_order(joint_fit):
     assert list(joint_fit.confidence_bounds(68)) == ["OtG", "OpQM"]
 
 
+def test_confidence_bounds_leave_out_a_coefficient_without_samples():
+    fit = Fit(
+        fit_results=_make_result(
+            free=("OtG", "OpQM"), samples={"OtG": jnp.array(_RAMP)}
+        ),
+        fit_name="fit",
+    )
+
+    assert list(fit.confidence_bounds(68)) == ["OtG"]
+
+
 def test_confidence_bounds_ignore_nans():
     """A sampler that wrote a NaN should shrink the sample, not the bounds to
     NaN."""

@@ -23,14 +23,15 @@ code and kept in sync by CI:
 ## Workflow
 
 1. **Start from a template** in `templates/` — one per fit type
-   (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
-   `blackjax_individual_fit.yaml`, `hessian_fit.yaml`), `mass_scan.yaml` for a
-   scan evaluating the chi2 on a grid instead, plus the runcards that fit
-   nothing: `projections.yaml`, `time_likelihood.yaml`, `report.yaml`, and
-   `posterior_correlations.yaml` (reports on fits already on disk — it needs no
-   `datasets` or `coefficients` at all, so steps 2–5 do not apply to it). Do
-   not write a runcard from scratch. The 1D chi2 scan has no template of its
-   own: start from `mass_scan.yaml` and follow the recipe in `recipes.md`.
+   (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_ns_fit.yaml`,
+   `blackjax_nuts_fit.yaml`, `blackjax_individual_fit.yaml`,
+   `hessian_fit.yaml`), `mass_scan.yaml` for a scan evaluating the chi2 on a
+   grid instead, plus the runcards that fit nothing: `projections.yaml`,
+   `time_likelihood.yaml`, `report.yaml`, and `posterior_correlations.yaml`
+   (reports on fits already on disk — it needs no `datasets` or `coefficients`
+   at all, so steps 2–5 do not apply to it). Do not write a runcard from
+   scratch. The 1D chi2 scan has no template of its own: start from
+   `mass_scan.yaml` and follow the recipe in `recipes.md`.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test
@@ -124,6 +125,12 @@ systematics/theory errors are present — just say so, don't ask.
   `run_hessian_fit`, and gradient-descent fits never consume it. `whitening`/
   `bayesian_update` synthesize a prior automatically either way. Only
   `uniform` and `gaussian`/`normal` exist (`references/priors.md`).
+- `run_blackjax_fit` runs whichever algorithm `blackjax_settings.algorithm`
+  names: `nested_sampling` (the default, and the only one that produces a
+  `logz`) or `nuts` (gradient MCMC — faster on smooth high-dimensional
+  posteriors, writes `logz: null`). Both accept `bayesian_update`;
+  `run_ultranest_fit` does not. See "Choosing a BlackJAX algorithm" in
+  `references/recipes.md`.
 - `use_t0: True` is the statistically sound choice when multiplicative
   systematics are present; pair it with `use_theory_covmat: True` when theory
   errors matter.

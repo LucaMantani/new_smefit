@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from reportengine.configparser import ConfigError
 
 from smefit.fit_result import Fit
-from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
+from smefit.priors import ExactPosteriorPrior, WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ def build_exact_posterior_prior(
                 f"Previous fit at {fit_path} used whitening but "
                 "no whitening_transformation was saved."
             )
-        prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
+        prior_1 = WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
 
     return ExactPosteriorPrior(
         base_prior=prior_1,

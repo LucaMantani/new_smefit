@@ -1,7 +1,7 @@
 """Tests for the Bayesian update feature.
 
 Covers:
-- _WhitenedToPhysicalPrior  (priors.py)
+- WhitenedToPhysicalPrior  (priors.py)
 - ExactPosteriorPrior        (priors.py)
 - FitResult.from_json        (fit_result.py)
 - parse_bayesian_update      (config.py)
@@ -25,8 +25,8 @@ from smefit.fit_result import FitResult, _format_prior
 from smefit.priors import (
     ExactPosteriorPrior,
     Prior,
+    WhitenedToPhysicalPrior,
     _UniformDist,
-    _WhitenedToPhysicalPrior,
 )
 from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import WhitenTransform
@@ -103,7 +103,7 @@ def _make_fit_dir(
 
 
 # ---------------------------------------------------------------------------
-# _WhitenedToPhysicalPrior
+# WhitenedToPhysicalPrior
 # ---------------------------------------------------------------------------
 
 
@@ -111,7 +111,7 @@ def test_whitened_to_physical_identity_W():
     """With W=I, log_prob in physical space equals the wrapped prior's log_prob."""
     base = _uniform_prior(["OpA", "OpB"])
     transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
-    wrapped = _WhitenedToPhysicalPrior(base, transform)
+    wrapped = WhitenedToPhysicalPrior(base, transform)
     x = jnp.array([0.0, 0.5])
     assert float(wrapped.log_prob(x)) == pytest.approx(
         float(base.log_prob(x)), rel=1e-5
@@ -123,7 +123,7 @@ def test_whitened_to_physical_diagonal_W():
     The Jacobian factor is log|det(W^{-1})| = log(1/4) = -log(4)."""
     base = _uniform_prior(["OpA", "OpB"], low=-2.0, high=2.0)
     transform = WhitenTransform(matrix=2.0 * jnp.eye(2), shift=jnp.zeros(2))
-    wrapped = _WhitenedToPhysicalPrior(base, transform)
+    wrapped = WhitenedToPhysicalPrior(base, transform)
     # x_phys in support of base after W^{-1} mapping (W^{-1} x = 0.5*x)
     x_phys = jnp.array([0.5, 0.5])
     x_w = 0.5 * x_phys  # = [0.25, 0.25], inside [-2, 2]
@@ -134,7 +134,7 @@ def test_whitened_to_physical_diagonal_W():
 def test_whitened_to_physical_inherits_param_names():
     base = _uniform_prior(["OpA"])
     transform = WhitenTransform(matrix=jnp.eye(1), shift=jnp.zeros(1))
-    wrapped = _WhitenedToPhysicalPrior(base, transform)
+    wrapped = WhitenedToPhysicalPrior(base, transform)
     assert wrapped.param_names == ["OpA"]
 
 
@@ -144,8 +144,8 @@ def test_whitened_to_physical_shift_does_not_affect_jacobian():
     matrix = 2.0 * jnp.eye(2)
     no_shift = WhitenTransform(matrix=matrix, shift=jnp.zeros(2))
     shifted = WhitenTransform(matrix=matrix, shift=jnp.array([0.2, -0.2]))
-    wrapped_no_shift = _WhitenedToPhysicalPrior(base, no_shift)
-    wrapped_shifted = _WhitenedToPhysicalPrior(base, shifted)
+    wrapped_no_shift = WhitenedToPhysicalPrior(base, no_shift)
+    wrapped_shifted = WhitenedToPhysicalPrior(base, shifted)
     assert float(wrapped_no_shift._log_abs_det_matrix_inv) == pytest.approx(
         float(wrapped_shifted._log_abs_det_matrix_inv)
     )
@@ -232,6 +232,17 @@ def test_exact_prior_param_names(exact_prior_2d):
 def test_format_prior_exact_posterior():
     spec = {"dist": "exact_posterior", "source": "/some/path"}
     assert _format_prior(spec) == "ExactPosterior"
+
+
+def test_format_prior_ordinary_dist():
+    """Any other spec is rendered by the distribution itself."""
+    assert (
+        _format_prior({"dist": "uniform", "low": -1.0, "high": 1.0}) == "U[-1.0, 1.0]"
+    )
+
+
+def test_format_prior_missing_spec():
+    assert _format_prior(None) == "-"
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +567,7 @@ def test_build_returns_exact_posterior_prior(tmp_path):
 
 
 def test_build_whitening_wraps_prior(tmp_path):
-    """When the previous fit used whitening, the prior is wrapped in _WhitenedToPhysicalPrior."""
+    """When the previous fit used whitening, the prior is wrapped in WhitenedToPhysicalPrior."""
     transform = WhitenTransform(matrix=jnp.eye(2), shift=jnp.zeros(2))
     fit_dir = _make_fit_dir(
         tmp_path,
@@ -574,10 +585,10 @@ def test_build_whitening_wraps_prior(tmp_path):
         mock_api.prior.return_value = base_prior
         result = build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
 
-    # The prior inside ExactPosteriorPrior should be a _WhitenedToPhysicalPrior
-    from smefit.priors import _WhitenedToPhysicalPrior
+    # The prior inside ExactPosteriorPrior should be a WhitenedToPhysicalPrior
+    from smefit.priors import WhitenedToPhysicalPrior
 
-    assert isinstance(result._base_prior, _WhitenedToPhysicalPrior)
+    assert isinstance(result._base_prior, WhitenedToPhysicalPrior)
 
 
 def test_build_individual_fit_raises(tmp_path):

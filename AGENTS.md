@@ -98,12 +98,13 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`data_utils.py`**: Covariance matrix construction (handles correlated/uncorrelated systematics).
 - **`chi2.py`**: `build_chi2` returns a JAX-differentiable loss function; `Chi2` wraps it with the metadata the fit nodes need (`baseline`, `num_data`, …) and `Chi2.whitened` re-expresses it in whitened coordinates.
 - **`fit_actions.py`**: The reportengine actions listed under `actions_:` in a runcard (`run_analytic_fit`, `run_ultranest_fit`, `run_blackjax_fit`, `run_hessian_fit`, and their `run_individual_*_fits` counterparts) — each takes its produced fit object plus `output_path` and executes/writes it.
+- **`blackjax_fit.py` / `blackjax_samplers/`**: `blackjax_fit` is the provider node; it applies whitening, resolves the posterior and builds the `FitResult`, and dispatches the actual sampling to a runner looked up in `_SAMPLER_REGISTRY` by `blackjax_settings.algorithm` (`nested_sampling` or `nuts`). The `blackjax_samplers` package holds one module per algorithm (`nuts.py`, `nested_sampling.py`), each exposing `run(...)` and the `SETTINGS` frozenset of the runcard keys it owns; `_common.py` carries `SamplerOutput` and the `_HealthReport` verdict scaffolding, and `__init__.py` builds both `_SAMPLER_REGISTRY` and `BJ_ALGORITHM_SETTINGS` from a single `_ALGORITHM_MODULES` map. Adding an algorithm is therefore one new module, one entry in that map, and the matching keys in the `known_keys` literal of `parse_blackjax_settings`. The package is deliberately **not** registered in `smefit_providers` — its contents are helpers, not DAG nodes. The `BJ_` prefix marks the constants that `config.py` imports from it, so they stay recognisable at the import site.
 - **`whitening.py`**: `WhitenTransform` (the affine map between whitened and physical coefficients) and the `_whitening_*_shift` workers that build it. Callers whiten by asking the domain objects themselves: `chi2.whitened(transform)` and `coefficients.whitened(transform)`.
 - **`utils.py`**: Posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
 
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
-`blackjax_fit.py`, `hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
+`hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
 `external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `figures.py`,
 `tables.py`, `wcxf.py`, `op_to_latex.py`, `utils_actions.py`, `constants.py`, `api.py` (the
 `reportengine` programmatic API).

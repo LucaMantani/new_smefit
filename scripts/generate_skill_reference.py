@@ -76,7 +76,11 @@ FIT_TYPE_MAP = [
         "none (optional n_samples/seed via analytic_fit defaults)",
     ),
     ("UltraNest nested sampling", "run_ultranest_fit", "ultranest_settings"),
-    ("BlackJAX nested sampling", "run_blackjax_fit", "blackjax_settings"),
+    (
+        "BlackJAX (nested sampling or NUTS, via blackjax_settings.algorithm)",
+        "run_blackjax_fit",
+        "blackjax_settings",
+    ),
     (
         "Hessian / Laplace approximation",
         "run_hessian_fit",

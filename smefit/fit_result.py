@@ -747,16 +747,8 @@ class Fit:
     def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
         """Load a Fit from a fit directory.
 
-        The whole directory is read, not just one file of it: the numbers come
-        from ``fit_results.json`` and how the fit was run from
-        ``input/runcard.yaml``.
-
-        Both payloads written by this module are accepted, and the runcard
-        action says which one to expect: a ``run_individual_*_fits`` action
-        wrote the summary of :meth:`FitResultGroup.write_summary`, which is
-        read back as the :class:`FitResultGroup` it was aggregated from so that
-        every coefficient keeps its own chi2 and evidence; any other fit action
-        wrote the standard payload of :meth:`FitResult.write`.
+        The posterior samples are read from ``fit_results.json`` 
+        and how the fit was run from ``input/runcard.yaml``.
 
         ``label`` is how the caller chooses to present the fit; the directory
         knows nothing about it, so it is the one piece of metadata passed in
@@ -765,30 +757,20 @@ class Fit:
         Raises
         ------
         FileNotFoundError
-            If either file is missing. Both are written by every smefit run, so
-            a directory without them is not a fit: either the run never
-            finished, or this is not a fit directory at all. Loading it half
-            way — numbers without the runcard that says how they were produced
-            — would only push the failure to whichever consumer needs the
-            metadata.
+            If either file is missing.
         ValueError
             If either file is present but cannot be read as a fit: unparsable
             JSON or YAML, or a runcard and a payload that disagree about
-            whether the fit was run one coefficient at a time. Reading a fit
-            fails the same way whichever of its files is at fault; naming that
-            file is left to :func:`_load_json` and :func:`_load_yaml`.
+            whether the fit was run one coefficient at a time.
         """
         path = pathlib.Path(path)
 
-        # The numbers the fit produced, and — from the runcard, the
-        # authoritative record of it and the only source — how it was
-        # configured. Each is decoded once and dispatched on below.
+        # Loading the fit info
         fit_results_payload = _load_json(path / "fit_results.json")
         fit_runcard = _load_yaml(path / "input" / "runcard.yaml")
 
-        # Whether a fit was run one coefficient at a time is something about
-        # how it was run, so the action it ran is what says so — never the
-        # shape of the payload, which is only a consequence of it.
+        # Whether the coefficients are fitted individually or jointly.
+        # The info is inferred from the runcard action.
         fit_action = _runcard_fit_action(fit_runcard)
         if fit_action is None:
             log.warning(

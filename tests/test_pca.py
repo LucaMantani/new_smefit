@@ -51,6 +51,18 @@ def test_pca_flags_the_flat_direction():
     assert result.n_flat == 1
 
 
+def test_pca_flat_check_uses_the_magnitude_of_the_ratio():
+    """A slightly negative eigenvalue is flat by its size, not its sign."""
+    result = PCA(
+        eigenvalues=np.array([1.0, 1e-2, -1e-9]),
+        eigenvectors=np.eye(3),
+        coeff_names=["OpA", "OpB", "OpC"],
+        **SETTINGS,
+    )
+
+    assert result.flat_mask.tolist() == [False, False, True]
+
+
 def test_pca_flat_threshold_is_relative_to_the_largest_eigenvalue():
     """A direction 100x weaker than the strongest is flat at threshold=1e-1."""
     weak = np.diag([1.0, 1e-2])
@@ -120,12 +132,17 @@ def test_pca_raises_when_nothing_is_constrained():
         _pca_of(np.diag([-1.0, -2.0]), ["OpA", "OpB"])
 
 
-def test_pca_warns_on_a_saddle_point(caplog):
-    """A negative eigenvalue means the centre was not a minimum."""
-    with caplog.at_level(logging.WARNING, logger="smefit.pca"):
+def test_pca_raises_when_the_centre_is_not_a_minimum():
+    """A real negative eigenvalue means the Fisher matrix is not at a minimum."""
+    with pytest.raises(ValueError, match="not a minimum"):
         _pca_of(np.diag([1.0, -0.5]), ["OpA", "OpB"])
 
-    assert "saddle" in caplog.text
+
+def test_pca_tolerates_a_flat_direction_rounding_negative():
+    """-1e-17 on a flat direction is AD noise, not negative curvature."""
+    result = _pca_of(np.diag([1.0, -1e-17]), ["OpA", "OpB"])
+
+    assert result.flat_mask.tolist() == [False, True]
 
 
 def test_pca_warns_on_degenerate_constrained_directions(caplog):

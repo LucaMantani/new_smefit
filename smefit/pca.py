@@ -106,8 +106,8 @@ class PCA:
     def constraints(self) -> np.ndarray:
         """``sigma_i = 1 / sqrt(lambda_i)``, the width the data allow along PC i.
 
-        Infinite where an eigenvalue is not positive: an exactly flat direction,
-        or — if the centre is not a minimum — a negatively curved one.
+        Infinite where an eigenvalue is not positive, i.e. an exactly flat
+        direction (possibly rounded slightly negative).
         """
         with np.errstate(divide="ignore", invalid="ignore"):
             sigma = 1.0 / np.sqrt(self.eigenvalues)
@@ -120,8 +120,12 @@ class PCA:
 
     @property
     def flat_mask(self) -> np.ndarray:
-        """Boolean mask of the directions the data do not constrain."""
-        return self.eigenvalue_ratios < self.threshold
+        """Boolean mask of the directions the data do not constrain.
+
+        Compared in absolute value: a flat direction can round slightly
+        negative, and it is its size, not its sign, that makes it flat.
+        """
+        return np.abs(self.eigenvalue_ratios) < self.threshold
 
     @property
     def n_flat(self) -> int:
@@ -265,6 +269,18 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
             f"the fit."
         )
 
+    # An exactly flat direction only comes out as O(machine_eps * lam_max) from
+    # the AD Hessian, so a slightly negative eigenvalue is noise; one far below
+    # that floor is real negative curvature.
+    precision = total_fisher_information_matrix.values.dtype
+    noise = 100 * np.finfo(precision).eps * eigenvalues[0]
+    if eigenvalues[-1] < -noise:
+        raise ValueError(
+            f"PCA: the Fisher matrix has a negative eigenvalue "
+            f"({eigenvalues[-1]:.3e}), so the point it was evaluated at is not a "
+            f"minimum of the chi2. Evaluate it at the fitted minimum instead."
+        )
+
     result = PCA(
         eigenvalues=eigenvalues,
         eigenvectors=eigenvectors,
@@ -273,14 +289,6 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
         min_weight=pca_settings["min_weight"],
     )
 
-    if eigenvalues[-1] < 0:
-        log.warning(
-            "PCA: smallest eigenvalue is %.3e < 0, so the point the Fisher "
-            "matrix was evaluated at is a saddle rather than a minimum. The "
-            "directions are still meaningful; the widths along the negative "
-            "ones are not.",
-            eigenvalues[-1],
-        )
     _warn_on_degeneracy(eigenvalues, result.flat_mask)
     log.log(
         logging.WARNING if result.n_flat else logging.INFO,

@@ -1,0 +1,34 @@
+dataset_name: CMS_DYMmm_13TeV_negative_costh
+doi: https://doi.org/10.17182/hepdata.101186.v2
+location: Data from Figure 3 lower left, converted to N_events
+arxiv: 2103.02708
+hepdata: https://www.hepdata.net/record/ins1849964?version=2&table=Dimuon%20mass%20distribution%20for%20negative%20%24%5Ccos%20%5Ctheta%5E*%24
+units: '# events'
+description: The number of events observed for electron pair production and cos th
+  < 0.
+luminosity: 137
+num_data: 6
+num_sys: 1
+data_central:
+- 3431.9374790184443
+- 2487.546695086279
+- 924.2895794893846
+- 169.0
+- 11.0
+- 0
+statistical_error:
+- 58.58274045329771
+- 49.875311478589076
+- 30.40213116689987
+- 13.0
+- 3.3166247903554
+- 1.0
+systematics:
+- - 34.31937479018444
+  - 24.875466950862794
+  - 9.242895794893846
+  - 1.69
+  - 0.11
+  - 0.01
+sys_names: UNCORR
+sys_type: ADD

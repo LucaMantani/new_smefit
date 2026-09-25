@@ -729,12 +729,6 @@ class Fit:
         dict of str to tuple of float
             ``(low, mean, high)`` per free coefficient, in the fit's order.
             Coefficients with no samples are left out.
-
-        Raises
-        ------
-        ValueError
-            If the level is outside ``[1, 100)``, if ``interval_type`` is not
-            a known one, or if the fit stored no posterior samples.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(

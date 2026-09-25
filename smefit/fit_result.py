@@ -30,7 +30,7 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -168,6 +168,22 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     if spec.get("dist") == "exact_posterior":
         return f"ExactPosterior"
     return str(_build_dist(spec))
+
+
+def _equal_tailed_interval(values: np.ndarray, level: float) -> Tuple[float, float]:
+    """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
+    each side. NaNs are ignored."""
+    tail = (100.0 - level) / 2.0
+    low, high = np.nanpercentile(values, [tail, 100.0 - tail])
+    return float(low), float(high)
+
+
+# The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
+# name its ``interval_type`` takes. Each maps one coefficient's samples and a
+# level in percent to ``(low, high)``; a new interval type is one more entry.
+_INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], Tuple[float, float]]] = {
+    "eti": _equal_tailed_interval,
+}
 
 
 @dataclass
@@ -695,7 +711,7 @@ class Fit:
         return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
 
     def confidence_bounds(
-        self, confidence_level: float
+        self, confidence_level: float, interval_type: str = "eti"
     ) -> Dict[str, Tuple[float, float, float]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
@@ -703,6 +719,10 @@ class Fit:
         ----------
         confidence_level : float
             In percent: 95, not 0.95.
+        interval_type : str
+            How the interval is chosen among those holding
+            ``confidence_level`` percent of the posterior. ``"eti"``
+            (equal-tailed, the default) is the only one so far.
 
         Returns
         -------
@@ -713,14 +733,20 @@ class Fit:
         Raises
         ------
         ValueError
-            If the level is outside ``[1, 100)``, or if the fit stored no
-            posterior samples.
+            If the level is outside ``[1, 100)``, if ``interval_type`` is not
+            a known one, or if the fit stored no posterior samples.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
                 f"confidence_level is a percentage between 1 and 100, got "
                 f"{confidence_level}. Write 95, not 0.95."
             )
+        if interval_type not in _INTERVAL_TYPES:
+            raise ValueError(
+                f"Unknown interval_type {interval_type!r}; expected one of "
+                f"{sorted(_INTERVAL_TYPES)}."
+            )
+        interval = _INTERVAL_TYPES[interval_type]
 
         samples = self.fit_results.samples
         if not samples:
@@ -729,14 +755,13 @@ class Fit:
                 "has no bounds to report."
             )
 
-        tail = (100.0 - confidence_level) / 2.0
         bounds = {}
         for name in self.fit_results.free_parameters:
             if name not in samples:
                 continue
             values = np.asarray(samples[name], dtype=float)
-            low, high = np.nanpercentile(values, [tail, 100.0 - tail])
-            bounds[name] = (float(low), float(np.nanmean(values)), float(high))
+            low, high = interval(values, confidence_level)
+            bounds[name] = (low, float(np.nanmean(values)), high)
         return bounds
 
     # ------------------------------------------------------------------
@@ -747,7 +772,7 @@ class Fit:
     def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
         """Load a Fit from a fit directory.
 
-        The posterior samples are read from ``fit_results.json`` 
+        The posterior samples are read from ``fit_results.json``
         and how the fit was run from ``input/runcard.yaml``.
 
         ``label`` is how the caller chooses to present the fit; the directory

@@ -745,6 +745,18 @@ def test_confidence_bounds_reject_a_level_that_is_not_a_percentage(joint_fit, le
         joint_fit.confidence_bounds(level)
 
 
+def test_confidence_bounds_default_to_the_equal_tailed_interval(joint_fit):
+    assert joint_fit.confidence_bounds(
+        68, interval_type="eti"
+    ) == joint_fit.confidence_bounds(68)
+
+
+def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
+    """The error lists what is available, so a typo is a one-line fix."""
+    with pytest.raises(ValueError, match="'hpd'.*\\['eti'\\]"):
+        joint_fit.confidence_bounds(68, interval_type="hpd")
+
+
 def test_confidence_bounds_reject_a_fit_without_samples():
     """A Hessian fit that kept no posterior has nothing to take a percentile
     of, and the error has to name which fit that was."""

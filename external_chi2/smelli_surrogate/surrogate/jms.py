@@ -16,6 +16,7 @@ The Delta F=2 block is dimensionful and carries no CKM factor, so ``CVLL_bsbs``
 is gamma-independent; that is what keeps the gamma fixed point from coupling
 back into the input map.
 """
+
 import numpy as np
 
 from . import design
@@ -25,16 +26,20 @@ from .df2 import DLNV, EPS_LNV
 def jms_coordinates(sectors):
     """Ordered (name, part) list of the real JMS coordinates of `sectors`."""
     from wilson import wcxf
-    basis = wcxf.Basis['WET', 'JMS']
+
+    basis = wcxf.Basis["WET", "JMS"]
     out = []
     for s in sectors:
         if s not in basis.sectors:
-            raise KeyError('unknown JMS sector %r; available: %s'
-                           % (s, sorted(basis.sectors)))
+            raise KeyError(
+                "unknown JMS sector {!r}; available: {}".format(
+                    s, sorted(basis.sectors)
+                )
+            )
         for name, prop in basis.sectors[s].items():
-            out.append((name, 'R'))
-            if prop is None or prop.get('real') is not True:
-                out.append((name, 'I'))
+            out.append((name, "R"))
+            if prop is None or prop.get("real") is not True:
+                out.append((name, "I"))
     return out
 
 
@@ -42,17 +47,22 @@ def _project(coords, fl):
     col = np.zeros(len(coords))
     for i, (wcname, p) in enumerate(coords.wcs):
         v = fl.get(wcname, 0.0)
-        col[i] = (np.real(v) if p == 'R' else np.imag(v)) / coords.units[i]
+        col[i] = (np.real(v) if p == "R" else np.imag(v)) / coords.units[i]
     return col
 
 
 def _column_wcxf(coords, name, part):
     """Cheap wcxf translation -- used only to discover which columns are nonzero."""
     from wilson import wcxf
-    val = 1.0 if part == 'R' else 1j
-    wc = wcxf.WC(eft='WET', basis='JMS', scale=coords.scale,
-                 values={name: {'Re': val.real, 'Im': val.imag}})
-    return _project(coords, wc.translate('flavio').dict)
+
+    val = 1.0 if part == "R" else 1j
+    wc = wcxf.WC(
+        eft="WET",
+        basis="JMS",
+        scale=coords.scale,
+        values={name: {"Re": val.real, "Im": val.imag}},
+    )
+    return _project(coords, wc.translate("flavio").dict)
 
 
 def _column(coords, name, part, ckm):
@@ -64,16 +74,17 @@ def _column(coords, name, part, ckm):
     wilson's.
     """
     import wilson as _w
-    val = 1.0 if part == 'R' else 1j
-    w = _w.Wilson({name: val}, scale=coords.scale, eft='WET', basis='JMS')
+
+    val = 1.0 if part == "R" else 1j
+    w = _w.Wilson({name: val}, scale=coords.scale, eft="WET", basis="JMS")
     # `get_option` returns the *class-level* default dict by reference when the
     # instance has no override, so updating it in place would rewrite the CKM
     # defaults of every Wilson object created afterwards -- including the forked
     # build workers.  Copy first.
-    opt = dict(w.get_option('parameters'))
+    opt = dict(w.get_option("parameters"))
     opt.update(ckm)
-    w.set_option('parameters', opt)
-    return _project(coords, w.match_run(coords.scale, 'WET', 'flavio').dict)
+    w.set_option("parameters", opt)
+    return _project(coords, w.match_run(coords.scale, "WET", "flavio").dict)
 
 
 def build_map(coords, sectors, ckm_at, tol=0.0, verbose=True, with_dlnv=True):
@@ -95,8 +106,11 @@ def build_map(coords, sectors, ckm_at, tol=0.0, verbose=True, with_dlnv=True):
         if np.any(np.abs(_column_wcxf(coords, name, part)) > tol):
             kept.append((name, part))
     if verbose:
-        print('  jms: %d of %d JMS coordinates in %s reach the support'
-              % (len(kept), len(jms), list(sectors)), flush=True)
+        print(
+            "  jms: %d of %d JMS coordinates in %s reach the support"
+            % (len(kept), len(jms), list(sectors)),
+            flush=True,
+        )
 
     # pass 2: the kept columns at every node, plus their response to the three
     # CKM inputs that are not gamma.  The map carries a 1/lambda_t normalisation,
@@ -118,10 +132,10 @@ def build_map(coords, sectors, ckm_at, tol=0.0, verbose=True, with_dlnv=True):
                 drv.append((_cols(cp) - _cols(cm)) / (2 * EPS_LNV))
             per_node_d.append(np.stack(drv))
         if verbose:
-            print('  jms: node dg=%+.4f done' % dg, flush=True)
+            print("  jms: node dg=%+.4f done" % dg, flush=True)
     T = design.interp_nodes(nodes, np.array(per_node))
     Td = design.interp_nodes(nodes, np.array(per_node_d)) if with_dlnv else None
-    return ['%s_%s' % (n, p) for n, p in kept], T, Td
+    return ["{}_{}".format(n, p) for n, p in kept], T, Td
 
 
 def apply_map(T, names, values, dg, T_dlnv=None, dlnv=None):
@@ -136,7 +150,7 @@ def apply_map(T, names, values, dg, T_dlnv=None, dlnv=None):
         y = np.asarray(values, dtype=float)
     x = design.poly_eval(T, dg) @ y
     if T_dlnv is not None and dlnv is not None:
-        d = design.poly_eval(T_dlnv, dg)          # (3, n_coord, n_kept)
+        d = design.poly_eval(T_dlnv, dg)  # (3, n_coord, n_kept)
         x = x + np.tensordot(np.asarray(dlnv), d @ y, axes=(0, 0))
     return x
 
@@ -145,15 +159,16 @@ def jms_dict_to_vector(names, d):
     """wilson's ``match_run(...).dict`` (complex, JMS names) -> the R/I vector."""
     y = np.zeros(len(names))
     for i, n in enumerate(names):
-        base, part = n.rsplit('_', 1)
+        base, part = n.rsplit("_", 1)
         v = d.get(base, 0.0)
-        y[i] = np.real(v) if part == 'R' else np.imag(v)
+        y[i] = np.real(v) if part == "R" else np.imag(v)
     return y
 
 
 def unsupported(sectors, names, d, rtol=0.0):
     """JMS coefficients present in `d` and in `sectors` but outside the support."""
-    kept = {n.rsplit('_', 1)[0] for n in names}
+    kept = {n.rsplit("_", 1)[0] for n in names}
     inside = {n for n, _ in jms_coordinates(sectors)}
-    return sorted(k for k, v in d.items()
-                  if k in inside and k not in kept and abs(v) > rtol)
+    return sorted(
+        k for k, v in d.items() if k in inside and k not in kept and abs(v) > rtol
+    )

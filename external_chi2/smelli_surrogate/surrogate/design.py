@@ -15,6 +15,7 @@ declares ``degree = 1`` only where the design residual says the observable
 really is linear (``epsp/eps`` is, to 1e-15 in all 38 of its coordinates), and
 the build prints the residual either way.
 """
+
 import numpy as np
 
 
@@ -82,12 +83,12 @@ def gamma_features(dg, nodes):
     """Monomials 1, dg, dg^2, ... up to degree len(nodes)-1."""
     dg = np.atleast_1d(np.asarray(dg, dtype=float))
     deg = len(nodes) - 1
-    return np.stack([dg ** k for k in range(deg + 1)], axis=1)
+    return np.stack([dg**k for k in range(deg + 1)], axis=1)
 
 
 def gamma_features_1d(dg, deg, xp=np):
     """Monomials 1, dg, ..., dg^deg for a single (possibly traced) dg."""
-    return xp.stack([dg ** k for k in range(deg + 1)])
+    return xp.stack([dg**k for k in range(deg + 1)])
 
 
 def fit(X, nodes, Y, degree=2):
@@ -106,8 +107,9 @@ def fit(X, nodes, Y, degree=2):
     """
     Y = np.asarray(Y)
     F = quad_features(X, degree)
-    per_node = np.stack([np.linalg.lstsq(F, Y[k], rcond=None)[0]
-                         for k in range(len(nodes))], axis=0)   # (n_nodes, nq, nout)
+    per_node = np.stack(
+        [np.linalg.lstsq(F, Y[k], rcond=None)[0] for k in range(len(nodes))], axis=0
+    )  # (n_nodes, nq, nout)
     V = np.vander(np.asarray(nodes, dtype=float), N=len(nodes), increasing=True)
     return np.linalg.solve(V, per_node.reshape(len(nodes), -1)).reshape(per_node.shape)
 
@@ -115,7 +117,7 @@ def fit(X, nodes, Y, degree=2):
 def evaluate(C, x, dg):
     g = gamma_features(dg, range(C.shape[0]))[0]
     q = quad_features(np.atleast_2d(x))[0]
-    return np.einsum('g,q,gqo->o', g, q, C)
+    return np.einsum("g,q,gqo->o", g, q, C)
 
 
 def fit_residual(C, X, nodes, Y, degree=2):
@@ -123,7 +125,7 @@ def fit_residual(C, X, nodes, Y, degree=2):
     Y = np.asarray(Y)
     F = quad_features(X, degree)
     G = np.vander(np.asarray(nodes, dtype=float), N=C.shape[0], increasing=True)
-    pred = np.einsum('kg,pq,gqo->kpo', G, F, C)
+    pred = np.einsum("kg,pq,gqo->kpo", G, F, C)
     scale = np.max(np.abs(Y), axis=(0, 1)) + 1e-300
     return np.max(np.abs(pred - Y), axis=(0, 1)) / scale
 
@@ -139,5 +141,5 @@ def interp_nodes(nodes, values):
 def poly_eval(coef, dg, xp=np):
     """coef (deg+1, ...) evaluated at scalar dg."""
     coef = xp.asarray(coef)
-    p = xp.stack([dg ** k for k in range(coef.shape[0])])
+    p = xp.stack([dg**k for k in range(coef.shape[0])])
     return xp.tensordot(p, coef, axes=(0, 0))

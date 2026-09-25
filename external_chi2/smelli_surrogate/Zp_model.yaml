@@ -49,7 +49,7 @@ quark_charges:
   xu3: -1
   xd3: -1
 # Higgs charge under new gauge symmetry
-higgs_charge: 
+higgs_charge:
   xh: 0
 
 

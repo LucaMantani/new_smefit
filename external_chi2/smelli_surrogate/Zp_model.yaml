@@ -1,0 +1,60 @@
+################################
+##### Trainable parameters #####
+################################
+# NB: Still need to write fitting scripts
+
+##### Mass and coupling of the new Z' boson #####
+# Only the ratio g/M^2 is relevant for the SMEFT observables
+Zprime_properties:
+  M: 3000
+  g: 0.222
+
+##### Mixing angles #####
+# Between quark families
+quark_mixing_angles:
+  tsb: 0.0
+  tdb: 0.0
+  tds: 0.0
+# Between lepton families
+lepton_mixing_angles:
+  tme: 0.0
+  tet: 0.0
+  tmt: 0.0
+
+##### Complex phase in CKM matrix #####
+complex_phases:
+  delta: 0.0
+  phi1: 0.0
+  phi2: 0.0
+  phi3: 0.0
+  phi4: 0.0
+  phi5: 0.0
+
+############################
+##### Fixed parameters #####
+############################
+
+##### Charges under new gauge symmetry #####
+# Lepton charges under new gauge symmetry
+lepton_charges:
+  xl1: 1
+  xl2: 2
+  xl3: 0
+  xe1: 1
+  xe2: 2
+  xe3: 0
+# Quark charges under new gauge symmetry
+quark_charges:
+  xq3: -1
+  xu3: -1
+  xd3: -1
+# Higgs charge under new gauge symmetry
+higgs_charge: 
+  xh: 0
+
+
+##### Non-redundant SMEFT operators #####
+# List of indices for the nonredundant indices for four-fermion SMEFT operators
+nonredundant_indices:
+  lq1: [2211, 2212, 2213, 2222, 2223, 2233, 3311, 3312, 3313, 3322, 3323, 3333]
+  qq1: [1111, 1112, 1113, 1122, 1123, 1133, 1212, 1213, 1221, 1222, 1223, 1231, 1232, 1233, 1313, 1322, 1323, 1331, 1332, 1333, 2222, 2223, 2233, 2323, 2332, 2333, 3333]

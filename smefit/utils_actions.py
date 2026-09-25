@@ -50,3 +50,9 @@ def write_pseudodata(pseudodata, theory_path, output_path):
                 th_dir = pathlib.Path(output_path) / "pseudodata_theory"
                 th_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy(src, th_dir / f"{ds.name}.json")
+
+
+def run_pca(pca, output_path):
+    """Print the principal-component analysis and save it."""
+    pca.print_summary()
+    pca.write(output_path)

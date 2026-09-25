@@ -658,6 +658,40 @@ class smefitConfig(Config):
             "seed": int(settings.get("seed", 42)),
         }
 
+    def parse_pca_settings(self, settings):
+        """Parse the settings for the principal component analysis.
+
+        Keys
+        ----
+        threshold : float, default 1e-12
+            A direction whose eigenvalue is below this fraction of the largest
+            one is reported as flat, i.e. unconstrained by the data.
+        min_weight : float, default 0.01
+            Components below this are left out when a principal direction is
+            written as a linear combination of coefficients. Presentation only;
+            the eigenvectors themselves are never truncated.
+        """
+        settings = settings or {}
+        known_keys = {"threshold", "min_weight"}
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in pca_settings.", k)
+
+        parsed = {
+            "threshold": float(settings.get("threshold", 1.0e-12)),
+            "min_weight": float(settings.get("min_weight", 0.01)),
+        }
+        if not 0.0 <= parsed["threshold"] < 1.0:
+            raise ConfigError(
+                f"pca_settings.threshold is a fraction of the largest eigenvalue, "
+                f"so it must lie in [0, 1); got {parsed['threshold']}"
+            )
+        if not 0.0 <= parsed["min_weight"] <= 1.0:
+            raise ConfigError(
+                f"pca_settings.min_weight is a component of a unit eigenvector, "
+                f"so it must lie in [0, 1]; got {parsed['min_weight']}"
+            )
+        return parsed
+
     def parse_chi2_scan_settings(self, chi2_scan_settings):
         """Parse optional chi2 scan settings.
 

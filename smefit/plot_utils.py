@@ -10,7 +10,24 @@ reportengine resolves.
 
 import logging
 
+from matplotlib import rc
+
 log = logging.getLogger(__name__)
+
+
+def set_plot_style():
+    """Apply the shared matplotlib style, LaTeX text rendering included.
+
+    Call this before building a figure. It is deliberately *not* done at import
+    time: these are process-wide matplotlib settings, so a module that applied
+    them on import would silently switch every plot in the importing program —
+    tests and API users included — over to LaTeX, and then fail wherever no
+    LaTeX installation exists. Every figure in ``smefit.figures`` calls it, and
+    a standalone script that wants the same look should call it too.
+    """
+    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
+    rc("text", usetex=True)
+    rc("text.latex", preamble=r"\usepackage{amssymb}")
 
 
 def select_params(names, params_to_plot, context=None):

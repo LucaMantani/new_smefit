@@ -1,10 +1,14 @@
-"""Unit tests for smefit.plot_utils — select_params."""
+"""Unit tests for smefit.plot_utils — select_params and set_plot_style."""
 
+import json
 import logging
+import subprocess
+import sys
 
+import matplotlib
 import pytest
 
-from smefit.plot_utils import select_params
+from smefit.plot_utils import select_params, set_plot_style
 
 
 def test_select_params_without_a_list_keeps_everything():
@@ -53,3 +57,36 @@ def test_select_params_rejects_an_empty_selection():
     for, so it says what was available instead of drawing an empty figure."""
     with pytest.raises(ValueError, match="OpA"):
         select_params(["OpA", "OpB"], ["OpTypo"])
+
+
+# ---------------------------------------------------------------------------
+# set_plot_style
+# ---------------------------------------------------------------------------
+
+
+def test_set_plot_style_enables_latex_rendering():
+    """The style is what turns usetex on — nothing else in smefit may."""
+    with matplotlib.rc_context():
+        matplotlib.rcParams["text.usetex"] = False
+        set_plot_style()
+        assert matplotlib.rcParams["text.usetex"] is True
+        assert matplotlib.rcParams["font.family"] == ["sans-serif"]
+
+
+def test_importing_smefit_does_not_touch_matplotlib_settings():
+    """No smefit module may restyle matplotlib merely by being imported.
+
+    op_to_latex used to do exactly that, which silently switched every plot in
+    the importing program over to LaTeX and broke any machine without one.
+    """
+    script = (
+        "import matplotlib, json;"
+        "before = matplotlib.rcParams['text.usetex'];"
+        "import smefit.op_to_latex, smefit.tables, smefit.figures, smefit.plot_utils;"
+        "print(json.dumps([before, matplotlib.rcParams['text.usetex']]))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=True
+    )
+    before, after = json.loads(out.stdout)
+    assert before is False and after is False

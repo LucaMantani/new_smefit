@@ -8,11 +8,10 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import rc
 from reportengine.figure import figure, figuregen
 
 from smefit.op_to_latex import coeff_info_latex
-from smefit.plot_utils import select_params
+from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
 
@@ -58,9 +57,7 @@ def _plot_heatmap(
         Heading for the plot, drawn above the column labels. Passed to
         matplotlib verbatim, so it may be raw LaTeX.
     """
-    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-    rc("text", usetex=True)
-    rc("text.latex", preamble=r"\usepackage{amssymb}")
+    set_plot_style()
 
     matrix = np.array(matrix, dtype=float)
     n_coeffs, n_sources = matrix.shape
@@ -129,19 +126,16 @@ def plot_chi2_scan(individual_chi2_scans):
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
     """
-    rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-    rc("text", usetex=True)
-    rc("text.latex", preamble=r"\usepackage{amssymb}")
+    set_plot_style()
 
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     for name, data in results.items():
         label = coeff_info_latex.get(name, name)
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(6, 5), layout="constrained")
         ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
         ax.set_xlabel(label)
         ax.set_ylabel(r"$\chi^2$")
         ax.grid(alpha=0.3)
-        fig.tight_layout()
         yield fig, name
 
 
@@ -178,6 +172,130 @@ def plot_fisher_diagonals_heatmap(
         value_fmt=value_fmt,
         colorbar=colorbar,
     )
+
+
+@figure
+def plot_pca_components_heatmap(
+    pca_components,
+    cmap="RdBu_r",
+    value_fmt="{:.2f}",
+    colorbar=True,
+):
+    """Plot the principal-direction weights as a heatmap.
+
+    Reading it: a column is one principal direction, and the coloured cells say
+    which coefficients it is made of. The leftmost columns are the directions
+    the data pin down; the rightmost are the flat ones, and the coefficients
+    lit up there are the combinations the fit cannot resolve.
+
+    Parameters
+    ----------
+    pca_components : pd.DataFrame
+        Index = coeff_names, columns = PC1..PCn.
+    cmap : str, optional
+        Colormap. Diverging by default: eigenvector components run either way
+        about zero, and the relative sign of two entries is what says whether a
+        direction is a sum or a difference of them.
+    value_fmt : str, optional
+        Format of the per-cell annotation.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside.
+    """
+    comps = pca_components
+    return _plot_heatmap(
+        comps.values,
+        comps.index.tolist(),
+        comps.columns.tolist(),
+        vmin=-1,
+        vmax=1,
+        mask_zeros=False,
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
+    )
+
+
+@figure
+def plot_pca_spectrum(pca):
+    """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
+
+    The one picture of the whole analysis: bars falling below the dashed line
+    are the directions the data do not constrain.
+
+    Parameters
+    ----------
+    pca : smefit.pca.PCA
+    """
+    set_plot_style()
+
+    ratios = np.array(pca.eigenvalue_ratios, dtype=float)
+    index = np.arange(1, pca.n_components + 1)
+    flat = np.array(pca.flat_mask)
+
+    # A log axis has no zero to grow the bars from, so the bottom of the axis
+    # plays that role: every bar starts on it, and its length is how many
+    # decades the direction stands above it. That floor follows the spectrum
+    # rather than the threshold — the threshold is far below any physical scale
+    # by design, and anchoring the axis to it would spend a dozen empty decades
+    # on a plot whose bars all sit at the top. Only when something is actually
+    # flagged flat does the floor drop below it, so that the dashed line and the
+    # bars it condemns are in view together.
+    positive = ratios[ratios > 0]
+    lowest = positive.min() if positive.size else pca.threshold
+    if flat.any():
+        lowest = min(lowest, pca.threshold)
+    floor = lowest / 10
+    shown = np.clip(ratios, floor, None)
+    heights = shown - floor
+
+    fig, ax = plt.subplots(figsize=(max(6, pca.n_components * 0.4), 5))
+    ax.set_axisbelow(True)
+    ax.bar(
+        index[~flat],
+        heights[~flat],
+        bottom=floor,
+        width=0.7,
+        color="C0",
+        label="constrained",
+    )
+    if flat.any():
+        ax.bar(
+            index[flat],
+            heights[flat],
+            bottom=floor,
+            width=0.7,
+            color="C3",
+            label="flat",
+        )
+        # A direction with no curvature at all sits on the floor, leaving a bar
+        # of zero length; mark it with a downward triangle just above the
+        # baseline so it is still read as present and off the bottom of the
+        # scale.
+        off_scale = flat & (ratios <= floor)
+        if off_scale.any():
+            ax.scatter(
+                index[off_scale],
+                np.full(int(off_scale.sum()), floor * 2.0),
+                s=60,
+                color="C3",
+                marker="v",
+                zorder=3,
+            )
+    # Below the bottom of the view when nothing is flat, which is the right
+    # reading: there is then no direction for the threshold to separate.
+    ax.axhline(pca.threshold, color="black", linestyle="--", linewidth=1)
+
+    ax.set_yscale("log")
+    # exactly the floor, so the bars sit on the bottom axis rather than hanging
+    # above it
+    ax.set_ylim(floor, 2.0)
+    ax.set_xticks(index)
+    ax.set_xticklabels(pca.component_names, rotation=90, fontsize=12)
+    ax.set_ylabel(r"$\lambda_i / \lambda_{\rm max}$", fontsize=16)
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend(fontsize=12)
+    fig.tight_layout()
+    return fig
 
 
 @figure

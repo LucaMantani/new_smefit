@@ -62,6 +62,7 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "bounds_levels",
     "cmap",
     "colorbar",
     "n_eval",
@@ -262,6 +263,7 @@
     "batch_sample_sizes",
     "bayesian_update",
     "blackjax_settings",
+    "bounds_levels",
     "cmap",
     "coefficients",
     "colorbar",

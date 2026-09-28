@@ -149,3 +149,24 @@ def test_coefficient_bounds_table_reads_an_individual_fit_like_a_joint_one(
         ),
         coefficient_bounds_table(_joint_fit(samples), params_to_plot=params_to_plot),
     )
+
+
+def test_coefficient_bounds_table_quotes_the_bounds_levels_asked_for() -> None:
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=[90, 99.99994]
+    )
+
+    assert table.columns.tolist() == ["mean", "90% CL", "99.99994% CL"]
+    assert table.iloc[0].tolist()[:2] == ["500.000", "[50.000, 950.000]"]
+
+
+def test_coefficient_bounds_table_takes_a_single_level() -> None:
+    """``bounds_levels: 90`` in a runcard, as for ``params_to_plot: OtG``."""
+    table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=90)
+
+    assert table.columns.tolist() == ["mean", "90% CL"]
+
+
+def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
+    with pytest.raises(ValueError, match="bounds_levels is empty"):
+        coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=[])

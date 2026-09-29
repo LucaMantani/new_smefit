@@ -1,11 +1,12 @@
-"""Unit tests for smefit.fisher — fisher_information_matrices function."""
+"""Unit tests for smefit.fisher — the per-source and total Fisher matrices."""
 
 import logging
 
 import jax.numpy as jnp
+import numpy as np
 import pandas as pd
 
-from smefit.chi2 import Chi2, build_datasets_chi2
+from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import (
     Coefficient,
     CoefficientGroup,
@@ -18,6 +19,7 @@ from smefit.fisher import (
     _resolve_groups,
     aggregate_fisher_information_matrices,
     fisher_information_matrices,
+    total_fisher_information_matrix,
 )
 from smefit.model import EFTModel
 
@@ -401,3 +403,69 @@ def test_aggregate_sums_grouped_matrices():
     )
     pd.testing.assert_frame_equal(result["Merged"], expected_merged)
     pd.testing.assert_frame_equal(result["DS_C"], fim["DS_C"])
+
+
+def _linear_setup(fit_covmat):
+    """Two datasets, one free coefficient, linear EFT corrections only.
+
+    Returns the total Chi2 and the (ndata, n_ops) matrix of linear corrections,
+    so a test can compare the Fisher matrix against L^T C^-1 L directly.
+    """
+    theory_a = _make_theory("DS_A", sm=[10.0, 20.0], lin_op=[1.0, 2.0])
+    theory_b = _make_theory("DS_B", sm=[30.0, 40.0], lin_op=[3.0, 4.0])
+    theory = TheoryGroup([theory_a, theory_b])
+    cg = CoefficientGroup([_free("OpA")])
+    model = EFTModel(theory, cg, use_quad=False)
+    data = DataGroup(
+        [_make_dataset("DS_A", [10.0, 20.0]), _make_dataset("DS_B", [30.0, 40.0])]
+    )
+    total = Chi2(
+        build_chi2(model, data, fit_covmat),
+        param_names=["OpA"],
+        num_data=4,
+    )
+    per_dataset = build_datasets_chi2(model, data, fit_covmat)
+    lin = jnp.array([[1.0], [2.0], [3.0], [4.0]])
+    return total, per_dataset, lin
+
+
+def test_total_fisher_is_the_full_covmat_contraction():
+    """F = L^T C^-1 L for a linear model, using the whole covariance matrix."""
+    fit_covmat = jnp.eye(4).at[0, 2].set(0.4).at[2, 0].set(0.4)
+    total, _, lin = _linear_setup(fit_covmat)
+
+    result = total_fisher_information_matrix(total, _sm_point(1))
+
+    expected = lin.T @ jnp.linalg.inv(fit_covmat) @ lin
+    assert result.index.tolist() == ["OpA"]
+    assert result.columns.tolist() == ["OpA"]
+    assert jnp.allclose(jnp.array(result.values), expected)
+
+
+def test_total_fisher_differs_from_the_sum_of_per_dataset_fishers():
+    """The per-dataset matrices see diagonal blocks only, so they miss the
+    cross-dataset correlation the total one includes."""
+    fit_covmat = jnp.eye(4).at[0, 2].set(0.4).at[2, 0].set(0.4)
+    total, per_dataset, _ = _linear_setup(fit_covmat)
+    c0 = _sm_point(1)
+
+    combined = total_fisher_information_matrix(total, c0).values.sum()
+    summed = sum(
+        df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
+    )
+
+    assert not np.isclose(combined, summed)
+
+
+def test_total_fisher_equals_the_sum_when_the_covmat_is_block_diagonal():
+    """With no cross-dataset correlation the two agree, as they must."""
+    fit_covmat = jnp.eye(4)
+    total, per_dataset, _ = _linear_setup(fit_covmat)
+    c0 = _sm_point(1)
+
+    combined = total_fisher_information_matrix(total, c0).values.sum()
+    summed = sum(
+        df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
+    )
+
+    assert np.isclose(combined, summed)

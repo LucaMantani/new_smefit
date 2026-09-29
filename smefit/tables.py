@@ -180,3 +180,51 @@ def coefficient_bounds_table(
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_table(fit, params_to_plot, round_val, bounds_levels)
+
+
+@table
+def pca_components(pca):
+    """Weight of each coefficient in each principal direction.
+
+    Parameters
+    ----------
+    pca : smefit.pca.PCA
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = coeff_names, columns = PC1..PCn.
+    """
+    frame = pca.as_frame()
+    frame.index = [coeff_info_latex.get(name, name) for name in frame.index]
+    return frame
+
+
+@table
+def pca_spectrum(pca):
+    """One row per principal direction, strongest first.
+
+    Parameters
+    ----------
+    pca : smefit.pca.PCA
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = PC1..PCn. ``Sigma`` is the width the data allow along the
+        direction, ``Ratio`` its eigenvalue relative to the largest, and
+        ``Cumulative`` the share of the total eigenvalue sum reached by that
+        row — how much of the constraint the leading directions carry.
+    """
+    eigenvalues = pca.eigenvalues
+    return pd.DataFrame(
+        {
+            "Eigenvalue": eigenvalues,
+            "Sigma": pca.constraints,
+            "Ratio": pca.eigenvalue_ratios,
+            "Cumulative": np.cumsum(eigenvalues) / eigenvalues.sum(),
+            "Flat": pca.flat_mask,
+            "Direction": [pca.describe(i) for i in range(pca.n_components)],
+        },
+        index=pca.component_names,
+    )

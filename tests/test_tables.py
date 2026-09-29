@@ -1,5 +1,5 @@
-"""Unit tests for smefit.tables — fisher_diagonals_normalised and
-coefficient_bounds_table."""
+"""Unit tests for smefit.tables — the Fisher, PCA, scan and coefficient
+bounds report tables."""
 
 from __future__ import annotations
 
@@ -10,11 +10,15 @@ import pytest
 
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.fit_result import Fit, FitResult, FitResultGroup
+from smefit.op_to_latex import coeff_info_latex
+from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
     coefficient_bounds_table,
     fisher_diagonals_normalised,
     mass_scan_table,
+    pca_components,
+    pca_spectrum,
 )
 
 
@@ -176,6 +180,69 @@ def test_coefficient_bounds_table_takes_a_single_level() -> None:
 def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
     with pytest.raises(ValueError, match="bounds_levels is empty"):
         coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=[])
+
+
+# ---------------------------------------------------------------------------
+# pca_components / pca_spectrum
+# ---------------------------------------------------------------------------
+
+
+def _pca(**kwargs):
+    return PCA(
+        eigenvalues=np.array([4.0, 1.0, 1e-9]),
+        eigenvectors=np.array([[0.8, -0.6, 0.0], [0.6, 0.8, 0.0], [0.0, 0.0, 1.0]]),
+        coeff_names=["OpA", "OpZZ", "OpC"],
+        **{"threshold": 1.0e-3, "min_weight": 0.01, **kwargs},
+    )
+
+
+def test_pca_components_shape_and_labels():
+    result = pca_components(_pca())
+
+    assert result.columns.tolist() == ["PC1", "PC2", "PC3"]
+    assert result.shape == (3, 3)
+    assert result.iloc[0, 0] == 0.8
+
+
+def test_pca_components_uses_latex_label_when_known():
+    result = pca_components(_pca())
+
+    assert result.index.tolist() == [
+        coeff_info_latex.get("OpA", "OpA"),
+        coeff_info_latex.get("OpZZ", "OpZZ"),
+        "OpC",
+    ]
+
+
+def test_pca_components_keeps_every_coefficient():
+    """No params_to_plot: a column is a unit vector over all of them."""
+    result = pca_components(_pca())
+
+    assert result.shape == (3, 3)
+    assert np.allclose((result.values**2).sum(axis=0), 1.0)
+
+
+def test_pca_spectrum_columns_and_order():
+    result = pca_spectrum(_pca())
+
+    assert result.index.tolist() == ["PC1", "PC2", "PC3"]
+    assert result["Eigenvalue"].tolist() == [4.0, 1.0, 1e-9]
+    assert result["Sigma"].tolist()[:2] == [0.5, 1.0]
+    assert result["Ratio"].tolist()[:2] == [1.0, 0.25]
+    assert result["Flat"].tolist() == [False, False, True]
+
+
+def test_pca_spectrum_cumulative_reaches_one():
+    result = pca_spectrum(_pca())
+
+    assert result["Cumulative"].iloc[-1] == pytest.approx(1.0)
+    assert result["Cumulative"].iloc[0] == pytest.approx(0.8)
+
+
+def test_pca_spectrum_names_the_direction():
+    result = pca_spectrum(_pca())
+
+    assert result["Direction"].iloc[0] == "0.80 OpA + 0.60 OpZZ"
 
 
 # ---------------------------------------------------------------------------

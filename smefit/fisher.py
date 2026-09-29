@@ -46,7 +46,7 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
 
     result = {}
     for chi2 in datasets_chi2:
-        F = np.array(0.5 * jax.hessian(chi2)(c0))
+        F = np.array(0.5 * jax.jit(jax.hessian(chi2))(c0))
         result[chi2.name] = pd.DataFrame(F, index=coeff_names, columns=coeff_names)
 
     return result

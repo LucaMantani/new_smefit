@@ -1,9 +1,10 @@
 """Unit tests for smefit.model — EFTModel.forward_map."""
 
-import jax.numpy as jnp
-import pytest
+import logging
 
-from smefit.core import Coefficient, CoefficientGroup
+import jax.numpy as jnp
+
+from smefit.core import Coefficient, CoefficientGroup, TheoryGroup
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -46,10 +47,17 @@ def test_forward_map_quadratic(theory_a):
     assert jnp.allclose(result, jnp.array([12.4, 24.8, 37.2]))
 
 
-def test_forward_map_no_match_raises(theory_a):
+def test_forward_map_no_match_warns(theory_a, caplog):
+    group = TheoryGroup([theory_a])
     cg = CoefficientGroup([_free("OpX")])  # OpX not in theory_a
-    with pytest.raises(ValueError, match="None of the declared coefficients"):
-        EFTModel(theory_a, cg, use_quad=False)
+    with caplog.at_level(logging.WARNING, logger="smefit.model"):
+        model = EFTModel(group, cg, use_quad=False)
+    assert "None of the declared coefficients enter the predictions" in caplog.text
+    assert "DS_A" in caplog.text
+    # the "inactive coefficients" warning would be redundant here
+    assert "not present in any theory dataset" not in caplog.text
+    # the coefficient simply does not enter: predictions stay at the SM
+    assert jnp.allclose(model.forward_map(jnp.array([2.0])), group.sm_pred)
 
 
 def test_forward_map_subset_operators(theory_a):

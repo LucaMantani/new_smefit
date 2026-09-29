@@ -7,7 +7,6 @@ This module contains functions for computing Fisher information matrices.
 import logging
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
@@ -50,6 +49,30 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
         result[chi2.name] = pd.DataFrame(F, index=coeff_names, columns=coeff_names)
 
     return result
+
+
+def total_fisher_information_matrix(chi2, gd_best_fit):
+    """Fisher information matrix of the full likelihood at the best-fit point.
+
+    ``F = 0.5 * H``, with ``H`` the Hessian of the total chi2.
+
+    To evaluate at the coefficient baseline values instead of a fitted minimum,
+    set ``sm_solution: true`` in the ``gradient_descent_settings`` block.
+
+    Parameters
+    ----------
+    chi2 : Chi2
+        The total chi2 (data and any external contributions).
+    gd_best_fit : jnp.ndarray
+        Best-fit coefficient vector of shape ``(n_free,)``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Square, with coeff_names as both index and columns.
+    """
+    F = np.array(0.5 * jax.hessian(chi2)(gd_best_fit))
+    return pd.DataFrame(F, index=chi2.param_names, columns=chi2.param_names)
 
 
 def _resolve_groups(source_names, data_groups):

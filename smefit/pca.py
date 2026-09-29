@@ -270,11 +270,12 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
         )
 
     # An exactly flat direction only comes out as O(machine_eps * lam_max) from
-    # the AD Hessian, so a slightly negative eigenvalue is noise; one far below
-    # that floor is real negative curvature.
+    # the AD Hessian, so no threshold finer than that is meaningful. One tolerance
+    # then splits the ratios: below -tol is real negative curvature, within tol
+    # flat, above tol constrained.
     precision = total_fisher_information_matrix.values.dtype
-    noise = 100 * np.finfo(precision).eps * eigenvalues[0]
-    if eigenvalues[-1] < -noise:
+    tol = max(pca_settings["threshold"], 100 * np.finfo(precision).eps)
+    if eigenvalues[-1] < -tol * eigenvalues[0]:
         raise ValueError(
             f"PCA: the Fisher matrix has a negative eigenvalue "
             f"({eigenvalues[-1]:.3e}), so the point it was evaluated at is not a "
@@ -285,7 +286,7 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
         eigenvalues=eigenvalues,
         eigenvectors=eigenvectors,
         coeff_names=names,
-        threshold=pca_settings["threshold"],
+        threshold=tol,
         min_weight=pca_settings["min_weight"],
     )
 

@@ -145,6 +145,13 @@ def test_pca_tolerates_a_flat_direction_rounding_negative():
     assert result.flat_mask.tolist() == [False, True]
 
 
+def test_pca_negative_ratio_within_threshold_is_flat():
+    """One tolerance for both checks: |ratio| < threshold is flat whatever its sign."""
+    result = _pca_of(np.diag([1.0, -1e-5]), ["OpA", "OpB"])
+
+    assert result.flat_mask.tolist() == [False, True]
+
+
 def test_pca_warns_on_degenerate_constrained_directions(caplog):
     with caplog.at_level(logging.WARNING, logger="smefit.pca"):
         _pca_of(np.diag([1.0, 1.0]), ["OpA", "OpB"])

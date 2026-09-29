@@ -170,6 +170,41 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Coefficient bounds table
+
+`coefficient_bounds_table` tabulates, per fit, the posterior mean and the
+confidence bounds of every free coefficient. Template:
+`coefficient_bounds_table.yaml`.
+
+```yaml
+template_text: |
+  # Coefficient bounds
+  {@with fits@}
+  ## {@fit@}
+  {@coefficient_bounds_table@}
+  {@endwith@}
+```
+
+- One table per fit, columns `mean` then one `<level>% CL` interval per level;
+  written to `tables/<fit_name>_coefficient_bounds_table.csv` as well as into
+  the report.
+- Bounds are **equal-tailed** percentiles of the posterior samples: 68% is the
+  16th–84th percentile. Only free coefficients get a row; a fit that stored no
+  samples raises.
+- Unlike the correlation heatmap it **accepts a `run_individual_*_fits`
+  output**: each coefficient's row comes from its own single-parameter fit.
+- `bounds_levels` picks the levels, in percent (`95`, not `0.95` — that raises).
+  Default `[68, 95]`. A single number works as an action argument
+  (`{@coefficient_bounds_table(bounds_levels=90)@}`), but **a list has to be a
+  top-level key**: the template parser splits action arguments on commas.
+
+  ```yaml
+  bounds_levels: [68, 95, 99.7]
+  ```
+- `round_val` sets the decimals of every cell (default `3`). It is separate
+  from the heatmaps' `value_fmt`.
+- `params_to_plot` restricts and orders the rows, as for the heatmaps below.
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an
@@ -217,9 +252,10 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations` and `fisher_diagonals_normalised`
-— so the Fisher table's CSV and the heatmap drawn from it are restricted
-together. An action argument still overrides it for one figure.
+Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised` and
+`coefficient_bounds_table` — so the Fisher table's CSV and the heatmap drawn
+from it are restricted together, and a bounds table lists the same operators as
+the correlation heatmap beside it. An action argument still overrides it for one figure.
 
 - Write it as a YAML list of coefficient names — the raw names, not their LaTeX
   labels. Nothing validates the list, so a name is either matched or skipped.

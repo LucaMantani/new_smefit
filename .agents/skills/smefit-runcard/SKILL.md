@@ -25,9 +25,10 @@ code and kept in sync by CI:
 1. **Start from a template** in `templates/` — one per fit type
    (`analytical_fit.yaml`, `ultranest_fit.yaml`, `blackjax_fit.yaml`,
    `blackjax_individual_fit.yaml`, `hessian_fit.yaml`), plus the runcards that
-   fit nothing: `projections.yaml`, `time_likelihood.yaml`, `report.yaml`, and
-   `posterior_correlations.yaml` (reports on fits already on disk — it needs
-   no `datasets` or `coefficients` at all, so steps 2–5 do not apply to it).
+   fit nothing: `projections.yaml`, `time_likelihood.yaml`, `report.yaml`,
+   `posterior_correlations.yaml` and `coefficient_bounds_table.yaml` (the last
+   two report on fits already on disk — they need no `datasets` or
+   `coefficients` at all, so steps 2–5 do not apply to them).
    Do not write a runcard from scratch.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and

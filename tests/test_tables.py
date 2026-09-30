@@ -183,7 +183,9 @@ def test_coefficient_bounds_table_heads_each_level_with_the_fits_interval_type(
 ) -> None:
     """The header names the interval the fit quotes, and the cells are that
     interval's bounds."""
-    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: (-1.0, 1.0))
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
     fit = Fit(
         fit_results=_result({"OtG": _RAMP}), fit_name="joint", interval_type="fake"
     )
@@ -192,6 +194,22 @@ def test_coefficient_bounds_table_heads_each_level_with_the_fits_interval_type(
 
     assert table.columns.tolist() == ["mean", "90% CL (fake)"]
     assert table.iloc[0].tolist() == ["500.000", "[-1.000, 1.000]"]
+
+
+def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A multimodal region is one cell, its pieces joined by a union."""
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-2.0, -1.0), (1.0, 2.0)]
+    )
+    fit = Fit(
+        fit_results=_result({"OtG": _RAMP}), fit_name="joint", interval_type="fake"
+    )
+
+    table = coefficient_bounds_table(fit, bounds_levels=90, round_val=1)
+
+    assert table.iloc[0].tolist() == ["500.0", "[-2.0, -1.0] ∪ [1.0, 2.0]"]
 
 
 def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:

@@ -77,8 +77,10 @@ also written to `tables/<fit_name>_coefficient_bounds_table.csv`. It reads
 individual-fit outputs too, one row per single-parameter fit. `bounds_levels`
 picks other levels (in percent) and `round_val` the decimals. Template:
 `coefficient_bounds_table.yaml`. In Python the same numbers are
-`Fit.from_folder(path).confidence_bounds(95)` → `{coeff: (low, mean, high)}`,
-or `.bounds` for both default levels.
+`Fit.from_folder(path).confidence_bounds(95)` →
+`{coeff: {"mean": ..., "intervals": [(low, high), ...]}}` (one interval for `eti`;
+several pieces, joined by `∪` in the table, for a multimodal region), or
+`.bounds` for both default levels.
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

@@ -170,18 +170,22 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     return str(_build_dist(spec))
 
 
-def _equal_tailed_interval(values: np.ndarray, level: float) -> Tuple[float, float]:
+def _equal_tailed_interval(
+    values: np.ndarray, level: float
+) -> List[Tuple[float, float]]:
     """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
-    each side. NaNs are ignored."""
+    each side. NaNs are ignored. Always a single interval."""
     tail = (100.0 - level) / 2.0
     low, high = np.nanpercentile(values, [tail, 100.0 - tail])
-    return float(low), float(high)
+    return [(float(low), float(high))]
 
 
 # The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
 # name its ``interval_type`` takes. Each maps one coefficient's samples and a
-# level in percent to ``(low, high)``; a new interval type is one more entry.
-_INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], Tuple[float, float]]] = {
+# level in percent to the ``(low, high)`` pieces of its region, as a list so
+# that a multimodal posterior can be given several; a new interval type is one
+# more entry.
+_INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], List[Tuple[float, float]]]] = {
     "eti": _equal_tailed_interval,
 }
 
@@ -705,7 +709,7 @@ class Fit:
     # ------------------------------------------------------------------
 
     @property
-    def bounds(self) -> Dict[float, Dict[str, Tuple[float, float, float]]]:
+    def bounds(self) -> Dict[float, Dict[str, Dict[str, Any]]]:
         """The 68% and 95% confidence bounds of every free coefficient.
 
         The two levels every report quotes, keyed by level, each as
@@ -717,7 +721,7 @@ class Fit:
 
     def confidence_bounds(
         self, confidence_level: float, interval_type: Optional[str] = None
-    ) -> Dict[str, Tuple[float, float, float]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
         Parameters
@@ -732,9 +736,11 @@ class Fit:
 
         Returns
         -------
-        dict of str to tuple of float
-            ``(low, mean, high)`` per free coefficient, in the fit's order.
-            Coefficients with no samples are left out.
+        dict of str to dict
+            Per free coefficient, in the fit's order, ``{"mean": float,
+            "intervals": [(low, high), ...]}``: the posterior mean and the
+            pieces of the credible region, in increasing order. Multimodal fits
+            can have several intervals for a single coefficient. Coefficients with no samples are left out.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
@@ -762,8 +768,10 @@ class Fit:
             if name not in samples:
                 continue
             values = np.asarray(samples[name], dtype=float)
-            low, high = interval(values, confidence_level)
-            bounds[name] = (low, float(np.nanmean(values)), high)
+            bounds[name] = {
+                "mean": float(np.nanmean(values)),
+                "intervals": interval(values, confidence_level),
+            }
         return bounds
 
     # ------------------------------------------------------------------

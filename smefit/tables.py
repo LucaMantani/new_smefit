@@ -130,12 +130,12 @@ def _coefficient_bounds_table(
 
     rows: dict[str, dict[str, str]] = {}
     for name in names:
-        cells = {"mean": _number(first[name][1], round_val)}
+        cells = {"mean": _number(first[name]["mean"], round_val)}
         for level, per_coeff in bounds.items():
-            low, _, high = per_coeff[name]
             # .10g: plain g would round 99.99994 (5 sigma) to 99.9999
-            cells[f"{level:.10g}% CL ({fit.interval_type})"] = (
+            cells[f"{level:.10g}% CL ({fit.interval_type})"] = " ∪ ".join(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
+                for low, high in per_coeff[name]["intervals"]
             )
         rows[coeff_info_latex.get(name, name)] = cells
     return pd.DataFrame.from_dict(rows, orient="index")
@@ -170,8 +170,9 @@ def coefficient_bounds_table(
     -------
     pd.DataFrame
         Index = LaTeX coefficient labels, columns = ``mean`` then one
-        ``<level>% CL (<interval_type>)`` per level. Coefficients without
-        samples are left out.
+        ``<level>% CL (<interval_type>)`` per level, each cell the pieces of
+        the region as ``[low, high]``, joined by ``∪`` when there are several.
+        Coefficients without samples are left out.
 
     Raises
     ------

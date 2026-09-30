@@ -690,16 +690,25 @@ def joint_fit():
     return _joint_fit("fit_a", {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]})
 
 
+def _single(bounds):
+    """``(low, mean, high)`` of a coefficient whose region is one interval,
+    as every equal-tailed one is."""
+    ((low, high),) = bounds["intervals"]
+    return low, bounds["mean"], high
+
+
 def test_confidence_bounds_are_equal_tailed_percentiles(joint_fit):
     """68% means 16/84 — the convention the old report pipeline used, and the
     one the tables have always quoted."""
-    assert joint_fit.confidence_bounds(68)["OtG"] == pytest.approx(
+    assert _single(joint_fit.confidence_bounds(68)["OtG"]) == pytest.approx(
         (160.0, 500.0, 840.0)
     )
 
 
 def test_confidence_bounds_at_95_percent(joint_fit):
-    assert joint_fit.confidence_bounds(95)["OtG"] == pytest.approx((25.0, 500.0, 975.0))
+    assert _single(joint_fit.confidence_bounds(95)["OtG"]) == pytest.approx(
+        (25.0, 500.0, 975.0)
+    )
 
 
 def test_confidence_bounds_central_value_is_the_mean():
@@ -707,7 +716,7 @@ def test_confidence_bounds_central_value_is_the_mean():
     value everywhere it is quoted."""
     fit = _joint_fit("fit", {"OtG": [0.0, 0.0, 0.0, 4.0]})
 
-    assert fit.confidence_bounds(68)["OtG"][1] == pytest.approx(1.0)
+    assert fit.confidence_bounds(68)["OtG"]["mean"] == pytest.approx(1.0)
 
 
 def test_confidence_bounds_cover_every_free_coefficient_in_order(joint_fit):
@@ -732,8 +741,8 @@ def test_confidence_bounds_ignore_nans():
     with_nan = _joint_fit("fit", {"OtG": [0.0, 1.0, 2.0, math.nan]})
     without = _joint_fit("fit", {"OtG": [0.0, 1.0, 2.0]})
 
-    assert with_nan.confidence_bounds(68)["OtG"] == pytest.approx(
-        without.confidence_bounds(68)["OtG"]
+    assert _single(with_nan.confidence_bounds(68)["OtG"]) == pytest.approx(
+        _single(without.confidence_bounds(68)["OtG"])
     )
 
 
@@ -743,7 +752,7 @@ def test_confidence_bounds_reproduce_a_gaussian_sigma():
     rng = np.random.default_rng(0)
     fit = _joint_fit("fit", {"OtG": rng.normal(loc=2.0, scale=0.5, size=200_000)})
 
-    low, mean, high = fit.confidence_bounds(68.27)["OtG"]
+    low, mean, high = _single(fit.confidence_bounds(68.27)["OtG"])
 
     assert mean == pytest.approx(2.0, abs=0.01)
     assert (high - low) / 2 == pytest.approx(0.5, rel=0.02)
@@ -765,16 +774,33 @@ def test_confidence_bounds_default_to_the_equal_tailed_interval(joint_fit):
 
 def test_confidence_bounds_default_to_the_fits_interval_type(monkeypatch):
     """The fit's interval_type is what bounds quote unless one is asked for."""
-    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: (-1.0, 1.0))
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
     fit.interval_type = "fake"
 
-    assert fit.confidence_bounds(68)["OtG"] == pytest.approx((-1.0, 500.0, 1.0))
-    assert fit.bounds[95.0]["OtG"] == pytest.approx((-1.0, 500.0, 1.0))
-    # asking for one explicitly still overrides the fit's
-    assert fit.confidence_bounds(68, interval_type="eti")["OtG"] == pytest.approx(
-        (160.0, 500.0, 840.0)
+    assert _single(fit.confidence_bounds(68)["OtG"]) == pytest.approx(
+        (-1.0, 500.0, 1.0)
     )
+    assert _single(fit.bounds[95.0]["OtG"]) == pytest.approx((-1.0, 500.0, 1.0))
+    # asking for one explicitly still overrides the fit's
+    assert _single(
+        fit.confidence_bounds(68, interval_type="eti")["OtG"]
+    ) == pytest.approx((160.0, 500.0, 840.0))
+
+
+def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
+    """An interval type may split a multimodal posterior into several pieces;
+    the bounds keep them all, in the order the interval type gives them."""
+    pieces = [(-2.0, -1.0), (1.0, 2.0)]
+    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: pieces)
+    fit = _joint_fit("fit_a", {"OtG": _RAMP})
+
+    bounds = fit.confidence_bounds(68, interval_type="fake")["OtG"]
+
+    assert bounds["intervals"] == pieces
+    assert bounds["mean"] == pytest.approx(500.0)
 
 
 def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
@@ -797,7 +823,9 @@ def test_confidence_bounds_read_an_individual_fit():
     entry pointing at an individual_fits output, not a mode switch."""
     fit = _individual_fit("individual", {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]})
 
-    assert fit.confidence_bounds(68)["OtG"] == pytest.approx((160.0, 500.0, 840.0))
+    assert _single(fit.confidence_bounds(68)["OtG"]) == pytest.approx(
+        (160.0, 500.0, 840.0)
+    )
 
 
 def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():

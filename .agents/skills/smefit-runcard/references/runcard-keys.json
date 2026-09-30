@@ -167,10 +167,12 @@
     },
     "fits": {
       "defaults": {
+        "interval_type": "'eti'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "interval_type",
         "label",
         "name",
         "path"

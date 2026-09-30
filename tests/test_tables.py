@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from smefit import fit_result
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.op_to_latex import coeff_info_latex
@@ -123,7 +124,7 @@ def _individual_fit(samples: dict[str, list[float]]) -> Fit:
 def test_coefficient_bounds_table_quotes_the_mean_and_both_intervals() -> None:
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}))
 
-    assert table.columns.tolist() == ["mean", "68% CL", "95% CL"]
+    assert table.columns.tolist() == ["mean", "68% CL (eti)", "95% CL (eti)"]
     assert table.index.tolist() == [r"$c_{tG}$"]
     assert table.iloc[0].tolist() == [
         "500.000",
@@ -166,7 +167,7 @@ def test_coefficient_bounds_table_quotes_the_bounds_levels_asked_for() -> None:
         _joint_fit({"OtG": _RAMP}), bounds_levels=[90, 99.99994]
     )
 
-    assert table.columns.tolist() == ["mean", "90% CL", "99.99994% CL"]
+    assert table.columns.tolist() == ["mean", "90% CL (eti)", "99.99994% CL (eti)"]
     assert table.iloc[0].tolist()[:2] == ["500.000", "[50.000, 950.000]"]
 
 
@@ -174,7 +175,23 @@ def test_coefficient_bounds_table_takes_a_single_level() -> None:
     """``bounds_levels: 90`` in a runcard, as for ``params_to_plot: OtG``."""
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=90)
 
-    assert table.columns.tolist() == ["mean", "90% CL"]
+    assert table.columns.tolist() == ["mean", "90% CL (eti)"]
+
+
+def test_coefficient_bounds_table_heads_each_level_with_the_fits_interval_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The header names the interval the fit quotes, and the cells are that
+    interval's bounds."""
+    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: (-1.0, 1.0))
+    fit = Fit(
+        fit_results=_result({"OtG": _RAMP}), fit_name="joint", interval_type="fake"
+    )
+
+    table = coefficient_bounds_table(fit, bounds_levels=90)
+
+    assert table.columns.tolist() == ["mean", "90% CL (fake)"]
+    assert table.iloc[0].tolist() == ["500.000", "[-1.000, 1.000]"]
 
 
 def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:

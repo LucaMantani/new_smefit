@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
+from smefit import fit_result
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 
 
@@ -760,6 +761,20 @@ def test_confidence_bounds_default_to_the_equal_tailed_interval(joint_fit):
     assert joint_fit.confidence_bounds(
         68, interval_type="eti"
     ) == joint_fit.confidence_bounds(68)
+
+
+def test_confidence_bounds_default_to_the_fits_interval_type(monkeypatch):
+    """The fit's interval_type is what bounds quote unless one is asked for."""
+    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: (-1.0, 1.0))
+    fit = _joint_fit("fit_a", {"OtG": _RAMP})
+    fit.interval_type = "fake"
+
+    assert fit.confidence_bounds(68)["OtG"] == pytest.approx((-1.0, 500.0, 1.0))
+    assert fit.bounds[95.0]["OtG"] == pytest.approx((-1.0, 500.0, 1.0))
+    # asking for one explicitly still overrides the fit's
+    assert fit.confidence_bounds(68, interval_type="eti")["OtG"] == pytest.approx(
+        (160.0, 500.0, 840.0)
+    )
 
 
 def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):

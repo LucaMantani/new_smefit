@@ -134,7 +134,7 @@ def _coefficient_bounds_table(
         for level, per_coeff in bounds.items():
             low, _, high = per_coeff[name]
             # .10g: plain g would round 99.99994 (5 sigma) to 99.9999
-            cells[f"{level:.10g}% CL"] = (
+            cells[f"{level:.10g}% CL ({fit.interval_type})"] = (
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
             )
         rows[coeff_info_latex.get(name, name)] = cells
@@ -148,7 +148,8 @@ def coefficient_bounds_table(
     """Tabulate the posterior mean and the confidence bounds of one fit.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
-    one table per fit. The bounds are those of :meth:`Fit.confidence_bounds`.
+    one table per fit. The bounds are those of :meth:`Fit.confidence_bounds`,
+    of the credible interval the fit's ``interval_type`` names.
 
     Parameters
     ----------
@@ -169,7 +170,8 @@ def coefficient_bounds_table(
     -------
     pd.DataFrame
         Index = LaTeX coefficient labels, columns = ``mean`` then one
-        ``<level>% CL`` per level. Coefficients without samples are left out.
+        ``<level>% CL (<interval_type>)`` per level. Coefficients without
+        samples are left out.
 
     Raises
     ------

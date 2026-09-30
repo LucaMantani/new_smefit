@@ -196,6 +196,7 @@ Each entry is the name of a fit, or a mapping
     - name: my_fit                     # mandatory, the fit directory name
       path: smefit_results/fits        # optional, where to look for it
       label: '$\mathrm{My\ fit}$'      # optional, the legend label
+      interval_type: eti                 # optional, eti by default
 
 Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
 downloaded from the server if it is not there yet. ``path`` is resolved
@@ -206,8 +207,12 @@ key of the per-fit plot settings, and the legend label when no ``label``
 is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
 LaTeX (quote it in YAML to keep the backslashes).
 
+``interval_type`` is the credible interval the fit's bounds quote, in
+tables and plots alike: ``eti`` (equal-tailed) is the only one so far.
+
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
+- `interval_type` — default: `'eti'`
 - `label` — default: `(no default)`
 - `name`
 - `path` — default: `(no default)`

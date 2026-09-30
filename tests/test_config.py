@@ -1221,6 +1221,7 @@ def test_parse_fits_accepts_plain_names(cfg, tmp_path):
 
     assert [f.fit_name for f in result] == ["fit_a"]
     assert result[0].label is None
+    assert result[0].interval_type == "eti"
 
 
 def test_parse_fits_accepts_mappings(cfg, tmp_path):
@@ -1279,6 +1280,32 @@ def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
     with pytest.raises(ConfigError, match="must be a string"):
         cfg.parse_fits(
             [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
+        )
+
+
+def test_parse_fits_passes_the_interval_type_on_to_the_fit(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "interval_type": "eti"}]
+    )
+
+    assert result[0].interval_type == "eti"
+
+
+def test_parse_fits_rejects_an_unknown_interval_type(cfg, tmp_path):
+    """A typo fails when the runcard is read, not halfway through a report."""
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with pytest.raises(ConfigError, match="Unknown interval_type 'hpd'"):
+        cfg.parse_fits(
+            [
+                {
+                    "name": "fit_a",
+                    "path": str(tmp_path / "elsewhere"),
+                    "interval_type": "hpd",
+                }
+            ]
         )
 
 

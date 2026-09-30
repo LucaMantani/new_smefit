@@ -408,31 +408,29 @@ class FitResult:
 
 
 class FitResultGroup:
-    """A collection of FitResult objects from individual parameter fits."""
+    """A collection of FitResult objects from individual parameter fits.
+
+    Attributes
+    ----------
+    results : list[FitResult]
+        One per individual fit, each with a single free coefficient.
+    free_parameters : list[str]
+        The coefficients fitted, in the order they were fitted.
+    samples : dict[str, jnp.ndarray] or None
+        Posterior samples per coefficient, from its own individual fit.
+        ``None`` when no individual fit kept any, as for :class:`FitResult`.
+    """
 
     def __init__(self, results: List[FitResult]):
         self.results = results
-
-    @property
-    def free_parameters(self) -> List[str]:
-        """The coefficients fitted, in the order they were fitted.
-
-        One per individual fit, each free in its own.
-        """
-        return [result.free_parameters[0] for result in self.results]
-
-    @property
-    def samples(self) -> Optional[Dict[str, jnp.ndarray]]:
-        """Posterior samples per coefficient, from its own individual fit.
-
-        ``None`` when no individual fit kept any, as for :class:`FitResult`.
-        """
+        self.free_parameters: List[str] = [
+            result.free_parameters[0] for result in results
+        ]
         samples = {}
-        for result in self.results:
-            name = result.free_parameters[0]
+        for name, result in zip(self.free_parameters, results):
             if result.samples is not None and name in result.samples:
                 samples[name] = result.samples[name]
-        return samples or None
+        self.samples: Optional[Dict[str, jnp.ndarray]] = samples or None
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""

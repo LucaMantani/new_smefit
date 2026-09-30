@@ -33,6 +33,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+# Required, not cosmetic: in float32 the angular observables take the square root
+# of a quantity that rounds negative, and every chi2 comes back NaN.  smefit sets
+# this itself, so a fit is fine either way; anything importing the module
+# directly (or `smefit -f32`) is not.
+jax.config.update("jax_enable_x64", True)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLES = os.path.join(HERE, "tables")
 MODEL = os.path.join(HERE, "Zp_model.yaml")

@@ -17,11 +17,14 @@ Input is the **NFU Z' model** of `Zp_model.yaml` (parameters `g`, `tsb`, `tdb`,
 ```yaml
 external_chi2:
   fast_likelihood_quarks:
-    path: <...>/external_chi2/smelli_surrogate/smelli_surrogate.py
+    path: smefit_database/external_chi2/smelli_surrogate/smelli_surrogate.py
   likelihood_lfu_fcnc:
-    path: <...>/external_chi2/smelli_surrogate/smelli_surrogate.py
+    path: smefit_database/external_chi2/smelli_surrogate/smelli_surrogate.py
   # likelihood_ewpt, likelihood_eell: one line each, the same
 ```
+
+`smefit_database` is a path prefix smefit resolves from `.config/paths.yaml`, so
+the runcard carries no absolute path.
 
 Optional per block: `model`, `tables` (both default to the copies here) and, for
 the flavour blocks, `penalty`, `dg_tol`.

@@ -24,7 +24,8 @@ Resource types and their remote directories:
     report  -> reports/
 
 RGE matrices (rge_matrix.pkl) are stored inside fit directories, not as
-standalone resources. Use list_fits_with_rge() and download_rge() to work with them.
+standalone resources. Use download_rge() to fetch one; the registry's has_rge flag
+records which fits have one.
 """
 
 import datetime
@@ -323,33 +324,6 @@ def _list_resource_names(client, resource_type: str) -> list[str]:
             continue
         names.append(e)
     return names
-
-
-def _list_fit_names(client) -> list[str]:
-    return _list_resource_names(client, "fit")
-
-
-def list_fits_with_rge(server: str | None = None) -> list[str]:
-    """Return names of fits on the server that contain an rge_matrix.pkl file.
-
-    Each fit tarball is downloaded and inspected; this may be slow for large
-    repositories.
-    """
-    client = _get_client(server, need_write=False)
-    fit_names = _list_fit_names(client)
-    results = []
-    for fit_name in fit_names:
-        remote = _remote_path("fit", fit_name)
-        log.info("Checking %s ...", fit_name)
-        with tempfile.TemporaryDirectory(prefix="smefit_rge_check_") as tmpdir:
-            archive = pathlib.Path(tmpdir) / f"{fit_name}.tar.gz"
-            client.download_sync(remote_path=remote, local_path=str(archive))
-            with tarfile.open(archive, "r:gz") as tar:
-                if any(
-                    pathlib.Path(m.name).name == RGE_FILENAME for m in tar.getmembers()
-                ):
-                    results.append(fit_name)
-    return results
 
 
 def download_rge(

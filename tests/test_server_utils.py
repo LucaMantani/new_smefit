@@ -393,7 +393,7 @@ def test_list_resource_names(remote: FakeWebDAV) -> None:
     remote.put_json("misc/registry_misc.json", {})
     remote.put_json("misc/data.pkl", {})
     remote.put_json("misc/sub/x.pkl", {})
-    assert server_utils._list_fit_names(remote) == ["a", "b"]
+    assert server_utils._list_resource_names(remote, "fit") == ["a", "b"]
     assert server_utils._list_resource_names(remote, "misc") == ["data.pkl", "sub"]
 
 
@@ -819,24 +819,6 @@ class TestRge:
     ) -> None:
         with pytest.raises(ServerError, match="not found"):
             server_utils.download_rge("missing", work)
-
-    def test_list_fits_with_rge_legacy_archives(
-        self, remote: FakeWebDAV, work: pathlib.Path
-    ) -> None:
-        remote.put_archive("fits/with.tar.gz", make_fit(work, "with"))
-        remote.put_archive("fits/without.tar.gz", make_fit(work, "without", None))
-        assert server_utils.list_fits_with_rge() == ["with"]
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Uploader strips rge_matrix.pkl from the archive and stores it under "
-        "fits/rge_matrices/, which list_fits_with_rge does not look at",
-    )
-    def test_list_fits_with_rge_current_upload_layout(
-        self, remote: FakeWebDAV, work: pathlib.Path
-    ) -> None:
-        Uploader().upload("fit", "fit_a", make_fit(work))
-        assert server_utils.list_fits_with_rge() == ["fit_a"]
 
 
 # ---------------------------------------------------------------------------

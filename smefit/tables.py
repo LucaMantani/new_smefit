@@ -180,8 +180,7 @@ def coefficient_bounds_table(
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level, in this order, so several types sit side by side for
-        comparison. ``eti`` alone by default. Like ``bounds_levels``, a list
+        level. ``eti`` alone by default. A list
         has to be a top-level runcard key.
 
     Returns

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from reportengine.figure import figure, figuregen
 
-from smefit.op_to_latex import latex_label
+from smefit.latex_labels import latex_label
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)

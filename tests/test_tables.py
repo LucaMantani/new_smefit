@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from smefit.core import Coefficient, CoefficientGroup
-from smefit.op_to_latex import default_latex_labels
+from smefit.latex_labels import default_latex_labels
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,

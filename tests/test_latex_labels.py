@@ -1,8 +1,8 @@
-"""Unit tests for smefit.op_to_latex — the label lookup the reports share."""
+"""Unit tests for smefit.latex_labels — the label lookup the reports share."""
 
 from __future__ import annotations
 
-from smefit.op_to_latex import default_latex_labels, latex_label
+from smefit.latex_labels import default_latex_labels, latex_label
 
 
 def test_latex_label_uses_the_builtin_coefficient_label() -> None:

@@ -1,5 +1,5 @@
 """
-smefit.op_to_latex.py
+smefit.latex_labels.py
 
 Default LaTeX labels for the names a report shows — Wilson coefficients and
 data groups — used by the report tables and figures. A runcard's

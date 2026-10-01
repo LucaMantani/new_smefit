@@ -27,7 +27,7 @@ from smefit.figures import (
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
-from smefit.op_to_latex import latex_label
+from smefit.latex_labels import latex_label
 from smefit.pca import PCA
 
 
@@ -39,7 +39,7 @@ def _no_latex(monkeypatch):
     The rcParam is then forced off as well, so the invariant the suite needs —
     "no LaTeX is invoked" — is asserted directly rather than inferred from
     nobody having turned it on; that inference is exactly what broke when
-    `smefit.op_to_latex` used to do it at import time.
+    `smefit.latex_labels` used to do it at import time.
     """
     monkeypatch.setattr(figures_mod, "set_plot_style", lambda: None)
     monkeypatch.setitem(matplotlib.rcParams, "text.usetex", False)

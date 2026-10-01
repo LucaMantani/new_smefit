@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from reportengine.table import table
 
-from smefit.op_to_latex import latex_label
+from smefit.latex_labels import latex_label
 from smefit.plot_utils import select_params
 
 

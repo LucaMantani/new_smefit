@@ -261,7 +261,7 @@ Parse the optional map from a displayed name to its LaTeX label.
 Single-quote the labels: YAML then keeps backslashes as written.
 
 An entry overrides the built-in label
-(:data:`smefit.op_to_latex.default_latex_labels`).
+(:data:`smefit.latex_labels.default_latex_labels`).
 
 ### `optimizer_settings`
 

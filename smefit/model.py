@@ -64,19 +64,25 @@ class EFTModel(BaseModel):
         vars_used = {var for c in coefficients.coefficients if c.vars for var in c.vars}
 
         active_names = sorted(theory_params & declared)
-
-        if not active_names:
-            raise ValueError(
-                "None of the declared coefficients match any operator in the theory files.\n"
-                f"  Coefficients declared      : {sorted(declared)}\n"
-                f"  Operators found in datasets: {sorted(theory_params)}\n"
-                "Check that coefficient names in the runcard match operator names in the theory files."
-            )
-
         inactive = [
             n for n in declared if n not in theory_params and n not in vars_used
         ]
-        if inactive:
+
+        # The two warnings below are exclusive: when nothing is active, every
+        # declared coefficient is inactive and the first message already says so.
+        if not active_names:
+            log.warning(
+                "None of the declared coefficients enter the predictions of the "
+                "datasets %s: they have no effect there.\n"
+                "  Coefficients declared      : %s\n"
+                "  Operators found in datasets: %s\n"
+                "Check that coefficient names in the runcard match operator names "
+                "in the theory files if this is not intended.",
+                theory.names,
+                sorted(declared),
+                sorted(theory_params),
+            )
+        elif inactive:
             log.warning(
                 "The following coefficients are not present in any theory dataset "
                 "and are not used to constrain other coefficients.\n"
@@ -93,7 +99,7 @@ class EFTModel(BaseModel):
             self.quad_corr = Q[:, t_indices, :][:, :, t_indices]
 
         self.active_coeff_indices = jnp.array(
-            [coefficients.coeff_index[name] for name in active_names]
+            [coefficients.coeff_index[name] for name in active_names], dtype=int
         )
 
     def _apply_rge(self, theory, rge_matrix):

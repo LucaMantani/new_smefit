@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from smefit.op_to_latex import coeff_info_latex, latex_label
+from smefit.op_to_latex import default_latex_labels, latex_label
 
 
 def test_latex_label_uses_the_builtin_coefficient_label() -> None:
-    assert latex_label("OQQ1") == coeff_info_latex["OQQ1"]
+    assert latex_label("OQQ1") == default_latex_labels["OQQ1"]
 
 
 def test_latex_label_falls_back_to_the_plain_name() -> None:
@@ -18,12 +18,20 @@ def test_latex_label_override_beats_the_builtin_label() -> None:
 
 
 def test_latex_label_override_names_what_has_no_builtin_label() -> None:
-    """A data group has no default label, so only the runcard can give one."""
-    assert latex_label("LHC-top", {"LHC-top": r"$t\bar{t}$"}) == r"$t\bar{t}$"
+    """A group with no default label can only be named by the runcard."""
+    assert latex_label("MyGroup", {"MyGroup": r"$t\bar{t}$"}) == r"$t\bar{t}$"
+
+
+def test_latex_label_uses_the_builtin_data_group_label() -> None:
+    assert latex_label("FCCee_240") == default_latex_labels["FCCee_240"]
+
+
+def test_latex_label_override_beats_a_builtin_data_group_label() -> None:
+    assert latex_label("FCCee_240", {"FCCee_240": "ZH run"}) == "ZH run"
 
 
 def test_latex_label_override_for_another_name_is_ignored() -> None:
-    assert latex_label("OQQ1", {"LHC-top": "x"}) == coeff_info_latex["OQQ1"]
+    assert latex_label("OQQ1", {"LHC-top": "x"}) == default_latex_labels["OQQ1"]
 
 
 def test_latex_label_accepts_no_overrides() -> None:

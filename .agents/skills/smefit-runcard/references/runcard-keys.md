@@ -252,9 +252,6 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 Parse the optional map from a displayed name to its LaTeX label.
 
-One flat mapping for everything a report names — coefficients, data
-groups, ... — e.g.
-
 .. code-block:: yaml
 
     latex_labels:
@@ -263,11 +260,8 @@ groups, ... — e.g.
 
 Single-quote the labels: YAML then keeps backslashes as written.
 
-An entry overrides the built-in coefficient label
-(:data:`smefit.op_to_latex.coeff_info_latex`); names without one keep
-that label, or their plain name. Entries matching nothing are not
-reported: each table and figure only sees the names it draws, so an
-entry meant for another one would look unmatched to it.
+An entry overrides the built-in label
+(:data:`smefit.op_to_latex.default_latex_labels`).
 
 ### `optimizer_settings`
 

@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from smefit.core import Coefficient, CoefficientGroup
-from smefit.op_to_latex import coeff_info_latex
+from smefit.op_to_latex import default_latex_labels
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
@@ -36,7 +36,7 @@ def test_fisher_diagonals_normalised_values_and_rows_sum_to_one():
 
 
 def test_fisher_diagonals_normalised_uses_latex_label_when_known():
-    """Coefficient names present in coeff_info_latex are relabelled in the index."""
+    """Coefficient names present in default_latex_labels are relabelled in the index."""
     fim = {
         "DS_A": _fim_entry(["OQQ1"], [3.0]),
         "DS_B": _fim_entry(["OQQ1"], [1.0]),
@@ -49,15 +49,15 @@ def test_fisher_diagonals_normalised_uses_latex_label_when_known():
 
 
 def test_fisher_diagonals_normalised_applies_latex_labels_to_both_axes():
-    """Runcard labels override a coefficient's built-in label and name the
-    sources (data groups), which have none of their own."""
+    """Runcard labels override a coefficient's built-in label and name a
+    source (data group) the defaults do not know."""
     fim = {
-        "LHC-top": _fim_entry(["OQQ1"], [3.0]),
+        "MyGroup": _fim_entry(["OQQ1"], [3.0]),
         "DS_B": _fim_entry(["OQQ1"], [1.0]),
     }
 
     result = fisher_diagonals_normalised(
-        fim, latex_labels={"OQQ1": "$c_1$", "LHC-top": r"$t\bar{t}$"}
+        fim, latex_labels={"OQQ1": "$c_1$", "MyGroup": r"$t\bar{t}$"}
     )
 
     assert result.index.tolist() == ["$c_1$"]
@@ -66,7 +66,7 @@ def test_fisher_diagonals_normalised_applies_latex_labels_to_both_axes():
 
 
 def test_fisher_diagonals_normalised_unknown_name_falls_back_to_raw():
-    """Coefficient names absent from coeff_info_latex keep their raw name."""
+    """Coefficient names absent from default_latex_labels keep their raw name."""
     fim = {"DS_A": _fim_entry(["NotARealOp"], [1.0])}
 
     result = fisher_diagonals_normalised(fim)
@@ -126,8 +126,8 @@ def test_pca_components_uses_latex_label_when_known():
     result = pca_components(_pca())
 
     assert result.index.tolist() == [
-        coeff_info_latex.get("OpA", "OpA"),
-        coeff_info_latex.get("OpZZ", "OpZZ"),
+        default_latex_labels.get("OpA", "OpA"),
+        default_latex_labels.get("OpZZ", "OpZZ"),
         "OpC",
     ]
 

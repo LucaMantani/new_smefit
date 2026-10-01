@@ -109,8 +109,8 @@ class smefitConfig(Config):
 
         Single-quote the labels: YAML then keeps backslashes as written.
 
-        An entry overrides the built-in coefficient label
-        (:data:`smefit.op_to_latex.coeff_info_latex`).
+        An entry overrides the built-in label
+        (:data:`smefit.op_to_latex.default_latex_labels`).
         """
         if not isinstance(latex_labels, Mapping):
             raise ConfigError(

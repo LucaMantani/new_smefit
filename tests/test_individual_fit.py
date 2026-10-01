@@ -150,7 +150,7 @@ def test_individual_analytic_fit_delegates(coeff_group):
 
 
 def test_individual_hessian_fit_delegates():
-    mock_model = MagicMock()
+    mock_coefficients = MagicMock()
     mock_chi2 = MagicMock()
     mock_optimizer = MagicMock()
     mock_settings = {
@@ -168,10 +168,10 @@ def test_individual_hessian_fit_delegates():
         from smefit.individual_fit import individual_hessian_fit
 
         result = individual_hessian_fit(
-            mock_model, mock_chi2, mock_optimizer, mock_settings
+            mock_coefficients, mock_chi2, mock_optimizer, mock_settings
         )
 
     mock_fn.assert_called_once_with(
-        mock_model, mock_chi2, mock_optimizer, mock_settings
+        mock_coefficients, mock_chi2, mock_optimizer, mock_settings
     )
     assert result is mock_result

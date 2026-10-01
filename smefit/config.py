@@ -542,18 +542,18 @@ class smefitConfig(Config):
         """
         # Begin by checking that the user-supplied keys are known; warn the user otherwise.
         known_keys = {
-            "algorithm",
-            "seed",
-            "log_dir",
-            "n_live",
-            "repeats",
-            "delete_fraction",
-            "log_precision",
-            "num_chains",
-            "num_warmup",
-            "num_samples",
-            "target_acceptance_rate",
-            "max_num_doublings",
+            "algorithm",  # common to every algorithm
+            "seed",  # common to every algorithm
+            "log_dir",  # common to every algorithm
+            "n_live",  # nested_sampling
+            "repeats",  # nested_sampling
+            "delete_fraction",  # nested_sampling
+            "log_precision",  # nested_sampling
+            "num_chains",  # nuts
+            "num_warmup",  # nuts
+            "num_samples",  # nuts
+            "target_acceptance_rate",  # nuts
+            "max_num_doublings",  # nuts
         }
 
         kdiff = settings.keys() - known_keys

@@ -649,7 +649,7 @@ def test_group_samples_is_none_when_no_fit_kept_any():
 
 
 # ---------------------------------------------------------------------------
-# Fit.confidence_bounds / Fit.bounds
+# Fit.confidence_bounds
 # ---------------------------------------------------------------------------
 
 
@@ -766,7 +766,7 @@ def test_confidence_bounds_default_to_the_equal_tailed_interval(joint_fit):
 
 def test_confidence_bounds_take_the_interval_type_asked_for(monkeypatch):
     """The per-call interval_type picks the construction; the default stays
-    equal-tailed, so :attr:`bounds` always quotes ETI."""
+    equal-tailed."""
     monkeypatch.setitem(
         fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
     )
@@ -776,7 +776,6 @@ def test_confidence_bounds_take_the_interval_type_asked_for(monkeypatch):
         pytest.approx((-1.0, 1.0))
     )
     assert _single(fit.confidence_bounds(68)["OtG"]) == pytest.approx((160.0, 840.0))
-    assert _single(fit.bounds[68.0]["OtG"]) == pytest.approx((160.0, 840.0))
 
 
 def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
@@ -819,12 +818,3 @@ def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():
     assert _joint_fit("j", samples).confidence_bounds(95) == _individual_fit(
         "i", samples
     ).confidence_bounds(95)
-
-
-def test_bounds_property_quotes_the_two_report_levels(joint_fit):
-    """68 and 95, keyed by level, each exactly what confidence_bounds gives."""
-    bounds = joint_fit.bounds
-
-    assert list(bounds) == [68.0, 95.0]
-    assert bounds[68.0] == joint_fit.confidence_bounds(68)
-    assert bounds[95.0] == joint_fit.confidence_bounds(95)

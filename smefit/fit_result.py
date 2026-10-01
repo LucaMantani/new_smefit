@@ -702,17 +702,6 @@ class Fit:
     # What the fit constrained — derived from the posterior samples
     # ------------------------------------------------------------------
 
-    @property
-    def bounds(self) -> Dict[float, Dict[str, List[Tuple[float, float]]]]:
-        """The 68% and 95% confidence bounds of every free coefficient.
-
-        The two levels every report quotes, keyed by level, each as
-        :meth:`confidence_bounds` computes it with its default equal-tailed
-        interval. Any other level or interval type goes through that method
-        directly.
-        """
-        return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
-
     def confidence_bounds(
         self, confidence_level: float, interval_type: str = "eti"
     ) -> Dict[str, List[Tuple[float, float]]]:

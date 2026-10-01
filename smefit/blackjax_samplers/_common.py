@@ -13,7 +13,7 @@ import dataclasses
 import json
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import jax.numpy as jnp
 
@@ -68,21 +68,21 @@ class _HealthReport:
     more of them" call for different reactions.
     """
 
-    def __init__(self, label, logger=log):
+    def __init__(self, label: str, logger: logging.Logger = log) -> None:
         self.label = label
         # Log through the algorithm's own logger, so a message about NUTS is
         # still attributed to smefit.blackjax_samplers.nuts rather than to this module.
         self.log = logger
-        self.failures = []
+        self.failures: list[str] = []
 
-    def fail(self, name, msg, *args):
+    def fail(self, name: str, msg: str, *args: object) -> None:
         self.failures.append(name)
         self.log.error(msg, *args)
 
-    def warn(self, msg, *args):
+    def warn(self, msg: str, *args: object) -> None:
         self.log.warning(msg, *args)
 
-    def finish(self, diagnostics):
+    def finish(self, diagnostics: dict[str, Any]) -> dict[str, Any]:
         """Stamp the verdict onto *diagnostics* and announce a failed run."""
         diagnostics["converged"] = not self.failures
         if self.failures:
@@ -96,7 +96,9 @@ class _HealthReport:
         return diagnostics
 
 
-def _write_diagnostics(log_dir, filename, diagnostics):
+def _write_diagnostics(
+    log_dir: str, filename: str, diagnostics: dict[str, Any]
+) -> None:
     """Persist a diagnostics dict next to the algorithm's draws."""
     with open(os.path.join(log_dir, filename), "w") as f:
         json.dump(diagnostics, f, indent=2)

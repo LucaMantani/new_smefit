@@ -13,12 +13,15 @@ import logging
 import math
 import os
 import time
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import blackjax
 import jax
 import jax.numpy as jnp
 import pandas as pd
 from blackjax.diagnostics import ess_bulk, ess_tail, rhat
+from blackjax.mcmc.hmc import HMCState
 from blackjax.util import run_inference_algorithm
 
 from smefit.blackjax_samplers._common import (
@@ -26,6 +29,7 @@ from smefit.blackjax_samplers._common import (
     _HealthReport,
     _write_diagnostics,
 )
+from smefit.priors import JointPrior
 
 log = logging.getLogger(__name__)
 
@@ -46,17 +50,17 @@ _STEP_SIZE_COLLAPSE = 1e-12
 
 
 def _nuts_diagnostics(
-    prior,
-    positions,
-    leapfrogs,
-    tree_depth,
-    is_divergent,
-    acceptance,
-    step_sizes,
-    max_num_doublings,
-    sampling_seconds=None,
-    warmup_seconds=None,
-):
+    prior: JointPrior,
+    positions: jnp.ndarray,
+    leapfrogs: jnp.ndarray,
+    tree_depth: jnp.ndarray,
+    is_divergent: jnp.ndarray,
+    acceptance: jnp.ndarray,
+    step_sizes: jnp.ndarray,
+    max_num_doublings: int,
+    sampling_seconds: float | None = None,
+    warmup_seconds: float | None = None,
+) -> dict[str, Any]:
     """Convergence and cost summary for a (C, S, d) block of NUTS draws.
 
     Also decides whether the run is usable at all: ``diagnostics["converged"]``
@@ -231,7 +235,7 @@ def _nuts_diagnostics(
     return diagnostics
 
 
-def _thin_chains(positions, n_samples):
+def _thin_chains(positions: jnp.ndarray, n_samples: int) -> jnp.ndarray:
     """Thin a (C, S, d) block down to at most ``n_samples`` draws, shape (N, d).
 
     Chains are interleaved before the final truncation so that dropping a
@@ -257,7 +261,13 @@ def _thin_chains(positions, n_samples):
     return flat[:n_samples]
 
 
-def run(rng_key, prior, log_likelihood, n_samples, settings):
+def run(
+    rng_key: jax.Array,
+    prior: JointPrior,
+    log_likelihood: Callable[[jnp.ndarray], jnp.ndarray],
+    n_samples: int,
+    settings: Mapping[str, Any],
+) -> SamplerOutput:
     """No-U-Turn Hamiltonian Monte Carlo (``blackjax.nuts``).
 
     Runs ``num_chains`` chains in parallel under ``jax.vmap``, each preceded by
@@ -284,7 +294,7 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
         )
 
     @jax.jit
-    def logdensity(u):
+    def logdensity(u: jnp.ndarray) -> jnp.ndarray:
         return prior.log_prob_unconstrained(u) + log_likelihood(
             prior.from_unconstrained(u)
         )
@@ -305,7 +315,9 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
 
     max_doublings = int(settings["max_num_doublings"])
 
-    def _run_warmup(key, u_init):
+    def _run_warmup(
+        key: jax.Array, u_init: jnp.ndarray
+    ) -> tuple[HMCState, jnp.ndarray, jnp.ndarray]:
         adapt, _ = warmup.run(key, u_init, num_steps=num_warmup)
 
         return (
@@ -314,7 +326,12 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
             adapt.parameters["inverse_mass_matrix"],
         )
 
-    def _run_sampling(key, state, step_size, inverse_mass_matrix):
+    def _run_sampling(
+        key: jax.Array,
+        state: HMCState,
+        step_size: jnp.ndarray,
+        inverse_mass_matrix: jnp.ndarray,
+    ) -> tuple[jnp.ndarray, ...]:
         kernel = blackjax.nuts(
             logdensity,
             step_size=step_size,

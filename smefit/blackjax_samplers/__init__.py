@@ -25,6 +25,8 @@ registered in ``smefit.app.smefit_providers``: its contents are helpers, not
 reportengine nodes.
 """
 
+from collections.abc import Callable
+
 from smefit.blackjax_samplers import nested_sampling, nuts
 from smefit.blackjax_samplers._common import (  # noqa: F401  (public re-export)
     SamplerOutput,
@@ -47,7 +49,7 @@ BJ_SHARED_SETTINGS = frozenset({"algorithm", "seed", "log_dir"})
 BJ_ALGORITHM_SETTINGS = {name: mod.SETTINGS for name, mod in _ALGORITHM_MODULES.items()}
 
 
-def get_sampler(algorithm):
+def get_sampler(algorithm: str) -> Callable[..., SamplerOutput]:
     """Look up the runner for *algorithm*."""
     if algorithm not in _SAMPLER_REGISTRY:
         raise ValueError(

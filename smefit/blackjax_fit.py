@@ -12,24 +12,30 @@ back to the full set, assembling the FitResult — stays here.
 import logging
 import os
 import time
+from collections.abc import Mapping
+from typing import Any
 
 import jax
 
 from smefit.blackjax_samplers import get_sampler
+from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup
 from smefit.fit_result import FitResult
+from smefit.priors import JointPrior
 from smefit.utils import resolve_posterior
+from smefit.whitening import WhitenTransform
 
 log = logging.getLogger(__name__)
 
 
 def blackjax_fit(
-    prior,
-    chi2,
-    coefficients,
-    blackjax_settings,
-    whitening_transformation=None,
-    n_samples=10000,
-):
+    prior: JointPrior,
+    chi2: Chi2,
+    coefficients: CoefficientGroup,
+    blackjax_settings: Mapping[str, Any],
+    whitening_transformation: WhitenTransform | None = None,
+    n_samples: int = 10000,
+) -> FitResult:
     """Run a BlackJAX sampler and return a FitResult.
 
     Reportengine provider node: arguments resolved by name from the DAG.

@@ -13,12 +13,15 @@ registry that imports this.
 import logging
 import math
 import time
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import anesthetic
 import blackjax
 import jax
 import jax.numpy as jnp
 import tqdm
+from blackjax.ns.base import NSInfo, NSState
 from blackjax.ns.utils import ess, finalise, log_weights, sample
 from jax.scipy.special import logsumexp
 
@@ -27,6 +30,7 @@ from smefit.blackjax_samplers._common import (
     _HealthReport,
     _write_diagnostics,
 )
+from smefit.priors import JointPrior
 
 log = logging.getLogger(__name__)
 
@@ -43,18 +47,18 @@ _LOGZ_STD_LIMIT = 1.0
 
 
 def _nested_sampling_diagnostics(
-    nested_samples,
-    n_free,
-    n_live,
-    n_dead,
-    ess_value,
-    n_requested,
-    n_stored,
-    logzs,
-    termination_margin,
-    log_precision,
-    sampling_seconds=None,
-):
+    nested_samples: anesthetic.NestedSamples,
+    n_free: int,
+    n_live: int,
+    n_dead: int,
+    ess_value: int,
+    n_requested: int,
+    n_stored: int,
+    logzs: jnp.ndarray,
+    termination_margin: float,
+    log_precision: float,
+    sampling_seconds: float | None = None,
+) -> dict[str, Any]:
     """Convergence and cost summary for a nested-sampling run.
 
     Mirrors ``_nuts_diagnostics``: assembles the JSON-serialisable summary and
@@ -74,7 +78,7 @@ def _nested_sampling_diagnostics(
     """
     stats = nested_samples.stats(nsamples=50)
 
-    def _stat(name):
+    def _stat(name: str) -> tuple[float, float]:
         col = stats[name]
         return float(col.mean()), float(col.std())
 
@@ -192,7 +196,13 @@ def _nested_sampling_diagnostics(
     return diagnostics
 
 
-def run(rng_key, prior, log_likelihood, n_samples, settings):
+def run(
+    rng_key: jax.Array,
+    prior: JointPrior,
+    log_likelihood: Callable[[jnp.ndarray], jnp.ndarray],
+    n_samples: int,
+    settings: Mapping[str, Any],
+) -> SamplerOutput:
     """BlackJAX nested sampling (``blackjax.nss``).
 
     The only algorithm here that estimates the log evidence.
@@ -212,7 +222,9 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
     )
 
     @jax.jit
-    def one_step(carry, xs):
+    def one_step(
+        carry: tuple[NSState, jax.Array], xs: None
+    ) -> tuple[tuple[NSState, jax.Array], NSInfo]:
         state, k = carry
         k, subk = jax.random.split(k, 2)
         state, dead_point = algo.step(subk, state)
@@ -220,7 +232,7 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
 
     state = algo.init(inital_particles)
 
-    dead = []
+    dead: list[NSInfo] = []
 
     t0 = time.time()
     with tqdm.tqdm(desc="Dead points", unit=" dead points") as pbar:

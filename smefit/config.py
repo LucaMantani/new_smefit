@@ -7,7 +7,8 @@ Config module of smefit
 import logging
 import os
 import pathlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -32,7 +33,7 @@ from smefit.paths import (
     resolve_fit_dir,
     resolve_path,
 )
-from smefit.priors import Prior
+from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
 from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
@@ -516,9 +517,9 @@ class smefitConfig(Config):
 
     def parse_blackjax_settings(
         self,
-        settings,
-        output_path=None,
-    ):
+        settings: Mapping,
+        output_path: pathlib.Path | None = None,
+    ) -> dict[str, Any]:
         """Parse optional settings for a BlackJAX fit.
 
         ``algorithm`` picks the sampler: "nested_sampling" (the only one that
@@ -764,7 +765,7 @@ class smefitConfig(Config):
         entry["path"] = fit_dir
         return entry
 
-    def _build_prior_impl(self, coefficients):
+    def _build_prior_impl(self, coefficients: CoefficientGroup) -> Prior:
         """Shared prior build logic used by both joint and individual producers."""
         specs = coefficients.prior_specs()
         for name, spec in specs.items():
@@ -774,12 +775,12 @@ class smefitConfig(Config):
 
     def produce_prior(
         self,
-        coefficients,
-        datasets=None,
-        external_chi2=None,
-        whitening=None,
-        bayesian_update=None,
-    ):
+        coefficients: CoefficientGroup,
+        datasets: Sequence[Mapping[str, Any]] | None = None,
+        external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+        whitening: Mapping[str, Any] | None = None,
+        bayesian_update: Mapping[str, Any] | None = None,
+    ) -> JointPrior:
         """Produce joint prior over all free coefficients.
 
         When ``bayesian_update`` is set, returns an ExactPosteriorPrior

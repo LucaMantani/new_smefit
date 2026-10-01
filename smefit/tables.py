@@ -145,8 +145,9 @@ def _coefficient_bounds_table(
     for name in names:
         cells = {}
         for (level, interval_type), per_coeff in bounds.items():
-            # .10g: plain g would round 99.99994 (5 sigma) to 99.9999
-            cells[f"{level:.10g}% CL ({interval_type})"] = " ∪ ".join(
+            # .10g: plain g would round 99.99994 (5 sigma) to 99.9999;
+            # the type is an acronym, so it is shown upper case: "(ETI)"
+            cells[f"{level:.10g}% CL ({interval_type.upper()})"] = " ∪ ".join(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
                 for low, high in per_coeff[name]
             )
@@ -187,7 +188,7 @@ def coefficient_bounds_table(
     -------
     pd.DataFrame
         Index = LaTeX coefficient labels, columns = one
-        ``<level>% CL (<interval_type>)`` per level and type, grouped by
+        ``<level>% CL (<INTERVAL_TYPE>)`` per level and type, grouped by
         level, each cell the pieces of the region as ``[low, high]``, joined
         by ``∪`` when there are several. Coefficients without samples are
         left out.

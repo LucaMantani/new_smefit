@@ -124,7 +124,7 @@ def _individual_fit(samples: dict[str, list[float]]) -> Fit:
 def test_coefficient_bounds_table_quotes_both_intervals() -> None:
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}))
 
-    assert table.columns.tolist() == ["68% CL (eti)", "95% CL (eti)"]
+    assert table.columns.tolist() == ["68% CL (ETI)", "95% CL (ETI)"]
     assert table.index.tolist() == [r"$c_{tG}$"]
     assert table.iloc[0].tolist() == ["[160.000, 840.000]", "[25.000, 975.000]"]
 
@@ -163,7 +163,7 @@ def test_coefficient_bounds_table_quotes_the_bounds_levels_asked_for() -> None:
         _joint_fit({"OtG": _RAMP}), bounds_levels=[90, 99.99994]
     )
 
-    assert table.columns.tolist() == ["90% CL (eti)", "99.99994% CL (eti)"]
+    assert table.columns.tolist() == ["90% CL (ETI)", "99.99994% CL (ETI)"]
     assert table.iloc[0].tolist()[0] == "[50.000, 950.000]"
 
 
@@ -171,7 +171,7 @@ def test_coefficient_bounds_table_takes_a_single_level() -> None:
     """``bounds_levels: 90`` in a runcard, as for ``params_to_plot: OtG``."""
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=90)
 
-    assert table.columns.tolist() == ["90% CL (eti)"]
+    assert table.columns.tolist() == ["90% CL (ETI)"]
 
 
 def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
@@ -187,7 +187,7 @@ def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
         _joint_fit({"OtG": _RAMP}), bounds_levels=90, interval_types="fake"
     )
 
-    assert table.columns.tolist() == ["90% CL (fake)"]
+    assert table.columns.tolist() == ["90% CL (FAKE)"]
     assert table.iloc[0].tolist() == ["[-1.000, 1.000]"]
 
 
@@ -207,13 +207,13 @@ def test_coefficient_bounds_table_compares_interval_types_side_by_side(
     )
 
     assert table.columns.tolist() == [
-        "90% CL (eti)",
-        "90% CL (fake)",
-        "95% CL (eti)",
-        "95% CL (fake)",
+        "90% CL (ETI)",
+        "90% CL (FAKE)",
+        "95% CL (ETI)",
+        "95% CL (FAKE)",
     ]
-    assert table.iloc[0]["90% CL (eti)"] == "[50.000, 950.000]"
-    assert table.iloc[0]["90% CL (fake)"] == "[-1.000, 1.000]"
+    assert table.iloc[0]["90% CL (ETI)"] == "[50.000, 950.000]"
+    assert table.iloc[0]["90% CL (FAKE)"] == "[-1.000, 1.000]"
 
 
 def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(

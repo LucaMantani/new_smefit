@@ -10,6 +10,11 @@ fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
+# confidence levels quoted, in percent, one column each (default: 68 and 95)
+bounds_levels: [68, 95]
+# credible interval(s) quoted, one column per type under each level (default: eti)
+interval_types: [eti]
+
 template_text: |
     Coefficient bounds
     ==================

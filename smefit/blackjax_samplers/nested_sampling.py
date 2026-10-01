@@ -201,7 +201,8 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
     n_live = settings["n_live"]
     n_delete = int(settings["delete_fraction"] * n_live)
 
-    inital_particles = prior.sample(rng_key, n_live)
+    init_key, rng_key = jax.random.split(rng_key)
+    inital_particles = prior.sample(init_key, n_live)
 
     algo = blackjax.nss(
         logprior_fn=prior.log_prob,
@@ -236,10 +237,10 @@ def run(rng_key, prior, log_likelihood, n_samples, settings):
     termination_margin = float(state.integrator.logZ_live - state.integrator.logZ)
 
     final_states = finalise(state, dead)
-    rng_key, ess_key, weights_key, sample_key = jax.random.split(rng_key, 4)
+    ess_key, weights_key, sample_key = jax.random.split(rng_key, 3)
 
     ess_value = int(ess(ess_key, final_states))
-    logw = log_weights(rng_key, final_states)
+    logw = log_weights(weights_key, final_states)
     logzs = logsumexp(logw, axis=0)
     full_samples = sample(sample_key, final_states, ess_value).position
 

@@ -6,6 +6,7 @@
 # the `datasets`, `coefficients` (especially any `expr` constraints) and
 # `external_chi2` entries are illustrative and must be replaced with ones
 # chosen for the analysis at hand — do not carry them over verbatim.
+# list of fits to compare
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}

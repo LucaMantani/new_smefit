@@ -852,10 +852,6 @@ class smefitConfig(Config):
         key of the per-fit plot settings, and the legend label when no ``label``
         is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
         LaTeX (quote it in YAML to keep the backslashes).
-
-        Which credible interval the fit's bounds quote is not part of this
-        entry: it is the report's choice, made by the top-level
-        ``interval_types`` key.
         """
         entry = {"name": fit} if isinstance(fit, str) else dict(fit)
         if "name" not in entry:

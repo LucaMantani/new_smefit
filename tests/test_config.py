@@ -12,6 +12,7 @@ import yaml
 from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
+from smefit import fit_result
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
 from smefit.core import (
@@ -1221,7 +1222,6 @@ def test_parse_fits_accepts_plain_names(cfg, tmp_path):
 
     assert [f.fit_name for f in result] == ["fit_a"]
     assert result[0].label is None
-    assert result[0].interval_type == "eti"
 
 
 def test_parse_fits_accepts_mappings(cfg, tmp_path):
@@ -1283,30 +1283,28 @@ def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
         )
 
 
-def test_parse_fits_passes_the_interval_type_on_to_the_fit(cfg, tmp_path):
-    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+def test_parse_interval_types_wraps_a_single_name(cfg):
+    """``interval_types: eti`` in a runcard, as for ``params_to_plot: OtG``."""
+    assert cfg.parse_interval_types("eti") == ["eti"]
 
-    result = cfg.parse_fits(
-        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "interval_type": "eti"}]
+
+def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
     )
 
-    assert result[0].interval_type == "eti"
+    assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]
 
 
-def test_parse_fits_rejects_an_unknown_interval_type(cfg, tmp_path):
+def test_parse_interval_types_rejects_an_unknown_type(cfg):
     """A typo fails when the runcard is read, not halfway through a report."""
-    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
-
     with pytest.raises(ConfigError, match="Unknown interval_type 'hpd'"):
-        cfg.parse_fits(
-            [
-                {
-                    "name": "fit_a",
-                    "path": str(tmp_path / "elsewhere"),
-                    "interval_type": "hpd",
-                }
-            ]
-        )
+        cfg.parse_interval_types(["eti", "hpd"])
+
+
+def test_parse_interval_types_rejects_an_empty_list(cfg):
+    with pytest.raises(ConfigError, match="interval_types is empty"):
+        cfg.parse_interval_types([])
 
 
 def test_parse_fits_requires_a_name(cfg):

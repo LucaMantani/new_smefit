@@ -167,12 +167,10 @@
     },
     "fits": {
       "defaults": {
-        "interval_type": "'eti'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
-        "interval_type",
         "label",
         "name",
         "path"
@@ -199,6 +197,10 @@
         "n_samples",
         "seed"
       ]
+    },
+    "interval_types": {
+      "defaults": {},
+      "known_keys": null
     },
     "optimizer_settings": {
       "defaults": {},
@@ -300,6 +302,7 @@
     "fits",
     "gradient_descent_settings",
     "hessian_settings",
+    "interval_types",
     "meta",
     "n_eval",
     "n_samples",

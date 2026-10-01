@@ -181,10 +181,10 @@ def _equal_tailed_interval(
 
 
 # The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
-# name its ``interval_type`` takes. Each maps one coefficient's samples and a
-# level in percent to the ``(low, high)`` pieces of its region, as a list so
-# that a multimodal posterior can be given several; a new interval type is one
-# more entry.
+# name its ``interval_type`` argument (and the ``interval_types`` runcard key)
+# takes. Each maps one coefficient's samples and a level in percent to the
+# ``(low, high)`` pieces of its region, as a list so that a multimodal
+# posterior can be given several; a new interval type is one more entry.
 _INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], List[Tuple[float, float]]]] = {
     "eti": _equal_tailed_interval,
 }
@@ -607,11 +607,6 @@ class Fit:
         to ``fit_name``. How the fit is presented in a given plot, not a
         property of the fit itself, so it comes from the runcard that loads the
         fit rather than from the fit directory.
-    interval_type : str
-        Which credible interval :attr:`bounds` and :meth:`confidence_bounds`
-        quote, from the ``interval_type`` key of the fit's ``fits`` entry: one
-        of the names :meth:`confidence_bounds` accepts. Presentation, like
-        :attr:`label`, so it too comes from the loading runcard.
     fit_runcard : dict
         The runcard the fit was run with, read from ``input/runcard.yaml``.
         :meth:`from_folder` requires it: a fit whose configuration is unknown
@@ -622,7 +617,6 @@ class Fit:
     fit_results: Union[FitResult, FitResultGroup]
     fit_name: str
     label: Optional[str] = None
-    interval_type: str = "eti"
     fit_runcard: Dict = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -713,14 +707,14 @@ class Fit:
         """The 68% and 95% confidence bounds of every free coefficient.
 
         The two levels every report quotes, keyed by level, each as
-        :meth:`confidence_bounds` computes it, so of the fit's
-        :attr:`interval_type`. Any other level goes through that method
+        :meth:`confidence_bounds` computes it with its default equal-tailed
+        interval. Any other level or interval type goes through that method
         directly.
         """
         return {level: self.confidence_bounds(level) for level in (68.0, 95.0)}
 
     def confidence_bounds(
-        self, confidence_level: float, interval_type: Optional[str] = None
+        self, confidence_level: float, interval_type: str = "eti"
     ) -> Dict[str, Dict[str, Any]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
@@ -730,9 +724,8 @@ class Fit:
             In percent: 95, not 0.95.
         interval_type : str, optional
             How the interval is chosen among those holding
-            ``confidence_level`` percent of the posterior. The fit's
-            :attr:`interval_type` by default. ``"eti"`` (equal-tailed) is the
-            only one so far.
+            ``confidence_level`` percent of the posterior. ``"eti"``
+            (equal-tailed), the default, is the only one so far.
 
         Returns
         -------
@@ -747,8 +740,6 @@ class Fit:
                 f"confidence_level is a percentage between 1 and 100, got "
                 f"{confidence_level}. Write 95, not 0.95."
             )
-        if interval_type is None:
-            interval_type = self.interval_type
         if interval_type not in _INTERVAL_TYPES:
             raise ValueError(
                 f"Unknown interval_type {interval_type!r}; expected one of "
@@ -779,17 +770,15 @@ class Fit:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_folder(
-        cls, path, label: Optional[str] = None, interval_type: str = "eti"
-    ) -> "Fit":
+    def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
         """Load a Fit from a fit directory.
 
         The posterior samples are read from ``fit_results.json``
         and how the fit was run from ``input/runcard.yaml``.
 
-        ``label`` and ``interval_type`` are how the caller chooses to present
-        the fit; the directory knows nothing about them, so they are the
-        metadata passed in rather than read back.
+        ``label`` is how the caller chooses to present the fit; the directory
+        knows nothing about it, so it is the metadata passed in rather than
+        read back.
 
         Raises
         ------
@@ -840,6 +829,5 @@ class Fit:
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,
-            interval_type=interval_type,
             fit_runcard=fit_runcard,
         )

@@ -178,22 +178,47 @@ def test_coefficient_bounds_table_takes_a_single_level() -> None:
     assert table.columns.tolist() == ["mean", "90% CL (eti)"]
 
 
-def test_coefficient_bounds_table_heads_each_level_with_the_fits_interval_type(
+def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The header names the interval the fit quotes, and the cells are that
-    interval's bounds."""
+    """The header names the interval asked for, and the cells are that
+    interval's bounds. ``interval_types: fake`` in a runcard."""
     monkeypatch.setitem(
         fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
     )
-    fit = Fit(
-        fit_results=_result({"OtG": _RAMP}), fit_name="joint", interval_type="fake"
-    )
 
-    table = coefficient_bounds_table(fit, bounds_levels=90)
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=90, interval_types="fake"
+    )
 
     assert table.columns.tolist() == ["mean", "90% CL (fake)"]
     assert table.iloc[0].tolist() == ["500.000", "[-1.000, 1.000]"]
+
+
+def test_coefficient_bounds_table_compares_interval_types_side_by_side(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Several interval types are columns of the same table, grouped by level
+    so that the types of one level sit next to each other."""
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
+
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}),
+        bounds_levels=[90, 95],
+        interval_types=["eti", "fake"],
+    )
+
+    assert table.columns.tolist() == [
+        "mean",
+        "90% CL (eti)",
+        "90% CL (fake)",
+        "95% CL (eti)",
+        "95% CL (fake)",
+    ]
+    assert table.iloc[0]["90% CL (eti)"] == "[50.000, 950.000]"
+    assert table.iloc[0]["90% CL (fake)"] == "[-1.000, 1.000]"
 
 
 def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
@@ -203,11 +228,10 @@ def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
     monkeypatch.setitem(
         fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-2.0, -1.0), (1.0, 2.0)]
     )
-    fit = Fit(
-        fit_results=_result({"OtG": _RAMP}), fit_name="joint", interval_type="fake"
-    )
 
-    table = coefficient_bounds_table(fit, bounds_levels=90, round_val=1)
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=90, round_val=1, interval_types="fake"
+    )
 
     assert table.iloc[0].tolist() == ["500.0", "[-2.0, -1.0] ∪ [1.0, 2.0]"]
 
@@ -215,6 +239,11 @@ def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
 def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
     with pytest.raises(ValueError, match="bounds_levels is empty"):
         coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=[])
+
+
+def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
+    with pytest.raises(ValueError, match="interval_types is empty"):
+        coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), interval_types=[])
 
 
 # ---------------------------------------------------------------------------

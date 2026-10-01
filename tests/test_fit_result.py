@@ -772,22 +772,21 @@ def test_confidence_bounds_default_to_the_equal_tailed_interval(joint_fit):
     ) == joint_fit.confidence_bounds(68)
 
 
-def test_confidence_bounds_default_to_the_fits_interval_type(monkeypatch):
-    """The fit's interval_type is what bounds quote unless one is asked for."""
+def test_confidence_bounds_take_the_interval_type_asked_for(monkeypatch):
+    """The per-call interval_type picks the construction; the default stays
+    equal-tailed, so :attr:`bounds` always quotes ETI."""
     monkeypatch.setitem(
         fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
     )
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
-    fit.interval_type = "fake"
 
-    assert _single(fit.confidence_bounds(68)["OtG"]) == pytest.approx(
-        (-1.0, 500.0, 1.0)
+    assert _single(fit.confidence_bounds(68, interval_type="fake")["OtG"]) == (
+        pytest.approx((-1.0, 500.0, 1.0))
     )
-    assert _single(fit.bounds[95.0]["OtG"]) == pytest.approx((-1.0, 500.0, 1.0))
-    # asking for one explicitly still overrides the fit's
-    assert _single(
-        fit.confidence_bounds(68, interval_type="eti")["OtG"]
-    ) == pytest.approx((160.0, 500.0, 840.0))
+    assert _single(fit.confidence_bounds(68)["OtG"]) == pytest.approx(
+        (160.0, 500.0, 840.0)
+    )
+    assert _single(fit.bounds[68.0]["OtG"]) == pytest.approx((160.0, 500.0, 840.0))
 
 
 def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):

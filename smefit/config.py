@@ -843,7 +843,6 @@ class smefitConfig(Config):
             - name: my_fit                     # mandatory, the fit directory name
               path: smefit_results/fits        # optional, where to look for it
               label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
-              interval_type: eti                 # optional, eti by default
 
         Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
         downloaded from the server if it is not there yet. ``path`` is resolved
@@ -854,14 +853,15 @@ class smefitConfig(Config):
         is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
         LaTeX (quote it in YAML to keep the backslashes).
 
-        ``interval_type`` is the credible interval the fit's bounds quote, in
-        tables and plots alike: ``eti`` (equal-tailed) is the only one so far.
+        Which credible interval the fit's bounds quote is not part of this
+        entry: it is the report's choice, made by the top-level
+        ``interval_types`` key.
         """
         entry = {"name": fit} if isinstance(fit, str) else dict(fit)
         if "name" not in entry:
             raise ConfigError(f"Each fits entry requires a 'name': {entry}")
 
-        known_keys = {"name", "path", "label", "interval_type"}
+        known_keys = {"name", "path", "label"}
         for k in set(entry.keys()) - known_keys:
             log.warning("Unknown key '%s' in fits entry.", k)
 
@@ -872,26 +872,42 @@ class smefitConfig(Config):
                 f"got {label!r}."
             )
 
-        interval_type = entry.get("interval_type", "eti")
-        if interval_type not in _INTERVAL_TYPES:
-            raise ConfigError(
-                f"Unknown interval_type {interval_type!r} for fit "
-                f"'{entry['name']}'; expected one of {sorted(_INTERVAL_TYPES)}."
-            )
-
         try:
             path = resolve_fit_dir(entry["name"], entry.get("path"))
         except (FileNotFoundError, ValueError) as e:
             raise ConfigError(str(e)) from e
 
         try:
-            # A label and an interval type are how the runcard chooses to
-            # present the fit, not something the fit directory knows about.
-            return Fit.from_folder(path, label=label, interval_type=interval_type)
+            # A label is how the runcard chooses to present the fit, not
+            # something the fit directory knows about.
+            return Fit.from_folder(path, label=label)
         except (KeyError, OSError, ValueError) as e:
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
             ) from e
+
+    def parse_interval_types(self, interval_types: str | list) -> list:
+        """The credible intervals a report's bounds quote.
+
+        A single name or a list of them, from the registry
+        :meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
+        only one so far. Every bounds routine taking the key quotes one set of
+        bounds per type — a list puts the types side by side in the same
+        table, so different interval constructions can be compared in a single
+        report. Presentation, not a property of any fit, so it is a top-level
+        key read by every routine alike; when it is absent the routines
+        default to ``eti``.
+        """
+        types = [interval_types] if isinstance(interval_types, str) else interval_types
+        if not types:
+            raise ConfigError("interval_types is empty: give at least one type.")
+        for interval_type in types:
+            if interval_type not in _INTERVAL_TYPES:
+                raise ConfigError(
+                    f"Unknown interval_type {interval_type!r}; expected one "
+                    f"of {sorted(_INTERVAL_TYPES)}."
+                )
+        return list(types)
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

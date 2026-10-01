@@ -196,7 +196,6 @@ Each entry is the name of a fit, or a mapping
     - name: my_fit                     # mandatory, the fit directory name
       path: smefit_results/fits        # optional, where to look for it
       label: '$\mathrm{My\ fit}$'      # optional, the legend label
-      interval_type: eti                 # optional, eti by default
 
 Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
 downloaded from the server if it is not there yet. ``path`` is resolved
@@ -207,12 +206,12 @@ key of the per-fit plot settings, and the legend label when no ``label``
 is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
 LaTeX (quote it in YAML to keep the backslashes).
 
-``interval_type`` is the credible interval the fit's bounds quote, in
-tables and plots alike: ``eti`` (equal-tailed) is the only one so far.
+Which credible interval the fit's bounds quote is not part of this
+entry: it is the report's choice, made by the top-level
+``interval_types`` key.
 
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
-- `interval_type` — default: `'eti'`
 - `label` — default: `(no default)`
 - `name`
 - `path` — default: `(no default)`
@@ -252,6 +251,23 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `n_samples` — default: `10000`
 - `seed` — default: `42`
+
+### `interval_types`
+
+The credible intervals a report's bounds quote.
+
+A single name or a list of them, from the registry
+:meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
+only one so far. Every bounds routine taking the key quotes one set of
+bounds per type — a list puts the types side by side in the same
+table, so different interval constructions can be compared in a single
+report. Presentation, not a property of any fit, so it is a top-level
+key read by every routine alike; when it is absent the routines
+default to ``eti``.
+
+Validation errors raised while parsing:
+
+- interval_types is empty: give at least one type.
 
 ### `optimizer_settings`
 

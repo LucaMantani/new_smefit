@@ -4,6 +4,13 @@ smefit.op_to_latex.py
 LaTeX labels for the Wilson coefficients, used by the report tables and figures.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 coeff_info_latex = {
     # --------------------------
     # 4H sector
@@ -173,3 +180,20 @@ coeff_info_latex = {
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
 }
+
+
+def latex_label(name: str, latex_labels: Mapping[str, str] | None = None) -> str:
+    """How to write ``name`` (operator, group name...) in latex a report table or figure.
+
+    The runcard's optional ``latex_labels`` entry overrides the default labels in ``coeff_info_latex``.
+
+    Parameters
+    ----------
+    name : str
+        The plain name: a coefficient, a data group, ...
+    latex_labels : Mapping[str, str], optional
+        The parsed ``latex_labels`` runcard key.
+    """
+    if latex_labels and name in latex_labels:
+        return latex_labels[name]
+    return coeff_info_latex.get(name, name)

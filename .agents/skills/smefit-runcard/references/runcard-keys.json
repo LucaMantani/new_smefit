@@ -195,6 +195,10 @@
         "seed"
       ]
     },
+    "latex_labels": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -294,6 +298,7 @@
     "fits",
     "gradient_descent_settings",
     "hessian_settings",
+    "latex_labels",
     "meta",
     "n_eval",
     "n_samples",

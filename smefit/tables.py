@@ -8,18 +8,20 @@ import numpy as np
 import pandas as pd
 from reportengine.table import table
 
-from smefit.op_to_latex import coeff_info_latex
+from smefit.op_to_latex import latex_label
 from smefit.plot_utils import select_params
 
 
 @table
-def chi2_scan_table(individual_chi2_scans):
+def chi2_scan_table(individual_chi2_scans, latex_labels=None):
     """Per-coefficient 1D chi2 scan results as a table.
 
     Parameters
     ----------
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -30,7 +32,7 @@ def chi2_scan_table(individual_chi2_scans):
     """
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     frames = {
-        coeff_info_latex.get(name, name): pd.DataFrame(
+        latex_label(name, latex_labels): pd.DataFrame(
             {"value": data["points"], "chi2": data["chi2"]}
         )
         for name, data in results.items()
@@ -39,8 +41,15 @@ def chi2_scan_table(individual_chi2_scans):
 
 
 @table
-def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points):
+def mass_scan_table(
+    coefficients, individual_mass_scales, individual_mass_scan_points, latex_labels=None
+):
     """Mass scan results as a table.
+
+    Parameters
+    ----------
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -48,7 +57,7 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
         Columns ``<mass_name>`` (mass scale, the scan points) and ``chi2``.
     """
     mass_name = coefficients.free_names[0]
-    latex = coeff_info_latex.get(mass_name, mass_name)
+    latex = latex_label(mass_name, latex_labels)
     return pd.DataFrame(
         {
             latex: [float(s) for s in individual_mass_scales],
@@ -59,7 +68,7 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
 
 @table
 def fisher_diagonals_normalised(
-    aggregate_fisher_information_matrices, params_to_plot=None
+    aggregate_fisher_information_matrices, params_to_plot=None, latex_labels=None
 ):
     """Extract row-normalised diagonals of per-source Fisher matrices.
 
@@ -70,6 +79,9 @@ def fisher_diagonals_normalised(
         Restrict the rows to these coefficients, in this order. All of them by
         default. Each row is normalised on its own, so a row says the same
         thing whichever others are kept alongside it.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the labels, for the coefficients and the sources
+        (data groups) alike.
 
     Returns
     -------
@@ -83,17 +95,20 @@ def fisher_diagonals_normalised(
         index=coeff_names,
     )
     raw = raw.loc[select_params(coeff_names, params_to_plot, context="Fisher")]
-    raw.index = [coeff_info_latex.get(name, name) for name in raw.index]
+    raw.index = [latex_label(name, latex_labels) for name in raw.index]
+    raw.columns = [latex_label(name, latex_labels) for name in raw.columns]
     return raw.div(raw.sum(axis=1), axis=0)
 
 
 @table
-def pca_components(pca):
+def pca_components(pca, latex_labels=None):
     """Weight of each coefficient in each principal direction.
 
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -101,7 +116,7 @@ def pca_components(pca):
         Index = coeff_names, columns = PC1..PCn.
     """
     frame = pca.as_frame()
-    frame.index = [coeff_info_latex.get(name, name) for name in frame.index]
+    frame.index = [latex_label(name, latex_labels) for name in frame.index]
     return frame
 
 

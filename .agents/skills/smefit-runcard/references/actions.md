@@ -62,20 +62,20 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
-- `chi2_scan_table(individual_chi2_scans)`
+- `chi2_scan_table(individual_chi2_scans, latex_labels=None)`
   - Per-coefficient 1D chi2 scan results as a table.
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None, latex_labels=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
+- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_labels=None)`
   - Mass scan results as a table.
-- `pca_components(pca)`
+- `pca_components(pca, latex_labels=None)`
   - Weight of each coefficient in each principal direction.
 - `pca_spectrum(pca)`
   - One row per principal direction, strongest first.
 
 ### `smefit.figures`
 
-- `plot_chi2_scan(individual_chi2_scans)`
+- `plot_chi2_scan(individual_chi2_scans, latex_labels=None)`
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
@@ -83,7 +83,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca)`
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
-- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
+- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True, latex_labels=None)`
   - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`

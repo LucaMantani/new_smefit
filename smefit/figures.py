@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from reportengine.figure import figure, figuregen
 
-from smefit.op_to_latex import coeff_info_latex
+from smefit.op_to_latex import latex_label
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
@@ -36,6 +36,8 @@ def _plot_heatmap(
     matrix : array-like, shape (n_coeffs, n_sources)
     coeff_names : list of str
     source_names : list of str
+        Row and column labels, drawn as given: the callers have already
+        turned names into labels.
     vmin, vmax : float, optional
         Colour scale limits passed to imshow.
     cmap : str, optional
@@ -73,9 +75,8 @@ def _plot_heatmap(
     if title is not None:
         ax.set_xlabel(title, fontsize=18, labelpad=12)
 
-    coeff_labels = [coeff_info_latex.get(name, name) for name in coeff_names]
     ax.set_yticks(range(n_coeffs))
-    ax.set_yticklabels(coeff_labels, fontsize=14)
+    ax.set_yticklabels(coeff_names, fontsize=14)
 
     masked = np.ma.masked_invalid(matrix)
     if mask_zeros:
@@ -115,7 +116,7 @@ def _plot_heatmap(
 
 
 @figuregen
-def plot_chi2_scan(individual_chi2_scans):
+def plot_chi2_scan(individual_chi2_scans, latex_labels=None):
     """Plot the 1D chi2 scan for each free coefficient.
 
     Yields one ``(figure, coeff_name)`` per scanned coefficient, with the
@@ -125,12 +126,14 @@ def plot_chi2_scan(individual_chi2_scans):
     ----------
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
     """
     set_plot_style()
 
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     for name, data in results.items():
-        label = coeff_info_latex.get(name, name)
+        label = latex_label(name, latex_labels)
         fig, ax = plt.subplots(figsize=(6, 5), layout="constrained")
         ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
         ax.set_xlabel(label)
@@ -300,7 +303,12 @@ def plot_pca_spectrum(pca):
 
 @figure
 def plot_posterior_correlations(
-    fit, params_to_plot=None, cmap="RdBu_r", value_fmt="{:.2f}", colorbar=True
+    fit,
+    params_to_plot=None,
+    cmap="RdBu_r",
+    value_fmt="{:.2f}",
+    colorbar=True,
+    latex_labels=None,
 ):
     """Plot the posterior correlations of one fit's free coefficients.
 
@@ -323,6 +331,8 @@ def plot_posterior_correlations(
         numbers on a matrix too large to label.
     colorbar : bool, optional
         Whether to draw the colour scale alongside.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Raises
     ------
@@ -340,7 +350,7 @@ def plot_posterior_correlations(
     corr = fit.fit_results.correlations
     selected = select_params(corr.index, params_to_plot, context=fit.fit_name)
     corr = corr.loc[selected, selected]
-    labels = [coeff_info_latex.get(name, name) for name in selected]
+    labels = [latex_label(name, latex_labels) for name in selected]
     return _plot_heatmap(
         corr.values,
         labels,

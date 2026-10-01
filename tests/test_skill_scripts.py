@@ -173,14 +173,16 @@ def _previous_fit_dir(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "extra_key, extra_value",
+    "extra_key, extra_value, action",
     [
-        ("whitening", {"sigma_prior": 5.0}),
-        ("bayesian_update", None),  # replaced by a real fit dir below
+        ("whitening", {"sigma_prior": 5.0}, "run_ultranest_fit"),
+        # replaced by a real fit dir below; bayesian_update needs blackjax,
+        # see test_bayesian_update_with_ultranest_errors
+        ("bayesian_update", None, "run_blackjax_fit"),
     ],
 )
 def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_prior(
-    tmp_path, extra_key, extra_value
+    tmp_path, extra_key, extra_value, action
 ):
     """whitening/bayesian_update make reportengine build the `prior`
     node itself, without needing a per-coefficient spec."""
@@ -190,10 +192,40 @@ def test_free_coefficient_without_prior_is_valid_for_sampler_with_synthesized_pr
     code, out = validate(
         tmp_path,
         coefficients={"OpA": {"free": True}},
-        actions_=["run_ultranest_fit"],
+        actions_=[action],
         **{extra_key: extra_value},
     )
     assert code == 0, out
+
+
+@pytest.mark.parametrize("algorithm", ["nested_sampling", "nuts"])
+def test_bayesian_update_is_valid_for_either_blackjax_algorithm(tmp_path, algorithm):
+    """Both BlackJAX samplers reparametrise the exact-posterior prior, so
+    neither combination is an error."""
+    fit_dir = _previous_fit_dir(tmp_path)
+    code, out = validate(
+        tmp_path,
+        actions_=["run_blackjax_fit"],
+        blackjax_settings={"algorithm": algorithm},
+        bayesian_update={"name": fit_dir.name, "path": str(fit_dir.parent)},
+    )
+    assert code == 0, out
+
+
+@pytest.mark.parametrize(
+    "action", ["run_ultranest_fit", "run_individual_ultranest_fits"]
+)
+def test_bayesian_update_with_ultranest_errors(tmp_path, action):
+    """UltraNest drives the prior through an inverse CDF, which a posterior
+    known only through samples cannot supply."""
+    fit_dir = _previous_fit_dir(tmp_path)
+    code, out = validate(
+        tmp_path,
+        actions_=[action],
+        bayesian_update={"name": fit_dir.name, "path": str(fit_dir.parent)},
+    )
+    assert code == 1, out
+    assert "incompatible with 'bayesian_update'" in out
 
 
 def test_missing_bayesian_update_errors(tmp_path):

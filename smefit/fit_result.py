@@ -703,7 +703,7 @@ class Fit:
     # ------------------------------------------------------------------
 
     @property
-    def bounds(self) -> Dict[float, Dict[str, Dict[str, Any]]]:
+    def bounds(self) -> Dict[float, Dict[str, List[Tuple[float, float]]]]:
         """The 68% and 95% confidence bounds of every free coefficient.
 
         The two levels every report quotes, keyed by level, each as
@@ -715,7 +715,7 @@ class Fit:
 
     def confidence_bounds(
         self, confidence_level: float, interval_type: str = "eti"
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> Dict[str, List[Tuple[float, float]]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
         Parameters
@@ -729,11 +729,11 @@ class Fit:
 
         Returns
         -------
-        dict of str to dict
-            Per free coefficient, in the fit's order, ``{"mean": float,
-            "intervals": [(low, high), ...]}``: the posterior mean and the
-            pieces of the credible region, in increasing order. Multimodal fits
-            can have several intervals for a single coefficient. Coefficients with no samples are left out.
+        dict of str to list of (float, float)
+            Per free coefficient, in the fit's order, the pieces
+            ``[(low, high), ...]`` of the credible region, in increasing order.
+            Multimodal fits can have several intervals for a single
+            coefficient. Coefficients with no samples are left out.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
@@ -759,10 +759,7 @@ class Fit:
             if name not in samples:
                 continue
             values = np.asarray(samples[name], dtype=float)
-            bounds[name] = {
-                "mean": float(np.nanmean(values)),
-                "intervals": interval(values, confidence_level),
-            }
+            bounds[name] = interval(values, confidence_level)
         return bounds
 
     # ------------------------------------------------------------------

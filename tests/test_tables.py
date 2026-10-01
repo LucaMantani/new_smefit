@@ -121,23 +121,19 @@ def _individual_fit(samples: dict[str, list[float]]) -> Fit:
     )
 
 
-def test_coefficient_bounds_table_quotes_the_mean_and_both_intervals() -> None:
+def test_coefficient_bounds_table_quotes_both_intervals() -> None:
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}))
 
-    assert table.columns.tolist() == ["mean", "68% CL (eti)", "95% CL (eti)"]
+    assert table.columns.tolist() == ["68% CL (eti)", "95% CL (eti)"]
     assert table.index.tolist() == [r"$c_{tG}$"]
-    assert table.iloc[0].tolist() == [
-        "500.000",
-        "[160.000, 840.000]",
-        "[25.000, 975.000]",
-    ]
+    assert table.iloc[0].tolist() == ["[160.000, 840.000]", "[25.000, 975.000]"]
 
 
 def test_coefficient_bounds_table_rounds_to_round_val_without_a_negative_zero() -> None:
     """-0.0004 at two decimals is written 0.00, not -0.00."""
     table = coefficient_bounds_table(_joint_fit({"OtG": [-0.0004] * 10}), round_val=2)
 
-    assert table.iloc[0].tolist() == ["0.00", "[0.00, 0.00]", "[0.00, 0.00]"]
+    assert table.iloc[0].tolist() == ["[0.00, 0.00]", "[0.00, 0.00]"]
 
 
 def test_coefficient_bounds_table_keeps_params_to_plot_in_its_order() -> None:
@@ -167,15 +163,15 @@ def test_coefficient_bounds_table_quotes_the_bounds_levels_asked_for() -> None:
         _joint_fit({"OtG": _RAMP}), bounds_levels=[90, 99.99994]
     )
 
-    assert table.columns.tolist() == ["mean", "90% CL (eti)", "99.99994% CL (eti)"]
-    assert table.iloc[0].tolist()[:2] == ["500.000", "[50.000, 950.000]"]
+    assert table.columns.tolist() == ["90% CL (eti)", "99.99994% CL (eti)"]
+    assert table.iloc[0].tolist()[0] == "[50.000, 950.000]"
 
 
 def test_coefficient_bounds_table_takes_a_single_level() -> None:
     """``bounds_levels: 90`` in a runcard, as for ``params_to_plot: OtG``."""
     table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=90)
 
-    assert table.columns.tolist() == ["mean", "90% CL (eti)"]
+    assert table.columns.tolist() == ["90% CL (eti)"]
 
 
 def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
@@ -191,8 +187,8 @@ def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
         _joint_fit({"OtG": _RAMP}), bounds_levels=90, interval_types="fake"
     )
 
-    assert table.columns.tolist() == ["mean", "90% CL (fake)"]
-    assert table.iloc[0].tolist() == ["500.000", "[-1.000, 1.000]"]
+    assert table.columns.tolist() == ["90% CL (fake)"]
+    assert table.iloc[0].tolist() == ["[-1.000, 1.000]"]
 
 
 def test_coefficient_bounds_table_compares_interval_types_side_by_side(
@@ -211,7 +207,6 @@ def test_coefficient_bounds_table_compares_interval_types_side_by_side(
     )
 
     assert table.columns.tolist() == [
-        "mean",
         "90% CL (eti)",
         "90% CL (fake)",
         "95% CL (eti)",
@@ -233,7 +228,7 @@ def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
         _joint_fit({"OtG": _RAMP}), bounds_levels=90, round_val=1, interval_types="fake"
     )
 
-    assert table.iloc[0].tolist() == ["500.0", "[-2.0, -1.0] ∪ [1.0, 2.0]"]
+    assert table.iloc[0].tolist() == ["[-2.0, -1.0] ∪ [1.0, 2.0]"]
 
 
 def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:

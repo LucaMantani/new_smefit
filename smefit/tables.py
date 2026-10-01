@@ -137,18 +137,18 @@ def _coefficient_bounds_table(
         for interval_type in interval_types
     }
 
-    # the mean is the same at every level and type, so any entry's will do
+    # every entry covers the same coefficients, so any one will do
     first = next(iter(bounds.values()))
     names = select_params(first, params_to_plot, context=fit.fit_name)
 
     rows: dict[str, dict[str, str]] = {}
     for name in names:
-        cells = {"mean": _number(first[name]["mean"], round_val)}
+        cells = {}
         for (level, interval_type), per_coeff in bounds.items():
             # .10g: plain g would round 99.99994 (5 sigma) to 99.9999
             cells[f"{level:.10g}% CL ({interval_type})"] = " ∪ ".join(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
-                for low, high in per_coeff[name]["intervals"]
+                for low, high in per_coeff[name]
             )
         rows[coeff_info_latex.get(name, name)] = cells
     return pd.DataFrame.from_dict(rows, orient="index")
@@ -158,7 +158,7 @@ def _coefficient_bounds_table(
 def coefficient_bounds_table(
     fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None
 ) -> pd.DataFrame:
-    """Tabulate the posterior mean and the confidence bounds of one fit.
+    """Tabulate the confidence bounds of one fit.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
     one table per fit. The bounds are those of :meth:`Fit.confidence_bounds`,
@@ -186,7 +186,7 @@ def coefficient_bounds_table(
     Returns
     -------
     pd.DataFrame
-        Index = LaTeX coefficient labels, columns = ``mean`` then one
+        Index = LaTeX coefficient labels, columns = one
         ``<level>% CL (<interval_type>)`` per level and type, grouped by
         level, each cell the pieces of the region as ``[low, high]``, joined
         by ``∪`` when there are several. Coefficients without samples are

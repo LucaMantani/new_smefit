@@ -240,8 +240,8 @@ actions_:
 
 ### Coefficient bounds table
 
-`coefficient_bounds_table` tabulates, per fit, the posterior mean and the
-confidence bounds of every free coefficient. Template:
+`coefficient_bounds_table` tabulates, per fit, the confidence bounds of every
+free coefficient. Template:
 `coefficient_bounds_table.yaml`.
 
 ```yaml
@@ -253,7 +253,7 @@ template_text: |
   {@endwith@}
 ```
 
-- One table per fit, columns `mean` then one `<level>% CL` interval per level;
+- One table per fit, one `<level>% CL` interval column per level;
   written to `tables/<fit_name>_coefficient_bounds_table.csv` as well as into
   the report.
 - Bounds are **equal-tailed** percentiles of the posterior samples: 68% is the

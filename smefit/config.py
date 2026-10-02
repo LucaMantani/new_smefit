@@ -104,6 +104,33 @@ class smefitConfig(Config):
             groups.setdefault(group, []).append(name)
         return groups if groups else None
 
+    def parse_latex_labels(self, latex_labels):
+        r"""Parse the optional map from a displayed name to its LaTeX label.
+
+        .. code-block:: yaml
+
+            latex_labels:
+              OtG: '$c_{tG}^{\rm new}$'
+              LHC-top: '$\mathrm{LHC}\ t\bar{t}$'
+
+        Single-quote the labels: YAML then keeps backslashes as written.
+
+        An entry overrides the built-in label
+        (:data:`smefit.latex_labels.default_latex_labels`).
+        """
+        if not isinstance(latex_labels, Mapping):
+            raise ConfigError(
+                "latex_labels must be a mapping of name to LaTeX label, "
+                f"got {type(latex_labels).__name__}"
+            )
+        for name, label in latex_labels.items():
+            if not isinstance(label, str):
+                raise ConfigError(
+                    f"LaTeX label for '{name}' must be a string, "
+                    f"got {type(label).__name__}"
+                )
+        return dict(latex_labels)
+
     def parse_rge(self, rge):
         """Parse and validate RGE settings."""
         known_keys = {

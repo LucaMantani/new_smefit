@@ -11,7 +11,7 @@ import pytest
 from smefit import fit_result
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.fit_result import Fit, FitResult, FitResultGroup
-from smefit.op_to_latex import coeff_info_latex
+from smefit.latex_labels import default_latex_labels
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
@@ -43,7 +43,7 @@ def test_fisher_diagonals_normalised_values_and_rows_sum_to_one():
 
 
 def test_fisher_diagonals_normalised_uses_latex_label_when_known():
-    """Coefficient names present in coeff_info_latex are relabelled in the index."""
+    """Coefficient names present in default_latex_labels are relabelled in the index."""
     fim = {
         "DS_A": _fim_entry(["OQQ1"], [3.0]),
         "DS_B": _fim_entry(["OQQ1"], [1.0]),
@@ -55,8 +55,25 @@ def test_fisher_diagonals_normalised_uses_latex_label_when_known():
     assert result.iloc[0].tolist() == [0.75, 0.25]
 
 
+def test_fisher_diagonals_normalised_applies_latex_labels_to_both_axes():
+    """Runcard labels override a coefficient's built-in label and name a
+    source (data group) the defaults do not know."""
+    fim = {
+        "MyGroup": _fim_entry(["OQQ1"], [3.0]),
+        "DS_B": _fim_entry(["OQQ1"], [1.0]),
+    }
+
+    result = fisher_diagonals_normalised(
+        fim, latex_labels={"OQQ1": "$c_1$", "MyGroup": r"$t\bar{t}$"}
+    )
+
+    assert result.index.tolist() == ["$c_1$"]
+    assert result.columns.tolist() == [r"$t\bar{t}$", "DS_B"]
+    assert result.iloc[0].tolist() == [0.75, 0.25]
+
+
 def test_fisher_diagonals_normalised_unknown_name_falls_back_to_raw():
-    """Coefficient names absent from coeff_info_latex keep their raw name."""
+    """Coefficient names absent from default_latex_labels keep their raw name."""
     fim = {"DS_A": _fim_entry(["NotARealOp"], [1.0])}
 
     result = fisher_diagonals_normalised(fim)
@@ -267,10 +284,16 @@ def test_pca_components_uses_latex_label_when_known():
     result = pca_components(_pca())
 
     assert result.index.tolist() == [
-        coeff_info_latex.get("OpA", "OpA"),
-        coeff_info_latex.get("OpZZ", "OpZZ"),
+        default_latex_labels.get("OpA", "OpA"),
+        default_latex_labels.get("OpZZ", "OpZZ"),
         "OpC",
     ]
+
+
+def test_pca_components_applies_latex_labels():
+    result = pca_components(_pca(), latex_labels={"OpC": "$c_C$"})
+
+    assert result.index.tolist()[2] == "$c_C$"
 
 
 def test_pca_components_keeps_every_coefficient():
@@ -333,6 +356,14 @@ def test_chi2_scan_table_uses_latex_label_when_known():
     ]
 
 
+def test_chi2_scan_table_applies_latex_labels():
+    scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 2.0]}}]
+
+    result = chi2_scan_table(scans, latex_labels={"OQQ1": "$c_1$"})
+
+    assert result.columns.get_level_values(0).unique().tolist() == ["$c_1$"]
+
+
 def test_chi2_scan_table_merges_multiple_namespace_entries():
     """individual_chi2_scans is a list of single-key dicts, one per coefficient."""
     scans = [
@@ -383,6 +414,14 @@ def test_mass_scan_table_uses_latex_label_when_known():
     result = mass_scan_table(coefficients, [0.5], [1.5])
 
     assert result.columns.tolist() == [r"$c_{QQ}^{\scriptscriptstyle 1}$", "chi2"]
+
+
+def test_mass_scan_table_applies_latex_labels():
+    coefficients = _single_free_coeff_group("OpM")
+
+    result = mass_scan_table(coefficients, [0.5], [1.5], latex_labels={"OpM": "$M$"})
+
+    assert result.columns.tolist() == ["$M$", "chi2"]
 
 
 def test_mass_scan_table_uses_first_free_coefficient_name():

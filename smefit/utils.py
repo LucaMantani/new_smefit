@@ -7,13 +7,16 @@ Utility functions for the smefit framework.
 import csv
 import logging
 import time
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 from reportengine.configparser import ConfigError
 
+from smefit.core import CoefficientGroup
 from smefit.fit_result import Fit
-from smefit.priors import ExactPosteriorPrior, _WhitenedToPhysicalPrior
+from smefit.priors import ExactPosteriorPrior, WhitenedToPhysicalPrior
 
 log = logging.getLogger(__name__)
 
@@ -158,8 +161,11 @@ def time_chi2_vec(
 
 
 def build_exact_posterior_prior(
-    bayesian_update, coefficients, datasets, external_chi2=None
-):
+    bayesian_update: Mapping[str, Any],
+    coefficients: CoefficientGroup,
+    datasets: Sequence[Mapping[str, Any]] | None,
+    external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+) -> ExactPosteriorPrior:
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 
     ``bayesian_update`` is the mapping returned by
@@ -235,7 +241,7 @@ def build_exact_posterior_prior(
                 f"Previous fit at {fit_path} used whitening but "
                 "no whitening_transformation was saved."
             )
-        prior_1 = _WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
+        prior_1 = WhitenedToPhysicalPrior(prior_1, prev.whitening_transformation)
 
     return ExactPosteriorPrior(
         base_prior=prior_1,

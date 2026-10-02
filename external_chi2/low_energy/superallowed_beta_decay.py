@@ -76,7 +76,9 @@ _BD_PARAM_DEFAULTS: dict[str, float] = {
 
 
 @jax.jit
-def _chi2_smeft(DRV, eta1, eta2, eta3, Vud, L, eta2_prefactor=3.3e-4, eta3_prefactor=8.0e-5):
+def _chi2_smeft(
+    DRV, eta1, eta2, eta3, Vud, L, eta2_prefactor=3.3e-4, eta3_prefactor=8.0e-5
+):
     """Beta-decay chi2 for a given LEC shift L.
 
     L = 0 reproduces the SM expression exactly.
@@ -87,7 +89,9 @@ def _chi2_smeft(DRV, eta1, eta2, eta3, Vud, L, eta2_prefactor=3.3e-4, eta3_prefa
     Lf = -2.0 * jnp.sqrt(2.0) * _GF + L
     CV = -0.5 * Vud * Lf * jnp.sqrt(1.0 + DRV)
     Ft = _PREF / CV**2
-    Ftt = Ft + mean * (eta1 * _DELTA_R + eta2 * eta2_prefactor + eta3 * eta3_prefactor * Q)
+    Ftt = Ft + mean * (
+        eta1 * _DELTA_R + eta2 * eta2_prefactor + eta3 * eta3_prefactor * Q
+    )
     return jnp.sum((Ftt - mean) ** 2 / std**2)
 
 

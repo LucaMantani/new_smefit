@@ -4,12 +4,21 @@ smefit.tables.py
 This module contains functions for producing tables for reports.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 from reportengine.table import table
 
 from smefit.latex_labels import latex_label
 from smefit.plot_utils import select_params
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from smefit.fit_result import Fit
 
 
 @table
@@ -98,6 +107,124 @@ def fisher_diagonals_normalised(
     raw.index = [latex_label(name, latex_labels) for name in raw.index]
     raw.columns = [latex_label(name, latex_labels) for name in raw.columns]
     return raw.div(raw.sum(axis=1), axis=0)
+
+
+def _number(value: float, round_val: int) -> str:
+    """One number as a table cell, to ``round_val`` decimals.
+
+    A string rather than a float: reportengine formats float columns to
+    scientific notation (``-1.000E-2``), which reads nothing like the
+    ``[low, high]`` intervals beside it.
+    """
+    text = f"{value:.{round_val}f}"
+    # "-0.000" reads as a defect rather than as a number below the precision
+    return text.lstrip("-") if float(text) == 0.0 else text
+
+
+def _coefficient_bounds_table(
+    fit: Fit,
+    params_to_plot: list[str] | str | None,
+    round_val: int,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+    latex_labels: Mapping[str, str] | None,
+) -> pd.DataFrame:
+    """The typed core of :func:`coefficient_bounds_table`."""
+    if bounds_levels is None:
+        bounds_levels = [68.0, 95.0]
+    elif isinstance(bounds_levels, (int, float)):
+        bounds_levels = [bounds_levels]
+    if not bounds_levels:
+        raise ValueError("bounds_levels is empty: give at least one level.")
+    if interval_types is None:
+        interval_types = ["eti"]
+    elif isinstance(interval_types, str):
+        interval_types = [interval_types]
+    if not interval_types:
+        raise ValueError("interval_types is empty: give at least one type.")
+
+    # level outer, type inner: the columns of one level sit side by side,
+    # which is the comparison a reader makes
+    bounds = {
+        (float(level), interval_type): fit.confidence_bounds(level, interval_type)
+        for level in bounds_levels
+        for interval_type in interval_types
+    }
+
+    # every entry covers the same coefficients, so any one will do
+    first = next(iter(bounds.values()))
+    names = select_params(first, params_to_plot, context=fit.fit_name)
+
+    rows: dict[str, dict[str, str]] = {}
+    for name in names:
+        cells = {}
+        for (level, interval_type), per_coeff in bounds.items():
+            # .10g: plain g would round 99.99994 (5 sigma) to 99.9999;
+            # the type is an acronym, so it is shown upper case: "(ETI)"
+            cells[f"{level:.10g}% CL ({interval_type.upper()})"] = " ∪ ".join(
+                f"[{_number(low, round_val)}, {_number(high, round_val)}]"
+                for low, high in per_coeff[name]
+            )
+        rows[latex_label(name, latex_labels)] = cells
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
+@table
+def coefficient_bounds_table(
+    fit,
+    params_to_plot=None,
+    round_val=3,
+    bounds_levels=None,
+    interval_types=None,
+    latex_labels=None,
+) -> pd.DataFrame:
+    """Tabulate the confidence bounds of one fit.
+
+    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
+    one table per fit. The bounds are those of :meth:`Fit.confidence_bounds`,
+    of the credible interval(s) ``interval_types`` names.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+    params_to_plot : list of str, optional
+        Restrict the rows to these coefficients, in this order. All of them by
+        default.
+    round_val : int, optional
+        Number of decimals every cell is written with.
+    bounds_levels : float or list of float, optional
+        The confidence levels quoted, in percent, one column each in this
+        order. 68 and 95 by default. A list has to be a top-level runcard
+        key: the template parser splits action arguments on commas.
+    interval_types : str or list of str, optional
+        The credible intervals quoted, among those
+        :meth:`Fit.confidence_bounds` accepts: one column per type under each
+        level. ``eti`` alone by default. A list
+        has to be a top-level runcard key.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = LaTeX coefficient labels, columns = one
+        ``<level>% CL (<INTERVAL_TYPE>)`` per level and type, grouped by
+        level, each cell the pieces of the region as ``[low, high]``, joined
+        by ``∪`` when there are several. Coefficients without samples are
+        left out.
+
+    Raises
+    ------
+    ValueError
+        If ``bounds_levels`` or ``interval_types`` is empty, or holds a value
+        :meth:`Fit.confidence_bounds` rejects.
+    """
+    # parameters unannotated: reportengine isinstance-checks every annotated
+    # one, which fails on the string annotations of `from __future__`
+    return _coefficient_bounds_table(
+        fit, params_to_plot, round_val, bounds_levels, interval_types, latex_labels
+    )
 
 
 @table

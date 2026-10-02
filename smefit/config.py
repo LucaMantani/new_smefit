@@ -7,7 +7,8 @@ Config module of smefit
 import logging
 import os
 import pathlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -16,10 +17,15 @@ from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
+from smefit.blackjax_samplers import (
+    BJ_ALGORITHM_SETTINGS,
+    BJ_ALGORITHMS,
+    BJ_SHARED_SETTINGS,
+)
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.external_chi2 import load_external_chi2
-from smefit.fit_result import Fit
+from smefit.fit_result import _INTERVAL_TYPES, Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (
@@ -27,7 +33,7 @@ from smefit.paths import (
     resolve_fit_dir,
     resolve_path,
 )
-from smefit.priors import Prior, _build_dist, _UniformDist
+from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
 from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
@@ -536,25 +542,46 @@ class smefitConfig(Config):
 
         return ultranest_settings
 
-    def parse_blackjax_settings(self, settings, output_path=None):
-        """For a BlackJAX fit, parses the blackjax_settings namespace from the runcard,
-        and ensures the choice of settings is valid.
+    def parse_blackjax_settings(
+        self,
+        settings: Mapping,
+        output_path: pathlib.Path | None = None,
+    ) -> dict[str, Any]:
+        """Parse optional settings for a BlackJAX fit.
 
-        ``output_path`` is optional for the same reason as in
-        ``parse_ultranest_settings``: without an output folder there is nothing
-        to derive ``log_dir`` from, so the user must set it explicitly.
+        ``algorithm`` picks the sampler: "nested_sampling" (the only one that
+        estimates the log evidence) or "nuts". Both support ``bayesian_update``.
+
+        - shared — ``seed``; ``log_dir``, which receives the algorithm's draws
+          (``nested_samples.csv`` / ``nuts_samples.csv``) and its diagnostics
+          (``nested_diagnostics.json`` / ``nuts_diagnostics.json``).
+        - nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
+          dimension); ``delete_fraction``; ``log_precision`` (stop once
+          ``logZ_live - logZ`` falls below it).
+        - nuts — ``num_chains`` (run in parallel with ``jax.vmap``, each from
+          its own over-dispersed prior draw, which is what makes R-hat
+          meaningful); ``num_warmup`` (adaptation draws, discarded);
+          ``num_samples`` PER CHAIN; ``target_acceptance_rate`` (raise towards
+          0.95 if divergences appear); ``max_num_doublings``.
+
+        ``output_path`` is optional because it is a reportengine environment
+        attribute that only the CLI supplies; without it there is no folder to
+        derive ``log_dir`` from, so the user must set it explicitly.
         """
-
         # Begin by checking that the user-supplied keys are known; warn the user otherwise.
         known_keys = {
-            "n_posterior_samples",
-            "n_live",
-            "repeats",
-            "delete_fraction",
-            "log_precision",
-            "posterior_resampling_seed",
-            "seed",
-            "log_dir",
+            "algorithm",  # common to every algorithm
+            "seed",  # common to every algorithm
+            "log_dir",  # common to every algorithm
+            "n_live",  # nested_sampling
+            "repeats",  # nested_sampling
+            "delete_fraction",  # nested_sampling
+            "log_precision",  # nested_sampling
+            "num_chains",  # nuts
+            "num_warmup",  # nuts
+            "num_samples",  # nuts
+            "target_acceptance_rate",  # nuts
+            "max_num_doublings",  # nuts
         }
 
         kdiff = settings.keys() - known_keys
@@ -563,25 +590,51 @@ class smefitConfig(Config):
                 ConfigError(f"Key '{k}' in blackjax_settings not known.", k, known_keys)
             )
 
+        algorithm = settings.get("algorithm", "nested_sampling")
+        if algorithm not in BJ_ALGORITHMS:
+            raise ConfigError(
+                "blackjax_settings.algorithm is not a known BlackJAX algorithm.",
+                algorithm,
+                sorted(BJ_ALGORITHMS),
+                display_alternatives="all",
+            )
+
+        # Keys that are known, but owned by the algorithm the user did not pick.
+        relevant = BJ_SHARED_SETTINGS | BJ_ALGORITHM_SETTINGS[algorithm]
+        for k in sorted((settings.keys() & known_keys) - relevant):
+            log.warning(
+                "blackjax_settings.%s is not used by algorithm '%s' and will be ignored.",
+                k,
+                algorithm,
+            )
+
         # Now construct the blackjax_settings dictionary
         blackjax_settings = {}
 
         # Extract settings and set default values
-        blackjax_settings["n_posterior_samples"] = settings.get(
-            "n_posterior_samples", 1000
-        )
-        blackjax_settings["n_live"] = settings.get("n_live", 500)
-        blackjax_settings["repeats"] = settings.get("repeats", 3)
-        blackjax_settings["delete_fraction"] = settings.get("delete_fraction", 0.5)
-        blackjax_settings["log_precision"] = settings.get("log_precision", -2)
-        blackjax_settings["seed"] = settings.get("seed", 0)
-        blackjax_settings["posterior_resampling_seed"] = settings.get(
-            "posterior_resampling_seed", 123456
-        )
+        blackjax_settings["algorithm"] = algorithm
+        blackjax_settings["seed"] = int(settings.get("seed", 0))
         # Set directory where blackjax_logs will be saved
         blackjax_settings["log_dir"] = settings.get(
             "log_dir",
             str(output_path / "blackjax_logs") if output_path is not None else None,
+        )
+        # nested_sampling
+        blackjax_settings["n_live"] = int(settings.get("n_live", 500))
+        blackjax_settings["repeats"] = int(settings.get("repeats", 3))
+        blackjax_settings["delete_fraction"] = float(
+            settings.get("delete_fraction", 0.5)
+        )
+        blackjax_settings["log_precision"] = float(settings.get("log_precision", -2))
+        # nuts
+        blackjax_settings["num_chains"] = int(settings.get("num_chains", 4))
+        blackjax_settings["num_warmup"] = int(settings.get("num_warmup", 1000))
+        blackjax_settings["num_samples"] = int(settings.get("num_samples", 2500))
+        blackjax_settings["target_acceptance_rate"] = float(
+            settings.get("target_acceptance_rate", 0.8)
+        )
+        blackjax_settings["max_num_doublings"] = int(
+            settings.get("max_num_doublings", 10)
         )
 
         return blackjax_settings
@@ -773,23 +826,22 @@ class smefitConfig(Config):
         entry["path"] = fit_dir
         return entry
 
-    def _build_prior_impl(self, coefficients):
+    def _build_prior_impl(self, coefficients: CoefficientGroup) -> Prior:
         """Shared prior build logic used by both joint and individual producers."""
         specs = coefficients.prior_specs()
         for name, spec in specs.items():
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
-        dists = [_build_dist(spec) for spec in specs.values()]
-        return Prior(dists, coefficients.free_names, specs=specs)
+        return Prior.from_specs(specs, coefficients.free_names)
 
     def produce_prior(
         self,
-        coefficients,
-        datasets=None,
-        external_chi2=None,
-        whitening=None,
-        bayesian_update=None,
-    ):
+        coefficients: CoefficientGroup,
+        datasets: Sequence[Mapping[str, Any]] | None = None,
+        external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+        whitening: Mapping[str, Any] | None = None,
+        bayesian_update: Mapping[str, Any] | None = None,
+    ) -> JointPrior:
         """Produce joint prior over all free coefficients.
 
         When ``bayesian_update`` is set, returns an ExactPosteriorPrior
@@ -814,8 +866,7 @@ class smefitConfig(Config):
             sigma = whitening["sigma_prior"]
             spec = {"dist": "uniform", "low": -sigma, "high": sigma}
             specs = {name: spec for name in coefficients.free_names}
-            dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
-            return Prior(dists, coefficients.free_names, specs=specs)
+            return Prior.from_specs(specs, coefficients.free_names)
 
         return self._build_prior_impl(coefficients)
 
@@ -908,6 +959,29 @@ class smefitConfig(Config):
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
             ) from e
+
+    def parse_interval_types(self, interval_types: str | list) -> list:
+        """The credible intervals a report's bounds quote.
+
+        A single name or a list of them, from the registry
+        :meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
+        only one so far. Every bounds routine taking the key quotes one set of
+        bounds per type — a list puts the types side by side in the same
+        table, so different interval constructions can be compared in a single
+        report. Presentation, not a property of any fit, so it is a top-level
+        key read by every routine alike; when it is absent the routines
+        default to ``eti``.
+        """
+        types = [interval_types] if isinstance(interval_types, str) else interval_types
+        if not types:
+            raise ConfigError("interval_types is empty: give at least one type.")
+        for interval_type in types:
+            if interval_type not in _INTERVAL_TYPES:
+                raise ConfigError(
+                    f"Unknown interval_type {interval_type!r}; expected one "
+                    f"of {sorted(_INTERVAL_TYPES)}."
+                )
+        return list(types)
 
     # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time

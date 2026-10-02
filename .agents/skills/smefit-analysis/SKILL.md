@@ -49,7 +49,14 @@ posterior, per coefficient — null for pure best-fit runs), `chi2`,
   `use_quad: True`.
 - `chi2_ndof` far above 1 signals tension or a mis-configured covariance
   (check `use_t0` / `use_theory_covmat`).
-- Compare models with `logz` (nested sampling) or `bic`/`aic`.
+- Compare models with `logz` (nested sampling only — it is `null` for
+  `blackjax_settings.algorithm: nuts` and for the analytic/Hessian fits) or
+  `bic`/`aic`, which every fit provides.
+- After a `nuts` fit, read `blackjax_logs/nuts_diagnostics.json` before trusting
+  the posterior: `max_rhat` should be < 1.01 and `divergences` should be 0.
+  After a `nested_sampling` fit, read `blackjax_logs/nested_diagnostics.json`:
+  `converged` should be true, and `d_G` (constrained directions) close to
+  `n_free` — well below it means the data leaves directions unconstrained.
 - A posterior that looks identical to the prior means the chosen data does not
   constrain that coefficient (check with the smefit-datasets skill:
   `smefit_db.py info <dataset>` shows the operators a dataset is sensitive to).
@@ -70,6 +77,16 @@ the fit's name, without which the report gives no clue which output belongs to
 which fit. `plot_posterior_correlations` is the action, drawing the posterior
 correlations of each fit's free coefficients. Template:
 `posterior_correlations.yaml`.
+
+`coefficient_bounds_table` is its tabular counterpart: per fit, the
+equal-tailed 68% and 95% bounds of every free coefficient,
+also written to `tables/<fit_name>_coefficient_bounds_table.csv`. It reads
+individual-fit outputs too, one row per single-parameter fit. `bounds_levels`
+picks other levels (in percent) and `round_val` the decimals. Template:
+`coefficient_bounds_table.yaml`. In Python the same numbers are
+`Fit.from_folder(path).confidence_bounds(95)` →
+`{coeff: [(low, high), ...]}` (one interval for `eti`;
+several pieces, joined by `∪` in the table, for a multimodal region).
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

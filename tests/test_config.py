@@ -12,6 +12,8 @@ import yaml
 from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
+from smefit import fit_result
+from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
 from smefit.core import (
@@ -369,11 +371,14 @@ def test_parse_ultranest_no_output_path_explicit_log_dir(cfg, tmp_path):
 
 def test_parse_blackjax_defaults(cfg, tmp_path):
     result = cfg.parse_blackjax_settings({}, tmp_path)
+    assert result["algorithm"] == "nested_sampling"
     assert result["n_live"] == 500
-    assert result["n_posterior_samples"] == 1000
     assert result["log_precision"] == -2
     assert result["seed"] == 0
     assert "blackjax_logs" in result["log_dir"]
+    # NUTS defaults are always present; num_chains * num_samples == the default n_samples
+    assert result["num_chains"] * result["num_samples"] == 10000
+    assert result["num_warmup"] == 1000
 
 
 def test_parse_blackjax_custom_values(cfg, tmp_path):
@@ -381,7 +386,60 @@ def test_parse_blackjax_custom_values(cfg, tmp_path):
     result = cfg.parse_blackjax_settings(settings, tmp_path)
     assert result["n_live"] == 200
     assert result["seed"] == 42
-    assert result["n_posterior_samples"] == 1000  # still default
+    assert result["num_chains"] == 4  # still default
+
+
+def test_parse_blackjax_nuts_custom_values(cfg, tmp_path):
+    settings = {"algorithm": "nuts", "num_chains": 2, "target_acceptance_rate": 0.95}
+    result = cfg.parse_blackjax_settings(settings, tmp_path)
+    assert result["algorithm"] == "nuts"
+    assert result["num_chains"] == 2
+    assert result["target_acceptance_rate"] == 0.95
+
+
+def test_parse_blackjax_unknown_algorithm_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError):
+        cfg.parse_blackjax_settings({"algorithm": "metropolis"}, tmp_path)
+
+
+def test_parse_blackjax_warns_on_irrelevant_key(cfg, tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"algorithm": "nuts", "n_live": 100}, tmp_path)
+    assert any("not used by algorithm 'nuts'" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_relevant_key_does_not_warn(cfg, tmp_path, caplog):
+    """The mirror case: n_live belongs to nested_sampling, so it must not warn."""
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"n_live": 100}, tmp_path)
+    assert not any("not used by algorithm" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_log_dir_does_not_warn(cfg, tmp_path, caplog):
+    """log_dir used to be defaulted but missing from known_keys, so setting it warned."""
+    with caplog.at_level("WARNING"):
+        result = cfg.parse_blackjax_settings({"log_dir": str(tmp_path)}, tmp_path)
+
+    assert result["log_dir"] == str(tmp_path)
+    assert not any("not known" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_known_keys_cover_all_algorithm_settings(cfg, tmp_path, caplog):
+    """Guard: the literal known_keys set in parse_blackjax_settings must stay in
+    step with BJ_SHARED_SETTINGS/BJ_ALGORITHM_SETTINGS in smefit.blackjax_samplers.
+
+    The literal has to stay inline (generate_skill_reference.py AST-extracts it),
+    so nothing but this test keeps the two definitions from drifting apart.
+    """
+    every_key = set(BJ_SHARED_SETTINGS).union(*BJ_ALGORITHM_SETTINGS.values())
+    settings = {k: 1 for k in every_key}
+    settings["algorithm"] = "nuts"
+    settings["log_dir"] = str(tmp_path)
+
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings(settings, tmp_path)
+
+    assert not any("not known" in m for m in caplog.messages)
 
 
 def test_parse_blackjax_no_output_path_still_parses(cfg):
@@ -1300,6 +1358,30 @@ def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
         cfg.parse_fits(
             [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
         )
+
+
+def test_parse_interval_types_wraps_a_single_name(cfg):
+    """``interval_types: eti`` in a runcard, as for ``params_to_plot: OtG``."""
+    assert cfg.parse_interval_types("eti") == ["eti"]
+
+
+def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
+
+    assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]
+
+
+def test_parse_interval_types_rejects_an_unknown_type(cfg):
+    """A typo fails when the runcard is read, not halfway through a report."""
+    with pytest.raises(ConfigError, match="Unknown interval_type 'hpd'"):
+        cfg.parse_interval_types(["eti", "hpd"])
+
+
+def test_parse_interval_types_rejects_an_empty_list(cfg):
+    with pytest.raises(ConfigError, match="interval_types is empty"):
+        cfg.parse_interval_types([])
 
 
 def test_parse_fits_requires_a_name(cfg):

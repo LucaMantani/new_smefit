@@ -86,23 +86,45 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 ### `blackjax_settings`
 
-For a BlackJAX fit, parses the blackjax_settings namespace from the runcard,
-and ensures the choice of settings is valid.
+Parse optional settings for a BlackJAX fit.
 
-``output_path`` is optional for the same reason as in
-``parse_ultranest_settings``: without an output folder there is nothing
-to derive ``log_dir`` from, so the user must set it explicitly.
+``algorithm`` picks the sampler: "nested_sampling" (the only one that
+estimates the log evidence) or "nuts". Both support ``bayesian_update``.
+
+- shared — ``seed``; ``log_dir``, which receives the algorithm's draws
+  (``nested_samples.csv`` / ``nuts_samples.csv``) and its diagnostics
+  (``nested_diagnostics.json`` / ``nuts_diagnostics.json``).
+- nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
+  dimension); ``delete_fraction``; ``log_precision`` (stop once
+  ``logZ_live - logZ`` falls below it).
+- nuts — ``num_chains`` (run in parallel with ``jax.vmap``, each from
+  its own over-dispersed prior draw, which is what makes R-hat
+  meaningful); ``num_warmup`` (adaptation draws, discarded);
+  ``num_samples`` PER CHAIN; ``target_acceptance_rate`` (raise towards
+  0.95 if divergences appear); ``max_num_doublings``.
+
+``output_path`` is optional because it is a reportengine environment
+attribute that only the CLI supplies; without it there is no folder to
+derive ``log_dir`` from, so the user must set it explicitly.
 
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
+- `algorithm` — default: `'nested_sampling'`
 - `delete_fraction` — default: `0.5`
 - `log_dir` — default: `str(output_path / 'blackjax_logs') if output_path is not None else None`
 - `log_precision` — default: `-2`
+- `max_num_doublings` — default: `10`
 - `n_live` — default: `500`
-- `n_posterior_samples` — default: `1000`
-- `posterior_resampling_seed` — default: `123456`
+- `num_chains` — default: `4`
+- `num_samples` — default: `2500`
+- `num_warmup` — default: `1000`
 - `repeats` — default: `3`
 - `seed` — default: `0`
+- `target_acceptance_rate` — default: `0.8`
+
+Validation errors raised while parsing:
+
+- blackjax_settings.algorithm is not a known BlackJAX algorithm.
 
 ### `chi2_scan_settings`
 
@@ -247,6 +269,23 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `n_samples` — default: `10000`
 - `seed` — default: `42`
+
+### `interval_types`
+
+The credible intervals a report's bounds quote.
+
+A single name or a list of them, from the registry
+:meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
+only one so far. Every bounds routine taking the key quotes one set of
+bounds per type — a list puts the types side by side in the same
+table, so different interval constructions can be compared in a single
+report. Presentation, not a property of any fit, so it is a top-level
+key read by every routine alike; when it is absent the routines
+default to ``eti``.
+
+Validation errors raised while parsing:
+
+- interval_types is empty: give at least one type.
 
 ### `latex_labels`
 

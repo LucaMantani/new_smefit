@@ -21,7 +21,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 |---|---|---|
 | Analytic (linear/Gaussian posterior) | `run_analytic_fit` | none (optional n_samples/seed via analytic_fit defaults) |
 | UltraNest nested sampling | `run_ultranest_fit` | ultranest_settings |
-| BlackJAX nested sampling | `run_blackjax_fit` | blackjax_settings |
+| BlackJAX (nested sampling or NUTS, via blackjax_settings.algorithm) | `run_blackjax_fit` | blackjax_settings |
 | Hessian / Laplace approximation | `run_hessian_fit` | optimizer_settings, gradient_descent_settings, hessian_settings |
 | Individual (one free coefficient at a time) | `run_individual_<analytic|ultranest|blackjax|hessian>_fits` | same blocks as the joint variant |
 | 1D chi2 scan, one free coefficient at a time | `chi2_scan_table, plot_chi2_scan` | chi2_scan_settings |
@@ -64,6 +64,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_scan_table(individual_chi2_scans, latex_labels=None)`
   - Per-coefficient 1D chi2 scan results as a table.
+- `coefficient_bounds_table(fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None, latex_labels=None) -> 'pd.DataFrame'`
+  - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None, latex_labels=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_labels=None)`
@@ -105,7 +107,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update, coefficients, datasets, external_chi2=None)`
+- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping[str, typing.Any], coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence[collections.abc.Mapping[str, Any]] | None, external_chi2: collections.abc.Mapping[str, collections.abc.Mapping[str, Any]] | None = None) -> smefit.priors.ExactPosteriorPrior`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
@@ -136,8 +138,8 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.blackjax_fit`
 
-- `blackjax_fit(prior, chi2, coefficients, blackjax_settings, whitening_transformation=None, n_samples=10000)`
-  - Run BlackJAX nested sampling and return a FitResult.
+- `blackjax_fit(prior: smefit.priors.JointPrior, chi2: smefit.chi2.Chi2, coefficients: smefit.core.CoefficientGroup, blackjax_settings: collections.abc.Mapping[str, typing.Any], whitening_transformation: smefit.whitening.WhitenTransform | None = None, n_samples: int = 10000) -> smefit.fit_result.FitResult`
+  - Run a BlackJAX sampler and return a FitResult.
 
 ### `smefit.individual_fit`
 

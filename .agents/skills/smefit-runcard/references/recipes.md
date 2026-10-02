@@ -51,6 +51,93 @@ Incompatible with `bayesian_update`.
   requires a `gradient_descent_settings` block in the runcard, since it makes
   the graph depend on `gd_best_fit`.
 
+## Choosing a BlackJAX algorithm
+
+`run_blackjax_fit` names the backend, not the algorithm. Which sampler runs is
+`blackjax_settings.algorithm`:
+
+```yaml
+blackjax_settings:
+  algorithm: nuts            # nested_sampling (default) or nuts
+  num_chains: 4
+  num_warmup: 1000
+  num_samples: 2500          # PER CHAIN; thinned down to the top-level n_samples
+  target_acceptance_rate: 0.8
+```
+
+Pick `nested_sampling` when you need the log evidence for model comparison, or
+when the posterior may be multimodal. Both algorithms accept `bayesian_update`,
+but only `nested_sampling` gives the evidence that makes the update comparable
+to the fit it updates.
+
+Pick `nuts` for smooth, unimodal, high-dimensional posteriors: it exploits the
+JAX gradient of the chi2 and typically reaches a given effective sample size far
+faster than nested sampling. It writes `"logz": null` — use `bic`/`aic` for
+model comparison instead. Pair it with `whitening:` (the posterior it explores
+is then decorrelated and unit-scale) and keep the default float64 precision;
+gradient MCMC under `-f32` is prone to divergences.
+
+Uniform priors — including the `uniform[-sigma_prior, sigma_prior]` that
+`whitening:` imposes — are sampled through a logit bijector, so prior bounds
+never stall the sampler at a wall. No runcard change is needed for that.
+
+After a `nuts` run, read `<output>/blackjax_logs/nuts_diagnostics.json`. Start
+with `converged`: when it is `false` the run failed outright and the posterior
+is meaningless — the log carries an `ERROR` naming which check tripped
+(step-size collapse, >50% divergences, or ~zero acceptance). Otherwise:
+- `max_rhat` >= 1.01 → chains have not mixed. Raise `num_warmup`/`num_samples`,
+  or enable `whitening:`.
+- `divergences` > 0 → the step size is too large for the posterior's curvature.
+  Raise `target_acceptance_rate` towards 0.95, or enable `whitening:`.
+- `min_ess` (bulk) or `min_ess_tail` below ~100 per chain → correlated draws;
+  same remedies. Bulk governs the central estimate and tail the credible
+  interval, so a run can pass one and fail the other. A posterior pressed
+  against a prior bound also shows up here, and is fixed by widening the prior
+  (or `sigma_prior`).
+
+`rhat` and `ess` are the rank-normalised split-chain versions (Vehtari et al.
+2021), which is what the 1.01 threshold is calibrated for; they detect drift
+*within* a chain, which the classic Gelman-Rubin statistic cannot.
+
+A `nested_sampling` run writes `<output>/blackjax_logs/nested_diagnostics.json`,
+with the same `converged`-first layout:
+- `d_G` (Bayesian model dimensionality) counts the directions the *likelihood*
+  constrains. Well below `n_free` means flat directions — the same pathology
+  `whitening:` reports from the Hessian, measured after the fit instead of
+  before it.
+- `D_KL` is the prior→posterior compression in nats, and `n_live * D_KL`
+  (`expected_n_dead`) is how long the run should take. `n_dead` far below it
+  means the run stopped early; lower `log_precision`.
+- `logz_std` above ~1 nat means the evidence cannot support model comparison —
+  raise `n_live`, since the error scales as `sqrt(D_KL/n_live)`.
+- `ess_posterior` below the requested `n_samples` caps how many draws are
+  stored (`n_stored`); raise `n_live` or `repeats`. It is named apart from the
+  NUTS `ess` on purpose — that one is a per-parameter dict, this is a single
+  count of effective weighted particles.
+
+There is no insertion-index test (the nested-sampling analogue of R-hat):
+blackjax does not expose the insertion index of replacement live points.
+
+**Why a NUTS fit takes as long as it does.** The runtime is essentially
+
+    time  =  draws  x  leapfrogs_per_draw  x  ms_per_gradient
+
+and all three are reported. `ms_per_gradient` is a property of your likelihood
+(dataset count, `use_quad`, RGE, external chi2) and is not something the sampler
+can improve. `leapfrogs_per_draw_mean` is the multiplier that decides whether a
+fit takes minutes or hours: a well-conditioned posterior needs 8-64 steps, while
+`treedepth_saturation` near 1 means every draw is paying the
+`2**max_num_doublings` maximum. Saturation is a statement about the posterior's
+geometry, not a bug — enable or strengthen `whitening:`, or lower
+`max_num_doublings` to cap the cost per draw at the price of shorter moves.
+
+A whitening block on a badly conditioned Hessian is the usual culprit: watch for
+the "regularised Hessian is ill-conditioned" warning and the count of
+unconstrained directions in the `Hessian whitening:` line. Directions the data
+does not constrain get their scale from `whitening.eps` rather than from the
+fit, which is exactly the geometry gradient samplers handle worst. Nested
+sampling is the more robust choice there.
+
 ## Sequential Bayesian updating
 
 ```yaml
@@ -238,6 +325,41 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Coefficient bounds table
+
+`coefficient_bounds_table` tabulates, per fit, the confidence bounds of every
+free coefficient. Template:
+`coefficient_bounds_table.yaml`.
+
+```yaml
+template_text: |
+  # Coefficient bounds
+  {@with fits@}
+  ## {@fit@}
+  {@coefficient_bounds_table@}
+  {@endwith@}
+```
+
+- One table per fit, one `<level>% CL` interval column per level;
+  written to `tables/<fit_name>_coefficient_bounds_table.csv` as well as into
+  the report.
+- Bounds are **equal-tailed** percentiles of the posterior samples: 68% is the
+  16th–84th percentile. Only free coefficients get a row; a fit that stored no
+  samples raises.
+- Unlike the correlation heatmap it **accepts a `run_individual_*_fits`
+  output**: each coefficient's row comes from its own single-parameter fit.
+- `bounds_levels` picks the levels, in percent (`95`, not `0.95` — that raises).
+  Default `[68, 95]`. A single number works as an action argument
+  (`{@coefficient_bounds_table(bounds_levels=90)@}`), but **a list has to be a
+  top-level key**: the template parser splits action arguments on commas.
+
+  ```yaml
+  bounds_levels: [68, 95, 99.7]
+  ```
+- `round_val` sets the decimals of every cell (default `3`). It is separate
+  from the heatmaps' `value_fmt`.
+- `params_to_plot` restricts and orders the rows, as for the heatmaps below.
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an
@@ -285,9 +407,10 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations` and `fisher_diagonals_normalised`
-— so the Fisher table's CSV and the heatmap drawn from it are restricted
-together. An action argument still overrides it for one figure.
+Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised` and
+`coefficient_bounds_table` — so the Fisher table's CSV and the heatmap drawn
+from it are restricted together, and a bounds table lists the same operators as
+the correlation heatmap beside it. An action argument still overrides it for one figure.
 
 - Write it as a YAML list of coefficient names — the raw names, not their LaTeX
   labels. Nothing validates the list, so a name is either matched or skipped.

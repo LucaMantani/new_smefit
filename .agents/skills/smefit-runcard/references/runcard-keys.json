@@ -41,6 +41,7 @@
     "whitening_transformation"
   ],
   "fit_reading_actions": [
+    "coefficient_bounds_table",
     "plot_posterior_correlations",
     "report"
   ],
@@ -66,12 +67,14 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "bounds_levels",
     "cmap",
     "colorbar",
     "n_eval",
     "n_samples",
     "n_steps",
     "params_to_plot",
+    "round_val",
     "seed",
     "tol",
     "value_fmt"
@@ -120,24 +123,32 @@
     },
     "blackjax_settings": {
       "defaults": {
+        "algorithm": "'nested_sampling'",
         "delete_fraction": "0.5",
         "log_dir": "str(output_path / 'blackjax_logs') if output_path is not None else None",
         "log_precision": "-2",
+        "max_num_doublings": "10",
         "n_live": "500",
-        "n_posterior_samples": "1000",
-        "posterior_resampling_seed": "123456",
+        "num_chains": "4",
+        "num_samples": "2500",
+        "num_warmup": "1000",
         "repeats": "3",
-        "seed": "0"
+        "seed": "0",
+        "target_acceptance_rate": "0.8"
       },
       "known_keys": [
+        "algorithm",
         "delete_fraction",
         "log_dir",
         "log_precision",
+        "max_num_doublings",
         "n_live",
-        "n_posterior_samples",
-        "posterior_resampling_seed",
+        "num_chains",
+        "num_samples",
+        "num_warmup",
         "repeats",
-        "seed"
+        "seed",
+        "target_acceptance_rate"
       ]
     },
     "chi2_scan_settings": {
@@ -194,6 +205,10 @@
         "n_samples",
         "seed"
       ]
+    },
+    "interval_types": {
+      "defaults": {},
+      "known_keys": null
     },
     "latex_labels": {
       "defaults": {},
@@ -288,6 +303,7 @@
     "batch_sample_sizes",
     "bayesian_update",
     "blackjax_settings",
+    "bounds_levels",
     "chi2_scan_settings",
     "cmap",
     "coefficients",
@@ -298,6 +314,7 @@
     "fits",
     "gradient_descent_settings",
     "hessian_settings",
+    "interval_types",
     "latex_labels",
     "meta",
     "n_eval",
@@ -308,6 +325,7 @@
     "pca_settings",
     "pseudodata_settings",
     "rge",
+    "round_val",
     "seed",
     "template_text",
     "theory_path",

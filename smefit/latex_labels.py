@@ -196,7 +196,7 @@ default_latex_labels = {
     "FCCee_161": r"$\mathrm{FCCee\_161}$",
     "FCCee_240": r"$\mathrm{FCCee\_240}$",
     "FCCee_365": r"$\mathrm{FCCee\_365}$",
-    "FCCee_combined": r"$\mathrm{FCCee\_combined}$",
+    "FCCee": r"$\mathrm{FCCee}$",
 }
 
 

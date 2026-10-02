@@ -20,7 +20,7 @@ from smefit.utils import resolve_posterior
 log = logging.getLogger(__name__)
 
 
-def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
+def hessian_fit(coefficients, chi2, gd_best_fit, hessian_settings):
     """Approximate the posterior with a Gaussian around the chi2 minimum.
 
     This function is a reportengine provider node: its arguments are resolved
@@ -29,8 +29,8 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
 
     Parameters
     ----------
-    eft_model : EFTModel
-        The EFT model used to resolve free → full coefficient space.
+    coefficients : CoefficientGroup
+        Coefficient group (used to resolve derived coefficients from free ones).
     chi2 : Chi2
         Chi-squared closure built by ``produce_chi2``.
     gd_best_fit : jnp.ndarray
@@ -63,12 +63,10 @@ def hessian_fit(eft_model, chi2, gd_best_fit, hessian_settings):
         key, mean=c_best, cov=cov, shape=(n_samples,)
     )
 
-    samples, best_fit_point = resolve_posterior(
-        eft_model.coefficients, samples_free, c_best
-    )
+    samples, best_fit_point = resolve_posterior(coefficients, samples_free, c_best)
 
     return FitResult(
-        free_parameters=eft_model.coefficients.free_names,
+        free_parameters=coefficients.free_names,
         best_fit_point=best_fit_point,
         max_loglikelihood=max_loglikelihood,
         num_data=chi2.num_data,

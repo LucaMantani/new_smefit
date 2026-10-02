@@ -15,7 +15,6 @@ coeff_info_latex = {
     "OQb1": r"$c_{Qb}^{\scriptscriptstyle 1}$",
     "OQb8": r"$c_{Qb}^{\scriptscriptstyle 8}$",
     "Ott1": r"$c_{tt}^{\scriptscriptstyle 1}$",
-    "Obb": r"$c_{bb}$",
     "Otb1": r"$c_{tb}^{\scriptscriptstyle 1}$",
     "Otb8": r"$c_{tb}^{\scriptscriptstyle 8}$",
     "OQtQb1": r"$c_{QtQb}^{\scriptscriptstyle 1}$",
@@ -37,6 +36,20 @@ coeff_info_latex = {
     "O1dt": r"$c_{td}^{\scriptscriptstyle 1}$",
     "O8qd": r"$c_{Qd}^{\scriptscriptstyle 8}$",
     "O1qd": r"$c_{Qd}^{\scriptscriptstyle 1}$",
+    # --------------------------
+    # 4 light quarks sector
+    # --------------------------
+    "Oqq1": r"$c_{qq}^{\scriptscriptstyle 1}$",
+    "Oqq1p": r"$c_{qq}^{\scriptscriptstyle 1\prime}$",
+    "Oqq3": r"$c_{qq}^{\scriptscriptstyle 3}$",
+    "Oqq3p": r"$c_{qq}^{\scriptscriptstyle 3\prime}$",
+    "Ouu": r"$c_{uu}$",
+    "Ouup": r"$c_{uu}^\prime$",
+    "Odd": r"$c_{dd}$",
+    "Oddp": r"$c_{dd}^\prime$",
+    "Oqu1": r"$c_{qu}^{\scriptscriptstyle 1}$",
+    "Oud1": r"$c_{ud}^{\scriptscriptstyle 1}$",
+    "Oqd1": r"$c_{qd}^{\scriptscriptstyle 1}$",
     # --------------------------
     # 2FB sector
     # --------------------------

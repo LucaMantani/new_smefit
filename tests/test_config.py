@@ -12,6 +12,7 @@ import yaml
 from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
+from smefit import fit_result
 from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
@@ -1337,6 +1338,30 @@ def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
         cfg.parse_fits(
             [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
         )
+
+
+def test_parse_interval_types_wraps_a_single_name(cfg):
+    """``interval_types: eti`` in a runcard, as for ``params_to_plot: OtG``."""
+    assert cfg.parse_interval_types("eti") == ["eti"]
+
+
+def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
+
+    assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]
+
+
+def test_parse_interval_types_rejects_an_unknown_type(cfg):
+    """A typo fails when the runcard is read, not halfway through a report."""
+    with pytest.raises(ConfigError, match="Unknown interval_type 'hpd'"):
+        cfg.parse_interval_types(["eti", "hpd"])
+
+
+def test_parse_interval_types_rejects_an_empty_list(cfg):
+    with pytest.raises(ConfigError, match="interval_types is empty"):
+        cfg.parse_interval_types([])
 
 
 def test_parse_fits_requires_a_name(cfg):

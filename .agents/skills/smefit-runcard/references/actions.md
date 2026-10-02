@@ -64,6 +64,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_scan_table(individual_chi2_scans)`
   - Per-coefficient 1D chi2 scan results as a table.
+- `coefficient_bounds_table(fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
+  - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`

@@ -27,11 +27,12 @@ code and kept in sync by CI:
    `blackjax_nuts_fit.yaml`, `blackjax_individual_fit.yaml`,
    `hessian_fit.yaml`), `mass_scan.yaml` for a scan evaluating the chi2 on a
    grid instead, plus the runcards that fit nothing: `projections.yaml`,
-   `time_likelihood.yaml`, `report.yaml`, and `posterior_correlations.yaml`
-   (reports on fits already on disk — it needs no `datasets` or `coefficients`
-   at all, so steps 2–5 do not apply to it). Do not write a runcard from
-   scratch. The 1D chi2 scan has no template of its own: start from
-   `mass_scan.yaml` and follow the recipe in `recipes.md`.
+   `time_likelihood.yaml`, `report.yaml`, `posterior_correlations.yaml` and
+   `coefficient_bounds_table.yaml` (the last two report on fits already on
+   disk — they need no `datasets` or `coefficients` at all, so steps 2–5 do
+   not apply to them). Do not write a runcard from scratch. The 1D chi2 scan
+   has no template of its own: start from `mass_scan.yaml` and follow the
+   recipe in `recipes.md`.
    Take the **structure** from them — settings blocks, key names, which blocks
    pair with which action — but treat their `datasets`, `coefficients` and
    `external_chi2` entries as placeholders: they are the repo's smoke-test

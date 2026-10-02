@@ -270,6 +270,23 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 - `n_samples` — default: `10000`
 - `seed` — default: `42`
 
+### `interval_types`
+
+The credible intervals a report's bounds quote.
+
+A single name or a list of them, from the registry
+:meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
+only one so far. Every bounds routine taking the key quotes one set of
+bounds per type — a list puts the types side by side in the same
+table, so different interval constructions can be compared in a single
+report. Presentation, not a property of any fit, so it is a top-level
+key read by every routine alike; when it is absent the routines
+default to ``eti``.
+
+Validation errors raised while parsing:
+
+- interval_types is empty: give at least one type.
+
 ### `optimizer_settings`
 
 Parse the optimizer_settings block.

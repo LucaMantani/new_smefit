@@ -1,14 +1,21 @@
-"""Unit tests for smefit.tables — the Fisher, PCA and scan report tables."""
+"""Unit tests for smefit.tables — the Fisher, PCA, scan and coefficient
+bounds report tables."""
 
+from __future__ import annotations
+
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
 
+from smefit import fit_result
 from smefit.core import Coefficient, CoefficientGroup
+from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.op_to_latex import coeff_info_latex
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
+    coefficient_bounds_table,
     fisher_diagonals_normalised,
     mass_scan_table,
     pca_components,
@@ -81,6 +88,157 @@ def test_fisher_diagonals_normalised_single_source_is_all_ones():
 
     assert result.columns.tolist() == ["DS_A"]
     assert result["DS_A"].tolist() == [1.0, 1.0]
+
+
+# ---------------------------------------------------------------------------
+# coefficient_bounds_table
+# ---------------------------------------------------------------------------
+
+# 1001 evenly spaced samples: the p-th percentile is exactly 10 * p
+_RAMP: list[float] = [float(value) for value in range(1001)]
+
+
+def _result(samples: dict[str, list[float]]) -> FitResult:
+    return FitResult(
+        free_parameters=list(samples),
+        best_fit_point={name: 0.0 for name in samples},
+        max_loglikelihood=0.0,
+        num_data=1,
+        samples={name: jnp.array(values) for name, values in samples.items()},
+    )
+
+
+def _joint_fit(samples: dict[str, list[float]]) -> Fit:
+    return Fit(fit_results=_result(samples), fit_name="joint")
+
+
+def _individual_fit(samples: dict[str, list[float]]) -> Fit:
+    return Fit(
+        fit_results=FitResultGroup(
+            [_result({name: values}) for name, values in samples.items()]
+        ),
+        fit_name="individual",
+    )
+
+
+def test_coefficient_bounds_table_quotes_both_intervals() -> None:
+    table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}))
+
+    assert table.columns.tolist() == ["68% CL (ETI)", "95% CL (ETI)"]
+    assert table.index.tolist() == [r"$c_{tG}$"]
+    assert table.iloc[0].tolist() == ["[160.000, 840.000]", "[25.000, 975.000]"]
+
+
+def test_coefficient_bounds_table_rounds_to_round_val_without_a_negative_zero() -> None:
+    """-0.0004 at two decimals is written 0.00, not -0.00."""
+    table = coefficient_bounds_table(_joint_fit({"OtG": [-0.0004] * 10}), round_val=2)
+
+    assert table.iloc[0].tolist() == ["[0.00, 0.00]", "[0.00, 0.00]"]
+
+
+def test_coefficient_bounds_table_keeps_params_to_plot_in_its_order() -> None:
+    fit = _joint_fit({"OtG": _RAMP, "OpQM": _RAMP, "OpA": _RAMP})
+
+    table = coefficient_bounds_table(fit, params_to_plot=["OpA", "OtG"])
+
+    assert table.index.tolist() == ["OpA", r"$c_{tG}$"]
+
+
+@pytest.mark.parametrize("params_to_plot", [None, ["OpQM"]])
+def test_coefficient_bounds_table_reads_an_individual_fit_like_a_joint_one(
+    params_to_plot: list[str] | None,
+) -> None:
+    samples = {"OtG": _RAMP, "OpQM": [1.0, 2.0, 3.0]}
+
+    pd.testing.assert_frame_equal(
+        coefficient_bounds_table(
+            _individual_fit(samples), params_to_plot=params_to_plot
+        ),
+        coefficient_bounds_table(_joint_fit(samples), params_to_plot=params_to_plot),
+    )
+
+
+def test_coefficient_bounds_table_quotes_the_bounds_levels_asked_for() -> None:
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=[90, 99.99994]
+    )
+
+    assert table.columns.tolist() == ["90% CL (ETI)", "99.99994% CL (ETI)"]
+    assert table.iloc[0].tolist()[0] == "[50.000, 950.000]"
+
+
+def test_coefficient_bounds_table_takes_a_single_level() -> None:
+    """``bounds_levels: 90`` in a runcard, as for ``params_to_plot: OtG``."""
+    table = coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=90)
+
+    assert table.columns.tolist() == ["90% CL (ETI)"]
+
+
+def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The header names the interval asked for, and the cells are that
+    interval's bounds. ``interval_types: fake`` in a runcard."""
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
+
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=90, interval_types="fake"
+    )
+
+    assert table.columns.tolist() == ["90% CL (FAKE)"]
+    assert table.iloc[0].tolist() == ["[-1.000, 1.000]"]
+
+
+def test_coefficient_bounds_table_compares_interval_types_side_by_side(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Several interval types are columns of the same table, grouped by level
+    so that the types of one level sit next to each other."""
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+    )
+
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}),
+        bounds_levels=[90, 95],
+        interval_types=["eti", "fake"],
+    )
+
+    assert table.columns.tolist() == [
+        "90% CL (ETI)",
+        "90% CL (FAKE)",
+        "95% CL (ETI)",
+        "95% CL (FAKE)",
+    ]
+    assert table.iloc[0]["90% CL (ETI)"] == "[50.000, 950.000]"
+    assert table.iloc[0]["90% CL (FAKE)"] == "[-1.000, 1.000]"
+
+
+def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A multimodal region is one cell, its pieces joined by a union."""
+    monkeypatch.setitem(
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-2.0, -1.0), (1.0, 2.0)]
+    )
+
+    table = coefficient_bounds_table(
+        _joint_fit({"OtG": _RAMP}), bounds_levels=90, round_val=1, interval_types="fake"
+    )
+
+    assert table.iloc[0].tolist() == ["[-2.0, -1.0] ∪ [1.0, 2.0]"]
+
+
+def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
+    with pytest.raises(ValueError, match="bounds_levels is empty"):
+        coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), bounds_levels=[])
+
+
+def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
+    with pytest.raises(ValueError, match="interval_types is empty"):
+        coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), interval_types=[])
 
 
 # ---------------------------------------------------------------------------

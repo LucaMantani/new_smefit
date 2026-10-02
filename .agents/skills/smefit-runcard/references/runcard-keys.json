@@ -41,6 +41,7 @@
     "whitening_transformation"
   ],
   "fit_reading_actions": [
+    "coefficient_bounds_table",
     "plot_posterior_correlations",
     "report"
   ],
@@ -66,12 +67,14 @@
   },
   "provider_arg_keys": [
     "batch_sample_sizes",
+    "bounds_levels",
     "cmap",
     "colorbar",
     "n_eval",
     "n_samples",
     "n_steps",
     "params_to_plot",
+    "round_val",
     "seed",
     "tol",
     "value_fmt"
@@ -203,6 +206,10 @@
         "seed"
       ]
     },
+    "interval_types": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -292,6 +299,7 @@
     "batch_sample_sizes",
     "bayesian_update",
     "blackjax_settings",
+    "bounds_levels",
     "chi2_scan_settings",
     "cmap",
     "coefficients",
@@ -302,6 +310,7 @@
     "fits",
     "gradient_descent_settings",
     "hessian_settings",
+    "interval_types",
     "meta",
     "n_eval",
     "n_samples",
@@ -311,6 +320,7 @@
     "pca_settings",
     "pseudodata_settings",
     "rge",
+    "round_val",
     "seed",
     "template_text",
     "theory_path",

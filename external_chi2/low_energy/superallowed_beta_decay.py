@@ -6,13 +6,6 @@ matrix:
 
     L(c) ~= L_SM + (dL/dc) . c
 
-making compute_chi2 a pure JAX function, fully JIT-compatible with both BlackJAX and
-UltraNest.
-
-rgevolve is used deliberately for the SMEFT -> WET matching instead of the
-``wilson``-based machinery in ``smefit.rge``: the latter is far too slow to run a
-fit with.
-
 Example runcard entry::
 
     external_chi2:
@@ -20,27 +13,21 @@ Example runcard entry::
         path: new_smefit/external_chi2/low_energy/superallowed_beta_decay.py
 """
 
-from __future__ import annotations
-
 import importlib.resources  # must precede rgevolve imports — Python 3.14 workaround
-import logging
-from typing import TYPE_CHECKING, Any, Mapping
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from rgevolve.tools.functions import get_wc_basis, run_and_match
 
-from smefit.rge import RGE
+from smefit import log
+from smefit.rge.rge import RGE
 
-if TYPE_CHECKING:
-    from smefit.core import CoefficientGroup
-
-log = logging.getLogger(__name__)
+_logger = log.logging.getLogger(__name__)
 
 # Experimental Ft values (10^-3 s, 2010.13797), uncertainties, and Q-values (MeV,
 # https://journals.aps.org/prc/pdf/10.1103/PhysRevC.91.025501) per nucleus
-_NUCLEI: dict[str, dict[str, float]] = {
+_NUCLEI = {
     "10C": {"mean": 3075.7, "std": 4.4, "Q": 1.908, "delta_r": 8.999999999999999e-05},
     "14O": {"mean": 3070.2, "std": 1.9, "Q": 2.831, "delta_r": 7.666666666666667e-05},
     "22Mg": {"mean": 3076.2, "std": 7.0, "Q": 4.125, "delta_r": 6.666666666666667e-05},
@@ -72,9 +59,8 @@ _CONV = 1.519267e24
 _PREF = 4 * jnp.pi**3 * jnp.log(2.0) / (2 * (0.5109989e-3) ** 5)  # GeV^-1
 _GF = 1.16637859e-5  # GeV^-2
 
-# Default SMEFT scale used when the runcard supplies neither an rge: block with
-# an init_scale nor a starting_scale override. Deliberately not RGE's own 1e3
-# default: it matches the old-format module in smefit_database.
+# Default SMEFT scale used when the runcard has no rge block and no
+# starting_scale override.
 _DEFAULT_SCALE = 10000.0
 
 # Nuisance parameters of the beta-decay likelihood. They are ordinary runcard
@@ -90,17 +76,10 @@ _BD_PARAM_DEFAULTS: dict[str, float] = {
 
 
 @jax.jit
-def _chi2_smeft(
-    DRV: jnp.ndarray,
-    eta1: jnp.ndarray,
-    eta2: jnp.ndarray,
-    eta3: jnp.ndarray,
-    Vud: jnp.ndarray,
-    L: jnp.ndarray,
-) -> jnp.ndarray:
-    """Beta-decay chi2 for a given LEC shift ``L``.
+def _chi2_smeft(DRV, eta1, eta2, eta3, Vud, L, eta2_prefactor=3.3e-4, eta3_prefactor=8.0e-5):
+    """Beta-decay chi2 for a given LEC shift L.
 
-    ``L = 0`` reproduces the SM expression exactly.
+    L = 0 reproduces the SM expression exactly.
     """
     mean = _EXP_MEAN * _CONV
     std = _EXP_STD * _CONV
@@ -108,54 +87,67 @@ def _chi2_smeft(
     Lf = -2.0 * jnp.sqrt(2.0) * _GF + L
     CV = -0.5 * Vud * Lf * jnp.sqrt(1.0 + DRV)
     Ft = _PREF / CV**2
-    Ftt = Ft + mean * (eta1 * _DELTA_R + eta2 + eta3 * Q)
+    Ftt = Ft + mean * (eta1 * _DELTA_R + eta2 * eta2_prefactor + eta3 * eta3_prefactor * Q)
     return jnp.sum((Ftt - mean) ** 2 / std**2)
 
 
 class SA_beta_decays:
     """SMEFiT external chi2 for superallowed beta decays — rgevolve Jacobian.
 
-    The Jacobian dL/dc_i is computed analytically at initialisation via
-    rgevolve.tools.functions.run_and_match.
-    The chi2 is then a pure JAX function of the resolved coefficient vector.
+    The Jacobian dL/dc is computed analytically at initialisation via
+    rgevolve.tools.functions.run_and_match, with no Wilson calls at any stage.
+    The chi2 is then a pure JAX function of the full coefficient vector.
     """
 
-    def __init__(
-        self,
-        coefficients: CoefficientGroup,
-        rge_dict: Mapping[str, Any] | None = None,
-        starting_scale: float | None = None,
-    ) -> None:
-        self.coefficients = coefficients
+    def __init__(self, coefficients, rge_dict=None, starting_scale=None):
+        """
+        Initialize the SA_beta_decays class.
 
-        # Indices into the *full* coefficient vector returned by resolve().
-        self._bd_idx: dict[str, int] = {
-            name: coefficients.coeff_index[name]
+        coefficients: The Wilson coefficients to be used in the analysis.
+        rge_dict: A dictionary containing the RGE information.
+        starting_scale: SMEFT scale (GeV) at which the coefficients are defined.
+            Overrides rge_dict["init_scale"] when given.
+        """
+        # cast away numpy.str_ so plain string lookups stay exact
+        self.coeff_names = [str(n) for n in coefficients.name]
+
+        # Indices into the full coefficient vector passed to compute_chi2.
+        self._bd_idx = {
+            name: self.coeff_names.index(name)
             for name in _BD_PARAM_DEFAULTS
-            if name in coefficients.coeff_index
+            if name in self.coeff_names
         }
 
-        self.num_data = len(_EXP_MEAN)
-
-        # The smefit -> Warsaw translation is built through the standard smefit
-        # runner, so the rge: block is read with the defaults the runcard
-        # documents. Only the translation comes from here; the SMEFT -> WET
-        # matching below is rgevolve's.
-        settings = dict(rge_dict) if rge_dict is not None else {}
-        settings.setdefault("init_scale", _DEFAULT_SCALE)
         if starting_scale is not None:
-            settings["init_scale"] = float(starting_scale)
+            self._scale = float(starting_scale)
+        elif rge_dict is not None:
+            self._scale = float(rge_dict.get("init_scale", _DEFAULT_SCALE))
+        else:
+            self._scale = _DEFAULT_SCALE
 
-        smeft_names = [n for n in coefficients.names if n not in _BD_PARAM_DEFAULTS]
-        runner = RGE.from_rge_dict(settings, smeft_names)
-        self._scale = float(runner.init_scale)
-        translation = runner.RGEbasis if smeft_names else {}
+        self.n_dat = len(_EXP_MEAN)
+
+        # The smefit -> Warsaw translation comes from the standard smefit
+        # runner; only the SMEFT -> WET matching below is rgevolve's.
+        smeft_names = [n for n in self.coeff_names if n not in _BD_PARAM_DEFAULTS]
+        if smeft_names:
+            translation = RGE(
+                wc_names=smeft_names,
+                init_scale=self._scale,
+                accuracy=(
+                    rge_dict.get("smeft_accuracy", "integrate")
+                    if rge_dict
+                    else "integrate"
+                ),
+                adm_QCD=rge_dict.get("adm_QCD", False) if rge_dict else False,
+                yukawa=rge_dict.get("yukawa", "top") if rge_dict else "top",
+            ).RGEbasis
+        else:
+            translation = {}
 
         self._dL = self._compute_jacobian_rgevolve(translation)
 
-    def _compute_jacobian_rgevolve(
-        self, translation: Mapping[str, Mapping[str, float]]
-    ) -> jnp.ndarray:
+    def _compute_jacobian_rgevolve(self, translation):
         """Compute dL/dc analytically from the rgevolve run_and_match matrix.
 
         Collects all Warsaw WC names referenced by the smefit -> Warsaw
@@ -163,16 +155,13 @@ class SA_beta_decays:
         d(VnueduLL_1111)/d(warsaw_wc_j), then contracts it with the translation
         factors.
 
-        Returns
-        -------
-        jnp.ndarray
-            Jacobian of shape ``(len(coefficients.names),)``, aligned with the
-            full coefficient vector returned by ``CoefficientGroup.resolve``.
-            Entries for the beta-decay nuisance parameters are zero.
+        Returns a jnp array of shape (len(coefficients.name),), aligned with the
+        full coefficient vector. Entries for the beta-decay nuisance parameters
+        are zero.
         """
-        n_coeff = len(self.coefficients.names)
+        n_coeff = len(self.coeff_names)
 
-        warsaw_names_needed: set[str] = set()
+        warsaw_names_needed = set()
         for wc_dict in translation.values():
             warsaw_names_needed.update(wc_dict.keys())
 
@@ -183,7 +172,7 @@ class SA_beta_decays:
         smeft_warsaw_wcs = {wc[0] for wc in get_wc_basis("SMEFT", "Warsaw")}
         unknown = warsaw_names_needed - smeft_warsaw_wcs
         if unknown:
-            log.warning(
+            _logger.warning(
                 "SA_beta_decays: the following Warsaw WC names from the RGE "
                 "translation are not present in rgevolve's SMEFT Warsaw basis "
                 "and will be ignored: %s",
@@ -213,7 +202,7 @@ class SA_beta_decays:
 
         dL = np.zeros(n_coeff)
         for name, wc_dict in translation.items():
-            i = self.coefficients.coeff_index[name]
+            i = self.coeff_names.index(name)
             for j, wc in enumerate(warsaw_list):
                 factor = wc_dict.get(wc, 0.0)
                 if factor != 0.0:
@@ -221,18 +210,16 @@ class SA_beta_decays:
 
         return jnp.array(dL)
 
-    def compute_chi2(self, coefficient_values: jnp.ndarray) -> jnp.ndarray:
-        # resolve() maps free (possibly whitened) values to the full coefficient
-        # vector, applying fixed values and expression constraints exactly.
-        resolved = self.coefficients.resolve(coefficient_values)
-
-        def _get(name: str) -> jnp.ndarray:
+    def compute_chi2(self, coefficient_values):
+        # coefficient_values is the full coefficient vector: the optimizer has
+        # already placed the free parameters and applied the constraints.
+        def _get(name):
             idx = self._bd_idx.get(name)
             if idx is None:
                 return jnp.asarray(_BD_PARAM_DEFAULTS[name])
-            return resolved[idx]
+            return coefficient_values[idx]
 
-        L = jnp.dot(self._dL, resolved)
+        L = jnp.dot(self._dL, coefficient_values)
 
         return _chi2_smeft(
             _get("DRV"),

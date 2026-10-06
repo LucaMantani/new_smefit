@@ -59,6 +59,39 @@ def test_hdi_of_a_bimodal_posterior_is_two_disjoint_intervals():
     assert pieces[0][1] < 0.0 < pieces[1][0]
 
 
+# The two tests below bracket the KDE bandwidth used to count modes: arviz's
+# ISJ default fails the first, Silverman's and Scott's rules the second.
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_hdi_of_a_resampled_unimodal_posterior_is_one_interval(level):
+    """Nested sampling stores its weighted points resampled with replacement,
+    so a unimodal posterior arrives full of repeated draws; they must not be
+    read as modes. Mimicked by importance-resampling N(0, 4) proposals to an
+    N(0, 1) target: 6400 draws, ~2700 distinct."""
+    rng = np.random.default_rng(0)
+    proposals = rng.normal(0.0, 4.0, 8000)
+    log_weights = -0.5 * proposals**2 + 0.5 * (proposals / 4.0) ** 2
+    weights = np.exp(log_weights - log_weights.max())
+    values = rng.choice(proposals, size=6400, p=weights / weights.sum())
+
+    assert len(highest_density_interval(values, level)) == 1
+
+
+def test_hdi_resolves_a_small_narrow_second_mode():
+    """80% N(0, 1) + 20% N(2.5, 0.2): the narrow mode is its own piece of the
+    exact 95% region, which a bandwidth set by the overall spread smooths
+    away."""
+    rng = np.random.default_rng(0)
+    values = np.where(
+        rng.random(6400) < 0.8, rng.normal(0.0, 1.0, 6400), rng.normal(2.5, 0.2, 6400)
+    )
+
+    [(_, main_high), (narrow_low, narrow_high)] = highest_density_interval(values, 95)
+
+    assert main_high < narrow_low < 2.5 < narrow_high
+
+
 def test_hdi_is_pinned_at_a_hard_lower_bound():
     """A posterior piled up against a positivity bound reaches it exactly,
     instead of leaking past it."""

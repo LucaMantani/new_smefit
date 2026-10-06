@@ -13,6 +13,12 @@ multimodal HDI, a KDE on a grid spanning the samples, splits a multimodal
 posterior into disjoint pieces, but knows no bound beyond the sample range;
 getdist's boundary-corrected KDE pins a hard bound (a sign-definite
 coefficient's 0) exactly, but always returns a single interval.
+
+arviz's KDE uses its ``experimental`` bandwidth, the mean of Silverman's rule
+and Improved Sheather-Jones, not its ISJ default. Nested-sampling posteriors
+are resampled with replacement, and ISJ undersmooths their repeated draws into
+spurious modes, while Silverman's rule alone merges a small narrow mode into
+its neighbour.
 """
 
 from typing import List, Optional, Tuple
@@ -58,7 +64,9 @@ def highest_density_interval(
     values = values[~np.isnan(values)]
     prob = level / 100.0
 
-    pieces = np.atleast_2d(az.hdi(values, prob=prob, method="multimodal"))
+    pieces = np.atleast_2d(
+        az.hdi(values, prob=prob, method="multimodal", bw="experimental")
+    )
     if len(pieces) > 1:
         return [(float(low), float(high)) for low, high in pieces]
     return [_getdist_interval(values, prob, bounds)]

@@ -292,15 +292,22 @@ class WarsawMap:
         self,
         values: Mapping[str, float],
         origin: str = "Warsaw point",
-        tol: float = 1e-4,
+        rtol: float = 1e-3,
+        atol: float = 0.0,
     ) -> dict[str, float]:
         """Map a point in the Warsaw basis back to the SMEFiT basis.
 
         Warsaw coefficients no SMEFiT operator switches on are dropped. The rest
-        should lie in the image of :attr:`matrix`; the SMEFiT operators whose
-        Warsaw components miss it by more than *tol* (relative to the size of
-        the point) are named in a warning, logged once per *origin* and set of
-        operators named.
+        should lie in the image of :attr:`matrix`. Each SMEFiT operator is
+        checked on the Warsaw components it switches on: if the point misses
+        the image there by more than ``atol + rtol * size``, with ``size`` the
+        largest of those components, the operator is named in a warning, logged
+        once per *origin* and set of operators named.
+
+        The check is per operator, not against the whole point, because a
+        breaking that is small next to the point can still be all of the
+        operator it is mapped onto (e.g. a running operator mixing,
+        loop-suppressed, into a flavour-symmetric one).
 
         Parameters
         ----------
@@ -308,9 +315,13 @@ class WarsawMap:
             Warsaw coefficient values, keyed by WCxf name.
         origin : str
             What the point comes from, for the warning.
-        tol : float
+        rtol : float
             Largest flavour-symmetry violation accepted silently, relative to
-            the norm of the point.
+            the size of the operator's Warsaw components.
+        atol : float
+            Violation accepted silently whatever that size, in the units of
+            *values*; for callers that cut small values before mapping, which
+            breaks the symmetry of components straddling the cut.
 
         Returns
         -------
@@ -320,10 +331,15 @@ class WarsawMap:
         point = np.array([values.get(w, 0.0) for w in self.warsaw])
         coeffs = self.inverse @ point
 
-        broken = np.abs(self.matrix @ coeffs - point) > tol * np.linalg.norm(point)
-        if broken.any():
-            targets = np.flatnonzero(self.matrix[broken].any(axis=0))
-            _warn_flavour_breaking(origin, tuple(self.ops[t] for t in targets))
+        # per operator (column), the largest residual and component on its rows
+        switched_on = self.matrix != 0
+        residual = np.abs(self.matrix @ coeffs - point)
+        missed = np.where(switched_on, residual[:, None], 0.0).max(axis=0)
+        size = np.where(switched_on, np.abs(point)[:, None], 0.0).max(axis=0)
+
+        broken = np.flatnonzero(missed > atol + rtol * size)
+        if broken.size:
+            _warn_flavour_breaking(origin, tuple(self.ops[t] for t in broken))
 
         return {op: float(c) for op, c in zip(self.ops, coeffs) if c != 0.0}
 

@@ -47,7 +47,9 @@ of the actual exceptions raised by the code.
   b-only (`Obb`, `Ol{1,2,3}b`, `O{e,mu,ta}b`) and d,s-only (`Ol{1,2,3}d`,
   `O{e,mu,ta}d`) operators: their running splits b from d, s, while `Opdi`,
   `O1dt`, `O8dt`, `O1qd`, `O8qd` assume them universal, so only the generation-1
-  part is kept. Not an error; seeing it for any other operator is.
+  part is kept. Not an error. With the default `yukawa: top` seeing it for any
+  other operator is one; with `yukawa: full` the b and τ Yukawas break the
+  symmetry too, so most operators trigger it.
 - **A run produced no `fit_results.json`**: expected when `actions_:` contains
   only table/figure actions (Fisher, `chi2_scan_table`, `mass_scan_table`) —
   results are under `tables/` and `figures/`, not in a fit result file.

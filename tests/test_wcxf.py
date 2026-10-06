@@ -129,3 +129,27 @@ def test_broken_symmetry_warns_once_and_keeps_generation_one(caplog):
         m.to_smefit(point, origin="Running Obb")
     assert len(caplog.records) == 1
     assert "Running Obb" in caplog.text and "Opdi" in caplog.text
+
+
+def test_breaking_small_next_to_the_point_still_warns(caplog):
+    # the breaking is 4e-6 of the point but all of what Opdi is read from
+    point = {"phiBox": 1.0, "phid_11": 1e-6, "phid_22": 1e-6, "phid_33": 5e-6}
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        warsaw_map(GS).to_smefit(point, origin="Running Oeb")
+    assert "Running Oeb" in caplog.text and "Opdi" in caplog.text
+    assert "OpBox" not in caplog.text
+
+
+def test_breaking_within_rtol_of_the_operator_is_silent(caplog):
+    point = {"phid_11": 1.0, "phid_22": 1.0, "phid_33": 1.0 + 1e-5}
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        warsaw_map(GS).to_smefit(point)
+    assert not caplog.records
+
+
+def test_breaking_within_atol_is_silent(caplog):
+    # a symmetric pair cut at 1e-14: one component kept, the others dropped
+    point = {"phiBox": 1e-6, "phid_33": 1.1e-14}
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        warsaw_map(GS).to_smefit(point, atol=2e-14)
+    assert not caplog.records

@@ -358,8 +358,12 @@ class RGE:
             The non-zero SMEFiT-basis coefficients in TeV^-2, as derived by
             :meth:`smefit.wcxf.WarsawMap.to_smefit`.
         """
+        # callers cut values below _SMALL_VALUE_THRESHOLD first: a symmetric pair
+        # straddling the cut keeps one component, a residual of about the cut
         smefit_vals = warsaw_map(evolve_gs(scale)).to_smefit(
-            {wc: val.real for wc, val in wc_final_vals.items()}, origin=origin
+            {wc: val.real for wc, val in wc_final_vals.items()},
+            origin=origin,
+            atol=2 * _SMALL_VALUE_THRESHOLD,
         )
         # 1e6 is to transform from GeV^-2 to TeV^-2
         return {op: 1e6 * val for op, val in smefit_vals.items()}

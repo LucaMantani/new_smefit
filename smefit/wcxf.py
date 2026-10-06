@@ -308,7 +308,8 @@ class WarsawMap:
         Warsaw coefficients no SMEFiT operator switches on are dropped. The rest
         should lie in the image of :attr:`matrix`; the SMEFiT operators whose
         Warsaw components miss it by more than *tol* (relative to the size of
-        the point) are named in a warning, logged once per *origin*.
+        the point) are named in a warning, logged once per *origin* and set of
+        operators named.
 
         Parameters
         ----------

@@ -70,6 +70,24 @@ def test_inverse_reads_generation_one():
     assert {m.warsaw[i]: row[i] for i in np.flatnonzero(row)} == {"phiq3_11": 1.0}
 
 
+# Rows of the hand-written inverse table this map replaced: the derived inverse
+# must keep reading the same Warsaw components.
+@pytest.mark.parametrize(
+    "op, expected",
+    [
+        ("OtZ", {"uB_33": sw, "uW_33": -cw}),
+        ("OpQM", {"phiq1_33": 1.0, "phiq3_33": -1.0}),
+        ("O11qq", {"qq1_1133": 1.0, "qq1_1331": 1 / 6, "qq3_1331": 1 / 2}),
+        ("OQQ1", {"qq1_3333": 2.0, "qq3_3333": -2 / 3}),
+        ("Oee1122", {"ee_1122": 1 / 4}),
+    ],
+)
+def test_inverse_matches_previous_convention(op, expected):
+    m = warsaw_map(GS)
+    row = m.inverse[m.ops.index(op)]
+    assert {m.warsaw[i]: row[i] for i in np.flatnonzero(row)} == pytest.approx(expected)
+
+
 def test_inverse_OtG_is_minus_one_over_gs():
     assert warsaw_map(GS).to_smefit({"uG_33": 1.0}) == pytest.approx({"OtG": -1 / GS})
 

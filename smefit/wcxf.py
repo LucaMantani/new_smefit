@@ -38,7 +38,7 @@ from smefit.constants import cw, sw
 
 _logger = logging.getLogger(__name__)
 
-# A coefficient is a number, or a function of the strong coupling g_s.
+# A coefficient is a number, or a function.
 Coeff = float | Callable[[float], float]
 
 SMEFIT_TO_WARSAW: dict[str, dict[str, Coeff]] = {

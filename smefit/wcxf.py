@@ -2,10 +2,10 @@
 
 Only the forward direction is written by hand, in :data:`SMEFIT_TO_WARSAW`::
 
-    O_SMEFiT = sum_w  M[w, op] * O_Warsaw,w
+    O_op = sum_w  M[w, op] * O_w     (op: SMEFiT operator, w: Warsaw coefficient)
 
-so switching on a SMEFiT coefficient ``c`` switches on the Warsaw coefficients
-``C_w = M[w, op] * c``. This direction always exists.
+so the SMEFiT coefficients ``c_op`` switch on the Warsaw coefficients
+``C_w = sum_op M[w, op] * c_op``, i.e. ``C = M @ c``. This direction always exists.
 
 The inverse only exists on the image of ``M``, i.e. on Warsaw points respecting
 the flavour symmetry the SMEFiT basis assumes. :class:`WarsawMap` derives it from

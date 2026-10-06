@@ -40,7 +40,11 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from smefit.credible_intervals import Bounds, highest_density_interval
+from smefit.credible_intervals import (
+    Bounds,
+    equal_tailed_interval,
+    highest_density_interval,
+)
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
@@ -171,17 +175,6 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     return str(build_dist(spec))
 
 
-def _equal_tailed_interval(
-    values: np.ndarray, level: float, bounds: Bounds = None
-) -> List[Tuple[float, float]]:
-    """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
-    each side. NaNs are ignored. Always a single interval. ``bounds`` is
-    unused: percentiles of the samples already lie within them."""
-    tail = (100.0 - level) / 2.0
-    low, high = np.nanpercentile(values, [tail, 100.0 - tail])
-    return [(float(low), float(high))]
-
-
 # The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
 # name its ``interval_type`` argument (and the ``interval_types`` runcard key)
 # takes. Each maps one coefficient's samples, a level in percent and the hard
@@ -191,7 +184,7 @@ def _equal_tailed_interval(
 _INTERVAL_TYPES: Dict[
     str, Callable[[np.ndarray, float, Bounds], List[Tuple[float, float]]]
 ] = {
-    "eti": _equal_tailed_interval,
+    "eti": equal_tailed_interval,
     "hdi": highest_density_interval,
 }
 

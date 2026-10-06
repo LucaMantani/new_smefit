@@ -1,11 +1,12 @@
 """Unit tests for smefit.credible_intervals — the HDI estimator on raw sample
-arrays, independent of Fit/FitResult."""
+arrays, independent of Fit/FitResult. The ETI is exercised through
+Fit.confidence_bounds in test_fit_result.py and serves here as the reference
+the HDI is compared against."""
 
 import numpy as np
 import pytest
 
-from smefit.credible_intervals import highest_density_interval
-from smefit.fit_result import _equal_tailed_interval
+from smefit.credible_intervals import equal_tailed_interval, highest_density_interval
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ def test_hdi_of_a_gaussian_agrees_with_the_eti(gaussian, level):
     """On a symmetric unimodal posterior the two constructions are the same
     interval, up to sampling noise."""
     [hdi] = highest_density_interval(gaussian, level)
-    [eti] = _equal_tailed_interval(gaussian, level)
+    [eti] = equal_tailed_interval(gaussian, level)
 
     assert hdi == pytest.approx(eti, abs=0.05)
 
@@ -39,7 +40,7 @@ def test_hdi_of_a_skewed_posterior_is_narrower_and_closer_to_the_mode():
     values = np.random.default_rng(0).gamma(shape=2.0, scale=1.0, size=5000)
 
     [(hdi_low, hdi_high)] = highest_density_interval(values, 68)
-    [(eti_low, eti_high)] = _equal_tailed_interval(values, 68)
+    [(eti_low, eti_high)] = equal_tailed_interval(values, 68)
 
     assert hdi_high - hdi_low < 0.95 * (eti_high - eti_low)
     assert hdi_low < eti_low

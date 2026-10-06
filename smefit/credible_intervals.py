@@ -1,15 +1,18 @@
 """
-Highest-density credible intervals from a posterior samples.
+Credible intervals of one coefficient's posterior samples.
 
-Registered as the ``hdi`` interval type in
-:data:`smefit.fit_result._INTERVAL_TYPES`, which owns the calling convention:
-samples, a level in percent, the coefficient's hard ``(low, high)`` bounds;
-returns the ``(low, high)`` pieces of the region.
+The interval types :data:`smefit.fit_result._INTERVAL_TYPES` registers:
+``eti`` (equal-tailed) and ``hdi`` (highest-density). The registry owns the
+calling convention: the samples, a level in percent, and the hard
+``(low, high)`` bounds of the coefficient's support, or None. Each returns the
+``(low, high)`` pieces of the region, as a list so that a multimodal posterior
+can be given several.
 
-Two estimators are combined, each for what it does well. arviz's sample-window
-HDI splits a multimodal posterior into disjoint pieces, but is noisy at modest
-sample sizes; getdist's boundary-corrected KDE is smooth and pins a hard bound
-(a sign-definite coefficient's 0) exactly, but always returns a single interval.
+The HDI combines two estimators, each for what it does well. arviz's
+multimodal HDI, a KDE on a grid spanning the samples, splits a multimodal
+posterior into disjoint pieces, but knows no bound beyond the sample range;
+getdist's boundary-corrected KDE pins a hard bound (a sign-definite
+coefficient's 0) exactly, but always returns a single interval.
 """
 
 from typing import List, Optional, Tuple
@@ -17,6 +20,17 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 Bounds = Optional[Tuple[Optional[float], Optional[float]]]
+
+
+def equal_tailed_interval(
+    values: np.ndarray, level: float, bounds: Bounds = None
+) -> List[Tuple[float, float]]:
+    """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
+    each side. NaNs are ignored. Always a single interval. ``bounds`` is
+    unused: percentiles of the samples already lie within them."""
+    tail = (100.0 - level) / 2.0
+    low, high = np.nanpercentile(values, [tail, 100.0 - tail])
+    return [(float(low), float(high))]
 
 
 def highest_density_interval(

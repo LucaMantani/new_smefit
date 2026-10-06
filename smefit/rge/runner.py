@@ -15,7 +15,7 @@ import pandas as pd
 import wilson
 
 from smefit.constants import gs, mz
-from smefit.wcxf import inverse_wcxf_translate, wcxf_translate
+from smefit.wcxf import SMEFIT_TO_WARSAW, warsaw_map
 
 # Numerical threshold for filtering small Wilson coefficient values
 _SMALL_VALUE_THRESHOLD = 1e-14
@@ -28,7 +28,7 @@ ALLOWED_SMEFT_ACCURACY = frozenset({"integrate", "leadinglog"})
 
 # The observable-basis operator names an RGE matrix can have rows for. Fixed by
 # the WCxf translation table.
-ALL_OPS = tuple(sorted(wcxf_translate.keys()))
+ALL_OPS = tuple(sorted(SMEFIT_TO_WARSAW))
 
 _logger = logging.getLogger(__name__)
 
@@ -259,7 +259,9 @@ class RGE:
                         f"Imaginary values in Wilson coefficient for operator {wc_name}."
                     )
 
-                rge_matrix_dict[wc_name] = self.map_to_smefit(wc_final_vals, scale)
+                rge_matrix_dict[wc_name] = self.map_to_smefit(
+                    wc_final_vals, scale, origin=f"Running {wc_name}"
+                )
 
         return rge_matrix_dict
 
@@ -311,41 +313,29 @@ class RGE:
         """
         # computes the translation from the smefit basis to the Warsaw basis
         # as expected by the Wilson package
+        basis_map = warsaw_map(evolve_gs(self.init_scale))
         wc_basis = {}
         for wc_name in self.wc_names:
-            try:
-                wcxf_dict = wcxf_translate[wc_name]
-            except KeyError:
+            if wc_name not in SMEFIT_TO_WARSAW:
                 _logger.warning(
-                    f"Wilson coefficient {wc_name} not present in the WCxf translation dictionary."
-                )
-                _logger.warning(
-                    "Assuming it is a external coupling and associating it to the null vector."
+                    f"Wilson coefficient {wc_name} is not in the WCxf translation "
+                    "table: treating it as an external coupling, mapped to the null vector."
                 )
                 wc_basis[wc_name] = {}
                 continue
 
-            wc_warsaw_name = wcxf_dict["wc"]
-            if "value" not in wcxf_dict:
-                wc_warsaw_value = [1] * len(wcxf_dict["wc"])
-            else:
-                # check if value is gs
-                # (this is a special case for OtG)
-                if wcxf_dict["value"] == ["-gs"]:
-                    wc_warsaw_value = [-evolve_gs(self.init_scale)]
-                else:
-                    wc_warsaw_value = wcxf_dict["value"]
-
             # 1e-6 is because the Warsaw basis is in GeV^-2
-            wc_value = {
-                wc: val * 1e-6 for wc, val in zip(wc_warsaw_name, wc_warsaw_value)
+            wc_basis[wc_name] = {
+                wc: val * 1e-6 for wc, val in basis_map.to_warsaw(wc_name).items()
             }
-            wc_basis[wc_name] = wc_value
 
         return wc_basis
 
     def map_to_smefit(
-        self, wc_final_vals: Mapping[str, complex], scale: float
+        self,
+        wc_final_vals: Mapping[str, complex],
+        scale: float,
+        origin: str = "RGE running",
     ) -> dict[str, float]:
         """
         Map the Wilson coefficients from the Warsaw basis to the SMEFiT basis.
@@ -356,40 +346,27 @@ class RGE:
             Evolved Warsaw-basis coefficients in GeV^-2, as ``wilson`` returns
             them. Only the real part is used.
         scale : float
-            Scale in GeV the values were evolved to; needed for the ``1/gs``
+            Scale in GeV the values were evolved to; needed for the ``g_s``-dependent
             coefficient of ``OtG``.
+        origin : str
+            What was evolved, named, with *scale*, in the warning logged when
+            the evolved point breaks the flavour symmetry of the SMEFiT basis.
 
         Returns
         -------
         dict[str, float]
-            SMEFiT-basis coefficients in TeV^-2, restricted to the operators
-            that overlap with *wc_final_vals*.
+            The non-zero SMEFiT-basis coefficients in TeV^-2, as derived by
+            :meth:`smefit.wcxf.WarsawMap.to_smefit`.
         """
-        wc_dict = {}
-        wc_final_keys = set(wc_final_vals.keys())
-        for wc_basis, wc_inv_dict in inverse_wcxf_translate.items():
-            wc_warsaw_name = wc_inv_dict["wc"]
-            # Skip operators with no overlap with the evolved WCs
-            if not wc_final_keys.intersection(wc_warsaw_name):
-                continue
-
-            if "coeff" not in wc_inv_dict:
-                wc_warsaw_coeff = [1] * len(wc_warsaw_name)
-            else:
-                # check if coeff is 1/gs
-                # (this is a special case for OtG)
-                if wc_inv_dict["coeff"] == ["-1/gs"]:
-                    wc_warsaw_coeff = [-1 / evolve_gs(scale)]
-                else:
-                    wc_warsaw_coeff = wc_inv_dict["coeff"]
-
-            value = 0.0
-            for wc, coeff in zip(wc_warsaw_name, wc_warsaw_coeff):
-                if wc in wc_final_keys:
-                    # 1e6 is to transform from GeV^-2 to TeV^2
-                    value += 1e6 * wc_final_vals[wc].real * coeff
-            wc_dict[wc_basis] = value
-        return wc_dict
+        # callers cut values below _SMALL_VALUE_THRESHOLD first: a symmetric pair
+        # straddling the cut keeps one component, a residual of about the cut
+        smefit_vals = warsaw_map(evolve_gs(scale)).to_smefit(
+            {wc: val.real for wc, val in wc_final_vals.items()},
+            origin=f"{origin} to {scale:g} GeV",
+            atol=2 * _SMALL_VALUE_THRESHOLD,
+        )
+        # 1e6 is to transform from GeV^-2 to TeV^-2
+        return {op: 1e6 * val for op, val in smefit_vals.items()}
 
     @property
     def all_ops(self) -> tuple[str, ...]:

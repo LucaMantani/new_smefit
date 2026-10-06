@@ -1,322 +1,349 @@
-# Dictionary translating from the smefit basis to the Warsaw basis in the WCxf
+"""Map between the SMEFiT operator basis and the Warsaw basis of WCxf.
+
+Only the forward direction is written by hand, in :data:`SMEFIT_TO_WARSAW`::
+
+    O_op = sum_w  M[w, op] * O_w     (op: SMEFiT operator, w: Warsaw operator)
+
+so the SMEFiT coefficients ``c_op`` switch on the Warsaw coefficients
+``C_w = sum_op M[w, op] * c_op``, i.e. ``C = M @ c``. This direction always exists.
+
+The inverse only exists on the image of ``M``, i.e. on Warsaw points respecting
+the flavour symmetry the SMEFiT basis assumes. :class:`WarsawMap` derives it from
+``M`` and checks both conditions it rests on: ``M`` must have full column rank
+(no two SMEFiT operators are the same Warsaw direction), and a point mapped back
+should lie in the image of ``M``.
+
+On the image every left inverse agrees; off it a convention is needed. The
+inverse reads, for each group of operators sharing Warsaw coefficients, the first
+independent components in the order they are listed in the table. Entries list
+generation 1 first, so a point breaking the flavour symmetry is mapped back from
+its generation-1 components.
+
+The SMEFiT basis is itself not flavour-consistent in the right-handed down
+sector: ``Opdi``, ``O1dt``, ``O8dt``, ``O1qd`` and ``O8qd`` assume d, s and b
+universal, while ``Obb``, ``Ol{1,2,3}b``, ``O{e,mu,ta}b`` (b only) and
+``Ol{1,2,3}d``, ``O{e,mu,ta}d`` (d and s only) split b off. Running the latter
+therefore produces points off the image of ``M``, and :meth:`WarsawMap.to_smefit`
+warns about them.
+"""
+
+import functools
+import logging
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+
+import numpy as np
+
 from smefit.constants import cw, sw
 
-# This creates a dictionary to go from SMEFiT basis to Warsaw.
-# In particular, for each operator, it tells you which Wilson coefficients
-# need to be switched on in the Warsaw basis and the corresponding values.
-# These are basically the equations between operators.
-# O_{SMEFiT} = sum_i value_i * O_{Warsaw, i}
-wcxf_translate = {
+_logger = logging.getLogger(__name__)
+
+# A coefficient is a number, or a function.
+Coeff = float | Callable[[float], float]
+
+SMEFIT_TO_WARSAW: dict[str, dict[str, Coeff]] = {
     # Bosonic
-    "OWWW": {"wc": ["W"], "value": [-1.0]},
-    "OpBox": {"wc": ["phiBox"]},
-    "OpD": {"wc": ["phiD"]},
-    "OpWB": {"wc": ["phiWB"]},
-    "OpG": {"wc": ["phiG"]},
-    "OpW": {"wc": ["phiW"]},
-    "OpB": {"wc": ["phiB"]},
-    "Op": {"wc": ["phi"]},
+    "OWWW": {"W": -1.0},
+    "OpBox": {"phiBox": 1.0},
+    "OpD": {"phiD": 1.0},
+    "OpWB": {"phiWB": 1.0},
+    "OpG": {"phiG": 1.0},
+    "OpW": {"phiW": 1.0},
+    "OpB": {"phiB": 1.0},
+    "Op": {"phi": 1.0},
     # Dipoles
-    "OtG": {"wc": ["uG_33"], "value": ["-gs"]},
-    "OtW": {"wc": ["uB_33", "uW_33"], "value": [-cw / sw, -1.0]},
-    "OtZ": {"wc": ["uB_33"], "value": [1.0 / sw]},
+    "OtG": {"uG_33": lambda gs: -gs},
+    "OtW": {"uB_33": -cw / sw, "uW_33": -1.0},
+    "OtZ": {"uB_33": 1 / sw},
     # Quark Currents
-    "O3pq": {"wc": ["phiq1_11", "phiq1_22", "phiq3_11", "phiq3_22"]},
-    "OpqMi": {"wc": ["phiq1_11", "phiq1_22"]},
-    "O3pQ3": {"wc": ["phiq1_33", "phiq3_33"]},
-    "OpQM": {"wc": ["phiq1_33"]},
-    "Opt": {"wc": ["phiu_33"]},
-    "Opui": {"wc": ["phiu_11", "phiu_22"]},
-    "Opdi": {"wc": ["phid_11", "phid_22", "phid_33"]},
+    "O3pq": {"phiq1_11": 1.0, "phiq1_22": 1.0, "phiq3_11": 1.0, "phiq3_22": 1.0},
+    "OpqMi": {"phiq1_11": 1.0, "phiq1_22": 1.0},
+    "O3pQ3": {"phiq1_33": 1.0, "phiq3_33": 1.0},
+    "OpQM": {"phiq1_33": 1.0},
+    "Opt": {"phiu_33": 1.0},
+    "Opui": {"phiu_11": 1.0, "phiu_22": 1.0},
+    "Opdi": {"phid_11": 1.0, "phid_22": 1.0, "phid_33": 1.0},
     # Lepton Currents
-    "Opl1": {"wc": ["phil1_11"]},
-    "Opl2": {"wc": ["phil1_22"]},
-    "Opl3": {"wc": ["phil1_33"]},
-    "O3pl1": {"wc": ["phil3_11"]},
-    "O3pl2": {"wc": ["phil3_22"]},
-    "O3pl3": {"wc": ["phil3_33"]},
-    "Ope": {"wc": ["phie_11"]},
-    "Opmu": {"wc": ["phie_22"]},
-    "Opta": {"wc": ["phie_33"]},
+    "Opl1": {"phil1_11": 1.0},
+    "Opl2": {"phil1_22": 1.0},
+    "Opl3": {"phil1_33": 1.0},
+    "O3pl1": {"phil3_11": 1.0},
+    "O3pl2": {"phil3_22": 1.0},
+    "O3pl3": {"phil3_33": 1.0},
+    "Ope": {"phie_11": 1.0},
+    "Opmu": {"phie_22": 1.0},
+    "Opta": {"phie_33": 1.0},
     # Yukawas
-    "Otp": {"wc": ["uphi_33"]},
-    "Ocp": {"wc": ["uphi_22"]},
-    "Obp": {"wc": ["dphi_33"]},
-    "Otap": {"wc": ["ephi_33"]},
-    "Omup": {"wc": ["ephi_22"]},
+    "Otp": {"uphi_33": 1.0},
+    "Ocp": {"uphi_22": 1.0},
+    "Obp": {"dphi_33": 1.0},
+    "Otap": {"ephi_33": 1.0},
+    "Omup": {"ephi_22": 1.0},
     # 2L2H quark operators
     "O81qq": {
-        "wc": ["qq1_1331", "qq1_2332", "qq1_1133", "qq1_2233", "qq3_1331", "qq3_2332"],
-        "value": [1.0 / 4.0, 1.0 / 4.0, -1.0 / 6.0, -1.0 / 6.0, 1.0 / 4.0, 1.0 / 4.0],
+        "qq1_1331": 1 / 4,
+        "qq1_2332": 1 / 4,
+        "qq1_1133": -1 / 6,
+        "qq1_2233": -1 / 6,
+        "qq3_1331": 1 / 4,
+        "qq3_2332": 1 / 4,
     },
-    "O11qq": {"wc": ["qq1_1133", "qq1_2233"]},
+    "O11qq": {"qq1_1133": 1.0, "qq1_2233": 1.0},
     "O83qq": {
-        "wc": ["qq1_1331", "qq1_2332", "qq3_1133", "qq3_2233", "qq3_1331", "qq3_2332"],
-        "value": [3.0 / 4.0, 3.0 / 4.0, -1.0 / 6.0, -1.0 / 6.0, -1.0 / 4.0, -1.0 / 4.0],
+        "qq1_1331": 3 / 4,
+        "qq1_2332": 3 / 4,
+        "qq3_1133": -1 / 6,
+        "qq3_2233": -1 / 6,
+        "qq3_1331": -1 / 4,
+        "qq3_2332": -1 / 4,
     },
-    "O13qq": {"wc": ["qq3_1133", "qq3_2233"]},
-    "O8qt": {"wc": ["qu8_1133", "qu8_2233"]},
-    "O1qt": {"wc": ["qu1_1133", "qu1_2233"]},
-    "O8ut": {
-        "wc": ["uu_1133", "uu_2233", "uu_1331", "uu_2332"],
-        "value": [-1.0 / 6.0, -1.0 / 6.0, 1.0 / 2.0, 1.0 / 2.0],
-    },
-    "O1ut": {"wc": ["uu_1133", "uu_2233"]},
-    "O8qu": {"wc": ["qu8_3311", "qu8_3322"]},
-    "O1qu": {"wc": ["qu1_3311", "qu1_3322"]},
-    "O8dt": {"wc": ["ud8_3311", "ud8_3322", "ud8_3333"]},
-    "O1dt": {"wc": ["ud1_3311", "ud1_3322", "ud1_3333"]},
-    "O8qd": {"wc": ["qd8_3311", "qd8_3322", "qd8_3333"]},
-    "O1qd": {"wc": ["qd1_3311", "qd1_3322", "qd1_3333"]},
+    "O13qq": {"qq3_1133": 1.0, "qq3_2233": 1.0},
+    "O8qt": {"qu8_1133": 1.0, "qu8_2233": 1.0},
+    "O1qt": {"qu1_1133": 1.0, "qu1_2233": 1.0},
+    "O8ut": {"uu_1133": -1 / 6, "uu_2233": -1 / 6, "uu_1331": 1 / 2, "uu_2332": 1 / 2},
+    "O1ut": {"uu_1133": 1.0, "uu_2233": 1.0},
+    "O8qu": {"qu8_3311": 1.0, "qu8_3322": 1.0},
+    "O1qu": {"qu1_3311": 1.0, "qu1_3322": 1.0},
+    "O8dt": {"ud8_3311": 1.0, "ud8_3322": 1.0, "ud8_3333": 1.0},
+    "O1dt": {"ud1_3311": 1.0, "ud1_3322": 1.0, "ud1_3333": 1.0},
+    "O8qd": {"qd8_3311": 1.0, "qd8_3322": 1.0, "qd8_3333": 1.0},
+    "O1qd": {"qd1_3311": 1.0, "qd1_3322": 1.0, "qd1_3333": 1.0},
     # 4H quark operators
-    "OQQ1": {"wc": ["qq1_3333"], "value": [1.0 / 2.0]},
-    "OQQ8": {"wc": ["qq1_3333", "qq3_3333"], "value": [1.0 / 24.0, 1.0 / 8.0]},
-    "OQt1": {"wc": ["qu1_3333"]},
-    "OQt8": {"wc": ["qu8_3333"]},
-    "Ott1": {"wc": ["uu_3333"]},
-    "Obb": {"wc": ["dd_3333"]},
+    "OQQ1": {"qq1_3333": 1 / 2},
+    "OQQ8": {"qq1_3333": 1 / 24, "qq3_3333": 1 / 8},
+    "OQt1": {"qu1_3333": 1.0},
+    "OQt8": {"qu8_3333": 1.0},
+    "Ott1": {"uu_3333": 1.0},
+    "Obb": {"dd_3333": 1.0},
     # 4 leptons
-    # left-left leptons
-    "Oll1221": {
-        "wc": ["ll_1221"],
-        "value": [2.0],
-    },  # Notice the factor of 1/2. See table 28 of arXiv:2012.11343
-    "Oll1331": {
-        "wc": ["ll_1331"],
-        "value": [2.0],
-    },
-    "Oll2332": {"wc": ["ll_2332"], "value": [2.0]},
-    "Oll1111": {"wc": ["ll_1111"]},
-    "Oll1122": {"wc": ["ll_1122"], "value": [2.0]},
-    "Oll1133": {"wc": ["ll_1133"], "value": [2.0]},
-    "Oll2233": {"wc": ["ll_2233"], "value": [2.0]},
-    "Oll2222": {"wc": ["ll_2222"]},
-    "Oll3333": {"wc": ["ll_3333"]},
+    # left-left leptons: notice the factor 2, see table 28 of arXiv:2012.11343
+    "Oll1221": {"ll_1221": 2.0},
+    "Oll1331": {"ll_1331": 2.0},
+    "Oll2332": {"ll_2332": 2.0},
+    "Oll1111": {"ll_1111": 1.0},
+    "Oll1122": {"ll_1122": 2.0},
+    "Oll1133": {"ll_1133": 2.0},
+    "Oll2233": {"ll_2233": 2.0},
+    "Oll2222": {"ll_2222": 1.0},
+    "Oll3333": {"ll_3333": 1.0},
     # left-right leptons
-    "Ole1111": {"wc": ["le_1111"]},
-    "Ole2222": {"wc": ["le_2222"]},
-    "Ole3333": {"wc": ["le_3333"]},
-    "Ole1133": {"wc": ["le_1133"]},
-    "Ole1122": {"wc": ["le_1122"]},
-    "Ole2233": {"wc": ["le_2233"]},
-    "Ole3322": {"wc": ["le_3322"]},
-    "Ole3311": {"wc": ["le_3311"]},
-    "Ole2211": {"wc": ["le_2211"]},
-    # right-right leptons
-    "Oee1111": {"wc": ["ee_1111"]},
-    "Oee2222": {"wc": ["ee_2222"]},
-    "Oee3333": {"wc": ["ee_3333"]},
-    "Oee1122": {
-        "wc": ["ee_1122"],
-        "value": [4.0],
-    },  # Factor of 4 to agree with SMEFTsim general convention.
-    "Oee1133": {"wc": ["ee_1133"], "value": [4.0]},
-    "Oee2233": {"wc": ["ee_2233"], "value": [4.0]},
+    "Ole1111": {"le_1111": 1.0},
+    "Ole2222": {"le_2222": 1.0},
+    "Ole3333": {"le_3333": 1.0},
+    "Ole1133": {"le_1133": 1.0},
+    "Ole1122": {"le_1122": 1.0},
+    "Ole2233": {"le_2233": 1.0},
+    "Ole3322": {"le_3322": 1.0},
+    "Ole3311": {"le_3311": 1.0},
+    "Ole2211": {"le_2211": 1.0},
+    # right-right leptons: factor 4 to agree with the SMEFTsim general convention
+    "Oee1111": {"ee_1111": 1.0},
+    "Oee2222": {"ee_2222": 1.0},
+    "Oee3333": {"ee_3333": 1.0},
+    "Oee1122": {"ee_1122": 4.0},
+    "Oee1133": {"ee_1133": 4.0},
+    "Oee2233": {"ee_2233": 4.0},
     # 2 quark 2 lepton operators
-    "Oeu": {"wc": ["eu_1111", "eu_1122"]},
-    "Omuu": {"wc": ["eu_2211", "eu_2222"]},
-    "Otau": {"wc": ["eu_3311", "eu_3322"]},
-    "Oed": {"wc": ["ed_1111", "ed_1122"]},
-    "Omud": {"wc": ["ed_2211", "ed_2222"]},
-    "Otad": {"wc": ["ed_3311", "ed_3322"]},
-    "Oeb": {"wc": ["ed_1133"]},
-    "Omub": {"wc": ["ed_2233"]},
-    "Otab": {"wc": ["ed_3333"]},
-    "Otl1": {"wc": ["lu_1133"]},
-    "Otl2": {"wc": ["lu_2233"]},
-    "Otl3": {"wc": ["lu_3333"]},
-    "Ote": {"wc": ["eu_1133"]},
-    "Otmu": {"wc": ["eu_2233"]},
-    "Otta": {"wc": ["eu_3333"]},
-    "Oql13": {"wc": ["lq1_1111", "lq1_1122", "lq3_1111", "lq3_1122"]},
-    "Oql23": {"wc": ["lq1_2211", "lq1_2222", "lq3_2211", "lq3_2222"]},
-    "Oql33": {"wc": ["lq1_3311", "lq1_3322", "lq3_3311", "lq3_3322"]},
-    "Oql1M": {"wc": ["lq1_1111", "lq1_1122"]},
-    "Oql2M": {"wc": ["lq1_2211", "lq1_2222"]},
-    "Oql3M": {"wc": ["lq1_3311", "lq1_3322"]},
-    "OQl13": {"wc": ["lq1_1133", "lq3_1133"]},
-    "OQl23": {"wc": ["lq1_2233", "lq3_2233"]},
-    "OQl33": {"wc": ["lq1_3333", "lq3_3333"]},
-    "OQl1M": {"wc": ["lq1_1133"]},
-    "OQl2M": {"wc": ["lq1_2233"]},
-    "OQl3M": {"wc": ["lq1_3333"]},
-    "Ol1u": {"wc": ["lu_1111", "lu_1122"]},
-    "Ol2u": {"wc": ["lu_2211", "lu_2222"]},
-    "Ol3u": {"wc": ["lu_3311", "lu_3322"]},
-    "Ol1d": {"wc": ["ld_1111", "ld_1122"]},
-    "Ol2d": {"wc": ["ld_2211", "ld_2222"]},
-    "Ol3d": {"wc": ["ld_3311", "ld_3322"]},
-    "Ol1b": {"wc": ["ld_1133"]},
-    "Ol2b": {"wc": ["ld_2233"]},
-    "Ol3b": {"wc": ["ld_3333"]},
-    "Oqe": {"wc": ["qe_1111", "qe_2211"]},
-    "Oqmu": {"wc": ["qe_1122", "qe_2222"]},
-    "Oqta": {"wc": ["qe_1133", "qe_2233"]},
-    "OQe": {"wc": ["qe_3311"]},
-    "OQmu": {"wc": ["qe_3322"]},
-    "OQta": {"wc": ["qe_3333"]},
+    "Oeu": {"eu_1111": 1.0, "eu_1122": 1.0},
+    "Omuu": {"eu_2211": 1.0, "eu_2222": 1.0},
+    "Otau": {"eu_3311": 1.0, "eu_3322": 1.0},
+    "Oed": {"ed_1111": 1.0, "ed_1122": 1.0},
+    "Omud": {"ed_2211": 1.0, "ed_2222": 1.0},
+    "Otad": {"ed_3311": 1.0, "ed_3322": 1.0},
+    "Oeb": {"ed_1133": 1.0},
+    "Omub": {"ed_2233": 1.0},
+    "Otab": {"ed_3333": 1.0},
+    "Otl1": {"lu_1133": 1.0},
+    "Otl2": {"lu_2233": 1.0},
+    "Otl3": {"lu_3333": 1.0},
+    "Ote": {"eu_1133": 1.0},
+    "Otmu": {"eu_2233": 1.0},
+    "Otta": {"eu_3333": 1.0},
+    "Oql13": {"lq1_1111": 1.0, "lq1_1122": 1.0, "lq3_1111": 1.0, "lq3_1122": 1.0},
+    "Oql23": {"lq1_2211": 1.0, "lq1_2222": 1.0, "lq3_2211": 1.0, "lq3_2222": 1.0},
+    "Oql33": {"lq1_3311": 1.0, "lq1_3322": 1.0, "lq3_3311": 1.0, "lq3_3322": 1.0},
+    "Oql1M": {"lq1_1111": 1.0, "lq1_1122": 1.0},
+    "Oql2M": {"lq1_2211": 1.0, "lq1_2222": 1.0},
+    "Oql3M": {"lq1_3311": 1.0, "lq1_3322": 1.0},
+    "OQl13": {"lq1_1133": 1.0, "lq3_1133": 1.0},
+    "OQl23": {"lq1_2233": 1.0, "lq3_2233": 1.0},
+    "OQl33": {"lq1_3333": 1.0, "lq3_3333": 1.0},
+    "OQl1M": {"lq1_1133": 1.0},
+    "OQl2M": {"lq1_2233": 1.0},
+    "OQl3M": {"lq1_3333": 1.0},
+    "Ol1u": {"lu_1111": 1.0, "lu_1122": 1.0},
+    "Ol2u": {"lu_2211": 1.0, "lu_2222": 1.0},
+    "Ol3u": {"lu_3311": 1.0, "lu_3322": 1.0},
+    "Ol1d": {"ld_1111": 1.0, "ld_1122": 1.0},
+    "Ol2d": {"ld_2211": 1.0, "ld_2222": 1.0},
+    "Ol3d": {"ld_3311": 1.0, "ld_3322": 1.0},
+    "Ol1b": {"ld_1133": 1.0},
+    "Ol2b": {"ld_2233": 1.0},
+    "Ol3b": {"ld_3333": 1.0},
+    "Oqe": {"qe_1111": 1.0, "qe_2211": 1.0},
+    "Oqmu": {"qe_1122": 1.0, "qe_2222": 1.0},
+    "Oqta": {"qe_1133": 1.0, "qe_2233": 1.0},
+    "OQe": {"qe_3311": 1.0},
+    "OQmu": {"qe_3322": 1.0},
+    "OQta": {"qe_3333": 1.0},
 }
 
-# This creates a dictionary to go from Warsaw to SMEFiT.
-# In particular, given a point in the coefficient space of the Warsaw basis,
-# it tells you how to combine them to get the coefficients in the SMEFiT basis.
-# These are basically the equations between Wilson coefficients.
-# C_{SMEFiT} = sum_i coeff_i * C_{Warsaw, i}
-# Note that the flavour structure is assumed to hold and therefore the values
-# are inferred only from the 11 components.
-inverse_wcxf_translate = {
-    # Bosonic
-    "OWWW": {"wc": ["W"], "coeff": [-1.0]},
-    "OpBox": {"wc": ["phiBox"]},
-    "OpD": {"wc": ["phiD"]},
-    "OpWB": {"wc": ["phiWB"]},
-    "OpG": {"wc": ["phiG"]},
-    "OpW": {"wc": ["phiW"]},
-    "OpB": {"wc": ["phiB"]},
-    "Op": {"wc": ["phi"]},
-    # Dipoles
-    "OtG": {"wc": ["uG_33"], "coeff": ["-1/gs"]},
-    "OtW": {"wc": ["uW_33"], "coeff": [-1.0]},
-    "OtZ": {"wc": ["uB_33", "uW_33"], "coeff": [sw, -cw]},
-    # Quark Currents
-    "O3pq": {"wc": ["phiq3_11"]},
-    "OpqMi": {"wc": ["phiq1_11", "phiq3_11"], "coeff": [1.0, -1.0]},
-    "O3pQ3": {"wc": ["phiq3_33"]},
-    "OpQM": {"wc": ["phiq1_33", "phiq3_33"], "coeff": [1.0, -1.0]},
-    "Opt": {"wc": ["phiu_33"]},
-    "Opui": {"wc": ["phiu_11"]},
-    "Opdi": {"wc": ["phid_11"]},
-    # Lepton Currents
-    "Opl1": {"wc": ["phil1_11"]},
-    "Opl2": {"wc": ["phil1_22"]},
-    "Opl3": {"wc": ["phil1_33"]},
-    "O3pl1": {"wc": ["phil3_11"]},
-    "O3pl2": {"wc": ["phil3_22"]},
-    "O3pl3": {"wc": ["phil3_33"]},
-    "Ope": {"wc": ["phie_11"]},
-    "Opmu": {"wc": ["phie_22"]},
-    "Opta": {"wc": ["phie_33"]},
-    # Yukawas
-    "Otp": {"wc": ["uphi_33"]},
-    "Ocp": {"wc": ["uphi_22"]},
-    "Obp": {"wc": ["dphi_33"]},
-    "Otap": {"wc": ["ephi_33"]},
-    "Omup": {"wc": ["ephi_22"]},
-    # 2L2H quark operators
-    "O81qq": {"wc": ["qq1_1331", "qq3_1331"], "coeff": [1.0, 3.0]},
-    "O11qq": {
-        "wc": ["qq1_1133", "qq1_1331", "qq3_1331"],
-        "coeff": [1.0, 1.0 / 6.0, 1.0 / 2.0],
-    },
-    "O83qq": {
-        "wc": ["qq1_1331", "qq3_1331"],
-        "coeff": [1.0, -1.0],
-    },
-    "O13qq": {
-        "wc": ["qq3_1133", "qq1_1331", "qq3_1331"],
-        "coeff": [1.0, 1.0 / 6.0, -1.0 / 6.0],
-    },
-    "O8qt": {"wc": ["qu8_1133"]},
-    "O1qt": {"wc": ["qu1_1133"]},
-    "O8ut": {"wc": ["uu_1331"], "coeff": [2.0]},
-    "O1ut": {"wc": ["uu_1133", "uu_1331"], "coeff": [1.0, 1.0 / 3.0]},
-    "O8qu": {"wc": ["qu8_3311"]},
-    "O1qu": {"wc": ["qu1_3311"]},
-    "O8dt": {"wc": ["ud8_3311"]},
-    "O1dt": {"wc": ["ud1_3311"]},
-    "O8qd": {"wc": ["qd8_3311"]},
-    "O1qd": {"wc": ["qd1_3311"]},
-    # 4H quark operators
-    "OQQ1": {"wc": ["qq1_3333", "qq3_3333"], "coeff": [2.0, -2.0 / 3.0]},
-    "OQQ8": {"wc": ["qq3_3333"], "coeff": [8.0]},
-    "OQt1": {"wc": ["qu1_3333"]},
-    "OQt8": {"wc": ["qu8_3333"]},
-    "Ott1": {"wc": ["uu_3333"]},
-    "Obb": {"wc": ["dd_3333"]},
-    # 4 leptons
-    # left-left leptons
-    "Oll1221": {
-        "wc": ["ll_1221"],
-        "coeff": [1.0 / 2.0],
-    },  # Notice the factor of 1/2. See table 28 of arXiv:2012.11343
-    "Oll1331": {
-        "wc": ["ll_1331"],
-        "coeff": [1.0 / 2.0],
-    },
-    "Oll1111": {"wc": ["ll_1111"]},
-    "Oll1122": {
-        "wc": ["ll_1122"],
-        "coeff": [1.0 / 2.0],
-    },
-    "Oll2332": {
-        "wc": ["ll_2332"],
-        "coeff": [1.0 / 2.0],
-    },  # Notice the factor of 1/2. See table 28 of arXiv:2012.11343
-    "Oll1133": {"wc": ["ll_1133"], "coeff": [1.0 / 2.0]},
-    "Oll2233": {"wc": ["ll_2233"], "coeff": [1.0 / 2.0]},
-    "Oll2222": {"wc": ["ll_2222"]},
-    "Oll3333": {"wc": ["ll_3333"]},
-    # left-right leptons
-    "Ole1111": {"wc": ["le_1111"]},
-    "Ole2222": {"wc": ["le_2222"]},
-    "Ole3333": {"wc": ["le_3333"]},
-    "Ole1133": {"wc": ["le_1133"]},
-    "Ole1122": {"wc": ["le_1122"]},
-    "Ole2233": {"wc": ["le_2233"]},
-    "Ole3322": {"wc": ["le_3322"]},
-    "Ole3311": {"wc": ["le_3311"]},
-    "Ole2211": {"wc": ["le_2211"]},
-    # right-right leptons
-    "Oee1111": {"wc": ["ee_1111"]},
-    "Oee2222": {"wc": ["ee_2222"]},
-    "Oee3333": {"wc": ["ee_3333"]},
-    "Oee1122": {
-        "wc": ["ee_1122"],
-        "coeff": [1.0 / 4.0],
-    },  # Factor 1/4 to agree with SMEFTsim general convention.
-    "Oee1133": {"wc": ["ee_1133"], "coeff": [1.0 / 4.0]},
-    "Oee2233": {"wc": ["ee_2233"], "coeff": [1.0 / 4.0]},
-    # 2 quark 2 lepton operators
-    "Oeu": {"wc": ["eu_1111"]},
-    "Omuu": {"wc": ["eu_2211"]},
-    "Otau": {"wc": ["eu_3311"]},
-    "Oed": {"wc": ["ed_1111"]},
-    "Omud": {"wc": ["ed_2211"]},
-    "Otad": {"wc": ["ed_3311"]},
-    "Oeb": {"wc": ["ed_1133"]},
-    "Omub": {"wc": ["ed_2233"]},
-    "Otab": {"wc": ["ed_3333"]},
-    "Otl1": {"wc": ["lu_1133"]},
-    "Otl2": {"wc": ["lu_2233"]},
-    "Otl3": {"wc": ["lu_3333"]},
-    "Ote": {"wc": ["eu_1133"]},
-    "Otmu": {"wc": ["eu_2233"]},
-    "Otta": {"wc": ["eu_3333"]},
-    "Oql13": {"wc": ["lq3_1111"]},
-    "Oql23": {"wc": ["lq3_2211"]},
-    "Oql33": {"wc": ["lq3_3311"]},
-    "Oql1M": {"wc": ["lq1_1111", "lq3_1111"], "coeff": [1.0, -1.0]},
-    "Oql2M": {"wc": ["lq1_2211", "lq3_2211"], "coeff": [1.0, -1.0]},
-    "Oql3M": {"wc": ["lq1_3311", "lq3_3311"], "coeff": [1.0, -1.0]},
-    "OQl13": {"wc": ["lq3_1133"]},
-    "OQl23": {"wc": ["lq3_2233"]},
-    "OQl33": {"wc": ["lq3_3333"]},
-    "OQl1M": {"wc": ["lq1_1133", "lq3_1133"], "coeff": [1.0, -1.0]},
-    "OQl2M": {"wc": ["lq1_2233", "lq3_2233"], "coeff": [1.0, -1.0]},
-    "OQl3M": {"wc": ["lq1_3333", "lq3_3333"], "coeff": [1.0, -1.0]},
-    "Ol1u": {"wc": ["lu_1111"]},
-    "Ol2u": {"wc": ["lu_2211"]},
-    "Ol3u": {"wc": ["lu_3311"]},
-    "Ol1d": {"wc": ["ld_1111"]},
-    "Ol2d": {"wc": ["ld_2211"]},
-    "Ol3d": {"wc": ["ld_3311"]},
-    "Ol1b": {"wc": ["ld_1133"]},
-    "Ol2b": {"wc": ["ld_2233"]},
-    "Ol3b": {"wc": ["ld_3333"]},
-    "Oqe": {"wc": ["qe_1111"]},
-    "Oqmu": {"wc": ["qe_1122"]},
-    "Oqta": {"wc": ["qe_1133"]},
-    "OQe": {"wc": ["qe_3311"]},
-    "OQmu": {"wc": ["qe_3322"]},
-    "OQta": {"wc": ["qe_3333"]},
-}
+
+def _blocks(matrix: np.ndarray) -> list[np.ndarray]:
+    """Group the columns of *matrix* into independent blocks.
+
+    Two columns are in the same block when they share a non-zero row, directly
+    or through other columns. Inverting block by block keeps the inverse exactly
+    zero between operators that have no Warsaw coefficient in common.
+    """
+    nonzero = (matrix != 0).astype(int)
+    # columns linked through a shared row; square until the links stop growing
+    reach = (nonzero.T @ nonzero) > 0
+    while not np.array_equal(closer := (reach.astype(int) @ reach) > 0, reach):
+        reach = closer
+    return [np.flatnonzero(row) for row in np.unique(reach, axis=0)]
+
+
+@dataclass(frozen=True)
+class WarsawMap:
+    """The SMEFiT → Warsaw matrix at a given g_s, and its derived inverse.
+
+    Attributes
+    ----------
+    ops : tuple[str, ...]
+        SMEFiT operators, the columns of :attr:`matrix`.
+    warsaw : tuple[str, ...]
+        Warsaw coefficients any SMEFiT operator switches on, the rows of
+        :attr:`matrix`.
+    matrix : numpy.ndarray
+        ``M``, shape ``(len(warsaw), len(ops))``.
+    inverse : numpy.ndarray
+        Left inverse of ``M``, shape ``(len(ops), len(warsaw))``, reading the
+        first independent listed components of each block (see the module
+        docstring).
+    """
+
+    ops: tuple[str, ...]
+    warsaw: tuple[str, ...]
+    matrix: np.ndarray
+    inverse: np.ndarray
+
+    @classmethod
+    def from_table(
+        cls, table: Mapping[str, Mapping[str, Coeff]], gs: float
+    ) -> "WarsawMap":
+        """Build the map from a ``{op: {warsaw: coeff}}`` table.
+
+        Parameters
+        ----------
+        table : Mapping[str, Mapping[str, Coeff]]
+            Forward map, in the format of :data:`SMEFIT_TO_WARSAW`.
+        gs : float
+            Strong coupling the g_s-dependent coefficients are evaluated at.
+
+        Raises
+        ------
+        ValueError
+            If some SMEFiT operators are linearly dependent in the Warsaw
+            basis, so that no inverse exists.
+        """
+        ops = tuple(table)
+        # rows in the order the table first lists them: the inverse reads the
+        # first independent ones
+        warsaw = tuple(dict.fromkeys(w for entry in table.values() for w in entry))
+        row = {w: i for i, w in enumerate(warsaw)}
+
+        matrix = np.zeros((len(warsaw), len(ops)))
+        for col, op in enumerate(ops):
+            for w, coeff in table[op].items():
+                matrix[row[w], col] = coeff(gs) if callable(coeff) else coeff
+
+        inverse = np.zeros((len(ops), len(warsaw)))
+        for cols in _blocks(matrix):
+            read = []
+            for r in np.flatnonzero(matrix[:, cols].any(axis=1)):
+                if np.linalg.matrix_rank(matrix[np.ix_([*read, r], cols)]) > len(read):
+                    read.append(r)
+            if len(read) < len(cols):
+                raise ValueError(
+                    "SMEFiT operators "
+                    f"{[ops[c] for c in cols]} are linearly dependent in the "
+                    "Warsaw basis: the map to it cannot be inverted."
+                )
+            inverse[np.ix_(cols, read)] = np.linalg.inv(matrix[np.ix_(read, cols)])
+
+        return cls(ops, warsaw, matrix, inverse)
+
+    def to_warsaw(self, op: str) -> dict[str, float]:
+        """Warsaw coefficients switched on by a unit coefficient of *op*."""
+        col = self.matrix[:, self.ops.index(op)]
+        return {self.warsaw[i]: float(col[i]) for i in np.flatnonzero(col)}
+
+    def to_smefit(
+        self,
+        values: Mapping[str, float],
+        origin: str = "Warsaw point",
+        rtol: float = 1e-3,
+        atol: float = 0.0,
+    ) -> dict[str, float]:
+        """Map a point in the Warsaw basis back to the SMEFiT basis.
+
+        Warsaw coefficients no SMEFiT operator switches on are dropped. The rest
+        should lie in the image of :attr:`matrix`. Each SMEFiT operator is
+        checked on the Warsaw components it switches on: if the point misses
+        the image there by more than ``atol + rtol * size``, with ``size`` the
+        largest of those components, the operator is named in a warning, logged
+        on every call, with the share of that size missed, largest first.
+
+        The check is per operator, not against the whole point, because a
+        breaking that is small next to the point can still be all of the
+        operator it is mapped onto (e.g. a running operator mixing,
+        loop-suppressed, into a flavour-symmetric one).
+
+        Parameters
+        ----------
+        values : Mapping[str, float]
+            Warsaw coefficient values, keyed by WCxf name.
+        origin : str
+            What the point comes from, for the warning.
+        rtol : float
+            Largest flavour-symmetry violation accepted silently, relative to
+            the size of the operator's Warsaw components.
+        atol : float
+            Violation accepted silently whatever that size, in the units of
+            *values*; for callers that cut small values before mapping, which
+            breaks the symmetry of components straddling the cut.
+
+        Returns
+        -------
+        dict[str, float]
+            The non-zero SMEFiT coefficients.
+        """
+        point = np.array([values.get(w, 0.0) for w in self.warsaw])
+        coeffs = self.inverse @ point
+
+        # per operator (column), the largest residual and component on its rows
+        switched_on = self.matrix != 0
+        residual = np.abs(self.matrix @ coeffs - point)
+        missed = np.where(switched_on, residual[:, None], 0.0).max(axis=0)
+        size = np.where(switched_on, np.abs(point)[:, None], 0.0).max(axis=0)
+
+        broken = np.flatnonzero(missed > atol + rtol * size)
+        if broken.size:
+            share = missed[broken] / size[broken]
+            named = ", ".join(
+                f"{self.ops[t]} ({s:.1%})"
+                for s, t in sorted(zip(share, broken), reverse=True)
+            )
+            _logger.warning(
+                f"{origin} breaks the flavour symmetry assumed by: {named}; "
+                "only their generation-1 Warsaw components are mapped back."
+            )
+
+        return {op: float(c) for op, c in zip(self.ops, coeffs) if c != 0.0}
+
+
+@functools.cache
+def warsaw_map(gs: float) -> WarsawMap:
+    """The :data:`SMEFIT_TO_WARSAW` map at strong coupling *gs*."""
+    return WarsawMap.from_table(SMEFIT_TO_WARSAW, gs)

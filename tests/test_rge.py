@@ -4,6 +4,7 @@ Fast unit tests run without real Wilson evolution.
 Slow tests (marked @pytest.mark.slow) call the real wilson package.
 """
 
+import logging
 import pickle
 from unittest.mock import patch
 
@@ -173,7 +174,8 @@ def test_rge_basis_unknown_coefficient_is_null_vector(caplog):
         basis = rge.RGEbasis
 
     assert basis == {"UVcoupling": {}}
-    assert "not present in the WCxf translation dictionary" in caplog.text
+    assert "UVcoupling is not in the WCxf translation table" in caplog.text
+    assert len(caplog.records) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +573,24 @@ def test_rge_matrix_returns_dataframe():
     result = rge.RGEmatrix(200)
     assert isinstance(result, pd.DataFrame)
     assert "OpBox" in result.columns
+
+
+@pytest.mark.slow
+def test_short_running_still_reports_flavour_breaking(caplog):
+    """Oeb mixes, loop-suppressed, into Opdi splitting b off; over a short running
+    that is small next to Oeb itself but still all of Opdi, so it must warn."""
+    rge = RGE(["Oeb"], init_scale=1000, yukawa="top")
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        rge.RGEmatrix(900)
+    assert "Running Oeb to 900 GeV" in caplog.text and "Opdi (100.0%)" in caplog.text
+
+
+@pytest.mark.slow
+def test_rge_matrix_without_breaking_does_not_warn(caplog):
+    rge = RGE(["OpBox"], init_scale=1000, yukawa="top")
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        rge.RGEmatrix(200)
+    assert not caplog.records
 
 
 @pytest.mark.slow

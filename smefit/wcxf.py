@@ -2,7 +2,7 @@
 
 Only the forward direction is written by hand, in :data:`SMEFIT_TO_WARSAW`::
 
-    O_op = sum_w  M[w, op] * O_w     (op: SMEFiT operator, w: Warsaw coefficient)
+    O_op = sum_w  M[w, op] * O_w     (op: SMEFiT operator, w: Warsaw operator)
 
 so the SMEFiT coefficients ``c_op`` switch on the Warsaw coefficients
 ``C_w = sum_op M[w, op] * c_op``, i.e. ``C = M @ c``. This direction always exists.

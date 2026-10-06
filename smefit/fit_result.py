@@ -40,6 +40,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from smefit.credible_intervals import Bounds, highest_density_interval
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
@@ -174,7 +175,8 @@ def _equal_tailed_interval(
     values: np.ndarray, level: float
 ) -> List[Tuple[float, float]]:
     """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
-    each side. NaNs are ignored. Always a single interval."""
+    each side. NaNs are ignored. Always a single interval. ``bounds`` is
+    unused: percentiles of the samples already lie within them."""
     tail = (100.0 - level) / 2.0
     low, high = np.nanpercentile(values, [tail, 100.0 - tail])
     return [(float(low), float(high))]
@@ -182,12 +184,44 @@ def _equal_tailed_interval(
 
 # The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
 # name its ``interval_type`` argument (and the ``interval_types`` runcard key)
-# takes. Each maps one coefficient's samples and a level in percent to the
-# ``(low, high)`` pieces of its region, as a list so that a multimodal
-# posterior can be given several; a new interval type is one more entry.
-_INTERVAL_TYPES: Dict[str, Callable[[np.ndarray, float], List[Tuple[float, float]]]] = {
+# takes. Each maps one coefficient's samples, a level in percent and the hard
+# ``(low, high)`` bounds of its support (or None) to the ``(low, high)``
+# pieces of its region, as a list so that a multimodal posterior can be given
+# several; a new interval type is one more entry.
+_INTERVAL_TYPES: Dict[
+    str, Callable[[np.ndarray, float, Bounds], List[Tuple[float, float]]]
+] = {
     "eti": _equal_tailed_interval,
+    "hdi": highest_density_interval,
 }
+
+
+def _prior_bounds(
+    fit_results: Union["FitResult", "FitResultGroup"],
+) -> Dict[str, Bounds]:
+    """The hard bound each sign-definite coefficient's prior puts at 0.
+
+    Only a prior edge at 0 — ``low: 0`` or ``high: 0`` — is a bound the
+    intervals must respect: ``(0, None)`` or ``(None, 0)``. Any other prior
+    range only sets the volume sampled. A whitened fit's specs are those of
+    the whitened coordinates, not of the physical samples, so such a fit
+    contributes no bounds.
+    """
+    results = (
+        fit_results.results
+        if isinstance(fit_results, FitResultGroup)
+        else [fit_results]
+    )
+    bounds = {}
+    for result in results:
+        if result.whitening_active or not result.prior_specs:
+            continue
+        for name, spec in result.prior_specs.items():
+            if spec.get("low") == 0:
+                bounds[name] = (0.0, None)
+            elif spec.get("high") == 0:
+                bounds[name] = (None, 0.0)
+    return bounds
 
 
 @dataclass
@@ -713,8 +747,9 @@ class Fit:
             In percent: 95, not 0.95.
         interval_type : str, optional
             How the interval is chosen among those holding
-            ``confidence_level`` percent of the posterior. ``"eti"``
-            (equal-tailed), the default, is the only one so far.
+            ``confidence_level`` percent of the posterior: ``"eti"``
+            (equal-tailed), the default, or ``"hdi"`` (highest-density,
+            see :func:`smefit.credible_intervals.highest_density_interval`).
 
         Returns
         -------
@@ -743,12 +778,13 @@ class Fit:
                 "has no bounds to report."
             )
 
+        prior_bounds = _prior_bounds(self.fit_results)
         bounds = {}
         for name in self.fit_results.free_parameters:
             if name not in samples:
                 continue
             values = np.asarray(samples[name], dtype=float)
-            bounds[name] = interval(values, confidence_level)
+            bounds[name] = interval(values, confidence_level, prior_bounds.get(name))
         return bounds
 
     # ------------------------------------------------------------------

@@ -196,21 +196,12 @@ def _blocks(matrix: np.ndarray) -> list[np.ndarray]:
     or through other columns. Inverting block by block keeps the inverse exactly
     zero between operators that have no Warsaw coefficient in common.
     """
-    nonzero = matrix != 0
-    linked = (nonzero.T.astype(int) @ nonzero.astype(int)) > 0
-    unassigned = set(range(matrix.shape[1]))
-    blocks = []
-    while unassigned:
-        frontier = [unassigned.pop()]
-        block = []
-        while frontier:
-            col = frontier.pop()
-            block.append(col)
-            neighbours = unassigned.intersection(np.flatnonzero(linked[col]).tolist())
-            unassigned -= neighbours
-            frontier.extend(neighbours)
-        blocks.append(np.array(sorted(block)))
-    return blocks
+    nonzero = (matrix != 0).astype(int)
+    # columns linked through a shared row; square until the links stop growing
+    reach = (nonzero.T @ nonzero) > 0
+    while not np.array_equal(closer := (reach.astype(int) @ reach) > 0, reach):
+        reach = closer
+    return [np.flatnonzero(row) for row in np.unique(reach, axis=0)]
 
 
 @functools.cache

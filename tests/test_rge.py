@@ -173,7 +173,8 @@ def test_rge_basis_unknown_coefficient_is_null_vector(caplog):
         basis = rge.RGEbasis
 
     assert basis == {"UVcoupling": {}}
-    assert "not present in the WCxf translation dictionary" in caplog.text
+    assert "UVcoupling is not in the WCxf translation table" in caplog.text
+    assert len(caplog.records) == 1
 
 
 # ---------------------------------------------------------------------------

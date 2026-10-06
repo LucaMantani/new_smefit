@@ -318,10 +318,8 @@ class RGE:
         for wc_name in self.wc_names:
             if wc_name not in SMEFIT_TO_WARSAW:
                 _logger.warning(
-                    f"Wilson coefficient {wc_name} not present in the WCxf translation dictionary."
-                )
-                _logger.warning(
-                    "Assuming it is a external coupling and associating it to the null vector."
+                    f"Wilson coefficient {wc_name} is not in the WCxf translation "
+                    "table: treating it as an external coupling, mapped to the null vector."
                 )
                 wc_basis[wc_name] = {}
                 continue

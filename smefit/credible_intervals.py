@@ -80,7 +80,7 @@ def highest_density_interval(
     # max_modes keeps only the most probable pieces and drops the mass of the
     # rest; values.size puts that cap out of reach in practice. arviz's default
     # 512-point grid across all the modes would trim narrow ones.
-    # This is only to get rid of spurious modes from the resampled draws. 
+    # This is only to get rid of spurious modes from the resampled draws.
     # The number of legitimate modes is known from the previous call.
     fine = np.atleast_2d(
         az.hdi(
@@ -92,9 +92,13 @@ def highest_density_interval(
             grid_len=2048,
         )
     )
-    modes = modes[np.argsort(modes[:, 0])] # Sort by the left edge.
-    cuts = (modes[:-1, 1] + modes[1:, 0]) / 2 # The cut between each pair of modes is the midpoint between their edges.
-    owner = np.searchsorted(cuts, fine.mean(axis=1)) # assign a mode to each fine piece by its mean, which is guaranteed to be inside the mode.
+    # Sort by the left edge.
+    modes = modes[np.argsort(modes[:, 0])]
+    # The cut between each pair of modes is the midpoint between their edges.
+    cuts = (modes[:-1, 1] + modes[1:, 0]) / 2
+    # Assign a mode to each fine piece by its mean, which is guaranteed to be
+    # inside the mode.
+    owner = np.searchsorted(cuts, fine.mean(axis=1))
     return [
         (float(fine[owner == k, 0].min()), float(fine[owner == k, 1].max()))
         for k in np.unique(owner)

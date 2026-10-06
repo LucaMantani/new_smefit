@@ -5,6 +5,7 @@ the HDI is compared against."""
 
 import numpy as np
 import pytest
+from scipy.stats import norm
 
 from smefit.credible_intervals import equal_tailed_interval, highest_density_interval
 
@@ -90,6 +91,62 @@ def test_hdi_resolves_a_small_narrow_second_mode():
     [(_, main_high), (narrow_low, narrow_high)] = highest_density_interval(values, 95)
 
     assert main_high < narrow_low < 2.5 < narrow_high
+
+
+def _resampled(target_pdf, size, rng, proposal_sd=3.0, n_proposals=8000):
+    """Nested-sampling-like draws: N(0, proposal_sd) proposals importance-
+    resampled with replacement to ``target_pdf``, so many draws repeat."""
+    proposals = rng.normal(0.0, proposal_sd, n_proposals)
+    weights = target_pdf(proposals) / norm.pdf(proposals, 0.0, proposal_sd)
+    return rng.choice(proposals, size=size, p=weights / weights.sum())
+
+
+def _mass_inside(values, pieces):
+    return np.mean([any(low <= x <= high for low, high in pieces) for x in values])
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_hdi_edges_of_two_narrow_separated_modes_match_the_exact_region(level):
+    """A sign-flipped Yukawa: two equal, narrow modes far apart. The exact
+    region is each mode's central level-percent interval; the bandwidth that
+    counts the modes is set by the distance between them and would blur each
+    mode, so the edges must come from a finer one."""
+    centres, sigma = (-0.368, 0.0), 0.0045
+    rng = np.random.default_rng(0)
+    values = np.where(
+        rng.random(6400) < 0.5,
+        rng.normal(centres[0], sigma, 6400),
+        rng.normal(centres[1], sigma, 6400),
+    )
+    z = norm.ppf(0.5 + level / 200)
+
+    pieces = highest_density_interval(values, level)
+
+    assert len(pieces) == 2
+    for (low, high), centre in zip(pieces, centres):
+        assert low == pytest.approx(centre - z * sigma, abs=0.3 * sigma)
+        assert high == pytest.approx(centre + z * sigma, abs=0.3 * sigma)
+    assert _mass_inside(values, pieces) == pytest.approx(level / 100, abs=0.02)
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_hdi_of_a_heavily_resampled_bimodal_posterior_keeps_every_mode(level):
+    """With only ~2000 distinct draws out of 6400, the fine bandwidth breaks
+    each mode into fragments. Keeping only as many fragments as there are
+    modes loses mass, and in this sample a whole mode; gluing them per mode
+    keeps both modes and at least the level's mass."""
+
+    def target(x):
+        return 0.5 * norm.pdf(x, -2.0, 0.3) + 0.5 * norm.pdf(x, 2.0, 0.3)
+
+    values = _resampled(target, 6400, np.random.default_rng(6))
+
+    [(low_a, high_a), (low_b, high_b)] = highest_density_interval(values, level)
+
+    assert low_a < -2.0 < high_a < low_b < 2.0 < high_b
+    assert (
+        _mass_inside(values, [(low_a, high_a), (low_b, high_b)]) >= level / 100 - 0.01
+    )
 
 
 def test_hdi_is_pinned_at_a_hard_lower_bound():

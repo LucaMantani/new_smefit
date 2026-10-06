@@ -172,7 +172,7 @@ def _format_prior(spec: Optional[Mapping]) -> str:
 
 
 def _equal_tailed_interval(
-    values: np.ndarray, level: float
+    values: np.ndarray, level: float, bounds: Bounds = None
 ) -> List[Tuple[float, float]]:
     """The ``[tail, 100 - tail]`` percentiles: equal posterior mass cut from
     each side. NaNs are ignored. Always a single interval. ``bounds`` is

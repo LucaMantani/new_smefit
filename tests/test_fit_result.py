@@ -768,7 +768,7 @@ def test_confidence_bounds_take_the_interval_type_asked_for(monkeypatch):
     """The per-call interval_type picks the construction; the default stays
     equal-tailed."""
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
 
@@ -782,7 +782,7 @@ def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
     """An interval type may split a multimodal posterior into several pieces;
     the bounds keep them all, in the order the interval type gives them."""
     pieces = [(-2.0, -1.0), (1.0, 2.0)]
-    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: pieces)
+    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: pieces)
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
 
     assert fit.confidence_bounds(68, interval_type="fake")["OtG"] == pieces
@@ -790,7 +790,7 @@ def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
 
 def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
     """The error lists what is available, so a typo is a one-line fix."""
-    with pytest.raises(ValueError, match="'hpd'.*\\['eti'\\]"):
+    with pytest.raises(ValueError, match="'hpd'.*\\['eti', 'hdi'\\]"):
         joint_fit.confidence_bounds(68, interval_type="hpd")
 
 
@@ -818,3 +818,88 @@ def test_confidence_bounds_of_an_individual_fit_match_the_joint_reading():
     assert _joint_fit("j", samples).confidence_bounds(95) == _individual_fit(
         "i", samples
     ).confidence_bounds(95)
+
+
+# ---------------------------------------------------------------------------
+# Fit.confidence_bounds — the prior's hard bounds reach the interval type
+# ---------------------------------------------------------------------------
+
+_POSITIVE = {"dist": "uniform", "low": 0.0, "high": 3.0}
+_NEGATIVE = {"dist": "uniform", "low": -3.0, "high": 0}
+_UNIFORM = {"dist": "uniform", "low": -1.0, "high": 5.0}
+_GAUSSIAN = {"dist": "gaussian", "mean": 0.0, "std": 1.0}
+
+
+def _bounds_seen(monkeypatch, fit):
+    """The ``bounds`` argument each coefficient's interval was called with."""
+    seen = {}
+
+    def recording(values, _level, bounds):
+        seen[float(values[0])] = bounds
+        return [(0.0, 1.0)]
+
+    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "recording", recording)
+    fit.confidence_bounds(68, interval_type="recording")
+    return seen
+
+
+def _prior_fit(prior_specs, whitening_active=False):
+    """A joint fit whose OtG samples start at 1 and OpQM samples at 2."""
+    result = _make_result(
+        free=("OtG", "OpQM"),
+        samples={"OtG": jnp.array([1.0, 2.0]), "OpQM": jnp.array([2.0, 3.0])},
+    )
+    result.prior_specs = prior_specs
+    result.whitening_active = whitening_active
+    return Fit(fit_results=result, fit_name="fit")
+
+
+def test_confidence_bounds_pass_a_prior_edge_at_zero_as_a_bound(monkeypatch):
+    """A sign-definite coefficient, either sign, is bounded at 0 only — the
+    prior's other edge is not a bound."""
+    fit = _prior_fit({"OtG": _POSITIVE, "OpQM": _NEGATIVE})
+
+    assert _bounds_seen(monkeypatch, fit) == {1.0: (0.0, None), 2.0: (None, 0.0)}
+
+
+def test_confidence_bounds_pass_no_bound_for_a_prior_away_from_zero(monkeypatch):
+    """A prior range not ending at 0 only sets the sampled volume."""
+    fit = _prior_fit({"OtG": _UNIFORM, "OpQM": _GAUSSIAN})
+
+    assert _bounds_seen(monkeypatch, fit) == {1.0: None, 2.0: None}
+
+
+def test_confidence_bounds_pass_no_bounds_for_a_whitened_fit(monkeypatch):
+    """A whitened fit's prior specs bound the whitened coordinates, not the
+    physical samples the interval is taken of."""
+    fit = _prior_fit({"OtG": _POSITIVE, "OpQM": _NEGATIVE}, whitening_active=True)
+
+    assert _bounds_seen(monkeypatch, fit) == {1.0: None, 2.0: None}
+
+
+def test_confidence_bounds_pass_each_individual_fit_its_own_prior(monkeypatch):
+    otg = _make_individual_result("OtG", best_val=1.0, samples_vals=[1.0, 2.0])
+    otg.prior_specs = {"OtG": _POSITIVE}
+    opqm = _make_individual_result("OpQM", best_val=2.0, samples_vals=[2.0, 3.0])
+    opqm.prior_specs = {"OpQM": _NEGATIVE}
+    fit = Fit(fit_results=FitResultGroup([otg, opqm]), fit_name="individual")
+
+    assert _bounds_seen(monkeypatch, fit) == {1.0: (0.0, None), 2.0: (None, 0.0)}
+
+
+def test_hdi_bounds_of_a_positivity_bound_coefficient_start_at_zero():
+    """End to end through the ``hdi`` entry: a posterior piled up against a
+    ``uniform`` prior's lower edge reaches it rather than leaking past it."""
+    rng = np.random.default_rng(0)
+    fit = _prior_fit(
+        {"OtG": {"dist": "uniform", "low": 0.0, "high": 10.0}, "OpQM": _GAUSSIAN}
+    )
+    fit.fit_results.samples = {
+        "OtG": jnp.abs(jnp.array(rng.normal(0.0, 1.0, 5000))),
+        "OpQM": jnp.array(rng.normal(0.0, 1.0, 5000)),
+    }
+
+    [(low, high)] = fit.confidence_bounds(95, interval_type="hdi")["OtG"]
+
+    assert low == 0.0
+    assert high == pytest.approx(1.96, abs=0.1)

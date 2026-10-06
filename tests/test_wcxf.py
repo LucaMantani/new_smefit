@@ -9,17 +9,10 @@ from smefit.constants import cw, sw
 from smefit.wcxf import (
     SMEFIT_TO_WARSAW,
     WarsawMap,
-    _warn_flavour_breaking,
     warsaw_map,
 )
 
 GS = 1.2
-
-
-@pytest.fixture(autouse=True)
-def _fresh_warnings():
-    # the flavour-breaking warning is logged once per origin per process
-    _warn_flavour_breaking.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -121,14 +114,15 @@ def test_coefficients_outside_the_map_are_dropped():
     assert warsaw_map(GS).to_smefit({"phiBox": 1.0, "qq1_1111": 3.0}) == {"OpBox": 1.0}
 
 
-def test_broken_symmetry_warns_once_and_keeps_generation_one(caplog):
+def test_broken_symmetry_warns_every_time_and_keeps_generation_one(caplog):
     m = warsaw_map(GS)
     point = {"phid_11": 1.0, "phid_22": 1.0, "phid_33": 5.0}
     with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
         assert m.to_smefit(point, origin="Running Obb") == {"Opdi": 1.0}
         m.to_smefit(point, origin="Running Obb")
-    assert len(caplog.records) == 1
-    assert "Running Obb" in caplog.text and "Opdi" in caplog.text
+    assert len(caplog.records) == 2
+    # phid_33 misses the image by 4, of a largest component of 5
+    assert "Running Obb" in caplog.text and "Opdi (80.0%)" in caplog.text
 
 
 def test_breaking_small_next_to_the_point_still_warns(caplog):
@@ -136,7 +130,7 @@ def test_breaking_small_next_to_the_point_still_warns(caplog):
     point = {"phiBox": 1.0, "phid_11": 1e-6, "phid_22": 1e-6, "phid_33": 5e-6}
     with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
         warsaw_map(GS).to_smefit(point, origin="Running Oeb")
-    assert "Running Oeb" in caplog.text and "Opdi" in caplog.text
+    assert "Running Oeb" in caplog.text and "Opdi (80.0%)" in caplog.text
     assert "OpBox" not in caplog.text
 
 

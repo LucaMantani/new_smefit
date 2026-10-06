@@ -349,8 +349,8 @@ class RGE:
             Scale in GeV the values were evolved to; needed for the ``g_s``-dependent
             coefficient of ``OtG``.
         origin : str
-            What was evolved, named in the warning logged when the evolved
-            point breaks the flavour symmetry of the SMEFiT basis.
+            What was evolved, named, with *scale*, in the warning logged when
+            the evolved point breaks the flavour symmetry of the SMEFiT basis.
 
         Returns
         -------
@@ -362,7 +362,7 @@ class RGE:
         # straddling the cut keeps one component, a residual of about the cut
         smefit_vals = warsaw_map(evolve_gs(scale)).to_smefit(
             {wc: val.real for wc, val in wc_final_vals.items()},
-            origin=origin,
+            origin=f"{origin} to {scale:g} GeV",
             atol=2 * _SMALL_VALUE_THRESHOLD,
         )
         # 1e6 is to transform from GeV^-2 to TeV^-2

@@ -204,15 +204,6 @@ def _blocks(matrix: np.ndarray) -> list[np.ndarray]:
     return [np.flatnonzero(row) for row in np.unique(reach, axis=0)]
 
 
-@functools.cache
-def _warn_flavour_breaking(origin: str, targets: tuple[str, ...]) -> None:
-    """Log the flavour-breaking warning, once per distinct *origin* and *targets*."""
-    _logger.warning(
-        f"{origin} breaks the flavour symmetry assumed by {list(targets)}: "
-        "only their generation-1 Warsaw components are mapped back."
-    )
-
-
 @dataclass(frozen=True)
 class WarsawMap:
     """The SMEFiT → Warsaw matrix at a given g_s, and its derived inverse.
@@ -302,7 +293,7 @@ class WarsawMap:
         checked on the Warsaw components it switches on: if the point misses
         the image there by more than ``atol + rtol * size``, with ``size`` the
         largest of those components, the operator is named in a warning, logged
-        once per *origin* and set of operators named.
+        on every call, with the share of that size missed, largest first.
 
         The check is per operator, not against the whole point, because a
         breaking that is small next to the point can still be all of the
@@ -339,7 +330,15 @@ class WarsawMap:
 
         broken = np.flatnonzero(missed > atol + rtol * size)
         if broken.size:
-            _warn_flavour_breaking(origin, tuple(self.ops[t] for t in broken))
+            share = missed[broken] / size[broken]
+            named = ", ".join(
+                f"{self.ops[t]} ({s:.1%})"
+                for s, t in sorted(zip(share, broken), reverse=True)
+            )
+            _logger.warning(
+                f"{origin} breaks the flavour symmetry assumed by: {named}; "
+                "only their generation-1 Warsaw components are mapped back."
+            )
 
         return {op: float(c) for op, c in zip(self.ops, coeffs) if c != 0.0}
 

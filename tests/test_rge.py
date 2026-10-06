@@ -17,7 +17,6 @@ from smefit.core import TheoryGroup
 from smefit.rge import RGE, RGEMatrix, build_rge_matrix, resolve_rge_matrices
 from smefit.rge.build import _find_cached_scale, _resolve_scales
 from smefit.rge.runner import _wilson_params, evolve_gs
-from smefit.wcxf import _warn_flavour_breaking
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -580,11 +579,10 @@ def test_rge_matrix_returns_dataframe():
 def test_short_running_still_reports_flavour_breaking(caplog):
     """Oeb mixes, loop-suppressed, into Opdi splitting b off; over a short running
     that is small next to Oeb itself but still all of Opdi, so it must warn."""
-    _warn_flavour_breaking.cache_clear()
     rge = RGE(["Oeb"], init_scale=1000, yukawa="top")
     with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
         rge.RGEmatrix(900)
-    assert "Running Oeb" in caplog.text and "Opdi" in caplog.text
+    assert "Running Oeb to 900 GeV" in caplog.text and "Opdi (100.0%)" in caplog.text
 
 
 @pytest.mark.slow

@@ -80,7 +80,7 @@ def test_get_commandline_arguments_stem_no_parent(app):
 # parameter whose value the config has already produced
 # (resourcebuilder.check_types). Calling these functions directly in a unit
 # test bypasses both, so an annotation isinstance rejects only shows up when a
-# runcard is run (issue #138). These tests scan the annotations statically.
+# runcard is run. These tests scan the annotations statically.
 
 
 def _provider_functions():

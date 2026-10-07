@@ -8,7 +8,6 @@ import csv
 import logging
 import time
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -161,10 +160,10 @@ def time_chi2_vec(
 
 
 def build_exact_posterior_prior(
-    bayesian_update: Mapping[str, Any],
+    bayesian_update: Mapping,
     coefficients: CoefficientGroup,
-    datasets: Sequence[Mapping[str, Any]] | None,
-    external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+    datasets: Sequence | None,
+    external_chi2: Mapping | None = None,
 ) -> ExactPosteriorPrior:
     """Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 

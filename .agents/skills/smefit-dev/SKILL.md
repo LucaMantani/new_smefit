@@ -155,6 +155,41 @@ Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
 `reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
 → `_make_node((name, val.value))` → `_make_callspec`.
 
+## Type annotations are checked at runtime
+
+reportengine does not treat annotations as documentation. It runs
+`isinstance(value, annotation)` in two places:
+
+- on the input of every `parse_*` (`_parse_func` in
+  `reportengine/configparser.py`);
+- while building the graph, on every provider parameter whose value the config
+  has **already produced** (`check_types` in `reportengine/resourcebuilder.py`).
+  That means runcard keys and `parse_`/`produce_` results such as `prior`,
+  `chi2`, `coefficients` and `blackjax_settings`, but not other providers'
+  outputs, which do not exist yet at that point.
+
+Two rules follow:
+
+- **Plain classes only.** `isinstance` rejects parametrised generics, so
+  `Mapping[str, Any]`, `list[str]` or `Sequence[Mapping[str, Any]] | None` crash
+  the graph build with `TypeError: isinstance() argument 2 cannot be a
+  parameterized generic`. Write `Mapping`, `list`, `Sequence | None`, and put
+  the detail in the docstring.
+- **An `@explicit_node` resource is an `ExplicitNode` when it is checked.** The
+  config's value is the wrapper around the chosen worker; the real value exists
+  only after that node runs. Annotate such a parameter with a union that admits
+  `ExplicitNode`, as `smefit.whitening.WhitenTransformNode` (`WhitenTransform |
+  ExplicitNode | None`) does for `whitening_transformation`, or leave it
+  unannotated. `WhitenTransform | None` fails with `BadInputType`.
+
+Unit tests that call a provider directly skip both checks, which is how
+`Mapping[str, Any]` on `blackjax_fit` broke every `run_blackjax_fit` (issue
+#138). `tests/test_app.py` scans every provider and `parse_` statically for
+both rules, and `test_blackjax_fit_graph_resolves` in
+`tests/test_blackjax_fit.py` shows how to resolve a target's graph on
+`tests/fixtures/` without executing it. Add the same kind of test for a new
+action.
+
 ## Fanning a node out over a list: `NSList` + `collect`
 
 The other way to make the graph depend on the runcard is to build *many* copies
@@ -444,7 +479,10 @@ mutation. Precision is set once at startup by `smefitEnvironment`
 1. **Tests** — mirror the module: `smefit/<mod>.py` → `tests/test_<mod>.py`.
    Config surface goes in `tests/test_config.py`; use `tests/fixtures/`
    (`TESTDATA`) rather than the real database, and mark anything that calls a
-   real sampler or RGE evolution `@pytest.mark.slow`.
+   real sampler or RGE evolution `@pytest.mark.slow`. A new action also gets a
+   test that resolves its graph through reportengine (see "Type annotations
+   are checked at runtime"), since calling the provider directly skips the
+   framework's checks.
    ```bash
    pytest -m "not slow"
    ```
@@ -473,6 +511,9 @@ mutation. Precision is set once at startup by `smefitEnvironment`
 - *A resource is demanded that the runcard never asked for* (e.g. a fit without
   `gradient_descent_settings` complaining about it) — follow the
   `@explicit_node` dispatch: the branch taken decides the dependencies.
+- *`isinstance() argument 2 cannot be a parameterized generic`* or
+  *`BadInputType` … `ExplicitNode`* before anything runs — an annotation
+  reportengine checks at runtime; see "Type annotations are checked at runtime".
 - *A runcard key appears to be ignored, with no error* — a consumer's `=None`
   default swallowed the resolution failure. Re-run at debug log level and look
   for `Can't satisfy production rule for X`, then fix the signature rather than

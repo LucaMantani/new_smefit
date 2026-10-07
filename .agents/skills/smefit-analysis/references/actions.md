@@ -107,7 +107,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping[str, typing.Any], coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence[collections.abc.Mapping[str, Any]] | None, external_chi2: collections.abc.Mapping[str, collections.abc.Mapping[str, Any]] | None = None) -> smefit.priors.ExactPosteriorPrior`
+- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping, coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence | None, external_chi2: collections.abc.Mapping | None = None) -> smefit.priors.ExactPosteriorPrior`
   - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
@@ -138,7 +138,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.blackjax_fit`
 
-- `blackjax_fit(prior: smefit.priors.JointPrior, chi2: smefit.chi2.Chi2, coefficients: smefit.core.CoefficientGroup, blackjax_settings: collections.abc.Mapping[str, typing.Any], whitening_transformation: smefit.whitening.WhitenTransform | None = None, n_samples: int = 10000) -> smefit.fit_result.FitResult`
+- `blackjax_fit(prior: smefit.priors.JointPrior, chi2: smefit.chi2.Chi2, coefficients: smefit.core.CoefficientGroup, blackjax_settings: collections.abc.Mapping, whitening_transformation: smefit.whitening.WhitenTransform | reportengine.configparser.ExplicitNode | None = None, n_samples: int = 10000) -> smefit.fit_result.FitResult`
   - Run a BlackJAX sampler and return a FitResult.
 
 ### `smefit.individual_fit`

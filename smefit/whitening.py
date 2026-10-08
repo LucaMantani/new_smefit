@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
+from reportengine.configparser import ExplicitNode
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,14 @@ class WhitenTransform:
     @classmethod
     def from_dict(cls, d: dict) -> "WhitenTransform":
         return cls(matrix=jnp.array(d["matrix"]), shift=jnp.array(d["shift"]))
+
+
+# Annotation for a provider parameter filled by produce_whitening_transformation.
+# That producer is an @explicit_node, so while the graph is built the namespace
+# holds the ExplicitNode wrapper, and reportengine's check_types runs
+# isinstance(value, annotation) against it. Once the node executes, the
+# provider receives a WhitenTransform or None.
+WhitenTransformNode = WhitenTransform | ExplicitNode | None
 
 
 def _build_matrix(chi2, whitening, center):

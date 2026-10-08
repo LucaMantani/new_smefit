@@ -120,6 +120,12 @@ runcard. `produce_whitening_transformation` (`config.py`) is the example: only
 `whitening.shift: gradient_descent` makes the graph depend on `gd_best_fit`.
 Never flatten one back into a plain `produce_`; see the `smefit-dev` skill.
 
+Annotations on provider parameters and `parse_` inputs are **checked at
+runtime** by reportengine with `isinstance`. Use plain classes (`Mapping`, not
+`Mapping[str, Any]`), and remember that an `@explicit_node` resource is still an
+`ExplicitNode` when it is checked (hence `smefit.whitening.WhitenTransformNode`).
+`tests/test_app.py` enforces both; the `smefit-dev` skill has the details.
+
 **Adding to the graph** — a node, a runcard key, an action, a prior — has
 conventions that the reference generator and validator depend on: use the
 `smefit-dev` skill rather than pattern-matching on an existing method.

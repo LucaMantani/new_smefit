@@ -937,8 +937,8 @@ class smefitConfig(Config):
         """The credible intervals a report's bounds quote.
 
         A single name or a list of them, from the registry
-        :meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) is the
-        only one so far. Every bounds routine taking the key quotes one set of
+        :meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) or
+        ``hdi`` (highest-density). Every bounds routine taking the key quotes one set of
         bounds per type — a list puts the types side by side in the same
         table, so different interval constructions can be compared in a single
         report. Presentation, not a property of any fit, so it is a top-level

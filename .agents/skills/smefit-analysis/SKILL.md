@@ -82,11 +82,18 @@ correlations of each fit's free coefficients. Template:
 equal-tailed 68% and 95% bounds of every free coefficient,
 also written to `tables/<fit_name>_coefficient_bounds_table.csv`. It reads
 individual-fit outputs too, one row per single-parameter fit. `bounds_levels`
-picks other levels (in percent) and `round_val` the decimals. Template:
+picks other levels (in percent) and `round_val` the decimals.
+`interval_types` picks the construction: `eti` (equal-tailed, default) or
+`hdi` (highest-density); a list, e.g. `interval_types: [eti, hdi]`, puts them
+side by side. `hdi` splits a multimodal posterior into disjoint pieces (arviz),
+and gives a unimodal one getdist's smoother boundary-corrected interval. For a
+sign-definite coefficient — a prior with `low: 0` or `high: 0` — that interval
+is pinned at 0 rather than leaking past it; no other prior edge is a bound, and
+a whitened fit has none (its stored priors are not physical). Template:
 `coefficient_bounds_table.yaml`. In Python the same numbers are
-`Fit.from_folder(path).confidence_bounds(95)` →
-`{coeff: [(low, high), ...]}` (one interval for `eti`;
-several pieces, joined by `∪` in the table, for a multimodal region).
+`Fit.from_folder(path).confidence_bounds(95, "hdi")` →
+`{coeff: [(low, high), ...]}` (always one interval for `eti`;
+several pieces, joined by `∪` in the table, for a multimodal `hdi` region).
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

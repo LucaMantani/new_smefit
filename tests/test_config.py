@@ -1347,7 +1347,7 @@ def test_parse_interval_types_wraps_a_single_name(cfg):
 
 def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
 
     assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]

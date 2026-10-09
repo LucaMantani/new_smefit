@@ -287,6 +287,21 @@ Validation errors raised while parsing:
 
 - interval_types is empty: give at least one type.
 
+### `latex_labels`
+
+Parse the optional map from a displayed name to its LaTeX label.
+
+.. code-block:: yaml
+
+    latex_labels:
+      OtG: '$c_{tG}^{\rm new}$'
+      LHC-top: '$\mathrm{LHC}\ t\bar{t}$'
+
+Single-quote the labels: YAML then keeps backslashes as written.
+
+An entry overrides the built-in label
+(:data:`smefit.latex_labels.default_latex_labels`).
+
 ### `optimizer_settings`
 
 Parse the optimizer_settings block.

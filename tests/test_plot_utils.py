@@ -76,13 +76,13 @@ def test_set_plot_style_enables_latex_rendering():
 def test_importing_smefit_does_not_touch_matplotlib_settings():
     """No smefit module may restyle matplotlib merely by being imported.
 
-    op_to_latex used to do exactly that, which silently switched every plot in
+    latex_labels used to do exactly that, which silently switched every plot in
     the importing program over to LaTeX and broke any machine without one.
     """
     script = (
         "import matplotlib, json;"
         "before = matplotlib.rcParams['text.usetex'];"
-        "import smefit.op_to_latex, smefit.tables, smefit.figures, smefit.plot_utils;"
+        "import smefit.latex_labels, smefit.tables, smefit.figures, smefit.plot_utils;"
         "print(json.dumps([before, matplotlib.rcParams['text.usetex']]))"
     )
     out = subprocess.run(

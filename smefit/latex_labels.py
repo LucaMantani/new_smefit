@@ -1,10 +1,19 @@
 """
-smefit.op_to_latex.py
+smefit.latex_labels.py
 
-LaTeX labels for the Wilson coefficients, used by the report tables and figures.
+Default LaTeX labels for the names a report shows — Wilson coefficients and
+data groups — used by the report tables and figures. A runcard's
+``latex_labels`` block has the same flat structure and overrides them.
 """
 
-coeff_info_latex = {
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+default_latex_labels = {
     # --------------------------
     # 4H sector
     # --------------------------
@@ -172,4 +181,37 @@ coeff_info_latex = {
     "Ol3u": r"$c_{l_3 u}$",
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
+    # --------------------------
+    # Data groups
+    # --------------------------
+    "LEP": r"$\mathrm{LEP}$",
+    "LHC": r"$\mathrm{LHC}$",
+    "HL-LHC": r"$\mathrm{HL\mbox{-}LHC}$",
+    "LHC-top": r"$\mathrm{LHC\mbox{-}top}$",
+    "LHC-4H": r"$\mathrm{LHC\mbox{-}4H}$",
+    "LHC-Higgs": r"$\mathrm{LHC\mbox{-}Higgs}$",
+    "LHC-diboson": r"$\mathrm{LHC\mbox{-}diboson}$",
+    "LHC-DY": r"$\mathrm{LHC\mbox{-}DY}$",
+    "FCCee_91": r"$\mathrm{FCCee\_91}$",
+    "FCCee_161": r"$\mathrm{FCCee\_161}$",
+    "FCCee_240": r"$\mathrm{FCCee\_240}$",
+    "FCCee_365": r"$\mathrm{FCCee\_365}$",
+    "FCCee": r"$\mathrm{FCCee}$",
 }
+
+
+def latex_label(name: str, latex_labels: Mapping[str, str] | None = None) -> str:
+    """How to write ``name`` (operator, group name...) in latex a report table or figure.
+
+    The runcard's optional ``latex_labels`` entry overrides the default labels in ``default_latex_labels``.
+
+    Parameters
+    ----------
+    name : str
+        The plain name: a coefficient, a data group, ...
+    latex_labels : Mapping[str, str], optional
+        The parsed ``latex_labels`` runcard key.
+    """
+    if latex_labels and name in latex_labels:
+        return latex_labels[name]
+    return default_latex_labels.get(name, name)

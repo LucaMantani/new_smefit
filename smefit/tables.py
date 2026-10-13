@@ -182,8 +182,7 @@ def coefficient_bounds_table(
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level. ``eti`` alone by default. A list
-        has to be a top-level runcard key.
+        level.
 
     Returns
     -------
@@ -193,12 +192,6 @@ def coefficient_bounds_table(
         level, each cell the pieces of the region as ``[low, high]``, joined
         by ``∪`` when there are several. Coefficients without samples are
         left out.
-
-    Raises
-    ------
-    ValueError
-        If ``bounds_levels`` or ``interval_types`` is empty, or holds a value
-        :meth:`Fit.confidence_bounds` rejects.
     """
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
@@ -237,13 +230,6 @@ def coefficient_bounds_comparison_table(
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of several fits side by side.
 
-    The multi-fit counterpart of :func:`coefficient_bounds_table`: one table
-    for the whole ``fits:`` list, with the columns of each fit's own bounds
-    table grouped under that fit. ``params_to_plot``, ``round_val``,
-    ``bounds_levels`` and ``interval_types`` are read by the per-fit tables
-    and so apply here unchanged; with one level and one interval type the
-    table has one column per fit.
-
     Parameters
     ----------
     fits : list of smefit.fit_result.Fit
@@ -261,11 +247,6 @@ def coefficient_bounds_comparison_table(
         first appearance; two-level columns ``(<fit label>, <level>% CL
         (<INTERVAL_TYPE>))``. A coefficient a fit did not sample is an empty
         cell in that fit's columns.
-
-    Raises
-    ------
-    ValueError
-        If ``fits`` is empty, or two fits resolve to the same column label.
     """
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`

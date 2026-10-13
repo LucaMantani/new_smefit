@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from reportengine import collect
 from reportengine.table import table
 
 from smefit.op_to_latex import coeff_info_latex
@@ -181,8 +182,7 @@ def coefficient_bounds_table(
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level. ``eti`` alone by default. A list
-        has to be a top-level runcard key.
+        level.
 
     Returns
     -------
@@ -192,18 +192,65 @@ def coefficient_bounds_table(
         level, each cell the pieces of the region as ``[low, high]``, joined
         by ``∪`` when there are several. Coefficients without samples are
         left out.
-
-    Raises
-    ------
-    ValueError
-        If ``bounds_levels`` or ``interval_types`` is empty, or holds a value
-        :meth:`Fit.confidence_bounds` rejects.
     """
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_table(
         fit, params_to_plot, round_val, bounds_levels, interval_types
     )
+
+
+# the per-fit bounds tables of every entry under ``fits:``, in runcard order
+fits_coefficient_bounds_tables = collect("coefficient_bounds_table", ("fits",))
+
+
+def _coefficient_bounds_comparison_table(
+    fits: Sequence[Fit], tables: Sequence[pd.DataFrame]
+) -> pd.DataFrame:
+    """The typed core of :func:`coefficient_bounds_comparison_table`."""
+    if not fits:
+        raise ValueError("fits is empty: list at least one fit under 'fits:'.")
+    labels = [fit.plot_label for fit in fits]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    if duplicates:
+        raise ValueError(
+            "Two fits share the column label(s) "
+            + ", ".join(repr(label) for label in duplicates)
+            + ": give each a distinct 'label' in its fits entry."
+        )
+    # outer join on the rows, in order of first appearance: a coefficient one
+    # fit did not sample is an empty cell, not an error
+    comparison = pd.concat(tables, axis=1, keys=labels, sort=False)
+    return comparison.fillna("")
+
+
+@table
+def coefficient_bounds_comparison_table(
+    fits, fits_coefficient_bounds_tables
+) -> pd.DataFrame:
+    """Tabulate the confidence bounds of several fits side by side.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        The previously run fits, loaded from disk. Each is headed by its
+        ``label`` where the runcard gave one, and by its directory name
+        otherwise (:attr:`Fit.plot_label`).
+    fits_coefficient_bounds_tables : list of pd.DataFrame
+        The :func:`coefficient_bounds_table` of each fit, collected over
+        ``fits`` in the same order.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = LaTeX coefficient labels, the union over the fits in order of
+        first appearance; two-level columns ``(<fit label>, <level>% CL
+        (<INTERVAL_TYPE>))``. A coefficient a fit did not sample is an empty
+        cell in that fit's columns.
+    """
+    # parameters unannotated: reportengine isinstance-checks every annotated
+    # one, which fails on the string annotations of `from __future__`
+    return _coefficient_bounds_comparison_table(fits, fits_coefficient_bounds_tables)
 
 
 @table

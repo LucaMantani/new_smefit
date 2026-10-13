@@ -358,6 +358,28 @@ template_text: |
   ```
 - `round_val` sets the decimals of every cell (default `3`). It is separate
   from the heatmaps' `value_fmt`.
+
+#### One table for all the fits
+
+`coefficient_bounds_comparison_table` puts the fits side by side instead: one
+table for the whole `fits:` list, the columns of each fit's own bounds table
+grouped under that fit. It goes **outside** the `{@with fits@}` loop:
+
+```yaml
+template_text: |
+  # Coefficient bounds
+  {@coefficient_bounds_comparison_table@}
+```
+
+- Each fit is headed by the `label` of its `fits` entry, or by its directory
+  name when there is none; two fits resolving to the same heading raise.
+- Rows are the union of the fits' coefficients, in order of first appearance;
+  a coefficient a fit did not sample is an empty cell in its columns.
+- `bounds_levels`, `interval_types`, `params_to_plot` and `round_val` apply
+  through the per-fit tables unchanged. With `bounds_levels: 95` and the
+  default interval type the table has exactly one column per fit.
+- Written to `tables/coefficient_bounds_comparison_table.csv`; the per-fit
+  tables it is built from are written alongside.
 - `params_to_plot` restricts and orders the rows, as for the heatmaps below.
 
 ### Configuring an action

@@ -41,6 +41,7 @@
     "whitening_transformation"
   ],
   "fit_reading_actions": [
+    "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
     "plot_posterior_correlations",
     "report"

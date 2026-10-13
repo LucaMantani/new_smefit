@@ -1,5 +1,5 @@
 """Unit tests for smefit.tables — the Fisher, PCA, scan and coefficient
-bounds report tables."""
+bounds report tables, and the multi-fit bounds comparison table."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from smefit.op_to_latex import coeff_info_latex
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
+    coefficient_bounds_comparison_table,
     coefficient_bounds_table,
     fisher_diagonals_normalised,
     mass_scan_table,
@@ -239,6 +240,91 @@ def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
 def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
     with pytest.raises(ValueError, match="interval_types is empty"):
         coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), interval_types=[])
+
+
+# ---------------------------------------------------------------------------
+# coefficient_bounds_comparison_table
+# ---------------------------------------------------------------------------
+
+
+def _comparison(*fits: Fit, **kwargs) -> pd.DataFrame:
+    """The comparison table as the DAG builds it: the per-fit tables are the
+    ``coefficient_bounds_table`` of each fit, collected over ``fits``."""
+    return coefficient_bounds_comparison_table(
+        list(fits), [coefficient_bounds_table(fit, **kwargs) for fit in fits]
+    )
+
+
+def test_coefficient_bounds_comparison_table_groups_each_fits_columns_under_its_label() -> (
+    None
+):
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a", label="A")
+    second = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="b", label="B")
+
+    table = _comparison(first, second)
+
+    assert table.columns.tolist() == [
+        ("A", "68% CL (ETI)"),
+        ("A", "95% CL (ETI)"),
+        ("B", "68% CL (ETI)"),
+        ("B", "95% CL (ETI)"),
+    ]
+    assert table.index.tolist() == [r"$c_{tG}$"]
+    assert table.loc[r"$c_{tG}$", ("B", "95% CL (ETI)")] == "[25.000, 975.000]"
+
+
+def test_coefficient_bounds_comparison_table_heads_an_unlabelled_fit_with_its_name() -> (
+    None
+):
+    labelled = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a", label="A")
+    unlabelled = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="my_fit")
+
+    table = _comparison(labelled, unlabelled)
+
+    assert table.columns.get_level_values(0).unique().tolist() == ["A", "my_fit"]
+
+
+def test_coefficient_bounds_comparison_table_is_one_column_per_fit_at_one_level() -> (
+    None
+):
+    """``bounds_levels: 95`` with the default interval type."""
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="b")
+
+    table = _comparison(first, second, bounds_levels=95)
+
+    assert table.columns.tolist() == [("a", "95% CL (ETI)"), ("b", "95% CL (ETI)")]
+    assert table.iloc[0].tolist() == ["[25.000, 975.000]"] * 2
+
+
+def test_coefficient_bounds_comparison_table_leaves_a_missing_coefficient_empty() -> (
+    None
+):
+    """Rows are the union of the fits' coefficients, in order of first
+    appearance; a fit without one has empty cells there."""
+    first = Fit(fit_results=_result({"OtG": _RAMP, "OpQM": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OpA": _RAMP, "OtG": _RAMP}), fit_name="b")
+
+    table = _comparison(first, second, bounds_levels=95)
+
+    opqm = coeff_info_latex["OpQM"]
+    assert table.index.tolist() == [r"$c_{tG}$", opqm, "OpA"]
+    assert table.loc[opqm, ("b", "95% CL (ETI)")] == ""
+    assert table.loc["OpA", ("a", "95% CL (ETI)")] == ""
+    assert table.loc["OpA", ("b", "95% CL (ETI)")] == "[25.000, 975.000]"
+
+
+def test_coefficient_bounds_comparison_table_rejects_duplicate_labels() -> None:
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a", label="same")
+    second = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="b", label="same")
+
+    with pytest.raises(ValueError, match="'same'"):
+        _comparison(first, second)
+
+
+def test_coefficient_bounds_comparison_table_rejects_no_fits() -> None:
+    with pytest.raises(ValueError, match="fits is empty"):
+        coefficient_bounds_comparison_table([], [])
 
 
 # ---------------------------------------------------------------------------

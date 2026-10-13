@@ -17,8 +17,12 @@ bounds_levels: [68, 95]
 interval_types: [eti]
 
 template_text: |
-    Coefficient bounds
-    ==================
+    Coefficient bounds comparison
+    =============================
+    {@coefficient_bounds_comparison_table@}
+
+    Coefficient bounds individual tables
+    ====================================
     {@with fits@}
     {@fit@}
     ---------

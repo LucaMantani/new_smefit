@@ -24,6 +24,9 @@ rge:
   `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
   present locally, smefit automatically tries to download it from the server
   before failing.
+- To compute and save the matrix without running a fit, put
+  `write_rge_matrix` under `actions_:` (the runcard still needs `datasets`,
+  `coefficients` and this `rge:` block). Any fit action writes it as well.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 

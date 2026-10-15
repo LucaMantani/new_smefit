@@ -85,11 +85,15 @@ individual-fit outputs too, one row per single-parameter fit. `bounds_levels`
 picks other levels (in percent) and `round_val` the decimals.
 `interval_types` picks the construction: `eti` (equal-tailed, default) or
 `hdi` (highest-density); a list, e.g. `interval_types: [eti, hdi]`, puts them
-side by side. `hdi` splits a multimodal posterior into disjoint pieces (arviz),
-and gives a unimodal one getdist's smoother boundary-corrected interval. For a
-sign-definite coefficient — a prior with `low: 0` or `high: 0` — that interval
-is pinned at 0 rather than leaking past it; no other prior edge is a bound, and
-a whitened fit has none (its stored priors are not physical). Template:
+side by side. `hdi` is defined as the region above one density threshold that collects the requested percentage of probability mass: arviz counts
+the modes, getdist's boundary-corrected KDE estimates each mode's density, and
+a multimodal posterior gets one disjoint piece per mode. A small mode separated
+from its neighbour only by a shallow dip is counted with it, so the region errs
+wide rather than splitting a unimodal posterior at noise. For a sign-definite
+coefficient — a prior with `low: 0` or `high: 0` — the region is pinned at 0
+rather than leaking past it; no other prior edge is a bound, and neither a
+whitened fit (its stored priors are not physical) nor a `bayesian_update` (its
+stored prior is the previous posterior, not the base prior) has one. Template:
 `coefficient_bounds_table.yaml`. In Python the same numbers are
 `Fit.from_folder(path).confidence_bounds(95, "hdi")` →
 `{coeff: [(low, high), ...]}` (always one interval for `eti`;

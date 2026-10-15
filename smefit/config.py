@@ -24,8 +24,9 @@ from smefit.blackjax_samplers import (
 )
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
-from smefit.fit_result import _INTERVAL_TYPES, Fit
+from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
 from smefit.paths import (

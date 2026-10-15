@@ -30,7 +30,7 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -40,11 +40,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from smefit.credible_intervals import (
-    Bounds,
-    equal_tailed_interval,
-    highest_density_interval,
-)
+from smefit.credible_intervals import _INTERVAL_TYPES, Bounds
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
@@ -175,20 +171,6 @@ def _format_prior(spec: Optional[Mapping]) -> str:
     return str(build_dist(spec))
 
 
-# The credible intervals :meth:`Fit.confidence_bounds` can compute, by the
-# name its ``interval_type`` argument (and the ``interval_types`` runcard key)
-# takes. Each maps one coefficient's samples, a level in percent and the hard
-# ``(low, high)`` bounds of its support (or None) to the ``(low, high)``
-# pieces of its region, as a list so that a multimodal posterior can be given
-# several; a new interval type is one more entry.
-_INTERVAL_TYPES: Dict[
-    str, Callable[[np.ndarray, float, Bounds], List[Tuple[float, float]]]
-] = {
-    "eti": equal_tailed_interval,
-    "hdi": highest_density_interval,
-}
-
-
 def _prior_bounds(
     fit_results: Union["FitResult", "FitResultGroup"],
 ) -> Dict[str, Bounds]:
@@ -199,6 +181,12 @@ def _prior_bounds(
     range only sets the volume sampled. A whitened fit's specs are those of
     the whitened coordinates, not of the physical samples, so such a fit
     contributes no bounds.
+
+    Neither does a Bayesian update: :class:`smefit.priors.ExactPosteriorPrior`
+    stores ``{"dist": "exact_posterior", ...}`` as every coefficient's spec,
+    not the base prior's, so a coefficient kept sign-definite through an
+    update loses its bound at 0 here, and its HDI is estimated as if its
+    support were open.
     """
     results = (
         fit_results.results

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from scipy.stats import norm
 
+from smefit import credible_intervals
 from smefit.credible_intervals import equal_tailed_interval, highest_density_interval
 
 
@@ -60,8 +61,10 @@ def test_hdi_of_a_bimodal_posterior_is_two_disjoint_intervals():
     assert pieces[0][1] < 0.0 < pieces[1][0]
 
 
-# The two tests below bracket the KDE bandwidth used to count modes: arviz's
-# ISJ default fails the first, Silverman's and Scott's rules the second.
+# The tests below pin the KDE bandwidth used to count modes, Silverman's rule:
+# arviz's ISJ default and its ``experimental`` mean of ISJ and Silverman split
+# resampled unimodal posteriors, and the price is the merge of a small narrow
+# mode at a level where only a shallow dip separates it.
 
 
 @pytest.mark.parametrize("level", [68, 95])
@@ -79,18 +82,34 @@ def test_hdi_of_a_resampled_unimodal_posterior_is_one_interval(level):
     assert len(highest_density_interval(values, level)) == 1
 
 
-def test_hdi_resolves_a_small_narrow_second_mode():
-    """80% N(0, 1) + 20% N(2.5, 0.2): the narrow mode is its own piece of the
-    exact 95% region, which a bandwidth set by the overall spread smooths
-    away."""
+@pytest.fixture
+def narrow_second_mode():
+    """80% N(0, 1) + 20% N(2.5, 0.2)."""
     rng = np.random.default_rng(0)
-    values = np.where(
+    return np.where(
         rng.random(6400) < 0.8, rng.normal(0.0, 1.0, 6400), rng.normal(2.5, 0.2, 6400)
     )
 
-    [(_, main_high), (narrow_low, narrow_high)] = highest_density_interval(values, 95)
+
+def test_hdi_resolves_a_small_narrow_second_mode(narrow_second_mode):
+    """At 68% the narrow mode is its own piece, with a deep gap before it."""
+    [(_, main_high), (narrow_low, narrow_high)] = highest_density_interval(
+        narrow_second_mode, 68
+    )
 
     assert main_high < narrow_low < 2.5 < narrow_high
+
+
+def test_hdi_merges_a_narrow_mode_behind_a_shallow_dip(narrow_second_mode):
+    """At 95% the exact region still has a gap before the narrow mode, but
+    the threshold is low and the dip above it shallow, and Silverman's rule,
+    sized by the overall spread, smooths it away. The region is then one
+    interval covering both modes: wider than exact, never narrower."""
+    pieces = highest_density_interval(narrow_second_mode, 95)
+
+    [(low, high)] = pieces
+    assert low < 0.0 < 2.5 < high
+    assert _mass_inside(narrow_second_mode, pieces) >= 0.95
 
 
 def _resampled(target_pdf, size, rng, proposal_sd=3.0, n_proposals=8000):
@@ -110,7 +129,7 @@ def test_hdi_edges_of_two_narrow_separated_modes_match_the_exact_region(level):
     """A sign-flipped Yukawa: two equal, narrow modes far apart. The exact
     region is each mode's central level-percent interval; the bandwidth that
     counts the modes is set by the distance between them and would blur each
-    mode, so the edges must come from a finer one."""
+    mode, so the edges must come from each mode's own density."""
     centres, sigma = (-0.368, 0.0), 0.0045
     rng = np.random.default_rng(0)
     values = np.where(
@@ -131,22 +150,81 @@ def test_hdi_edges_of_two_narrow_separated_modes_match_the_exact_region(level):
 
 @pytest.mark.parametrize("level", [68, 95])
 def test_hdi_of_a_heavily_resampled_bimodal_posterior_keeps_every_mode(level):
-    """With only ~2000 distinct draws out of 6400, the fine bandwidth breaks
-    each mode into fragments. Keeping only as many fragments as there are
-    modes loses mass, and in this sample a whole mode; gluing them per mode
-    keeps both modes and at least the level's mass."""
+    """With only ~2000 distinct draws out of 6400, a bandwidth that counts
+    every draw as independent breaks each mode into fragments. Each mode is
+    one piece, and together they hold the level's mass: no more, no less."""
 
     def target(x):
         return 0.5 * norm.pdf(x, -2.0, 0.3) + 0.5 * norm.pdf(x, 2.0, 0.3)
 
     values = _resampled(target, 6400, np.random.default_rng(6))
 
-    [(low_a, high_a), (low_b, high_b)] = highest_density_interval(values, level)
+    pieces = highest_density_interval(values, level)
 
+    [(low_a, high_a), (low_b, high_b)] = pieces
     assert low_a < -2.0 < high_a < low_b < 2.0 < high_b
-    assert (
-        _mass_inside(values, [(low_a, high_a), (low_b, high_b)]) >= level / 100 - 0.01
+    assert _mass_inside(values, pieces) == pytest.approx(level / 100, abs=0.02)
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_hdi_of_a_heavily_resampled_unimodal_posterior_holds_the_level(level):
+    """Regression for the review of PR #137: a nested-sampling posterior with
+    about a third of its draws distinct, like the ``ultranest_fit`` template's.
+    The KDE that counted modes split it at a narrow dip into two touching
+    pieces holding 93% (68% level) and 99.9% (95% level) of the draws. It is
+    one interval holding the level's mass."""
+    values = _resampled(norm.pdf, 3460, np.random.default_rng(5), n_proposals=2500)
+
+    pieces = highest_density_interval(values, level)
+
+    assert len(pieces) == 1
+    assert _mass_inside(values, pieces) == pytest.approx(level / 100, abs=0.02)
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_the_mode_count_is_sized_by_the_effective_number_of_draws(level):
+    """With only ~17% of the draws distinct, Silverman's rule sized by the
+    number of draws still splits this unimodal posterior at both levels;
+    sized by their effective number, it does not."""
+    values = _resampled(norm.pdf, 3460, np.random.default_rng(49), n_proposals=1000)
+
+    pieces = highest_density_interval(values, level)
+
+    assert len(pieces) == 1
+    assert _mass_inside(values, pieces) == pytest.approx(level / 100, abs=0.02)
+
+
+def test_a_mode_of_one_repeated_draw_is_a_point(gaussian):
+    """A dead point of large weight, resampled 170 times far from the rest:
+    at 95% it is a mode of its own, with no width to estimate a density
+    over. Its piece is that point."""
+    values = np.concatenate([gaussian, np.full(170, 8.0)])
+
+    pieces = highest_density_interval(values, 95)
+
+    [(low, high), point] = pieces
+    assert low < 0.0 < high
+    assert point == (8.0, 8.0)
+    assert _mass_inside(values, pieces) == pytest.approx(0.95, abs=0.02)
+
+
+@pytest.mark.parametrize("level", [68, 95])
+def test_a_cut_through_a_mode_does_not_split_it(monkeypatch, gaussian, level):
+    """If the mode count puts a cut through a mode, the densities on either
+    side are still above the threshold at the cut, and the two pieces are
+    one: the interval found without the cut."""
+    monkeypatch.setattr(
+        credible_intervals.az,
+        "hdi",
+        lambda _values, **_kwargs: np.array([[-1.0, -0.1], [0.1, 1.0]]),
     )
+
+    pieces = highest_density_interval(gaussian, level)
+
+    [(low, high)] = pieces
+    z = norm.ppf(0.5 + level / 200)
+    assert (low, high) == pytest.approx((-z, z), abs=0.1)
+    assert _mass_inside(gaussian, pieces) == pytest.approx(level / 100, abs=0.02)
 
 
 def test_hdi_is_pinned_at_a_hard_lower_bound():
@@ -169,18 +247,21 @@ def test_hdi_is_pinned_at_a_hard_upper_bound():
     assert low == pytest.approx(-1.96, abs=0.1)
 
 
-def test_several_modes_take_precedence_over_a_hard_bound():
-    """A sign-definite coefficient with two modes is still split into one
-    piece per mode; the bound only shapes a single interval."""
+def test_a_hard_bound_pins_the_mode_next_to_it():
+    """A sign-definite coefficient with two modes, one piled up against the
+    bound: still one piece per mode, and the one at the bound reaches it
+    exactly."""
     rng = np.random.default_rng(0)
-    values = np.abs(
-        np.concatenate([rng.normal(1.0, 0.2, 3000), rng.normal(5.0, 0.2, 3000)])
+    values = np.concatenate(
+        [np.abs(rng.normal(0.0, 0.5, 3000)), rng.normal(5.0, 0.2, 3000)]
     )
 
-    assert highest_density_interval(
+    [(low, high), (far_low, far_high)] = highest_density_interval(
         values, 68, bounds=(0.0, None)
-    ) == highest_density_interval(values, 68)
-    assert len(highest_density_interval(values, 68)) == 2
+    )
+
+    assert low == 0.0
+    assert high < far_low < 5.0 < far_high
 
 
 def test_hdi_ignores_nans(gaussian):

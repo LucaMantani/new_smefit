@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
-from smefit import fit_result
+from smefit import credible_intervals
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 
 
@@ -768,7 +768,7 @@ def test_confidence_bounds_take_the_interval_type_asked_for(monkeypatch):
     """The per-call interval_type picks the construction; the default stays
     equal-tailed."""
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
 
@@ -782,7 +782,9 @@ def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
     """An interval type may split a multimodal posterior into several pieces;
     the bounds keep them all, in the order the interval type gives them."""
     pieces = [(-2.0, -1.0), (1.0, 2.0)]
-    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: pieces)
+    monkeypatch.setitem(
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: pieces
+    )
     fit = _joint_fit("fit_a", {"OtG": _RAMP})
 
     assert fit.confidence_bounds(68, interval_type="fake")["OtG"] == pieces
@@ -838,7 +840,7 @@ def _bounds_seen(monkeypatch, fit):
         seen[float(values[0])] = bounds
         return [(0.0, 1.0)]
 
-    monkeypatch.setitem(fit_result._INTERVAL_TYPES, "recording", recording)
+    monkeypatch.setitem(credible_intervals._INTERVAL_TYPES, "recording", recording)
     fit.confidence_bounds(68, interval_type="recording")
     return seen
 

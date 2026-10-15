@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from smefit import fit_result
+from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.op_to_latex import coeff_info_latex
@@ -180,7 +180,7 @@ def test_coefficient_bounds_table_heads_each_column_with_its_interval_type(
     """The header names the interval asked for, and the cells are that
     interval's bounds. ``interval_types: fake`` in a runcard."""
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
 
     table = coefficient_bounds_table(
@@ -197,7 +197,7 @@ def test_coefficient_bounds_table_compares_interval_types_side_by_side(
     """Several interval types are columns of the same table, grouped by level
     so that the types of one level sit next to each other."""
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
 
     table = coefficient_bounds_table(
@@ -221,7 +221,7 @@ def test_coefficient_bounds_table_joins_the_pieces_of_a_disjoint_region(
 ) -> None:
     """A multimodal region is one cell, its pieces joined by a union."""
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES,
+        credible_intervals._INTERVAL_TYPES,
         "fake",
         lambda _v, _l, _b: [(-2.0, -1.0), (1.0, 2.0)],
     )

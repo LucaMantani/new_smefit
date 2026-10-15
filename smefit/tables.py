@@ -12,23 +12,25 @@ import numpy as np
 import pandas as pd
 from reportengine.table import table
 
-from smefit.op_to_latex import coeff_info_latex
+from smefit.latex_labels import latex_label
 from smefit.plot_utils import select_params
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from smefit.fit_result import Fit
 
 
 @table
-def chi2_scan_table(individual_chi2_scans):
+def chi2_scan_table(individual_chi2_scans, latex_labels=None):
     """Per-coefficient 1D chi2 scan results as a table.
 
     Parameters
     ----------
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -39,7 +41,7 @@ def chi2_scan_table(individual_chi2_scans):
     """
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     frames = {
-        coeff_info_latex.get(name, name): pd.DataFrame(
+        latex_label(name, latex_labels): pd.DataFrame(
             {"value": data["points"], "chi2": data["chi2"]}
         )
         for name, data in results.items()
@@ -48,8 +50,15 @@ def chi2_scan_table(individual_chi2_scans):
 
 
 @table
-def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points):
+def mass_scan_table(
+    coefficients, individual_mass_scales, individual_mass_scan_points, latex_labels=None
+):
     """Mass scan results as a table.
+
+    Parameters
+    ----------
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -57,7 +66,7 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
         Columns ``<mass_name>`` (mass scale, the scan points) and ``chi2``.
     """
     mass_name = coefficients.free_names[0]
-    latex = coeff_info_latex.get(mass_name, mass_name)
+    latex = latex_label(mass_name, latex_labels)
     return pd.DataFrame(
         {
             latex: [float(s) for s in individual_mass_scales],
@@ -68,7 +77,7 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
 
 @table
 def fisher_diagonals_normalised(
-    aggregate_fisher_information_matrices, params_to_plot=None
+    aggregate_fisher_information_matrices, params_to_plot=None, latex_labels=None
 ):
     """Extract row-normalised diagonals of per-source Fisher matrices.
 
@@ -79,6 +88,9 @@ def fisher_diagonals_normalised(
         Restrict the rows to these coefficients, in this order. All of them by
         default. Each row is normalised on its own, so a row says the same
         thing whichever others are kept alongside it.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the labels, for the coefficients and the sources
+        (data groups) alike.
 
     Returns
     -------
@@ -92,7 +104,8 @@ def fisher_diagonals_normalised(
         index=coeff_names,
     )
     raw = raw.loc[select_params(coeff_names, params_to_plot, context="Fisher")]
-    raw.index = [coeff_info_latex.get(name, name) for name in raw.index]
+    raw.index = [latex_label(name, latex_labels) for name in raw.index]
+    raw.columns = [latex_label(name, latex_labels) for name in raw.columns]
     return raw.div(raw.sum(axis=1), axis=0)
 
 
@@ -114,6 +127,7 @@ def _coefficient_bounds_table(
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
     interval_types: str | Sequence[str] | None,
+    latex_labels: Mapping[str, str] | None,
 ) -> pd.DataFrame:
     """The typed core of :func:`coefficient_bounds_table`."""
     if bounds_levels is None:
@@ -151,13 +165,18 @@ def _coefficient_bounds_table(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
                 for low, high in per_coeff[name]
             )
-        rows[coeff_info_latex.get(name, name)] = cells
+        rows[latex_label(name, latex_labels)] = cells
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
 @table
 def coefficient_bounds_table(
-    fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None
+    fit,
+    params_to_plot=None,
+    round_val=3,
+    bounds_levels=None,
+    interval_types=None,
+    latex_labels=None,
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of one fit.
 
@@ -183,6 +202,8 @@ def coefficient_bounds_table(
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
         level. ``eti`` alone by default. A list
         has to be a top-level runcard key.
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -202,17 +223,19 @@ def coefficient_bounds_table(
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_table(
-        fit, params_to_plot, round_val, bounds_levels, interval_types
+        fit, params_to_plot, round_val, bounds_levels, interval_types, latex_labels
     )
 
 
 @table
-def pca_components(pca):
+def pca_components(pca, latex_labels=None):
     """Weight of each coefficient in each principal direction.
 
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_labels : dict[str, str], optional
+        Runcard overrides of the coefficient labels.
 
     Returns
     -------
@@ -220,7 +243,7 @@ def pca_components(pca):
         Index = coeff_names, columns = PC1..PCn.
     """
     frame = pca.as_frame()
-    frame.index = [coeff_info_latex.get(name, name) for name in frame.index]
+    frame.index = [latex_label(name, latex_labels) for name in frame.index]
     return frame
 
 

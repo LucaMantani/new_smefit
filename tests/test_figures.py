@@ -27,7 +27,7 @@ from smefit.figures import (
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
-from smefit.op_to_latex import coeff_info_latex
+from smefit.latex_labels import latex_label
 from smefit.pca import PCA
 
 
@@ -39,7 +39,7 @@ def _no_latex(monkeypatch):
     The rcParam is then forced off as well, so the invariant the suite needs —
     "no LaTeX is invoked" — is asserted directly rather than inferred from
     nobody having turned it on; that inference is exactly what broke when
-    `smefit.op_to_latex` used to do it at import time.
+    `smefit.latex_labels` used to do it at import time.
     """
     monkeypatch.setattr(figures_mod, "set_plot_style", lambda: None)
     monkeypatch.setitem(matplotlib.rcParams, "text.usetex", False)
@@ -56,13 +56,14 @@ def test_plot_heatmap_axis_labels():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
 
 
-def test_plot_heatmap_uses_latex_label_when_known():
-    """Coefficient names present in coeff_info_latex are relabelled on the y-axis."""
+def test_plot_heatmap_draws_labels_as_given():
+    """The callers have already turned names into labels, so the heatmap does
+    not look them up again — that would bypass the runcard's latex_labels."""
     matrix = np.array([[1.0]])
     fig = _plot_heatmap(matrix, ["OQQ1"], ["DS_A"], vmin=0, vmax=10)
 
     ax = fig.axes[0]
-    assert ax.get_yticklabels()[0].get_text() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
+    assert ax.get_yticklabels()[0].get_text() == "OQQ1"
 
 
 def test_plot_heatmap_skips_zero_cells():
@@ -209,6 +210,16 @@ def test_plot_chi2_scan_uses_latex_label_when_known():
     assert fig.axes[0].get_xlabel() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
 
 
+def test_plot_chi2_scan_applies_latex_labels():
+    scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
+
+    result = plot_chi2_scan(scans, latex_labels={"OQQ1": "$c_1$"})
+
+    fig, name = result[0]
+    assert fig.axes[0].get_xlabel() == "$c_1$"
+    assert name == "OQQ1"
+
+
 def test_plot_fisher_diagonals_heatmap_presentation_is_overridable():
     """Same runcard-driven keywords as the correlation heatmap, so a report
     can style both in the same idiom."""
@@ -277,6 +288,15 @@ def test_plot_posterior_correlations_labels_both_axes_with_the_coefficients():
 
     ax = fig.axes[0]
     labels = [r"$c_{QQ}^{\scriptscriptstyle 1}$", "NotARealOp"]
+    assert [t.get_text() for t in ax.get_xticklabels()] == labels
+    assert [t.get_text() for t in ax.get_yticklabels()] == labels
+
+
+def test_plot_posterior_correlations_applies_latex_labels():
+    fig = plot_posterior_correlations(_fit(), latex_labels={"OpA": "$c_A$"})
+
+    ax = fig.axes[0]
+    labels = ["$c_A$", latex_label("OpZZ")]
     assert [t.get_text() for t in ax.get_xticklabels()] == labels
     assert [t.get_text() for t in ax.get_yticklabels()] == labels
 
@@ -454,9 +474,7 @@ def test_plot_pca_components_heatmap_axis_labels():
 
     ax = fig.axes[0]
     assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
-    assert [t.get_text() for t in ax.get_yticklabels()] == [
-        coeff_info_latex.get(name, name) for name in ["OpA", "OpB", "OpC"]
-    ]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpB", "OpC"]
 
 
 def test_plot_pca_components_heatmap_keeps_zero_cells():

@@ -992,6 +992,26 @@ def test_produce_optimizer_with_scheduler(cfg):
 
 
 # ---------------------------------------------------------------------------
+# parse_latex_labels
+# ---------------------------------------------------------------------------
+
+
+def test_parse_latex_labels_returns_the_mapping(cfg):
+    labels = {"OtG": "$c_{tG}$", "LHC-top": r"$t\bar{t}$"}
+    assert cfg.parse_latex_labels(labels) == labels
+
+
+def test_parse_latex_labels_rejects_a_non_mapping(cfg):
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        cfg.parse_latex_labels(["OtG"])
+
+
+def test_parse_latex_labels_rejects_a_non_string_label(cfg):
+    with pytest.raises(ConfigError, match="'OtG' must be a string"):
+        cfg.parse_latex_labels({"OtG": 1.0})
+
+
+# ---------------------------------------------------------------------------
 # produce_data_groups
 # ---------------------------------------------------------------------------
 

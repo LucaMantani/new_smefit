@@ -106,10 +106,13 @@ def highest_density_interval(
             x, density = draws[:1], np.array([np.inf])
         else:
             # Normal case.
-            x, density = _getdist_density(draws, (edges[k], edges[k + 1])) # KDE for each mode.
-            density *= draws.size / values.size # Weight by the mode's share of the draws.
+            # KDE for each mode.
+            x, density = _getdist_density(draws, (edges[k], edges[k + 1]))
+            # Weight by the mode's share of the draws.
+            density *= draws.size / values.size
         densities.append((x, density))
-        at_draws.append(np.interp(draws, x, density)) # evaluates the weighted density at each draw of the mode.
+        # evaluates the weighted density at each draw of the mode.
+        at_draws.append(np.interp(draws, x, density))
     threshold = np.quantile(np.concatenate(at_draws), 1.0 - prob, method="inverted_cdf")
 
     pieces: List[Tuple[float, float]] = []
@@ -121,6 +124,7 @@ def highest_density_interval(
             else:
                 pieces.append(piece)
     return pieces
+
 
 def _effective_size(values: np.ndarray) -> float:
     """Kish's effective number of draws, ``n^2 / sum(c^2)`` over the repeat

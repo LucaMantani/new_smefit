@@ -107,8 +107,6 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping, coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence | None, external_chi2: collections.abc.Mapping | None = None) -> smefit.priors.ExactPosteriorPrior`
-  - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
 - `resolve_posterior(resolve_coeffs, posterior_free, best_free)`

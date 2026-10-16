@@ -56,3 +56,22 @@ def run_pca(pca, output_path):
     """Print the principal-component analysis and save it."""
     pca.print_summary()
     pca.write(output_path)
+
+
+def write_rge_matrix(rge_matrix, output_path):
+    """Compute the RGE matrix and save it, without running a fit.
+
+    The write itself happens in ``produce_rge_matrix``, which saves the matrix
+    under ``output_path`` whenever it builds it, so a fit writes it too.
+
+    The resulting ``<output_path>/rge_matrix.pkl`` can be passed to a later
+    runcard through ``rge.rg_matrix``.
+    """
+    if rge_matrix is None:
+        raise ValueError(
+            "write_rge_matrix needs an 'rge:' block in the runcard; without one "
+            "there is no RGE matrix to compute."
+        )
+    out_file = pathlib.Path(output_path) / rge_matrix.FILENAME
+    if not out_file.exists():
+        rge_matrix.write(output_path)

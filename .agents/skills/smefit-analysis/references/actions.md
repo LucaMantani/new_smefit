@@ -36,8 +36,6 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_timing(chi2, n_eval=1000)`
   - Time the evaluation of the chi2 function.
-- `run_prior_test(prior)`
-- `run_test(eft_model, chi2)`
 - `time_chi2_vec(chi2, output_path, batch_sample_sizes=None)`
   - Time the vectorized chi2 across different batch sizes.
 
@@ -107,8 +105,6 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping, coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence | None, external_chi2: collections.abc.Mapping | None = None) -> smefit.priors.ExactPosteriorPrior`
-  - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
 - `resolve_posterior(resolve_coeffs, posterior_free, best_free)`

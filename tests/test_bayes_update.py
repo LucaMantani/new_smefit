@@ -6,7 +6,7 @@ Covers:
 - FitResult.from_json        (fit_result.py)
 - parse_bayesian_update      (config.py)
 - produce_prior with bayesian_update (config.py)
-- build_exact_posterior_prior (utils.py)
+- build_exact_posterior_prior (bayesian_update.py)
 """
 
 import json
@@ -20,6 +20,7 @@ import pytest
 import yaml
 from reportengine.configparser import ConfigError
 
+from smefit.bayesian_update import build_exact_posterior_prior
 from smefit.config import smefitConfig
 from smefit.fit_result import FitResult, _format_prior
 from smefit.priors import (
@@ -28,7 +29,6 @@ from smefit.priors import (
     WhitenedToPhysicalPrior,
     _UniformDist,
 )
-from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------

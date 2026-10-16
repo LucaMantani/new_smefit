@@ -36,8 +36,6 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_timing(chi2, n_eval=1000)`
   - Time the evaluation of the chi2 function.
-- `run_prior_test(prior)`
-- `run_test(eft_model, chi2)`
 - `time_chi2_vec(chi2, output_path, batch_sample_sizes=None)`
   - Time the vectorized chi2 across different batch sizes.
 

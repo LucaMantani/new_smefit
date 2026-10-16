@@ -21,6 +21,20 @@ jobs:
       - name: Install
         run: pip install -e .
 
+      # The database tests (template runcard validation, smefit_db.py) skip
+      # without a clone; follow main so database changes that break the
+      # templates show up here.
+      - name: Clone smefit_database
+        run: |
+          DB="$GITHUB_WORKSPACE/../smefit_database"
+          git clone --depth 1 https://github.com/LHCfitNikhef/smefit_database.git "$DB"
+          mkdir -p .config
+          cat > .config/paths.yaml <<EOF
+          new_smefit: $GITHUB_WORKSPACE
+          smefit_database: $(cd "$DB" && pwd)
+          smefit_results: $GITHUB_WORKSPACE/../smefit_results
+          EOF
+
       - name: Lint
         run: |
           pip install flake8

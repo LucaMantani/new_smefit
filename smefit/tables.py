@@ -98,7 +98,7 @@ def fisher_diagonals_normalised(
 
 @table
 def gim_table(global_information_matrix, params_to_plot=None):
-    """Returns the aggregated global information matrix in percentage.
+    """Share of each coefficient's variance contributed by each source.
 
     Parameters
     ----------
@@ -112,12 +112,11 @@ def gim_table(global_information_matrix, params_to_plot=None):
     Returns
     -------
     pd.DataFrame
-        Index = coeff_names, columns = source_names. Rows sum to 1.
+        Index = LaTeX coefficient labels, columns = source_names. Fractions,
+        like :func:`fisher_diagonals_normalised`; rows sum to 1.
     """
     gim = global_information_matrix
     gim = gim.loc[select_params(gim.index, params_to_plot, context="GIM")]
-    gim = gim * 100
-    # Format the index with LaTeX labels
     gim.index = [coeff_info_latex.get(name, name) for name in gim.index]
     return gim
 

@@ -147,6 +147,34 @@ _FLAT_THRESHOLD = 1e-12
 _FLAT_NAME_WEIGHT = 0.1
 
 
+# Below this a share is negative, not rounding: shares are O(1) fractions and
+# rounding leaves them off by O(machine_eps).
+_NEGATIVE_SHARE_TOL = 1e-6
+
+
+def _warn_on_negative_shares(gim):
+    """Log the entries of ``gim`` that are negative beyond rounding.
+
+    Parameters
+    ----------
+    gim : pd.DataFrame
+        Index = coeff_names, columns = source_names.
+    """
+    negative = gim.stack()
+    negative = negative[negative < -_NEGATIVE_SHARE_TOL]
+    if negative.empty:
+        return
+    log.warning(
+        "Global information matrix: %d negative share(s), from sources whose "
+        "Hessian has negative curvature at the evaluation point:\n%s",
+        len(negative),
+        "\n".join(
+            f"  {coeff} <- {source}: {value:.1%}"
+            for (coeff, source), value in negative.items()
+        ),
+    )
+
+
 def _check_invertible(fisher, coeff_names):
     """Raise if ``fisher`` has a flat or negative-curvature direction.
 
@@ -201,6 +229,13 @@ def global_information_matrix(aggregate_fisher_information_matrices):
 
     so that sum_k alpha[i, k] = 1 for every coefficient i.
 
+    A share is non-negative when F_k is positive semi-definite, as it is for a
+    chi2 linear in the coefficients. With quadratic corrections, or away from
+    the SM point, one source's Hessian can have negative curvature, and its
+    share of some coefficient comes out negative: that source pulls the
+    variance up rather than down, which the others make up for. Such entries
+    are kept and logged with a warning.
+
     The sources are those of ``aggregate_fisher_information_matrices``, so
     ``data_groups`` are merged before the attribution, not after. Here the two
     agree, ``alpha`` being linear in F_k, but an attribution that is not (one
@@ -231,4 +266,6 @@ def global_information_matrix(aggregate_fisher_information_matrices):
         axis=1,
     )  # (n_ops, n_sources)
 
-    return pd.DataFrame(alpha, index=coeff_names, columns=source_names)
+    gim = pd.DataFrame(alpha, index=coeff_names, columns=source_names)
+    _warn_on_negative_shares(gim)
+    return gim

@@ -133,3 +133,147 @@ def aggregate_fisher_information_matrices(
         group_name: sum(fim[source_names[i]] for i in indices)
         for group_name, indices in groups
     }
+
+
+############################
+# Global Information Matrix
+############################
+
+# Same criterion, and default, as ``pca_settings.threshold``: an eigenvalue below
+# this fraction of the largest is a flat direction. Not read from pca_settings,
+# which would make every report runcard carry that block.
+_FLAT_THRESHOLD = 1e-12
+# Coefficients with at least this weight in a flat direction are named in the error.
+_FLAT_NAME_WEIGHT = 0.1
+
+
+# Below this a share is negative, not rounding: shares are O(1) fractions and
+# rounding leaves them off by O(machine_eps).
+_NEGATIVE_SHARE_TOL = 1e-6
+
+
+def _warn_on_negative_shares(gim):
+    """Log the entries of ``gim`` that are negative beyond rounding.
+
+    Parameters
+    ----------
+    gim : pd.DataFrame
+        Index = coeff_names, columns = source_names.
+    """
+    negative = gim.stack()
+    negative = negative[negative < -_NEGATIVE_SHARE_TOL]
+    if negative.empty:
+        return
+    log.warning(
+        "Global information matrix: %d negative share(s), from sources whose "
+        "Hessian has negative curvature at the evaluation point:\n%s",
+        len(negative),
+        "\n".join(
+            f"  {coeff} <- {source}: {value:.1%}"
+            for (coeff, source), value in negative.items()
+        ),
+    )
+
+
+def _check_invertible(fisher, coeff_names):
+    """Raise if ``fisher`` has a flat or negative-curvature direction.
+
+    Along such a direction the total Fisher matrix is no covariance's inverse,
+    so the variance a share is taken of is infinite or negative, and
+    ``np.linalg.inv`` returns large numbers rather than an error.
+
+    Parameters
+    ----------
+    fisher : np.ndarray
+        The total Fisher matrix, square.
+    coeff_names : list of str
+
+    Raises
+    ------
+    ValueError
+        Naming the coefficients that make up each offending direction.
+    """
+    # symmetrise: eigh reads one triangle only, see smefit.pca
+    eigenvalues, eigenvectors = np.linalg.eigh(0.5 * (fisher + fisher.T))
+    lam_max = eigenvalues.max()
+    bad = np.flatnonzero(eigenvalues <= _FLAT_THRESHOLD * max(lam_max, 0.0))
+    if bad.size == 0:
+        return
+
+    directions = []
+    for i in bad:
+        v = eigenvectors[:, i]
+        names = [
+            coeff_names[j]
+            for j in np.argsort(-np.abs(v))
+            if abs(v[j]) >= _FLAT_NAME_WEIGHT
+        ]
+        directions.append(f"  lambda = {eigenvalues[i]:.3e}: {', '.join(names)}")
+    raise ValueError(
+        f"Global information matrix: the total Fisher matrix has {bad.size} "
+        f"flat or negative-curvature direction(s), so the variances it would "
+        f"split between sources are not defined (lambda_max = {lam_max:.3e}):\n"
+        + "\n".join(directions)
+        + "\nFix or remove these coefficients, or add data constraining them; "
+        "pca_spectrum shows the full spectrum."
+    )
+
+
+def global_information_matrix(aggregate_fisher_information_matrices):
+    """Compute the constraining power of each source on each coefficient.
+
+    Given the per-source Fisher matrices F_k, forms the total Fisher matrix
+    F = sum_k F_k and its inverse Sigma = F^{-1}. The constraining power is::
+
+        alpha[i, k] = (Sigma @ F_k @ Sigma)[i, i] / Sigma[i, i]
+
+    so that sum_k alpha[i, k] = 1 for every coefficient i.
+
+    Unlike the normalised Fisher diagonals, F_k[i, i] / F[i, i], which compare
+    the curvature along c_i with every other coefficient held fixed (the
+    question an individual fit asks), alpha splits the variance of c_i in the
+    global fit, with the others marginalised over. A source can then matter
+    through correlations alone: it constrains a direction that, once fixed,
+    breaks the degeneracy between c_i and other coefficients. The two agree
+    when the coefficients are uncorrelated.
+
+    A share is non-negative when F_k is positive semi-definite, as it is for a
+    chi2 linear in the coefficients. With quadratic corrections, or away from
+    the SM point, one source's Hessian can have negative curvature, and its
+    share of some coefficient comes out negative: that source pulls the
+    variance up rather than down, which the others make up for. Such entries
+    are kept and logged with a warning.
+
+    The sources are those of ``aggregate_fisher_information_matrices``, so
+    ``data_groups`` are merged before the attribution, not after. Here the two
+    agree, ``alpha`` being linear in F_k, but an attribution that is not (one
+    evaluated numerically on a non-Gaussian posterior, say) has to see each
+    group as one source.
+
+    Parameters
+    ----------
+    aggregate_fisher_information_matrices : dict[str, pd.DataFrame]
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = coeff_names, columns = source_names. Rows sum to 1.
+    """
+    fim = aggregate_fisher_information_matrices
+    coeff_names = next(iter(fim.values())).index.tolist()
+    source_names = list(fim.keys())
+    matrices = [df.values for df in fim.values()]
+
+    F_total = sum(matrices)
+    _check_invertible(F_total, coeff_names)
+    Sigma = np.linalg.inv(F_total)
+    diag_Sigma = np.diag(Sigma)
+
+    alpha = np.stack(
+        [np.diag(Sigma @ F_k @ Sigma) / diag_Sigma for F_k in matrices],
+        axis=1,
+    )  # (n_ops, n_sources)
+
+    gim = pd.DataFrame(alpha, index=coeff_names, columns=source_names)
+    _warn_on_negative_shares(gim)
+    return gim

@@ -1,6 +1,6 @@
 ---
 name: smefit-analysis
-description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information tables and heatmaps, scanning the chi2 over a coefficient or a new-physics mass scale, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
+description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information or global information matrix tables and heatmaps, scanning the chi2 over a coefficient or a new-physics mass scale, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
 ---
 
 # Running and interpreting smefit analyses
@@ -69,6 +69,22 @@ chain (`fisher_diagonals_normalised`, `plot_fisher_diagonals_heatmap`)
 evaluates at the gradient-descent best fit; group datasets with `group:` labels
 to aggregate rows. See the smefit-runcard skill's `recipes.md` for the runcard
 side.
+
+The global information matrix (`global_information_table`,
+`plot_global_information_heatmap`) is built from the same Fisher matrices.
+Reading a row:
+
+- Each cell is the share of that coefficient's variance **in the global fit**
+  owed to that source; a row sums to 100%. The normalised Fisher diagonals
+  instead hold every other coefficient fixed, so the two differ exactly where
+  correlations matter.
+- A source can earn a large share of a coefficient it has no sensitivity to,
+  by pinning a correlated one; and a source sensitive to a coefficient can get
+  ~0% if another source already fixes that direction.
+- **A negative share** (with another above 100% to compensate) means that
+  source's chi2 has negative curvature at the evaluation point — possible with
+  quadratic corrections or away from the SM point. It is real, logged as a
+  warning, and the heatmap's colour range widens to show it rather than clip.
 
 A report can also be run over fits that already exist on disk, refitting
 nothing: list them under `fits:`, and run an action once per fit by putting it

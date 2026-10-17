@@ -96,6 +96,33 @@ def fisher_diagonals_normalised(
     return raw.div(raw.sum(axis=1), axis=0)
 
 
+@table
+def global_information_table(global_information_matrix, params_to_plot=None):
+    """Share of each coefficient's variance contributed by each source.
+
+    Parameters
+    ----------
+    global_information_matrix : pd.DataFrame
+    params_to_plot : list of str, optional
+        Restrict the rows to these coefficients, in this order. All of them by
+        default. The shares of a row are taken of that coefficient's variance
+        in the full fit, so a row says the same thing whichever others are kept
+        alongside it.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = LaTeX coefficient labels, columns = source_names. Fractions,
+        like :func:`fisher_diagonals_normalised`; rows sum to 1.
+    """
+    gim = global_information_matrix
+    gim = gim.loc[
+        select_params(gim.index, params_to_plot, context="global information")
+    ]
+    gim.index = [coeff_info_latex.get(name, name) for name in gim.index]
+    return gim
+
+
 def _number(value: float, round_val: int) -> str:
     """One number as a table cell, to ``round_val`` decimals.
 

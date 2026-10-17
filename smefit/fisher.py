@@ -140,7 +140,7 @@ def aggregate_fisher_information_matrices(
 ############################
 
 
-def global_information_matrix(fisher_information_matrices):
+def global_information_matrix(aggregate_fisher_information_matrices):
     """Compute the constraining power of each source on each coefficient.
 
     Given the per-source Fisher matrices F_k, forms the total Fisher matrix
@@ -150,16 +150,22 @@ def global_information_matrix(fisher_information_matrices):
 
     so that sum_k alpha[i, k] = 1 for every coefficient i.
 
+    The sources are those of ``aggregate_fisher_information_matrices``, so
+    ``data_groups`` are merged before the attribution, not after. Here the two
+    agree, ``alpha`` being linear in F_k, but an attribution that is not (one
+    evaluated numerically on a non-Gaussian posterior, say) has to see each
+    group as one source.
+
     Parameters
     ----------
-    fisher_information_matrices : dict[str, pd.DataFrame]
+    aggregate_fisher_information_matrices : dict[str, pd.DataFrame]
 
     Returns
     -------
     pd.DataFrame
         Index = coeff_names, columns = source_names. Rows sum to 1.
     """
-    fim = fisher_information_matrices
+    fim = aggregate_fisher_information_matrices
     coeff_names = next(iter(fim.values())).index.tolist()
     source_names = list(fim.keys())
     matrices = [df.values for df in fim.values()]
@@ -174,36 +180,3 @@ def global_information_matrix(fisher_information_matrices):
     )  # (n_ops, n_sources)
 
     return pd.DataFrame(alpha, index=coeff_names, columns=source_names)
-
-
-def aggregate_global_information_matrix(global_information_matrix, data_groups=None):
-    """Aggregate global information matrix columns according to data_groups.
-
-    Parameters
-    ----------
-    global_information_matrix : pd.DataFrame
-        Index = coeff_names, columns = source_names.
-    data_groups : dict[str, list[str]], optional
-        Maps group label to source names to merge. Sources not listed in any
-        group are kept as individual columns. If None, the original DataFrame is
-        returned unchanged.
-
-    Returns
-    -------
-    pd.DataFrame
-        Aggregated matrix whose columns correspond to declared groups followed
-        by any ungrouped sources.
-    """
-    if data_groups is None:
-        return global_information_matrix
-
-    gim = global_information_matrix
-    source_names = gim.columns.tolist()
-    groups = _resolve_groups(source_names, data_groups)
-    return pd.DataFrame(
-        {
-            group_name: gim.iloc[:, indices].sum(axis=1)
-            for group_name, indices in groups
-        },
-        index=gim.index,
-    )

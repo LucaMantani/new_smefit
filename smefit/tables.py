@@ -97,19 +97,19 @@ def fisher_diagonals_normalised(
 
 
 @table
-def gim_table(aggregate_global_information_matrix):
+def gim_table(global_information_matrix):
     """Returns the aggregated global information matrix in percentage.
 
     Parameters
     ----------
-    aggregate_global_information_matrix : pd.DataFrame
+    global_information_matrix : pd.DataFrame
 
     Returns
     -------
     pd.DataFrame
         Index = coeff_names, columns = source_names. Rows sum to 1.
     """
-    gim = aggregate_global_information_matrix
+    gim = global_information_matrix
     gim = gim * 100
     # Format the index with LaTeX labels
     gim.index = [coeff_info_latex.get(name, name) for name in gim.index]

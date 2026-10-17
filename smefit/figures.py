@@ -357,15 +357,15 @@ def plot_posterior_correlations(
 
 
 @figure
-def plot_gim_heatmap(aggregate_global_information_matrix):
+def plot_gim_heatmap(global_information_matrix):
     """Plot the global information matrix as a heatmap.
 
     Parameters
     ----------
-    aggregate_global_information_matrix : pd.DataFrame
+    global_information_matrix : pd.DataFrame
         Index = coeff_names, columns = source_names.
     """
-    gim = aggregate_global_information_matrix
+    gim = global_information_matrix
     return _plot_heatmap(
         gim.values * 100,
         gim.index.tolist(),

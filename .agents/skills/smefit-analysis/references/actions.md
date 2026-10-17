@@ -68,7 +68,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `gim_table(aggregate_global_information_matrix)`
+- `gim_table(global_information_matrix)`
   - Returns the aggregated global information matrix in percentage.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.
@@ -83,7 +83,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
-- `plot_gim_heatmap(aggregate_global_information_matrix)`
+- `plot_gim_heatmap(global_information_matrix)`
   - Plot the global information matrix as a heatmap.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
@@ -169,11 +169,9 @@ names in tracebacks. They are resolved for you.
 
 - `aggregate_fisher_information_matrices(fisher_information_matrices, data_groups=None)`
   - Aggregate Fisher matrices by summing within each group.
-- `aggregate_global_information_matrix(global_information_matrix, data_groups=None)`
-  - Aggregate global information matrix columns according to data_groups.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
-- `global_information_matrix(fisher_information_matrices)`
+- `global_information_matrix(aggregate_fisher_information_matrices)`
   - Compute the constraining power of each source on each coefficient.
 - `total_fisher_information_matrix(chi2, gd_best_fit)`
   - Fisher information matrix of the full likelihood at the best-fit point.

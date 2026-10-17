@@ -68,7 +68,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `gim_table(global_information_matrix)`
+- `gim_table(global_information_matrix, params_to_plot=None)`
   - Returns the aggregated global information matrix in percentage.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.

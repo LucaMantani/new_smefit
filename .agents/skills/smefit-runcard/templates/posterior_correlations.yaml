@@ -1,0 +1,49 @@
+# AUTO-COPIED from template_runcards/posterior_correlations.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Correlations of the free coefficients of fits that have already been run:
+# no fit is run here, the posterior samples are read back from each fit's
+# fit_results.json. One heatmap per fit listed under `fits`.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# --- Configuring a figure ---------------------------------------------------
+#
+# There is no settings block for how a figure looks, and none is needed: an
+# action's keyword parameters are resolved by reportengine like any other
+# resource, so a runcard sets them directly. Two routes, both used below.
+#
+# (1) A TOP-LEVEL KEY sets the parameter everywhere it appears.
+#
+#     Careful, "everywhere" is literal. plot_fisher_diagonals_heatmap takes a
+#     value_fmt too, so in a runcard with both heatmaps this one key would set
+#     both. Use route (2) when they should differ.
+value_fmt: "{:.3f}"
+
+# `params_to_plot`:
+# every routine that takes it restricts itself to these coefficients.
+# params_to_plot: [OtG, OtW, OpQM, OpQ3]
+
+# (2) An ACTION ARGUMENT sets it for that call alone, and beats the key above
+#     when both name the same parameter. Used in the template below to give
+#     this heatmap its own colormap.
+#
+# `with fits` opens a section per fit, headed by `{@fit@}` — the fit's name, the
+# same name its files are given. The heatmap itself is titled with the label.
+template_text: |
+    Posterior correlations
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_posterior_correlations(cmap="PuOr")@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

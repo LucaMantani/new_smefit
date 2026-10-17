@@ -63,6 +63,20 @@ def main():
     if args.view and args.resource_type != "report":
         parser.error("--view is only valid for resource_type 'report'.")
 
+    _SUBDIR = {"fit": "fits", "report": "reports", "rge": "fits", "misc": "misc"}
+
+    import pathlib
+
+    local_path = args.local_path
+    local_results_dir = None
+    if local_path is None:
+        from smefit.paths import get_local_results_dir
+
+        local_results_dir = get_local_results_dir()
+        if local_results_dir is not None:
+            local_path = str(local_results_dir / _SUBDIR[args.resource_type])
+            log.info("Using smefit_results from user config: %s", local_path)
+
     from smefit.server_utils import (
         Downloader,
         ServerError,
@@ -72,16 +86,25 @@ def main():
 
     try:
         if args.resource_type == "rge":
-            download_rge(
-                args.resource_name, local_path=args.local_path, server=args.server
-            )
+            download_rge(args.resource_name, local_path=local_path, server=args.server)
         elif args.view:
             download_and_view_report(
-                args.resource_name, local_path=args.local_path, server=args.server
+                args.resource_name, local_path=local_path, server=args.server
             )
+            if local_results_dir is not None:
+                Downloader(server=args.server).update_local_registry(
+                    "report", args.resource_name, local_results_dir
+                )
         else:
             downloader = Downloader(server=args.server)
-            downloader.download(args.resource_type, args.resource_name, args.local_path)
+            downloader.download(args.resource_type, args.resource_name, local_path)
+            if local_results_dir is not None and args.resource_type in (
+                "fit",
+                "report",
+            ):
+                downloader.update_local_registry(
+                    args.resource_type, args.resource_name, local_results_dir
+                )
     except ServerError as e:
         log.error("%s", e)
         sys.exit(1)

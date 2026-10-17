@@ -1,33 +1,213 @@
 """
 smefit.fit_result.py
 
-FitResult dataclass shared across fitting routines.
+Fit containers shared across fitting routines.
+
+Three classes live here:
+
+- :class:`FitResult`, the bare numerical outcome of a fit — free parameters,
+  best-fit point, likelihood, samples — and its ``fit_results.json`` schema.
+  This is what the fitting routines return and write.
+- :class:`FitResultGroup`, the outcome of fitting each coefficient on its own:
+  one :class:`FitResult` per coefficient, each a genuine single-parameter fit
+  with its own likelihood and evidence. It writes those results to their
+  subdirectories and aggregates them into the summary ``fit_results.json``.
+- :class:`Fit`, a fit that already exists on disk: the result it produced —
+  a :class:`FitResult`, or a :class:`FitResultGroup` when it was run one
+  coefficient at a time — held as an attribute, plus the metadata describing
+  how it was run. It is built only by loading, never by a fitting routine, and
+  it is what downstream consumers (plotting, reports) work with.
+
+Anything new describing how a fit was run belongs on :class:`Fit`, which is
+meant to grow, and as a property derived from the runcard it holds rather than
+as a field of its own — see its docstring. The result classes stay the minimal
+numerical record and own the ``fit_results.json`` schemas on their own.
 """
 
 import json
+import logging
 import pathlib
-from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional
+import re
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
+import yaml
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from smefit.priors import _build_dist
+from smefit.credible_intervals import _INTERVAL_TYPES, Bounds
+from smefit.priors import build_dist
+from smefit.whitening import WhitenTransform
+
+log = logging.getLogger(__name__)
+
+
+def _load_json(path) -> Dict:
+    """Decode a JSON file, naming it when it will not parse.
+
+    A decoder locates a fault *within* a file but never names the file itself,
+    and a fit is read from two of them — so "line 1 column 2" on its own says
+    nothing about which one to go and look at. Every reader here goes through
+    this, so that reading a fit fails the same way wherever it is read from.
+
+    A missing file raises :class:`FileNotFoundError` untouched: that is not a
+    malformed fit, it is an absent one.
+    """
+    path = pathlib.Path(path)
+    try:
+        with path.open() as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"'{path}' is not valid JSON: {e}") from e
+
+
+def _load_yaml(path) -> Dict:
+    """Decode a YAML file, naming it when it will not parse.
+
+    The counterpart of :func:`_load_json`, and it fails the same way. An empty
+    file reads as an empty mapping: a runcard that sets nothing is still a
+    runcard, and every :class:`Fit` property falls back to its default.
+    """
+    path = pathlib.Path(path)
+    try:
+        with path.open() as f:
+            return yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"'{path}' is not valid YAML: {e}") from e
+
+
+# Fit actions are named "run_<fit type>_fit", or "run_individual_<fit
+# type>_fits" when the fit is run one coefficient at a time.
+_FIT_ACTION_RE = re.compile(
+    r"^run_(?P<individual>individual_)?(?P<fit_type>.+?)_fits?$"
+)
+
+
+def _parse_fit_action(action: str) -> Optional[Dict]:
+    """What a fit action's name says about the fit, ``None`` for anything else.
+
+    Fit actions are named to a convention that spells out both which sampler
+    they run and whether they drive it one coefficient at a time, so the name
+    of the action a runcard ran is what says how a fit was produced::
+
+        run_analytic_fit              ->  {"fit_type": "analytic", "is_individual_fit": False}
+        run_individual_blackjax_fits  ->  {"fit_type": "blackjax", "is_individual_fit": True}
+        report                        ->  None
+
+    The keys name the :class:`Fit` properties they answer, so that what is
+    being read stays legible at every hop between here and them, with ``is_``
+    marking the one that is a flag.
+
+    A name that matches the convention is looked up in
+    :mod:`smefit.fit_actions` as well, so that an action which merely reads
+    like a fit is not taken for one.
+    """
+    from smefit import fit_actions  # imported here: fit_actions imports this module
+
+    match = _FIT_ACTION_RE.match(action)
+    if match is None or not callable(getattr(fit_actions, action, None)):
+        return None
+    return {
+        "fit_type": match["fit_type"],
+        "is_individual_fit": match["individual"] is not None,
+    }
+
+
+def _runcard_actions(config: Mapping) -> List[str]:
+    """The names of the actions a runcard's ``actions_`` list runs.
+
+    Entries come in three shapes, and this reduces them to bare names::
+
+        actions_:
+          - run_analytic_fit      # a plain action    ->  "run_analytic_fit"
+          - report(main=True)     # with arguments    ->  "report"
+          - scan:                 # a namespace, i.e. a mapping of actions
+              - plot_chi2         #                   ->  skipped
+
+    Arguments are dropped: they configure an action, they do not change which
+    one ran. A namespace entry is a mapping rather than an action itself, so it
+    is stepped over and not descended into — an action nested under one is not
+    reported here.
+    """
+    actions = config.get("actions_") or []
+    names = []
+    for action in actions:
+        # nested-namespace entries are mappings, not actions themselves
+        if not isinstance(action, str):
+            continue
+        names.append(action.split("(", 1)[0].strip())
+    return names
+
+
+def _runcard_fit_action(config: Mapping) -> Optional[Dict]:
+    """What the fit action a runcard ran says about the fit.
+
+    The first fit action of the list is the one that produced the fit: a
+    runcard runs a single fit, whatever else it lists alongside it. Everything
+    known about how a fit was produced is read from that one name, through
+    :func:`_parse_fit_action`.
+
+    None when the runcard runs no fit action at all — a report-only runcard,
+    say. Saying so is left to the caller, so that it is said once, when the fit
+    is loaded, rather than at every lookup: see :meth:`Fit.from_folder`.
+    """
+    for action in _runcard_actions(config):
+        parsed = _parse_fit_action(action)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _format_prior(spec: Optional[Mapping]) -> str:
     if spec is None:
         return "-"
     if spec.get("dist") == "exact_posterior":
-        return f"ExactPosterior"
-    return str(_build_dist(spec))
+        return "ExactPosterior"
+    return str(build_dist(spec))
+
+
+def _prior_bounds(
+    fit_results: Union["FitResult", "FitResultGroup"],
+) -> Dict[str, Bounds]:
+    """The hard bound each sign-definite coefficient's prior puts at 0.
+
+    Only a prior edge at 0 — ``low: 0`` or ``high: 0`` — is a bound the
+    intervals must respect: ``(0, None)`` or ``(None, 0)``. Any other prior
+    range only sets the volume sampled. A whitened fit's specs are those of
+    the whitened coordinates, not of the physical samples, so such a fit
+    contributes no bounds.
+
+    Neither does a Bayesian update: :class:`smefit.priors.ExactPosteriorPrior`
+    stores ``{"dist": "exact_posterior", ...}`` as every coefficient's spec,
+    not the base prior's, so a coefficient kept sign-definite through an
+    update loses its bound at 0 here, and its HDI is estimated as if its
+    support were open.
+    """
+    results = (
+        fit_results.results
+        if isinstance(fit_results, FitResultGroup)
+        else [fit_results]
+    )
+    bounds = {}
+    for result in results:
+        if result.whitening_active or not result.prior_specs:
+            continue
+        for name, spec in result.prior_specs.items():
+            if spec.get("low") == 0:
+                bounds[name] = (0.0, None)
+            elif spec.get("high") == 0:
+                bounds[name] = (None, 0.0)
+    return bounds
 
 
 @dataclass
 class FitResult:
-    """Container for the result of a fit.
+    """Container for the numerical result of a fit.
 
     Attributes
     ----------
@@ -44,8 +224,8 @@ class FitResult:
     samples : dict[str, jnp.ndarray] or None
         Posterior samples for every coefficient,
         shape ``(n_samples,)`` per entry.
-    whitening_matrix : jnp.ndarray or None
-        Unwhitening matrix W (shape n_free x n_free). Saved when whitening is
+    whitening_transformation : WhitenTransform or None
+        Affine unwhitening transform (matrix, shift). Saved when whitening is
         active.
     """
 
@@ -56,7 +236,7 @@ class FitResult:
     logz: Optional[float] = None
     samples: Optional[Dict[str, jnp.ndarray]] = None
     prior_specs: Optional[Dict[str, Mapping]] = None
-    whitening_matrix: Optional[jnp.ndarray] = None
+    whitening_transformation: Optional[WhitenTransform] = None
     whitening_active: bool = False
 
     # ------------------------------------------------------------------
@@ -85,6 +265,32 @@ class FitResult:
         if self.samples is None:
             return {}
         return {name: float(jnp.std(vals)) for name, vals in self.samples.items()}
+
+    @property
+    def correlations(self) -> pd.DataFrame:
+        """Pearson correlations of the posterior samples, as a square frame.
+
+        Free parameters only, in :attr:`free_parameters` order: a derived
+        coefficient is a function of them, so its correlations carry nothing the
+        free ones do not already.
+
+        A parameter whose samples never moved has no correlation with anything,
+        and gets a row and a column of ``nan`` rather than an error — a fit that
+        left one parameter unexplored is still worth looking at.
+        """
+        if self.samples is None:
+            raise ValueError(
+                "This fit stored no posterior samples, so it has no "
+                "correlations to report."
+            )
+        posterior = jnp.stack([self.samples[name] for name in self.free_parameters])
+        return pd.DataFrame(
+            # A single free parameter correlates only with itself, and corrcoef
+            # returns that as a scalar rather than as the 1x1 matrix it is.
+            jnp.atleast_2d(jnp.corrcoef(posterior)),
+            index=self.free_parameters,
+            columns=self.free_parameters,
+        )
 
     @property
     def bic(self) -> float:
@@ -171,9 +377,9 @@ class FitResult:
                 else None
             ),
             "prior_specs": self.prior_specs,
-            "whitening_matrix": (
-                self.whitening_matrix.tolist()
-                if self.whitening_matrix is not None
+            "whitening_transformation": (
+                self.whitening_transformation.to_dict()
+                if self.whitening_transformation is not None
                 else None
             ),
             "whitening_active": self.whitening_active,
@@ -186,17 +392,26 @@ class FitResult:
     @classmethod
     def from_json(cls, path) -> "FitResult":
         """Load a FitResult from a directory containing fit_results.json."""
-        p = pathlib.Path(path) / "fit_results.json"
-        with p.open() as f:
-            d = json.load(f)
+        return cls.from_payload(_load_json(pathlib.Path(path) / "fit_results.json"))
+
+    @classmethod
+    def from_payload(cls, d: Mapping) -> "FitResult":
+        """Rebuild a FitResult from a decoded ``fit_results.json`` payload.
+
+        Split out of :meth:`from_json` so that a reader which has already
+        inspected the payload — :meth:`Fit.from_folder` — can hand it straight
+        over instead of decoding the file twice.
+        """
         free_parameters = d["free_parameters"]
         samples = (
             {name: jnp.array(vals) for name, vals in d["samples"].items()}
             if d.get("samples")
             else None
         )
-        whitening_matrix = (
-            jnp.array(d["whitening_matrix"]) if d.get("whitening_matrix") else None
+        whitening_transformation = (
+            WhitenTransform.from_dict(d["whitening_transformation"])
+            if d.get("whitening_transformation")
+            else None
         )
         return cls(
             free_parameters=free_parameters,
@@ -206,16 +421,35 @@ class FitResult:
             logz=d.get("logz"),
             samples=samples,
             prior_specs=d.get("prior_specs"),
-            whitening_matrix=whitening_matrix,
+            whitening_transformation=whitening_transformation,
             whitening_active=d.get("whitening_active", False),
         )
 
 
 class FitResultGroup:
-    """A collection of FitResult objects from individual parameter fits."""
+    """A collection of FitResult objects from individual parameter fits.
+
+    Attributes
+    ----------
+    results : list[FitResult]
+        One per individual fit, each with a single free coefficient.
+    free_parameters : list[str]
+        The coefficients fitted, in the order they were fitted.
+    samples : dict[str, jnp.ndarray] or None
+        Posterior samples per coefficient, from its own individual fit.
+        ``None`` when no individual fit kept any, as for :class:`FitResult`.
+    """
 
     def __init__(self, results: List[FitResult]):
         self.results = results
+        self.free_parameters: List[str] = [
+            result.free_parameters[0] for result in results
+        ]
+        samples = {}
+        for name, result in zip(self.free_parameters, results):
+            if result.samples is not None and name in result.samples:
+                samples[name] = result.samples[name]
+        self.samples: Optional[Dict[str, jnp.ndarray]] = samples or None
 
     def print_summary(self) -> None:
         """Print a combined summary table with one row per fit."""
@@ -306,9 +540,297 @@ class FitResultGroup:
             "whitening_active": (
                 self.results[0].whitening_active if self.results else False
             ),
-            "individual_fit": True,
         }
 
         out_file = output_path / "fit_results.json"
         with out_file.open("w") as f:
             json.dump(payload, f, indent=2)
+
+    @classmethod
+    def from_payload(cls, d: Mapping) -> "FitResultGroup":
+        """Rebuild the group a summary payload was aggregated from.
+
+        The counterpart of :meth:`write_summary`, and the reader of the schema
+        that method owns — so the two stay side by side, as
+        :meth:`FitResult.write` and :meth:`FitResult.from_payload` do.
+
+        :meth:`write_summary` records per coefficient everything a
+        :class:`FitResult` needs, so each coefficient's slice of the summary is
+        itself a single-fit payload and is read back through
+        :meth:`FitResult.from_payload` — the one place that knows that schema.
+        """
+        chi2 = d.get("chi2") or {}
+        logz = d.get("logz") or {}
+        samples = d.get("samples") or {}
+        prior_specs = d.get("prior_specs") or {}
+
+        results = []
+        for name in d["free_parameters"]:
+            spec = prior_specs.get(name)
+            results.append(
+                FitResult.from_payload(
+                    {
+                        "free_parameters": [name],
+                        "best_fit_point": {name: d["best_fit_point"][name]},
+                        # the likelihood of this coefficient's own fit
+                        "max_loglikelihood": -0.5 * float(chi2[name]),
+                        "num_data": d["num_data"],
+                        "logz": logz.get(name),
+                        "samples": {name: samples[name]} if name in samples else None,
+                        "prior_specs": {name: spec} if spec is not None else None,
+                        "whitening_active": d.get("whitening_active", False),
+                    }
+                )
+            )
+        return cls(results)
+
+
+@dataclass
+class Fit:
+    """A fit that exists on disk: what it produced, and how it was run.
+
+    A ``Fit`` is built only by loading — :meth:`from_folder` — never by a fitting
+    routine, which returns the bare :class:`FitResult` it computed and knows
+    nothing of the directory it will be written to. This is the class to extend
+    when a fit needs to carry something new about itself; ``FitResult`` stays
+    the numerical record.
+
+    How the fit was configured is held as the whole runcard it was run with
+    (:attr:`fit_runcard`), never copied out key by key into fields of its own.
+    Everything derived from it — :attr:`use_quad`, :attr:`fit_type`, … — is a
+    property computed on demand, so a consumer that needs something new about a
+    fit gets a new property here and no signature anywhere changes. Reach for
+    :meth:`setting` for a runcard key that has no property yet.
+
+    None of this is serialised: a fit's numbers live in ``fit_results.json``,
+    while how it was configured is read back from ``input/runcard.yaml`` in the
+    fit directory, the authoritative record of that.
+
+    Attributes
+    ----------
+    fit_results : FitResult or FitResultGroup
+        The numbers the fit produced — best-fit point, likelihood, samples. A
+        :class:`FitResultGroup` when the fit was run one coefficient at a time
+        (:attr:`individual_fit`): there is no joint likelihood to hold then,
+        only the single-parameter result of every coefficient.
+    fit_name : str
+        Identity of the fit: the name of the directory it was loaded from,
+        which is what users refer to it by.
+    label : str or None
+        Legend label, from the ``label`` key of the fit's ``fits`` entry. It is
+        used verbatim, so it may be raw LaTeX; when unset, consumers fall back
+        to ``fit_name``. How the fit is presented in a given plot, not a
+        property of the fit itself, so it comes from the runcard that loads the
+        fit rather than from the fit directory.
+    fit_runcard : dict
+        The runcard the fit was run with, read from ``input/runcard.yaml``.
+        :meth:`from_folder` requires it: a fit whose configuration is unknown
+        cannot be loaded. It defaults to empty only for a ``Fit`` built by
+        hand, in which case every property below falls back to its default.
+    """
+
+    fit_results: Union[FitResult, FitResultGroup]
+    fit_name: str
+    label: Optional[str] = None
+    fit_runcard: Dict = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        """The fit's name — not cosmetic, it ends up in file names.
+
+        reportengine names the output of a provider run once per fit after the
+        namespace element it was run for, and it does so by calling ``str`` on
+        it (``spec_to_nice_name``, ``reportengine/formattingtools.py``). Without
+        this, the dataclass repr is used, is over the length reportengine
+        tolerates, and every per-fit figure and table falls back to being named
+        ``fits0``, ``fits1``, … instead of after the fit it belongs to.
+        """
+        return self.fit_name
+
+    @property
+    def plot_label(self) -> str:
+        """How to name this fit inside a plot.
+
+        The runcard's :attr:`label` where it gave one, and the fit's name
+        otherwise, so a plot always says which fit it is drawn from. Distinct
+        from :meth:`__str__`, which names *files* and so has to stay the plain
+        fit name: a label is presentation and may be raw LaTeX.
+        """
+        return self.label or self.fit_name
+
+    # ------------------------------------------------------------------
+    # How the fit was configured — derived from the runcard
+    # ------------------------------------------------------------------
+
+    def setting(self, key: str, default: Any = None) -> Any:
+        """The value of a runcard key, or *default* when it is not set.
+
+        The escape hatch for a setting that has no property of its own (yet):
+        it keeps consumers from reaching into :attr:`fit_runcard` directly, so
+        that giving the key a property later changes nothing for them.
+        """
+        return self.fit_runcard.get(key, default)
+
+    @property
+    def use_quad(self) -> bool:
+        """Whether the fit included quadratic EFT corrections.
+
+        Downstream consumers need it after the run: it is what says whether the
+        posterior can be expected to be Gaussian.
+        """
+        return bool(self.setting("use_quad", False))
+
+    @property
+    def fit_type(self) -> Optional[str]:
+        """Which routine produced the fit.
+
+        ``analytic``, ``hessian``, ``ultranest`` or ``blackjax``, from the fit
+        action the runcard ran. None when it runs no fit action at all.
+        """
+        return self._fit_action["fit_type"]
+
+    @property
+    def individual_fit(self) -> bool:
+        """True for the summary of one-at-a-time individual fits.
+
+        That is, when the runcard ran a ``run_individual_*_fits`` action — the
+        only thing that says so. Every coefficient was then fitted with the
+        others held at their baseline, so the samples are independent 1D
+        posteriors rather than a joint one — see :class:`FitResultGroup`.
+        """
+        return self._fit_action["is_individual_fit"]
+
+    @cached_property
+    def _fit_action(self) -> Dict:
+        """What the fit action the runcard ran says about this fit.
+
+        Keyed by the property that answers it, so that a property is one
+        lookup. Cached: :attr:`fit_type` and :attr:`individual_fit` are two
+        halves of the same answer. A runcard that ran no fit action leaves both
+        at their default; :meth:`from_folder` is what reports that.
+        """
+        return _runcard_fit_action(self.fit_runcard) or {
+            "fit_type": None,
+            "is_individual_fit": False,
+        }
+
+    # ------------------------------------------------------------------
+    # What the fit constrained — derived from the posterior samples
+    # ------------------------------------------------------------------
+
+    def confidence_bounds(
+        self, confidence_level: float, interval_type: str = "eti"
+    ) -> Dict[str, List[Tuple[float, float]]]:
+        """The ``confidence_level`` percent bounds of every free coefficient.
+
+        Parameters
+        ----------
+        confidence_level : float
+            In percent: 95, not 0.95.
+        interval_type : str, optional
+            How the interval is chosen among those holding
+            ``confidence_level`` percent of the posterior: ``"eti"``
+            (equal-tailed), the default, or ``"hdi"`` (highest-density,
+            see :func:`smefit.credible_intervals.highest_density_interval`).
+
+        Returns
+        -------
+        dict of str to list of (float, float)
+            Per free coefficient, in the fit's order, the pieces
+            ``[(low, high), ...]`` of the credible region, in increasing order.
+            Multimodal fits can have several intervals for a single
+            coefficient. Coefficients with no samples are left out.
+        """
+        if not 1.0 <= confidence_level < 100.0:
+            raise ValueError(
+                f"confidence_level is a percentage between 1 and 100, got "
+                f"{confidence_level}. Write 95, not 0.95."
+            )
+        if interval_type not in _INTERVAL_TYPES:
+            raise ValueError(
+                f"Unknown interval_type {interval_type!r}; expected one of "
+                f"{sorted(_INTERVAL_TYPES)}."
+            )
+        interval = _INTERVAL_TYPES[interval_type]
+
+        samples = self.fit_results.samples
+        if not samples:
+            raise ValueError(
+                f"The fit '{self.fit_name}' stored no posterior samples, so it "
+                "has no bounds to report."
+            )
+
+        prior_bounds = _prior_bounds(self.fit_results)
+        bounds = {}
+        for name in self.fit_results.free_parameters:
+            if name not in samples:
+                continue
+            values = np.asarray(samples[name], dtype=float)
+            bounds[name] = interval(values, confidence_level, prior_bounds.get(name))
+        return bounds
+
+    # ------------------------------------------------------------------
+    # I/O
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
+        """Load a Fit from a fit directory.
+
+        The posterior samples are read from ``fit_results.json``
+        and how the fit was run from ``input/runcard.yaml``.
+
+        ``label`` is how the caller chooses to present the fit; the directory
+        knows nothing about it, so it is the metadata passed in rather than
+        read back.
+
+        Raises
+        ------
+        FileNotFoundError
+            If either file is missing.
+        ValueError
+            If either file is present but cannot be read as a fit: unparsable
+            JSON or YAML, or a runcard and a payload that disagree about
+            whether the fit was run one coefficient at a time.
+        """
+        path = pathlib.Path(path)
+
+        # Loading the fit info
+        fit_results_payload = _load_json(path / "fit_results.json")
+        fit_runcard = _load_yaml(path / "input" / "runcard.yaml")
+
+        # Whether the coefficients are fitted individually or jointly.
+        # The info is inferred from the runcard action.
+        fit_action = _runcard_fit_action(fit_runcard)
+        if fit_action is None:
+            log.warning(
+                "The runcard of '%s' runs no known fit action: its fit type is "
+                "left unset, and it is read as a joint fit.",
+                path.name,
+            )
+        ran_individually = fit_action is not None and fit_action["is_individual_fit"]
+
+        # The action decides how the payload is read; this only turns a
+        # directory whose two files disagree into a clear error rather than a
+        # confusing one from the reader that is picked.
+        payload_is_summary = isinstance(fit_results_payload.get("chi2"), dict)
+        if payload_is_summary != ran_individually:
+            wrote, holds = (
+                ("an individual fit", "a single joint chi2")
+                if ran_individually
+                else ("a joint fit", "a chi2 per coefficient")
+            )
+            raise ValueError(
+                f"'{path}' is inconsistent: its runcard ran {wrote}, but its "
+                f"fit_results.json holds {holds}."
+            )
+
+        # Each class reads the schema it writes; the action picks which.
+        reader = FitResultGroup if ran_individually else FitResult
+
+        return cls(
+            fit_results=reader.from_payload(fit_results_payload),
+            # The directory name is the identity users refer to in runcards.
+            fit_name=path.name,
+            label=label,
+            fit_runcard=fit_runcard,
+        )

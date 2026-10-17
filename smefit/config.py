@@ -7,23 +7,41 @@ Config module of smefit
 import logging
 import os
 import pathlib
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
-from reportengine.configparser import ConfigError
+from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
+from smefit.blackjax_samplers import (
+    BJ_ALGORITHM_SETTINGS,
+    BJ_ALGORITHMS,
+    BJ_SHARED_SETTINGS,
+)
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
+from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
-from smefit.priors import Prior, _build_dist, _UniformDist
+from smefit.paths import (
+    fetch_fit_if_missing,
+    resolve_fit_dir,
+    resolve_path,
+)
+from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
-from smefit.rge import load_rge_matrix
+from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
 from smefit.utils import build_exact_posterior_prior
+from smefit.whitening import (
+    _whitening_baseline_shift,
+    _whitening_gradient_descent_shift,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +50,15 @@ class smefitConfig(Config):
     """smefit Config class."""
 
     def parse_data_path(self, data_path):
-        """Parse data path."""
+        """Parse `data_path`, the commondata directory holding `<dataset>.yaml`.
+
+        Accepts an absolute path, or the shareable prefix form
+        (`smefit_database/commondata`) resolved through the machine-specific
+        `<new_smefit>/.config/paths.yaml` written by `smefit_setup_local`.
+        Raises if the resolved directory does not exist.
+        """
+        data_path = resolve_path(data_path)
         data_path = pathlib.Path(data_path)
-        # Verify it exists
         if not data_path.exists():
             log.error(f"data_path {data_path} does not exist.")
             raise ValueError(f"data_path {data_path} does not exist.")
@@ -42,9 +66,15 @@ class smefitConfig(Config):
         return data_path
 
     def parse_theory_path(self, theory_path):
-        """Parse theory path."""
+        """Parse `theory_path`, the directory holding `<dataset>.json` predictions.
+
+        Same resolution rules as `data_path`: absolute, or the shareable
+        prefix form (`smefit_database/theory`) resolved through
+        `<new_smefit>/.config/paths.yaml`. Every dataset listed in the runcard
+        needs a matching JSON here, with the requested `order` as a key.
+        """
+        theory_path = resolve_path(theory_path)
         theory_path = pathlib.Path(theory_path)
-        # Verify it exists
         if not theory_path.exists():
             log.error(f"theory_path {theory_path} does not exist.")
             raise ValueError(f"theory_path {theory_path} does not exist.")
@@ -58,7 +88,7 @@ class smefitConfig(Config):
 
         parsed_datasets = []
         for ds in datasets:
-            dataset = load_dataset(data_path, ds["name"])
+            dataset = load_dataset(data_path, ds)
             parsed_datasets.append(dataset)
 
         self._cached_data_group = DataGroup(parsed_datasets)
@@ -89,36 +119,66 @@ class smefitConfig(Config):
         for k in set(rge.keys()) - known_keys:
             log.warning("Unknown key '%s' in rge settings.", k)
         if "init_scale" not in rge:
-            raise ConfigError("rge", rge, "rge block requires 'init_scale'")
+            raise ConfigError("rge block requires 'init_scale'", "init_scale")
         obs_scale = rge.get("obs_scale", "dynamic")
         if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
+            raise ConfigError("obs_scale must be a float/int or 'dynamic'", obs_scale)
+        smeft_accuracy = rge.get("smeft_accuracy", "integrate")
+        if smeft_accuracy not in ALLOWED_SMEFT_ACCURACY:
             raise ConfigError(
-                "obs_scale", obs_scale, "obs_scale must be a float/int or 'dynamic'"
+                "Invalid 'smeft_accuracy' in rge settings",
+                smeft_accuracy,
+                sorted(ALLOWED_SMEFT_ACCURACY),
+                display_alternatives="all",
             )
+        yukawa = rge.get("yukawa", "top")
+        if yukawa not in ALLOWED_YUKAWA:
+            raise ConfigError(
+                "Invalid 'yukawa' in rge settings",
+                yukawa,
+                sorted(ALLOWED_YUKAWA),
+                display_alternatives="all",
+            )
+        if "rg_matrix" in rge:
+            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
+            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
         return rge
 
     def produce_init_scale(self, rge):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, rge, coefficients, theory, output_path):
-        """Produce the stacked RGE matrix for all data points."""
+    def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
+        """Produce the stacked RGE matrix for all data points.
+
+        Returns ``None`` when the runcard has no ``rge:`` block.
+
+        ``output_path`` is only used to cache the matrix to disk, so it is
+        optional: under the `smefit` API there is no output folder (it is a
+        reportengine environment attribute, supplied by the CLI's ``-o`` flag)
+        and the matrix is simply not cached.
+        """
+        if rge is None:
+            return None
+
         if hasattr(self, "_cached_rge_matrix"):
             return self._cached_rge_matrix
 
         coeff_list = sorted(coefficients.names)
 
-        rge_matrix = load_rge_matrix(
+        rge_matrix = build_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
             theory_group=theory,
-            save_path=output_path,
         )
         log.info(
             "RGE matrix computed: shape %s, obs operators: %s",
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
+        # Write RGE matrix to disk for future reuse
+        if output_path is not None:
+            rge_matrix.write(output_path)
         self._cached_rge_matrix = rge_matrix
         return rge_matrix
 
@@ -127,12 +187,7 @@ class smefitConfig(Config):
         if hasattr(self, "_cached_theory_group"):
             return self._cached_theory_group
 
-        parsed_theories = [
-            load_theory(
-                theory_path, ds["name"], ds["order"], ds.get("theory_cov", "current")
-            )
-            for ds in datasets
-        ]
+        parsed_theories = [load_theory(theory_path, ds) for ds in datasets]
 
         self._cached_theory_group = TheoryGroup(parsed_theories)
         return self._cached_theory_group
@@ -166,12 +221,48 @@ class smefitConfig(Config):
             log.info("Adding theory covariance matrix to data covariance matrix.")
             covmat += theory.sm_covmat
 
+        offset = 0
+        singular_datasets = []
+        for name, n in zip(data.names, data.ndata_list):
+            block = covmat[offset : offset + n, offset : offset + n]
+            sign, _ = jnp.linalg.slogdet(block)
+            if sign == 0:
+                singular_datasets.append(name)
+            offset += n
+
+        if singular_datasets:
+            raise ValueError(
+                "The covariance matrix block is singular for the following "
+                f"dataset(s): {', '.join(singular_datasets)}."
+            )
+
         self._cached_fit_covmat = covmat
 
         return covmat
 
     def parse_coefficients(self, coefficients):
-        """Parse coefficients configuration."""
+        """Parse the `coefficients:` mapping into a CoefficientGroup.
+
+        Each entry is `Name: {…}`, whose sub-keys are passed verbatim to
+        `smefit.core.Coefficient` — so the dataclass fields are the allowed
+        sub-keys, and `Coefficient.__post_init__` enforces which combination
+        is legal for each kind:
+
+        free (fitted)
+            `free: True` (the default); `value`, `expr` and `vars` are
+            forbidden. `prior` is optional here — `Coefficient` itself does
+            not require it; it is only needed later by `produce_prior`/
+            `produce_individual_prior` for sampler actions.
+        fixed constant
+            `free: False` plus `value`; `prior`, `expr`, `vars` forbidden.
+        expression-constrained
+            `free: False` plus `expr` and a non-empty `vars` naming other
+            coefficients in this same mapping; `prior` and `value` forbidden.
+
+        `baseline_value` (default 0.0) applies to free coefficients only: it
+        is the gradient-descent starting point, and the vector returned
+        directly under `gradient_descent_settings.sm_solution: True`.
+        """
         coeffs = []
         for coeff_name, coeff_info in coefficients.items():
             coeffs.append(Coefficient(name=coeff_name, **coeff_info))
@@ -180,44 +271,78 @@ class smefitConfig(Config):
 
     def parse_whitening(self, whitening):
         """Parse and validate the optional whitening block."""
-        known_keys = {"sigma_prior", "eps"}
+        known_keys = {"sigma_prior", "eps", "shift"}
         for k in set(whitening.keys()) - known_keys:
             log.warning("Unknown key '%s' in whitening settings.", k)
+        shift = whitening.get("shift", "baseline")
+        allowed_shifts = {"baseline", "gradient_descent"}
+        if shift not in allowed_shifts:
+            raise ConfigError(
+                f"whitening.shift must be one of {sorted(allowed_shifts)}, "
+                f"got '{shift}'"
+            )
         return {
             "sigma_prior": float(whitening.get("sigma_prior", 5.0)),
             "eps": float(whitening.get("eps", 1e-8)),
+            "shift": shift,
         }
 
-    def produce_whitening_matrix(self, chi2, whitening=None):
-        """Produce the whitening matrix W from the chi2 Hessian at c=0.
+    @explicit_node
+    def produce_whitening_transformation(self, whitening=None):
+        """Dispatch to the correct whitening-transform builder.
 
-        Uses the plain chi2 node (already built by produce_chi2) to compute
-        H = d²chi2/dc² at c=0, then returns W = L^{-T} where H = L L^T
-        (Cholesky). When whitening is disabled (no whitening block in the
-        runcard), returns None.
+        This must stay an ExplicitNode-returning method on smefitConfig (not
+        a plain provider function) so the decision of whether gd_best_fit is
+        needed can be made dynamically: only ``whitening["shift"] ==
+        "gradient_descent"`` triggers a dependency on ``gd_best_fit`` (and
+        hence ``gradient_descent_settings``). When whitening is disabled, the
+        worker must still be a zero-argument callable (reportengine's
+        ExplicitNode dispatch calls inspect.signature on it), so a plain
+        ``None`` cannot be returned directly.
         """
         if whitening is None:
-            return None
-        eps = whitening["eps"]
-        zeros = jnp.zeros(chi2.nparam)
-        H = jax.hessian(chi2)(zeros) + eps * jnp.eye(chi2.nparam)
-        log.info("Hessian whitening: cond(H) = %.3e", float(jnp.linalg.cond(H)))
-        L = jnp.linalg.cholesky(H)
-        return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))  # W = L^{-T}
+            return lambda: None
+        if whitening["shift"] == "gradient_descent":
+            log.info("Whitening: centering on the gradient-descent best-fit point.")
+            return _whitening_gradient_descent_shift
+        log.info("Whitening: centering on the coefficients' baseline point.")
+        return _whitening_baseline_shift
 
-    def produce_eft_model(self, theory, coefficients, use_quad=False, rge_matrix=None):
-        """Produce EFT model mapping coefficients to theory predictions."""
+    def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+        """Produce EFT model mapping coefficients to theory predictions.
+
+        ``rge_matrix`` is deliberately required: giving it a ``None`` default
+        would let reportengine swallow any failure to build it (it catches
+        ``KeyError`` and substitutes the default) and hand back a model with no
+        RGE running, silently.
+        """
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
     def parse_external_chi2(self, external_chi2):
-        """Pass-through parser. Strips 'group' keys and caches them for produce_data_groups."""
+        """Parse the `external_chi2:` mapping of custom likelihood modules.
+
+        Each entry is `ClassName: {path: …, …}`, where `path` points at the
+        Python module defining that class (prefix-relative paths are resolved
+        here, as is `rg_matrix`). Every other key is forwarded verbatim to the
+        class constructor, which must also accept `coefficients=` and
+        `rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
+
+        `group` is the one exception: it is stripped here and kept aside for
+        report/Fisher aggregation rather than forwarded.
+
+        A runcard may define `external_chi2` with no `datasets:` at all, in
+        which case the fit runs on the external likelihoods alone.
+        """
         self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
             group = cfg.get("group")
             if group is not None:
                 self._ext_chi2_groups[name] = group
-            cleaned[name] = {k: v for k, v in cfg.items() if k != "group"}
+            entry = {k: v for k, v in cfg.items() if k != "group"}
+            if "path" in entry:
+                entry["path"] = resolve_path(entry["path"])
+            cleaned[name] = entry
         return cleaned
 
     def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
@@ -230,6 +355,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Shared chi2 build logic used by both joint and individual producers."""
 
@@ -259,8 +385,17 @@ class smefitConfig(Config):
             else ext_chi2_func[0].param_names
         )
 
+        # baseline ("default") values of the free coefficients; a property of the
+        # coefficients dictionary, so it applies to external-chi2-only fits too.
+        baseline = coefficients.baseline_free if coefficients is not None else None
+
         if ext_chi2_func is None:
-            return Chi2(base_chi2, param_names=free_names, num_data=data.num_data)
+            return Chi2(
+                base_chi2,
+                param_names=free_names,
+                num_data=data.num_data,
+                baseline=baseline,
+            )
 
         if base_chi2 is None:
 
@@ -281,6 +416,7 @@ class smefitConfig(Config):
             param_names=free_names,
             num_data=tot_num_data,
             has_external=True,
+            baseline=baseline,
         )
 
     def produce_chi2(
@@ -289,13 +425,16 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         ext_chi2_func=None,
+        coefficients=None,
     ):
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
         contributions are summed.
         """
-        return self._build_chi2_impl(eft_model, data, fit_covmat, ext_chi2_func)
+        return self._build_chi2_impl(
+            eft_model, data, fit_covmat, ext_chi2_func, coefficients
+        )
 
     def produce_datasets_chi2(
         self,
@@ -320,10 +459,14 @@ class smefitConfig(Config):
     def parse_ultranest_settings(
         self,
         settings,
-        output_path,
+        output_path=None,
     ):
         """For a Nested Sampling fit, parses the ultranest_settings namespace from the runcard,
         and ensures the choice of settings is valid.
+
+        ``output_path`` is optional because it is a reportengine environment
+        attribute that only the CLI supplies; without it there is no folder to
+        derive ``log_dir`` from, so the user must set it explicitly.
         """
 
         # Warn about unknown keys
@@ -343,7 +486,9 @@ class smefitConfig(Config):
 
         # Defaults for ReactiveNS_settings (log_dir depends on output_path)
         reactive_defaults = {
-            "log_dir": str(output_path / "ultranest_logs"),
+            "log_dir": (
+                str(output_path / "ultranest_logs") if output_path is not None else None
+            ),
             "resume": False,
             "vectorized": False,
         }
@@ -371,20 +516,46 @@ class smefitConfig(Config):
 
         return ultranest_settings
 
-    def parse_blackjax_settings(self, settings, output_path):
-        """For a BlackJAX fit, parses the blackjax_settings namespace from the runcard,
-        and ensures the choice of settings is valid.
-        """
+    def parse_blackjax_settings(
+        self,
+        settings: Mapping,
+        output_path: pathlib.Path | None = None,
+    ) -> dict[str, Any]:
+        """Parse optional settings for a BlackJAX fit.
 
+        ``algorithm`` picks the sampler: "nested_sampling" (the only one that
+        estimates the log evidence) or "nuts". Both support ``bayesian_update``.
+
+        - shared — ``seed``; ``log_dir``, which receives the algorithm's draws
+          (``nested_samples.csv`` / ``nuts_samples.csv``) and its diagnostics
+          (``nested_diagnostics.json`` / ``nuts_diagnostics.json``).
+        - nested_sampling — ``n_live``; ``repeats`` (inner MCMC steps per
+          dimension); ``delete_fraction``; ``log_precision`` (stop once
+          ``logZ_live - logZ`` falls below it).
+        - nuts — ``num_chains`` (run in parallel with ``jax.vmap``, each from
+          its own over-dispersed prior draw, which is what makes R-hat
+          meaningful); ``num_warmup`` (adaptation draws, discarded);
+          ``num_samples`` PER CHAIN; ``target_acceptance_rate`` (raise towards
+          0.95 if divergences appear); ``max_num_doublings``.
+
+        ``output_path`` is optional because it is a reportengine environment
+        attribute that only the CLI supplies; without it there is no folder to
+        derive ``log_dir`` from, so the user must set it explicitly.
+        """
         # Begin by checking that the user-supplied keys are known; warn the user otherwise.
         known_keys = {
-            "n_posterior_samples",
-            "n_live",
-            "repeats",
-            "delete_fraction",
-            "log_precision",
-            "posterior_resampling_seed",
-            "seed",
+            "algorithm",  # common to every algorithm
+            "seed",  # common to every algorithm
+            "log_dir",  # common to every algorithm
+            "n_live",  # nested_sampling
+            "repeats",  # nested_sampling
+            "delete_fraction",  # nested_sampling
+            "log_precision",  # nested_sampling
+            "num_chains",  # nuts
+            "num_warmup",  # nuts
+            "num_samples",  # nuts
+            "target_acceptance_rate",  # nuts
+            "max_num_doublings",  # nuts
         }
 
         kdiff = settings.keys() - known_keys
@@ -393,24 +564,51 @@ class smefitConfig(Config):
                 ConfigError(f"Key '{k}' in blackjax_settings not known.", k, known_keys)
             )
 
+        algorithm = settings.get("algorithm", "nested_sampling")
+        if algorithm not in BJ_ALGORITHMS:
+            raise ConfigError(
+                "blackjax_settings.algorithm is not a known BlackJAX algorithm.",
+                algorithm,
+                sorted(BJ_ALGORITHMS),
+                display_alternatives="all",
+            )
+
+        # Keys that are known, but owned by the algorithm the user did not pick.
+        relevant = BJ_SHARED_SETTINGS | BJ_ALGORITHM_SETTINGS[algorithm]
+        for k in sorted((settings.keys() & known_keys) - relevant):
+            log.warning(
+                "blackjax_settings.%s is not used by algorithm '%s' and will be ignored.",
+                k,
+                algorithm,
+            )
+
         # Now construct the blackjax_settings dictionary
         blackjax_settings = {}
 
         # Extract settings and set default values
-        blackjax_settings["n_posterior_samples"] = settings.get(
-            "n_posterior_samples", 1000
-        )
-        blackjax_settings["n_live"] = settings.get("n_live", 500)
-        blackjax_settings["repeats"] = settings.get("repeats", 3)
-        blackjax_settings["delete_fraction"] = settings.get("delete_fraction", 0.5)
-        blackjax_settings["log_precision"] = settings.get("log_precision", -2)
-        blackjax_settings["seed"] = settings.get("seed", 0)
-        blackjax_settings["posterior_resampling_seed"] = settings.get(
-            "posterior_resampling_seed", 123456
-        )
+        blackjax_settings["algorithm"] = algorithm
+        blackjax_settings["seed"] = int(settings.get("seed", 0))
         # Set directory where blackjax_logs will be saved
         blackjax_settings["log_dir"] = settings.get(
-            "log_dir", str(output_path / "blackjax_logs")
+            "log_dir",
+            str(output_path / "blackjax_logs") if output_path is not None else None,
+        )
+        # nested_sampling
+        blackjax_settings["n_live"] = int(settings.get("n_live", 500))
+        blackjax_settings["repeats"] = int(settings.get("repeats", 3))
+        blackjax_settings["delete_fraction"] = float(
+            settings.get("delete_fraction", 0.5)
+        )
+        blackjax_settings["log_precision"] = float(settings.get("log_precision", -2))
+        # nuts
+        blackjax_settings["num_chains"] = int(settings.get("num_chains", 4))
+        blackjax_settings["num_warmup"] = int(settings.get("num_warmup", 1000))
+        blackjax_settings["num_samples"] = int(settings.get("num_samples", 2500))
+        blackjax_settings["target_acceptance_rate"] = float(
+            settings.get("target_acceptance_rate", 0.8)
+        )
+        blackjax_settings["max_num_doublings"] = int(
+            settings.get("max_num_doublings", 10)
         )
 
         return blackjax_settings
@@ -480,7 +678,7 @@ class smefitConfig(Config):
         Keys
         ----
         sm_solution : bool, default False
-            If True, skip optimisation and use c=0 (SM point) as the
+            If True, skip optimisation and use coefficients baseline values as the
             best-fit point.
         n_steps : int, default 2000
             Maximum number of gradient-descent steps.
@@ -514,58 +712,135 @@ class smefitConfig(Config):
             "seed": int(settings.get("seed", 42)),
         }
 
-    def parse_bayesian_update_path(self, bayesian_update_path):
-        """Parse and validate the path to a previous fit for Bayesian updating."""
-        p = pathlib.Path(bayesian_update_path)
-        if not p.exists():
-            raise ConfigError(f"Directory not found at {bayesian_update_path}")
-        if not (p / "fit_results.json").exists():
-            raise ConfigError(f"fit_results.json not found at {bayesian_update_path}")
-        if not (p / "input" / "runcard.yaml").exists():
-            raise ConfigError(f"input/runcard.yaml not found at {bayesian_update_path}")
-        return p
+    def parse_pca_settings(self, settings):
+        """Parse the settings for the principal component analysis.
 
-    def _build_prior_impl(self, coefficients):
+        Keys
+        ----
+        threshold : float, default 1e-12
+            A direction whose eigenvalue is below this fraction of the largest
+            one is reported as flat, i.e. unconstrained by the data.
+        min_weight : float, default 0.01
+            Components below this are left out when a principal direction is
+            written as a linear combination of coefficients. Presentation only;
+            the eigenvectors themselves are never truncated.
+        """
+        settings = settings or {}
+        known_keys = {"threshold", "min_weight"}
+        for k in set(settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in pca_settings.", k)
+
+        parsed = {
+            "threshold": float(settings.get("threshold", 1.0e-12)),
+            "min_weight": float(settings.get("min_weight", 0.01)),
+        }
+        if not 0.0 <= parsed["threshold"] < 1.0:
+            raise ConfigError(
+                f"pca_settings.threshold is a fraction of the largest eigenvalue, "
+                f"so it must lie in [0, 1); got {parsed['threshold']}"
+            )
+        if not 0.0 <= parsed["min_weight"] <= 1.0:
+            raise ConfigError(
+                f"pca_settings.min_weight is a component of a unit eigenvector, "
+                f"so it must lie in [0, 1]; got {parsed['min_weight']}"
+            )
+        return parsed
+
+    def parse_chi2_scan_settings(self, chi2_scan_settings):
+        """Parse optional chi2 scan settings.
+
+        Keys
+        ----
+        n_points : int, default 50
+            Number of scan points per coefficient.
+        """
+        known_keys = {"n_points"}
+        for k in set(chi2_scan_settings.keys()) - known_keys:
+            log.warning("Unknown key '%s' in chi2_scan_settings.", k)
+        return {"n_points": int(chi2_scan_settings.get("n_points", 50))}
+
+    def parse_bayesian_update(self, bayesian_update: str | Mapping):
+        """Parse and validate the previous fit used as prior for a Bayesian update.
+
+        The entry is the name of the fit, or a mapping
+
+            bayesian_update:
+              name: my_previous_fit            # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet, exactly as for
+        ``fits``. ``path`` is resolved through ``.config/paths.yaml`` like any
+        other path.
+
+        Returns the entry with ``path`` replaced by the resolved directory of
+        the fit itself, so downstream nodes read it straight off the mapping.
+        """
+        entry = (
+            {"name": bayesian_update}
+            if isinstance(bayesian_update, str)
+            else dict(bayesian_update)
+        )
+        if "name" not in entry:
+            raise ConfigError(f"bayesian_update requires a 'name': {entry}")
+
+        known_keys = {"name", "path"}
+        for k in set(entry.keys()) - known_keys:
+            log.warning("Unknown key '%s' in bayesian_update.", k)
+
+        try:
+            fit_dir = resolve_fit_dir(entry["name"], entry.get("path"))
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(str(e)) from e
+        if not (fit_dir / "fit_results.json").exists():
+            raise ConfigError(f"fit_results.json not found at {fit_dir}")
+        if not (fit_dir / "input" / "runcard.yaml").exists():
+            raise ConfigError(f"input/runcard.yaml not found at {fit_dir}")
+
+        entry["path"] = fit_dir
+        return entry
+
+    def _build_prior_impl(self, coefficients: CoefficientGroup) -> Prior:
         """Shared prior build logic used by both joint and individual producers."""
         specs = coefficients.prior_specs()
         for name, spec in specs.items():
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
-        dists = [_build_dist(spec) for spec in specs.values()]
-        return Prior(dists, coefficients.free_names, specs=specs)
+        return Prior.from_specs(specs, coefficients.free_names)
 
     def produce_prior(
         self,
-        coefficients,
-        datasets=None,
-        external_chi2=None,
-        whitening=None,
-        bayesian_update_path=None,
-    ):
+        coefficients: CoefficientGroup,
+        datasets: Sequence[Mapping[str, Any]] | None = None,
+        external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+        whitening: Mapping[str, Any] | None = None,
+        bayesian_update: Mapping[str, Any] | None = None,
+    ) -> JointPrior:
         """Produce joint prior over all free coefficients.
 
-        When ``bayesian_update_path`` is set, returns an ExactPosteriorPrior
+        When ``bayesian_update`` is set, returns an ExactPosteriorPrior
         that encodes the exact posterior from the previous fit.
         """
-        if bayesian_update_path is not None:
+        if bayesian_update is not None:
             log.info(
-                f"Producing ExactPosteriorPrior from previous fit at {bayesian_update_path}"
+                "Producing ExactPosteriorPrior from previous fit '%s' at %s",
+                bayesian_update["name"],
+                bayesian_update["path"],
             )
             if whitening is not None:
                 raise ConfigError(
-                    "whitening is not compatible with bayesian_update_path: "
+                    "whitening is not compatible with bayesian_update: "
                     "ExactPosteriorPrior is defined in physical space and cannot be whitened."
                 )
             return build_exact_posterior_prior(
-                bayesian_update_path, coefficients, datasets, external_chi2
+                bayesian_update, coefficients, datasets, external_chi2
             )
 
         if whitening is not None:
             sigma = whitening["sigma_prior"]
             spec = {"dist": "uniform", "low": -sigma, "high": sigma}
             specs = {name: spec for name in coefficients.free_names}
-            dists = [_UniformDist(-sigma, sigma) for _ in coefficients.free_names]
-            return Prior(dists, coefficients.free_names, specs=specs)
+            return Prior.from_specs(specs, coefficients.free_names)
 
         return self._build_prior_impl(coefficients)
 
@@ -603,6 +878,86 @@ class smefitConfig(Config):
         ).build_data_group()
 
     # ------------------------------------------------------------------
+    # Previously run fits
+    # ------------------------------------------------------------------
+
+    @element_of("fits")
+    def parse_fit(self, fit: str | Mapping) -> Fit:
+        """Load one previously run fit from disk into a :class:`Fit`.
+
+        ``fits`` is the list form of this key, generated by ``element_of``, and
+        is what a runcard writes: a list of the entries below, each loaded into
+        a :class:`Fit`. It is a namespace list, so a provider can take a single
+        ``fit`` and be collected over ``("fits",)``.
+
+        Each entry is the name of a fit, or a mapping
+
+            - name: my_fit                     # mandatory, the fit directory name
+              path: smefit_results/fits        # optional, where to look for it
+              label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+
+        Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
+        downloaded from the server if it is not there yet. ``path`` is resolved
+        through ``.config/paths.yaml`` like any other path.
+
+        The name is how the fit is referred to everywhere downstream: it is the
+        key of the per-fit plot settings, and the legend label when no ``label``
+        is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
+        LaTeX (quote it in YAML to keep the backslashes).
+        """
+        entry = {"name": fit} if isinstance(fit, str) else dict(fit)
+        if "name" not in entry:
+            raise ConfigError(f"Each fits entry requires a 'name': {entry}")
+
+        known_keys = {"name", "path", "label"}
+        for k in set(entry.keys()) - known_keys:
+            log.warning("Unknown key '%s' in fits entry.", k)
+
+        label = entry.get("label")
+        if label is not None and not isinstance(label, str):
+            raise ConfigError(
+                f"The 'label' of fit '{entry['name']}' must be a string, "
+                f"got {label!r}."
+            )
+
+        try:
+            path = resolve_fit_dir(entry["name"], entry.get("path"))
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(str(e)) from e
+
+        try:
+            # A label is how the runcard chooses to present the fit, not
+            # something the fit directory knows about.
+            return Fit.from_folder(path, label=label)
+        except (KeyError, OSError, ValueError) as e:
+            raise ConfigError(
+                f"Could not load fit '{entry['name']}' from {path}: {e}"
+            ) from e
+
+    def parse_interval_types(self, interval_types: str | list) -> list:
+        """The credible intervals a report's bounds quote.
+
+        A single name or a list of them, from the registry
+        :meth:`Fit.confidence_bounds` accepts: ``eti`` (equal-tailed) or
+        ``hdi`` (highest-density). Every bounds routine taking the key quotes one set of
+        bounds per type — a list puts the types side by side in the same
+        table, so different interval constructions can be compared in a single
+        report. Presentation, not a property of any fit, so it is a top-level
+        key read by every routine alike; when it is absent the routines
+        default to ``eti``.
+        """
+        types = [interval_types] if isinstance(interval_types, str) else interval_types
+        if not types:
+            raise ConfigError("interval_types is empty: give at least one type.")
+        for interval_type in types:
+            if interval_type not in _INTERVAL_TYPES:
+                raise ConfigError(
+                    f"Unknown interval_type {interval_type!r}; expected one "
+                    f"of {sorted(_INTERVAL_TYPES)}."
+                )
+        return list(types)
+
+    # ------------------------------------------------------------------
     # Individual-fit producers — one free coefficient at a time
     # ------------------------------------------------------------------
 
@@ -615,9 +970,13 @@ class smefitConfig(Config):
         return coefficients.single_free(individual_fit_coefficient)
 
     def produce_individual_eft_model(
-        self, theory, individual_coefficients, use_quad=False, rge_matrix=None
+        self, theory, individual_coefficients, rge_matrix, use_quad=False
     ):
-        """Produce EFT model for a single-free-parameter individual fit."""
+        """Produce EFT model for a single-free-parameter individual fit.
+
+        ``rge_matrix`` is required for the same reason as in
+        ``produce_eft_model``.
+        """
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(
@@ -632,6 +991,7 @@ class smefitConfig(Config):
         data=None,
         fit_covmat=None,
         individual_ext_chi2_func=None,
+        individual_coefficients=None,
     ):
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
@@ -639,8 +999,88 @@ class smefitConfig(Config):
             data,
             fit_covmat,
             individual_ext_chi2_func,
+            individual_coefficients,
         )
 
     def produce_individual_prior(self, individual_coefficients):
         """Produce prior for a single-free-parameter individual fit."""
         return self._build_prior_impl(individual_coefficients)
+
+    # ------------------------------------------------------------------
+    # Mass-scan producers
+    # ------------------------------------------------------------------
+
+    def produce_individual_mass_scales(self, coefficients, chi2_scan_settings):
+        """Produce an NSList of mass scan points from the single free coefficient's prior."""
+        free_names = coefficients.free_names
+        if len(free_names) != 1:
+            raise ConfigError(
+                "mass_scan",
+                free_names,
+                f"mass_scan requires exactly one free coefficient, got {len(free_names)}: {free_names}",
+            )
+        mass_name = free_names[0]
+        n_points = chi2_scan_settings.get("n_points", 50)
+        spec = coefficients.prior_specs().get(mass_name)
+        if spec is not None and spec.get("dist") == "uniform":
+            low, high = float(spec["low"]), float(spec["high"])
+        else:
+            log.warning(
+                "Coefficient '%s' lacks a uniform prior; using default range [-1, 1].",
+                mass_name,
+            )
+            low, high = -1.0, 1.0
+        scan_points = np.linspace(low, high, n_points).tolist()
+        return NSList(scan_points, nskey="individual_mass_scale")
+
+    def produce_individual_mass_rge_matrix(
+        self, rge, coefficients, theory, individual_mass_scale
+    ):
+        """Produce RGE matrix with init_scale set to the current mass scan point.
+
+        Scan points are masses in TeV, matching the TeV^-2 Wilson coefficients
+        they feed through the ``expr:`` constraints; ``init_scale`` is in GeV.
+        """
+        rge_dict = dict(rge)
+        # 1e3 converts the scan point from TeV to GeV
+        rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
+        return build_rge_matrix(
+            rge_dict=rge_dict,
+            coeff_list=sorted(coefficients.names),
+            theory_group=theory,
+        )
+
+    def produce_individual_mass_eft_model(
+        self, theory, coefficients, individual_mass_rge_matrix, use_quad=False
+    ):
+        """Produce EFT model for a single mass scan point."""
+        return EFTModel(theory, coefficients, use_quad, individual_mass_rge_matrix)
+
+    def produce_individual_mass_ext_chi2_func(
+        self, coefficients, external_chi2, individual_mass_scale, rge=None
+    ):
+        """Load external chi2 for a single mass scan point with init_scale overridden.
+
+        Same TeV (scan point) -> GeV (``init_scale``) conversion as
+        :meth:`produce_individual_mass_rge_matrix`.
+        """
+        rge_dict = dict(rge) if rge is not None else None
+        if rge_dict is not None:
+            # 1e3 converts the scan point from TeV to GeV
+            rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
+        return load_external_chi2(external_chi2, coefficients, rge_dict=rge_dict)
+
+    def produce_individual_mass_chi2(
+        self,
+        individual_mass_eft_model=None,
+        data=None,
+        fit_covmat=None,
+        individual_mass_ext_chi2_func=None,
+    ):
+        """Produce the total chi2 for a single mass scan point."""
+        return self._build_chi2_impl(
+            individual_mass_eft_model,
+            data,
+            fit_covmat,
+            individual_mass_ext_chi2_func,
+        )

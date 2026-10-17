@@ -16,13 +16,25 @@ from smefit.utils import ensure_list
 log = logging.getLogger(__name__)
 
 
-def load_dataset(data_path, dataset_name):
+def load_dataset(data_path, dataset_dict):
     """Load dataset from given path."""
+    dataset_name = dataset_dict["name"]
     dataset_path = data_path / f"{dataset_name}.yaml"
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset {dataset_name} not found in {data_path}")
 
     log.info("Loading dataset %s", dataset_name)
+
+    stat_unc_type = dataset_dict.get("stat_unc", "current")
+    syst_unc_type = dataset_dict.get("syst_unc", "current")
+    for unc_type, unc_name in [
+        (stat_unc_type, "stat_unc"),
+        (syst_unc_type, "syst_unc"),
+    ]:
+        if unc_type not in ("current", "zero"):
+            raise ValueError(
+                f"{dataset_name}: {unc_name} must be 'current' or 'zero', got {unc_type!r}"
+            )
 
     with open(dataset_path) as file:
         dataset = yaml.safe_load(file)
@@ -39,6 +51,21 @@ def load_dataset(data_path, dataset_name):
     if syst_err.ndim == 1:
         # interpret as n_sys systematics for one datapoint
         syst_err = syst_err[:, None]  # (n_sys, 1)
+
+    if stat_unc_type == "zero":
+        # explicitly opt out of the statistical uncertainty for this dataset
+        stat_err = jnp.zeros_like(stat_err)
+        log.warning(
+            "Statistical uncertainty explicitly set to zero for dataset %s",
+            dataset_name,
+        )
+    if syst_unc_type == "zero":
+        # explicitly opt out of the systematic uncertainties for this dataset
+        syst_err = jnp.zeros_like(syst_err)
+        log.warning(
+            "Systematic uncertainties explicitly set to zero for dataset %s",
+            dataset_name,
+        )
 
     for arr, label in [
         (central_values, "data_central"),
@@ -82,8 +109,11 @@ def load_dataset(data_path, dataset_name):
     )
 
 
-def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
+def load_theory(theory_path, dataset_dict):
     """Load theory predictions from given path."""
+    dataset_name = dataset_dict["name"]
+    order = dataset_dict["order"]
+    th_cov_type = dataset_dict.get("theory_cov", "current")
     theory_file = theory_path / f"{dataset_name}.json"
     if not theory_file.exists():
         raise FileNotFoundError(
@@ -101,12 +131,16 @@ def load_theory(theory_path, dataset_name, order, th_cov_type="current"):
         theory_data = json.load(file)
 
     sm_pred = jnp.array(theory_data["best_sm"])
-    # check if the requested theory covariance type exists in the data
-    if f"theory_cov_{th_cov_type}" not in theory_data:
-        raise ValueError(
-            f"Theory covariance type {th_cov_type} not found for dataset {dataset_name}"
-        )
-    sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
+    if th_cov_type == "zero":
+        # explicitly opt out of a theory covmat for this dataset
+        sm_covmat = jnp.zeros((sm_pred.size, sm_pred.size))
+    else:
+        # check if the requested theory covariance type exists in the data
+        if f"theory_cov_{th_cov_type}" not in theory_data:
+            raise ValueError(
+                f"Theory covariance type {th_cov_type} not found for dataset {dataset_name}"
+            )
+        sm_covmat = jnp.array(theory_data[f"theory_cov_{th_cov_type}"])
     scales = jnp.array(theory_data["scales"])
     eft_pred = theory_data[order]
 

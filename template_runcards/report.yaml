@@ -1,6 +1,7 @@
-# path to data and theory
-data_path: ../commondata
-theory_path: ../theory
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -104,6 +105,11 @@ gradient_descent_settings:
     n_steps: 2000
     tol: 1.0e-8
 
+# Required by the PCA actions; every sub-key is optional.
+pca_settings:
+    threshold: 1.0e-12
+    min_weight: 0.01
+
 # Coefficients to fit
 coefficients:
   OtG:
@@ -128,13 +134,16 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       group: LHC-DY
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
       # rg_matrix: ./CMS_DYMee_rge_matrix/rge_matrix.pkl
       use_projection_L0: True
+
+chi2_scan_settings:
+  n_points: 10
 
 
 template_text: |
@@ -150,6 +159,22 @@ template_text: |
     GIM heatmap
     ===========
     {@plot_gim_heatmap@}
+    PCA spectrum
+    ===========
+    {@plot_pca_spectrum@}
+    Principal directions
+    ===========
+    {@pca_spectrum@}
+    PCA components
+    ===========
+    {@pca_components@}
+    {@plot_pca_components_heatmap@}
+    Chi2 scan
+    ===========
+    {@chi2_scan_table@}
+    Chi2 scan plots
+    ===========
+    {@plot_chi2_scan@}
 
 actions_:
   - report(main=True)

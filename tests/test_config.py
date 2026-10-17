@@ -1,18 +1,35 @@
 """Unit tests for smefit/config.py."""
 
+import inspect
+import json
+import logging
 import os
-import pathlib
 from unittest.mock import MagicMock, patch
 
 import jax.numpy as jnp
 import pytest
-from reportengine.configparser import ConfigError
+import yaml
+from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
+from reportengine.namespaces import NSList
 
+from smefit import credible_intervals
+from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
-from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
+from smefit.core import (
+    Coefficient,
+    CoefficientGroup,
+    DataGroup,
+    Dataset,
+    Theory,
+    TheoryGroup,
+)
 from smefit.model import EFTModel
 from smefit.priors import Prior
+from smefit.whitening import (
+    _whitening_baseline_shift,
+    _whitening_gradient_descent_shift,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture: bare smefitConfig instance (no reportengine DAG)
@@ -43,6 +60,22 @@ def test_parse_data_path_missing(cfg, tmp_path):
         cfg.parse_data_path(missing)
 
 
+def test_parse_data_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "smefit_database" / "commondata").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
+    ):
+        result = cfg.parse_data_path("smefit_database/commondata")
+    assert result == tmp_path / "smefit_database" / "commondata"
+
+
+def test_parse_data_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
+            cfg.parse_data_path("smefit_database/commondata")
+
+
 def test_parse_theory_path_valid(cfg, tmp_path):
     result = cfg.parse_theory_path(str(tmp_path))
     assert result == tmp_path
@@ -52,6 +85,22 @@ def test_parse_theory_path_missing(cfg, tmp_path):
     missing = str(tmp_path / "nonexistent")
     with pytest.raises(ValueError, match="does not exist"):
         cfg.parse_theory_path(missing)
+
+
+def test_parse_theory_path_prefix_resolved(cfg, tmp_path):
+    (tmp_path / "smefit_database" / "theory").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_database": str(tmp_path / "smefit_database")},
+    ):
+        result = cfg.parse_theory_path("smefit_database/theory")
+    assert result == tmp_path / "smefit_database" / "theory"
+
+
+def test_parse_theory_path_prefix_missing_key(cfg):
+    with patch("smefit.paths.load_user_paths", return_value={}):
+        with pytest.raises(ValueError, match="smefit_setup_local"):
+            cfg.parse_theory_path("smefit_database/theory")
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +169,148 @@ def test_parse_rge_fixed_obs_scale_ok(cfg):
     assert result["obs_scale"] == 91.2
 
 
+def test_parse_rge_invalid_smeft_accuracy_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "smeft_accuracy": "bad_value"})
+
+
+def test_parse_rge_invalid_yukawa_raises(cfg):
+    with pytest.raises(ConfigError):
+        cfg.parse_rge({"init_scale": 1000.0, "yukawa": "bad_value"})
+
+
+def test_parse_rge_valid_yukawas_accepted(cfg):
+    for yukawa in ("top", "none", "full"):
+        result = cfg.parse_rge({"init_scale": 1000.0, "yukawa": yukawa})
+        assert result["yukawa"] == yukawa
+
+
+# ---------------------------------------------------------------------------
+# produce_rge_matrix
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_rge_matrix():
+    """Stand-in for an RGEMatrix — produce_rge_matrix only logs and writes it."""
+    matrix = MagicMock()
+    matrix.stacked_mats.shape = (1, 3, 2)
+    matrix.obs_operators = ["Op1", "Op2", "Op3"]
+    return matrix
+
+
+def test_produce_rge_matrix_builds_writes_and_returns(
+    cfg, theory_a, fake_rge_matrix, monkeypatch
+):
+    """The node sorts the coefficient names, builds, then writes to output_path."""
+    from smefit import config as config_mod
+
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    coefficients = CoefficientGroup(
+        [Coefficient(name="OpB", free=True), Coefficient(name="OpA", free=True)]
+    )
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    result = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+
+    assert result is fake_rge_matrix
+    build.assert_called_once_with(
+        rge_dict=rge, coeff_list=["OpA", "OpB"], theory_group=theory
+    )
+    fake_rge_matrix.write.assert_called_once_with(cfg.output_path)
+
+
+def test_produce_rge_matrix_caching(cfg, theory_a, fake_rge_matrix, monkeypatch):
+    """The matrix is expensive, so it is built once and reused."""
+    from smefit import config as config_mod
+
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    coefficients = CoefficientGroup([Coefficient(name="OpA", free=True)])
+    rge = {"init_scale": 1000.0}
+
+    first = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+    second = cfg.produce_rge_matrix(coefficients, theory, rge, cfg.output_path)
+
+    assert first is second
+    assert build.call_count == 1
+    assert fake_rge_matrix.write.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# produce_rge_matrix / rge_matrix as a required dependency
+#
+# output_path is a reportengine *environment* attribute, supplied by the CLI's
+# -o flag and absent under smefitAPI. It used to be a required parameter of
+# produce_rge_matrix (for a disk-cache side effect only), so under the API the
+# node could not resolve -- and produce_eft_model's `rge_matrix=None` default
+# let reportengine swallow that failure, silently building a chi2 with no RGE
+# running. These tests pin both halves of the fix.
+# ---------------------------------------------------------------------------
+
+
+def test_produce_rge_matrix_none_without_rge_block(cfg):
+    """No `rge:` in the runcard is the one legitimate reason for an empty matrix."""
+    assert cfg.produce_rge_matrix(MagicMock(), MagicMock()) is None
+
+
+def test_produce_rge_matrix_output_path_is_optional():
+    """output_path only drives the disk cache, so it must not be required."""
+    params = inspect.signature(smefitConfig.produce_rge_matrix).parameters
+    assert params["output_path"].default is None
+    assert params["rge"].default is None
+    # the physics inputs stay required, so a real failure there is still loud
+    assert params["coefficients"].default is inspect.Parameter.empty
+    assert params["theory"].default is inspect.Parameter.empty
+
+
+@pytest.mark.parametrize(
+    "method", ["produce_eft_model", "produce_individual_eft_model"]
+)
+def test_eft_model_requires_rge_matrix(method):
+    """A default here would let reportengine swallow a failed rge_matrix build."""
+    param = inspect.signature(getattr(smefitConfig, method)).parameters["rge_matrix"]
+    assert param.default is inspect.Parameter.empty
+
+
+def test_produce_rge_matrix_skips_save_without_output_path(
+    cfg, fake_rge_matrix, monkeypatch
+):
+    """With no output folder the matrix is computed but not cached to disk."""
+    from smefit import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
+    )
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    result = cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=None)
+
+    assert result is fake_rge_matrix
+    fake_rge_matrix.write.assert_not_called()
+
+
+def test_produce_rge_matrix_saves_with_output_path(
+    cfg, tmp_path, fake_rge_matrix, monkeypatch
+):
+    """The CLI contract -- <output>/rge_matrix.pkl -- is unchanged."""
+    from smefit import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
+    )
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
+
+    fake_rge_matrix.write.assert_called_once_with(tmp_path)
+
+
 # ---------------------------------------------------------------------------
 # parse_ultranest_settings
 # ---------------------------------------------------------------------------
@@ -155,6 +346,24 @@ def test_parse_ultranest_resume_missing_dir_raises(cfg, tmp_path):
         cfg.parse_ultranest_settings(settings, tmp_path)
 
 
+def test_parse_ultranest_no_output_path_still_parses(cfg):
+    """Under the smefit API there is no output folder: parsing must still resolve.
+
+    log_dir has nothing to be derived from and is left as None, so a runcard
+    that actually runs the sampler this way has to set it explicitly.
+    """
+    result = cfg.parse_ultranest_settings({}, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] is None
+    assert result["ReactiveNS_settings"]["resume"] == "overwrite"
+
+
+def test_parse_ultranest_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    settings = {"ReactiveNS_settings": {"log_dir": log_dir}}
+    result = cfg.parse_ultranest_settings(settings, output_path=None)
+    assert result["ReactiveNS_settings"]["log_dir"] == log_dir
+
+
 # ---------------------------------------------------------------------------
 # parse_blackjax_settings
 # ---------------------------------------------------------------------------
@@ -162,11 +371,14 @@ def test_parse_ultranest_resume_missing_dir_raises(cfg, tmp_path):
 
 def test_parse_blackjax_defaults(cfg, tmp_path):
     result = cfg.parse_blackjax_settings({}, tmp_path)
+    assert result["algorithm"] == "nested_sampling"
     assert result["n_live"] == 500
-    assert result["n_posterior_samples"] == 1000
     assert result["log_precision"] == -2
     assert result["seed"] == 0
     assert "blackjax_logs" in result["log_dir"]
+    # NUTS defaults are always present; num_chains * num_samples == the default n_samples
+    assert result["num_chains"] * result["num_samples"] == 10000
+    assert result["num_warmup"] == 1000
 
 
 def test_parse_blackjax_custom_values(cfg, tmp_path):
@@ -174,7 +386,81 @@ def test_parse_blackjax_custom_values(cfg, tmp_path):
     result = cfg.parse_blackjax_settings(settings, tmp_path)
     assert result["n_live"] == 200
     assert result["seed"] == 42
-    assert result["n_posterior_samples"] == 1000  # still default
+    assert result["num_chains"] == 4  # still default
+
+
+def test_parse_blackjax_nuts_custom_values(cfg, tmp_path):
+    settings = {"algorithm": "nuts", "num_chains": 2, "target_acceptance_rate": 0.95}
+    result = cfg.parse_blackjax_settings(settings, tmp_path)
+    assert result["algorithm"] == "nuts"
+    assert result["num_chains"] == 2
+    assert result["target_acceptance_rate"] == 0.95
+
+
+def test_parse_blackjax_unknown_algorithm_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError):
+        cfg.parse_blackjax_settings({"algorithm": "metropolis"}, tmp_path)
+
+
+def test_parse_blackjax_warns_on_irrelevant_key(cfg, tmp_path, caplog):
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"algorithm": "nuts", "n_live": 100}, tmp_path)
+    assert any("not used by algorithm 'nuts'" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_relevant_key_does_not_warn(cfg, tmp_path, caplog):
+    """The mirror case: n_live belongs to nested_sampling, so it must not warn."""
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"n_live": 100}, tmp_path)
+    assert not any("not used by algorithm" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_log_dir_does_not_warn(cfg, tmp_path, caplog):
+    """log_dir used to be defaulted but missing from known_keys, so setting it warned."""
+    with caplog.at_level("WARNING"):
+        result = cfg.parse_blackjax_settings({"log_dir": str(tmp_path)}, tmp_path)
+
+    assert result["log_dir"] == str(tmp_path)
+    assert not any("not known" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_known_keys_cover_all_algorithm_settings(cfg, tmp_path, caplog):
+    """Guard: the literal known_keys set in parse_blackjax_settings must stay in
+    step with BJ_SHARED_SETTINGS/BJ_ALGORITHM_SETTINGS in smefit.blackjax_samplers.
+
+    The literal has to stay inline (generate_skill_reference.py AST-extracts it),
+    so nothing but this test keeps the two definitions from drifting apart.
+    """
+    every_key = set(BJ_SHARED_SETTINGS).union(*BJ_ALGORITHM_SETTINGS.values())
+    settings = {k: 1 for k in every_key}
+    settings["algorithm"] = "nuts"
+    settings["log_dir"] = str(tmp_path)
+
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings(settings, tmp_path)
+
+    assert not any("not known" in m for m in caplog.messages)
+
+
+def test_parse_blackjax_no_output_path_still_parses(cfg):
+    """Same as ultranest: no output folder means log_dir is left as None."""
+    result = cfg.parse_blackjax_settings({}, output_path=None)
+    assert result["log_dir"] is None
+    assert result["n_live"] == 500  # the rest of the block still parses
+
+
+def test_parse_blackjax_no_output_path_explicit_log_dir(cfg, tmp_path):
+    log_dir = str(tmp_path / "my_logs")
+    result = cfg.parse_blackjax_settings({"log_dir": log_dir}, output_path=None)
+    assert result["log_dir"] == log_dir
+
+
+def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
+    """log_dir is the escape hatch when there is no output folder, so it must
+    not be reported as an unknown key."""
+    with caplog.at_level("WARNING"):
+        cfg.parse_blackjax_settings({"log_dir": str(tmp_path)}, tmp_path)
+    assert "not known" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +501,84 @@ def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
         cfg.produce_fit_covmat(data, theory)
 
 
+def test_produce_fit_covmat_singular_dataset_raises(cfg, dataset_a, theory_a):
+    # zero out DS_A's stat and syst uncertainties, and its theory covmat: its
+    # diagonal block becomes all zeros, i.e. singular
+    zero_dataset = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_theory = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    data = DataGroup([zero_dataset])
+    theory = TheoryGroup([zero_theory])
+    with pytest.raises(ValueError, match="singular.*DS_A"):
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+
+
+def test_produce_fit_covmat_lists_all_singular_datasets(
+    cfg, dataset_a, dataset_b, theory_a, theory_b
+):
+    # zero out both DS_A and DS_B (stat, syst, and theory covmat), leaving
+    # nothing else in the fit: both blocks are singular and should be listed
+    zero_dataset_a = Dataset(
+        name=dataset_a.name,
+        num_data=dataset_a.num_data,
+        central_values=dataset_a.central_values,
+        stat_err=jnp.zeros_like(dataset_a.stat_err),
+        syst_err=jnp.zeros_like(dataset_a.syst_err),
+        sys_names=dataset_a.sys_names,
+        sys_types=dataset_a.sys_types,
+        luminosity=dataset_a.luminosity,
+    )
+    zero_dataset_b = Dataset(
+        name=dataset_b.name,
+        num_data=dataset_b.num_data,
+        central_values=dataset_b.central_values,
+        stat_err=jnp.zeros_like(dataset_b.stat_err),
+        syst_err=jnp.zeros_like(dataset_b.syst_err),
+        sys_names=dataset_b.sys_names,
+        sys_types=dataset_b.sys_types,
+        luminosity=dataset_b.luminosity,
+    )
+    zero_theory_a = Theory(
+        name=theory_a.name,
+        order=theory_a.order,
+        sm_pred=theory_a.sm_pred,
+        eft_pred=theory_a.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_a.sm_covmat),
+        scales=theory_a.scales,
+        operators=list(theory_a.operators),
+    )
+    zero_theory_b = Theory(
+        name=theory_b.name,
+        order=theory_b.order,
+        sm_pred=theory_b.sm_pred,
+        eft_pred=theory_b.eft_pred,
+        sm_covmat=jnp.zeros_like(theory_b.sm_covmat),
+        scales=theory_b.scales,
+        operators=list(theory_b.operators),
+    )
+    data = DataGroup([zero_dataset_a, zero_dataset_b])
+    theory = TheoryGroup([zero_theory_a, zero_theory_b])
+    with pytest.raises(ValueError, match="DS_A") as exc_info:
+        cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
+    assert "DS_B" in str(exc_info.value)
+
+
 # ---------------------------------------------------------------------------
 # _build_chi2_impl
 # ---------------------------------------------------------------------------
@@ -246,6 +610,42 @@ def test_build_chi2_ext_only(cfg):
     assert isinstance(result, Chi2)
     assert result.num_data == 7
     assert result.has_external
+
+
+def test_build_chi2_baseline_from_coefficients(cfg):
+    """baseline flows from the coefficients node into the Chi2 (base-only path)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [
+            Coefficient(name="OpA", free=True, prior=prior, baseline_value=0.7),
+            Coefficient(name="OpB", free=True, prior=prior, baseline_value=-0.3),
+        ]
+    )
+    mock_eft = MagicMock()
+    mock_eft.coefficients.free_names = ["OpA", "OpB"]
+    mock_data = MagicMock()
+    mock_data.num_data = 5
+
+    with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
+        result = cfg._build_chi2_impl(
+            eft_model=mock_eft,
+            data=mock_data,
+            fit_covmat=jnp.eye(3),
+            coefficients=coefficients,
+        )
+    assert jnp.allclose(result.baseline, jnp.array([0.7, -0.3]))
+
+
+def test_build_chi2_ext_only_baseline_from_coefficients(cfg):
+    """External-chi2-only fits still honor baseline_value (no eft_model)."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    coefficients = CoefficientGroup(
+        [Coefficient(name="OpA", free=True, prior=prior, baseline_value=1.5)]
+    )
+    ext = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA"], num_data=7)
+    result = cfg._build_chi2_impl(ext_chi2_func=[ext], coefficients=coefficients)
+    assert result.has_external
+    assert jnp.allclose(result.baseline, jnp.array([1.5]))
 
 
 def test_build_chi2_combined(cfg):
@@ -336,6 +736,101 @@ def test_produce_prior_with_whitening(cfg, coeff_group):
 
 
 # ---------------------------------------------------------------------------
+# parse_chi2_scan_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_chi2_scan_settings_defaults(cfg):
+    result = cfg.parse_chi2_scan_settings({})
+    assert result["n_points"] == 50
+
+
+def test_parse_chi2_scan_settings_custom(cfg):
+    result = cfg.parse_chi2_scan_settings({"n_points": 20})
+    assert result["n_points"] == 20
+
+
+def test_parse_chi2_scan_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_chi2_scan_settings({"n_points": 10, "bad_key": "oops"})
+    assert any("bad_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# parse_whitening / produce_whitening_transformation
+# ---------------------------------------------------------------------------
+
+
+def test_parse_whitening_defaults(cfg):
+    result = cfg.parse_whitening({})
+    assert result == {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+
+
+def test_parse_whitening_shift_gradient_descent(cfg):
+    result = cfg.parse_whitening({"shift": "gradient_descent"})
+    assert result["shift"] == "gradient_descent"
+
+
+def test_parse_whitening_shift_invalid_raises(cfg):
+    with pytest.raises(ConfigError, match="whitening.shift"):
+        cfg.parse_whitening({"shift": "bogus"})
+
+
+def test_parse_whitening_unknown_key_warns(cfg, caplog):
+    with caplog.at_level("WARNING"):
+        cfg.parse_whitening({"bogus": 1})
+    assert "Unknown key 'bogus'" in caplog.text
+
+
+def test_produce_whitening_transformation_disabled(cfg):
+    node = cfg.produce_whitening_transformation(whitening=None)
+    assert isinstance(node, ExplicitNode)
+    # zero-argument worker: no dependency on gd_best_fit or anything else
+    assert inspect.signature(node.value).parameters == {}
+    assert node.value() is None
+
+
+def test_produce_whitening_transformation_baseline_shift(cfg):
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+    node = cfg.produce_whitening_transformation(whitening=whitening)
+    assert isinstance(node, ExplicitNode)
+    assert node.value is _whitening_baseline_shift
+    # must not depend on gd_best_fit, so gradient_descent_settings is never required
+    assert "gd_best_fit" not in inspect.signature(node.value).parameters
+
+
+def test_produce_whitening_transformation_gradient_descent_shift(cfg):
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "gradient_descent"}
+    node = cfg.produce_whitening_transformation(whitening=whitening)
+    assert isinstance(node, ExplicitNode)
+    assert node.value is _whitening_gradient_descent_shift
+    assert "gd_best_fit" in inspect.signature(node.value).parameters
+
+
+def test_baseline_shift_worker_centers_at_baseline():
+    """With no baseline set, chi2.baseline defaults to zeros."""
+    chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "baseline"}
+    transform = _whitening_baseline_shift(chi2, whitening)
+    assert jnp.allclose(transform.shift, jnp.zeros(2))
+    # Hessian of sum(c**2) is 2*I -> H = L L^T with L = sqrt(2)*I -> W = L^-T = I/sqrt(2)
+    expected = jnp.eye(2) / jnp.sqrt(2.0)
+    assert jnp.allclose(transform.matrix, expected, atol=1e-5)
+
+
+def test_gradient_descent_shift_worker_centers_at_gd_best_fit():
+    chi2 = Chi2(lambda c: jnp.sum(c**2), param_names=["OpA", "OpB"], num_data=1)
+    whitening = {"sigma_prior": 5.0, "eps": 1e-8, "shift": "gradient_descent"}
+    gd_best_fit = jnp.array([1.0, 2.0])
+    transform = _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening)
+    assert jnp.allclose(transform.shift, gd_best_fit)
+    expected = jnp.eye(2) / jnp.sqrt(2.0)
+    assert jnp.allclose(transform.matrix, expected, atol=1e-5)
+
+
+# ---------------------------------------------------------------------------
 # parse_gradient_descent_settings
 # ---------------------------------------------------------------------------
 
@@ -385,6 +880,43 @@ def test_parse_hessian_settings_unknown_key_warns(cfg, caplog):
 
     with caplog.at_level(logging.WARNING, logger="smefit.config"):
         cfg.parse_hessian_settings({"unknown_key": 99})
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# parse_pca_settings
+# ---------------------------------------------------------------------------
+
+
+def test_parse_pca_settings_defaults(cfg):
+    assert cfg.parse_pca_settings({}) == {"threshold": 1.0e-12, "min_weight": 0.01}
+
+
+def test_parse_pca_settings_accepts_a_bare_block(cfg):
+    """`pca_settings:` with nothing under it is YAML None, and means "defaults"."""
+    assert cfg.parse_pca_settings(None) == cfg.parse_pca_settings({})
+
+
+def test_parse_pca_settings_custom(cfg):
+    result = cfg.parse_pca_settings({"threshold": 1e-2, "min_weight": 0.2})
+    assert result == {"threshold": 1e-2, "min_weight": 0.2}
+
+
+def test_parse_pca_settings_threshold_out_of_range_raises(cfg):
+    with pytest.raises(ConfigError, match="pca_settings.threshold"):
+        cfg.parse_pca_settings({"threshold": 1.5})
+
+
+def test_parse_pca_settings_min_weight_out_of_range_raises(cfg):
+    with pytest.raises(ConfigError, match="pca_settings.min_weight"):
+        cfg.parse_pca_settings({"min_weight": -0.1})
+
+
+def test_parse_pca_settings_unknown_key_warns(cfg, caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_pca_settings({"unknown_key": 99})
     assert any("unknown_key" in r.message for r in caplog.records)
 
 
@@ -560,3 +1092,360 @@ def test_parse_external_chi2_mixed_group_and_no_group(cfg):
     assert "group" not in result["ExtA"]
     assert result["ExtB"] == {"path": "/b.py"}
     assert cfg._ext_chi2_groups == {"ExtA": "G1"}
+
+
+def test_parse_external_chi2_resolves_prefix_path(cfg):
+    raw = {"MyExt": {"path": "new_smefit/external_chi2/foo.py"}}
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"new_smefit": "/home/user/smefit/new_smefit"},
+    ):
+        result = cfg.parse_external_chi2(raw)
+    assert (
+        result["MyExt"]["path"] == "/home/user/smefit/new_smefit/external_chi2/foo.py"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mass-scan producers
+# ---------------------------------------------------------------------------
+
+
+def test_produce_individual_mass_scales_requires_single_free_coefficient(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient("OpA", free=True, prior=_PRIOR),
+            Coefficient("OpB", free=True, prior=_PRIOR),
+        ]
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        cfg.produce_individual_mass_scales(cg, {"n_points": 5})
+    assert exc_info.value.bad_item == ["OpA", "OpB"]
+
+
+def test_produce_individual_mass_scales_uses_uniform_prior(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "uniform", "low": -2.0, "high": 2.0}
+            )
+        ]
+    )
+    result = cfg.produce_individual_mass_scales(cg, {"n_points": 5})
+    assert isinstance(result, NSList)
+    assert len(result) == 5
+    assert result[0] == pytest.approx(-2.0)
+    assert result[-1] == pytest.approx(2.0)
+
+
+def test_produce_individual_mass_scales_fallback_range_and_warns(cfg, caplog):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "normal", "loc": 0.0, "scale": 1.0}
+            )
+        ]
+    )
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        result = cfg.produce_individual_mass_scales(cg, {"n_points": 3})
+    assert result[0] == pytest.approx(-1.0)
+    assert result[-1] == pytest.approx(1.0)
+    assert any("lacks a uniform prior" in r.message for r in caplog.records)
+
+
+def test_produce_individual_mass_scales_default_n_points(cfg):
+    cg = CoefficientGroup(
+        [
+            Coefficient(
+                "OpM", free=True, prior={"dist": "uniform", "low": 0.0, "high": 1.0}
+            )
+        ]
+    )
+    result = cfg.produce_individual_mass_scales(cg, {})
+    assert len(result) == 50
+
+
+def test_produce_individual_mass_rge_matrix_overrides_init_scale(cfg, theory_a):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    theory = TheoryGroup([theory_a])
+    rge = {"init_scale": 10.0, "obs_scale": 1000.0}
+
+    with patch(
+        "smefit.config.build_rge_matrix", return_value="RGE_MATRIX"
+    ) as mock_build:
+        result = cfg.produce_individual_mass_rge_matrix(rge, cg, theory, 42.0)
+
+    assert result == "RGE_MATRIX"
+    _, kwargs = mock_build.call_args
+    # the scan point is a mass in TeV, init_scale is in GeV
+    assert kwargs["rge_dict"]["init_scale"] == 42000.0
+    assert kwargs["coeff_list"] == ["OpA"]
+    assert kwargs["theory_group"] is theory
+    # the caller's rge dict must not be mutated in place
+    assert rge["init_scale"] == 10.0
+
+
+def test_produce_individual_mass_eft_model_builds_model(cfg, theory_a):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    theory = TheoryGroup([theory_a])
+
+    result = cfg.produce_individual_mass_eft_model(
+        theory, cg, individual_mass_rge_matrix=None, use_quad=True
+    )
+
+    assert isinstance(result, EFTModel)
+    assert result.use_quad is True
+    assert result.coefficients is cg
+
+
+def test_produce_individual_mass_ext_chi2_func_overrides_init_scale_when_rge_set(cfg):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+    rge = {"init_scale": 10.0}
+
+    with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
+        result = cfg.produce_individual_mass_ext_chi2_func(
+            cg, ["ext_mod"], 42.0, rge=rge
+        )
+
+    assert result == "EXT"
+    _, kwargs = mock_load.call_args
+    # the scan point is a mass in TeV, init_scale is in GeV
+    assert kwargs["rge_dict"]["init_scale"] == 42000.0
+    assert rge["init_scale"] == 10.0  # caller's dict must not be mutated
+
+
+def test_produce_individual_mass_ext_chi2_func_no_rge(cfg):
+    cg = CoefficientGroup([Coefficient("OpA", free=True, prior=_PRIOR)])
+
+    with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
+        result = cfg.produce_individual_mass_ext_chi2_func(
+            cg, ["ext_mod"], 42.0, rge=None
+        )
+
+    assert result == "EXT"
+    _, kwargs = mock_load.call_args
+    assert kwargs["rge_dict"] is None
+
+
+def test_produce_individual_mass_chi2_delegates_to_build_chi2_impl(cfg):
+    mock_eft = MagicMock()
+    mock_eft.coefficients.free_names = ["OpA"]
+    mock_data = MagicMock()
+    mock_data.num_data = 5
+
+    with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
+        result = cfg.produce_individual_mass_chi2(
+            individual_mass_eft_model=mock_eft, data=mock_data, fit_covmat=jnp.eye(3)
+        )
+
+    assert isinstance(result, Chi2)
+    assert result.num_data == 5
+    assert not result.has_external
+
+
+# ---------------------------------------------------------------------------
+# parse_fit / the fits key it generates
+# ---------------------------------------------------------------------------
+
+
+def _write_fit_dir(path, use_quad=False, action="run_analytic_fit"):
+    """Minimal fit directory, as written by a smefit run."""
+    (path / "input").mkdir(parents=True)
+    (path / "fit_results.json").write_text(
+        json.dumps(
+            {
+                "free_parameters": ["OpA", "OpB"],
+                "best_fit_point": {"OpA": 0.0, "OpB": 1.0},
+                "max_loglikelihood": -1.0,
+                "num_data": 5,
+                "samples": {"OpA": [0.0], "OpB": [1.0]},
+            }
+        )
+    )
+    (path / "input" / "runcard.yaml").write_text(
+        yaml.dump({"use_quad": use_quad, "actions_": [action]})
+    )
+    return path
+
+
+def test_parse_fits_accepts_plain_names(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "fits" / "fit_a")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits(["fit_a"])
+
+    assert [f.fit_name for f in result] == ["fit_a"]
+    assert result[0].label is None
+
+
+def test_parse_fits_accepts_mappings(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": "$A$"}]
+    )
+
+    assert result[0].fit_name == "fit_a"
+    assert result[0].label == "$A$"
+
+
+def test_parse_fits_is_a_namespace_list(cfg, tmp_path):
+    """``fits`` is an NSList, so providers can be collected over ("fits",).
+
+    The nskey is what a provider taking a single ``fit`` is resolved against,
+    so downstream per-fit figures and tables depend on it.
+    """
+    _write_fit_dir(tmp_path / "fit_a")
+
+    result = cfg.parse_fits([{"name": "fit_a", "path": str(tmp_path)}])
+
+    assert isinstance(result, NSList)
+    assert result.nskey == "fit"
+    assert result.as_namespace() == [{"fit": result[0]}]
+
+
+def test_parse_fits_rejects_a_bare_string(cfg):
+    """``fits: my_fit`` is a list key; without the dash it used to iterate
+    the characters of the string and complain about a fit called 'm'."""
+    with pytest.raises(BadInputType, match="not of type list"):
+        cfg.parse_fits("my_fit")
+
+
+def test_parse_fit_rejects_a_non_string_entry(cfg):
+    with pytest.raises(BadInputType, match="not of type"):
+        cfg.parse_fits([3])
+
+
+def test_parse_fits_keeps_a_latex_label_verbatim(cfg, tmp_path):
+    """A label is passed to matplotlib as given, backslashes and all."""
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+    label = r"$\mathrm{FCC}\textnormal{-}\mathrm{ee\ descoped}$"
+
+    result = cfg.parse_fits(
+        [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": label}]
+    )
+
+    assert result[0].label == label
+
+
+def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with pytest.raises(ConfigError, match="must be a string"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "label": ["$A$"]}]
+        )
+
+
+def test_parse_interval_types_wraps_a_single_name(cfg):
+    """``interval_types: eti`` in a runcard, as for ``params_to_plot: OtG``."""
+    assert cfg.parse_interval_types("eti") == ["eti"]
+
+
+def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
+    monkeypatch.setitem(
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
+    )
+
+    assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]
+
+
+def test_parse_interval_types_rejects_an_unknown_type(cfg):
+    """A typo fails when the runcard is read, not halfway through a report."""
+    with pytest.raises(ConfigError, match="Unknown interval_type 'hpd'"):
+        cfg.parse_interval_types(["eti", "hpd"])
+
+
+def test_parse_interval_types_rejects_an_empty_list(cfg):
+    with pytest.raises(ConfigError, match="interval_types is empty"):
+        cfg.parse_interval_types([])
+
+
+def test_parse_fits_requires_a_name(cfg):
+    with pytest.raises(ConfigError, match="requires a .name."):
+        cfg.parse_fits([{"label": "$A$"}])
+
+
+def test_parse_fits_missing_fit_raises(cfg, tmp_path):
+    with pytest.raises(ConfigError, match="not found"):
+        cfg.parse_fits([{"name": "does_not_exist", "path": str(tmp_path)}])
+
+
+def test_parse_fits_unknown_key_warns(cfg, tmp_path, caplog):
+    _write_fit_dir(tmp_path / "elsewhere" / "fit_a")
+
+    with caplog.at_level(logging.WARNING, logger="smefit.config"):
+        cfg.parse_fits(
+            [{"name": "fit_a", "path": str(tmp_path / "elsewhere"), "unknown_key": 1}]
+        )
+
+    assert any("unknown_key" in r.message for r in caplog.records)
+
+
+def test_parse_fits_resolves_prefix_path(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "my_fits" / "my_fit")
+
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_fits([{"name": "my_fit", "path": "smefit_results/my_fits"}])
+
+    assert result[0].fit_name == "my_fit"
+
+
+def test_parse_fits_loads_every_fit(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "lin", use_quad=False)
+    _write_fit_dir(tmp_path / "quad", use_quad=True, action="run_ultranest_fit")
+
+    fits = cfg.parse_fits(
+        [
+            {"name": "lin", "path": str(tmp_path)},
+            {"name": "quad", "path": str(tmp_path), "label": "$Q$"},
+        ]
+    )
+
+    assert [f.fit_name for f in fits] == ["lin", "quad"]
+    # metadata read from each fit's own runcard
+    assert [f.use_quad for f in fits] == [False, True]
+    assert [f.fit_type for f in fits] == ["analytic", "ultranest"]
+    # the label of the runcard entry, None when it has none
+    assert [f.label for f in fits] == [None, "$Q$"]
+    assert fits[0].fit_results.free_parameters == ["OpA", "OpB"]
+
+
+def test_parse_fits_reports_an_unreadable_fit(cfg, tmp_path):
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "fit_results.json").write_text("{not json")
+
+    with pytest.raises(ConfigError, match="Could not load fit 'broken'"):
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+
+def test_parse_fits_reports_a_fit_with_an_unreadable_runcard(cfg, tmp_path):
+    """A broken runcard is reported like any other unloadable fit.
+
+    from_folder raises the same ValueError whichever of its two files fails to
+    parse, so this needs nothing here beyond what the json case already needs.
+    """
+    fit = _write_fit_dir(tmp_path / "broken")
+    (fit / "input" / "runcard.yaml").write_text(
+        "actions_: [run_analytic_fit\n bad: : :"
+    )
+
+    with pytest.raises(
+        ConfigError, match="Could not load fit 'broken'.*not valid YAML"
+    ):
+        cfg.parse_fits([{"name": "broken", "path": str(tmp_path)}])
+
+
+def test_parse_fit_loads_a_single_fit(cfg, tmp_path):
+    """``fit:`` works on its own — the singular key element_of gives us."""
+    _write_fit_dir(tmp_path / "fit_a")
+
+    fit = cfg.parse_fit({"name": "fit_a", "path": str(tmp_path)})
+
+    assert fit.fit_name == "fit_a"

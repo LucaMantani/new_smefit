@@ -1,9 +1,13 @@
 """Unit tests for smefit.external_chi2."""
 
+from unittest.mock import patch
+
+import jax.numpy as jnp
 import pytest
 
 from smefit.chi2 import Chi2
 from smefit.external_chi2 import load_external_chi2
+from smefit.rge import RGEMatrix
 
 FAKE_CHI2_CLASS = """\
 class FakeChi2:
@@ -105,6 +109,59 @@ def test_extra_kwargs_forwarded(tmp_path, coeff_group):
 
     assert len(result) == 1
     assert result[0].num_data == 3
+
+
+# ---------------------------------------------------------------------------
+# A forwarded kwarg holding a prefix-relative path
+# ---------------------------------------------------------------------------
+
+
+FAKE_CHI2_WITH_RGE_MATRIX = """\
+from smefit.rge import RGEMatrix
+
+
+class RGEChi2:
+    num_data = 2
+
+    def __init__(self, coefficients, rge_dict, rg_matrix=None):
+        self.cache = RGEMatrix.read_cache(rg_matrix, rge_dict)
+
+    def compute_chi2(self, c):
+        return 0.0
+"""
+
+
+def test_prefix_relative_rg_matrix_kwarg_loads(tmp_path, coeff_group):
+    """`rg_matrix` is forwarded verbatim, so read_cache is what resolves it.
+
+    load_external_chi2 has no way to know which of the extra kwargs are paths;
+    prefix support for this one lives in RGEMatrix.read_cache.
+    """
+    settings = {"init_scale": 1000.0, "yukawa": "top"}
+    RGEMatrix(
+        stacked_mats=jnp.array([[[1.0]]]),
+        obs_operators=["Op1"],
+        init_operators=["OpA"],
+        scales=[100.0],
+        settings=settings,
+    ).write(tmp_path / "fits" / "my_fit")
+
+    module = tmp_path / "rge_chi2.py"
+    module.write_text(FAKE_CHI2_WITH_RGE_MATRIX)
+
+    external_chi2 = {
+        "RGEChi2": {
+            "path": str(module),
+            "rg_matrix": f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}",
+        }
+    }
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = load_external_chi2(external_chi2, coeff_group, settings)
+
+    assert result[0].num_data == 2
 
 
 # ---------------------------------------------------------------------------

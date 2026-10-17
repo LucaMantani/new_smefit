@@ -1,0 +1,38 @@
+# AUTO-COPIED from template_runcards/analytical_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+
+rge:
+  init_scale: 10000.0
+  obs_scale: dynamic  # float or "dynamic"
+  smeft_accuracy: integrate  # options: integrate, leadinglog
+  yukawa: top  # options: top, full or none
+  adm_QCD: false  # if true, the EW couplings are set to zero
+
+# Datasets to include
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+
+# Coefficients to fit
+coefficients:
+  OpWB:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+  OpD:
+    free: True
+    prior: {dist: uniform, low: -0.5, high: 0.5}
+
+actions_:
+- run_analytic_fit

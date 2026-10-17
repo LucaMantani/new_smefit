@@ -8,6 +8,7 @@ import pytest
 
 from smefit.fit_result import FitResult
 from smefit.ultranest_fit import ultranest_fit
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,7 +61,7 @@ def test_ultranest_fit_happy_path(minimal_prior, minimal_chi2, coeff_group):
             chi2=minimal_chi2,
             coefficients=coeff_group,
             ultranest_settings=_ULTRANEST_SETTINGS,
-            whitening_matrix=None,
+            whitening_transformation=None,
         )
 
     assert isinstance(result, FitResult)
@@ -73,10 +74,10 @@ def test_ultranest_fit_happy_path(minimal_prior, minimal_chi2, coeff_group):
 
 
 def test_ultranest_fit_whitening_active(minimal_prior, minimal_chi2, coeff_group):
-    """When a whitening_matrix is provided, whitening_active should be True."""
+    """When a whitening_transformation is provided, whitening_active should be True."""
     mock_sampler = MagicMock()
     mock_sampler.run.return_value = _FAKE_RESULT
-    W = jnp.eye(1)
+    transform = WhitenTransform(matrix=jnp.eye(1), shift=jnp.zeros(1))
 
     with (
         patch(
@@ -93,7 +94,7 @@ def test_ultranest_fit_whitening_active(minimal_prior, minimal_chi2, coeff_group
             chi2=minimal_chi2,
             coefficients=coeff_group,
             ultranest_settings=_ULTRANEST_SETTINGS,
-            whitening_matrix=W,
+            whitening_transformation=transform,
         )
 
     assert result.whitening_active is True

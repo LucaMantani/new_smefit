@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from smefit.data_utils import covmat_from_systematics
+from smefit.whitening import WhitenTransform
 
 # Namespace available in coefficient expressions.
 # All functions map to JAX equivalents so they are fully differentiable.
@@ -152,7 +153,8 @@ class Coefficient:
 
     Invariants
     ----------
-    - If free is True: prior must be provided; value and expr must be None.
+    - If free is True: value and expr must be None. prior is optional here —
+      it is not read by this class at all.
     - If free is False: exactly one of (value, expr) must be provided; prior must be None.
     """
 
@@ -162,6 +164,7 @@ class Coefficient:
     value: Optional[float] = None
     expr: Optional[str] = None
     vars: Optional[List[str]] = None
+    baseline_value: float = 0.0
 
     def __post_init__(self) -> None:
         if self.free:
@@ -378,9 +381,11 @@ class CoefficientGroup:
         self.free_coeffs = [c for c in self.coefficients if c.free]
         self.free_names = [c.name for c in self.free_coeffs]
         self.fixed_coeffs = [c for c in self.coefficients if not c.free]
+        # baseline ("default") values of the free coefficients, ordered by free_names
+        self.baseline_free = jnp.array([c.baseline_value for c in self.free_coeffs])
 
-        # Whitening matrix (set via whitened())
-        self._W = None
+        # Whitening transform (set via whitened())
+        self._transform = None
 
         # Precompute resolution mapping
         self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
@@ -417,18 +422,21 @@ class CoefficientGroup:
     def prior_specs(self) -> Dict[str, object]:
         return {c.name: c.prior for c in self.free_coeffs}
 
-    def whitened(self, W: "jnp.ndarray") -> "CoefficientGroup":
+    def whitened(self, transform: WhitenTransform) -> "CoefficientGroup":
         """Return a CoefficientGroup whose resolve un-whitens free coefficients first.
+
+        ``baseline_free`` comes back in whitened coordinates too.
 
         Parameters
         ----------
-        W : jnp.ndarray
-            Unwhitening matrix of shape (n_free, n_free). Applied as c = W @ c_w
-            before the standard resolve logic.
+        transform : WhitenTransform
+            Affine transform. Applied as c = transform.to_physical(c_w) before
+            the standard resolve logic.
         """
 
         new = copy.copy(self)
-        new._W = W
+        new._transform = transform
+        new.baseline_free = transform.to_whitened(self.baseline_free)
         return new
 
     def resolve(self, free_coeffs: "jnp.ndarray") -> "jnp.ndarray":
@@ -438,16 +446,17 @@ class CoefficientGroup:
         ----------
         free_coeffs : jnp.ndarray
             Values of the free coefficients, ordered by self.free_coeffs.
-            If this CoefficientGroup was created via ``whitened(W)``, the input
-            is treated as whitened coordinates and un-whitened first (c = W @ c_w).
+            If this CoefficientGroup was created via ``whitened(transform)``,
+            the input is treated as whitened coordinates and mapped to
+            physical space first (c = transform.to_physical(c_w)).
 
         Returns
         -------
         jnp.ndarray
             Values for all coefficients, in self.coefficients order.
         """
-        if self._W is not None:
-            free_coeffs = self._W @ free_coeffs
+        if self._transform is not None:
+            free_coeffs = self._transform.to_physical(free_coeffs)
         result = jnp.zeros(len(self.coefficients))
         # Place free coefficients
         result = result.at[jnp.array(self._free_indices, dtype=int)].set(free_coeffs)
@@ -461,11 +470,43 @@ class CoefficientGroup:
         return result
 
     def single_free(self, target_name: str) -> "CoefficientGroup":
-        """Return a CoefficientGroup where only *target_name* is free."""
+        """Return a CoefficientGroup where only *target_name* is free.
+
+        Non-target free coefficients are dropped (their zero contribution to
+        predictions is omitted), unless they appear as ``vars`` in an
+        expression-constrained coefficient that itself depends on the target,
+        in which case they are set to ``value=0.0`` so the expression can be
+        evaluated. For example, if we want to perform individual fits of c1 and c2
+        and we have a constrained c3 = c1 + c2, then we set c2 = 0 when we fit c1
+        alone so that c3 = c1.
+
+        Expression-constrained coefficients are kept only if they directly
+        depend on the target; those that don't evaluate to constants w.r.t.
+        the target are dropped.
+
+        Fixed-constant coefficients (``value`` only) are always kept — they
+        have real, non-zero contributions to predictions.
+        """
+
+        free_set = set(self.free_names)
+        kept_expr_names = {
+            c.name for c in self.coefficients if c.vars and target_name in c.vars
+        }
+        needed_zero_vars = {
+            var
+            for c in self.coefficients
+            if c.name in kept_expr_names
+            for var in c.vars
+            if var in free_set and var != target_name
+        }
+
         new_coeffs = []
         for c in self.coefficients:
-            if c.free and c.name != target_name:
-                new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
-            else:
+            if c.name == target_name:
+                new_coeffs.append(c)
+            elif c.free:
+                if c.name in needed_zero_vars:
+                    new_coeffs.append(Coefficient(name=c.name, free=False, value=0.0))
+            elif c.value is not None or c.name in kept_expr_names:
                 new_coeffs.append(c)
         return CoefficientGroup(new_coeffs)

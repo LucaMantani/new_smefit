@@ -7,6 +7,8 @@ Chi2 loss function for the smefit framework.
 import jax
 import jax.numpy as jnp
 
+from smefit.whitening import WhitenTransform
+
 
 class Chi2:
     """Callable chi2 with metadata about its composition.
@@ -21,19 +23,44 @@ class Chi2:
         Whether the chi2 includes external contributions.
     name : str, optional
         A name for the chi2, used in logging and diagnostics.
+    baseline : array-like, optional
+        Baseline ("default") values of the free parameters, ordered like
+        ``param_names``. Used e.g. as the gradient-descent starting/SM point.
+        Defaults to a zero vector when not provided.
     """
 
-    def __init__(self, fn, param_names, num_data, has_external=False, name=None):
+    def __init__(
+        self, fn, param_names, num_data, has_external=False, name=None, baseline=None
+    ):
         self._fn = fn
         self.param_names = param_names
         self.nparam = len(param_names)
         self.num_data = num_data
         self.has_external = has_external
         self.name = name
+        self.baseline = (
+            jnp.zeros(self.nparam) if baseline is None else jnp.asarray(baseline)
+        )
 
     @jax.jit(static_argnames=("self",))
     def __call__(self, coeffs):
         return self._fn(coeffs)
+
+    def whitened(self, transform: WhitenTransform) -> "Chi2":
+        """The same chi2 expressed in whitened coordinates c_w.
+
+        Mirrors ``CoefficientGroup.whitened``: everything a sampler needs — the
+        callable and the baseline it starts from — comes back in whitened
+        space, so callers never have to mix the two coordinate systems.
+        """
+        return Chi2(
+            lambda c_w: self._fn(transform.to_physical(c_w)),
+            self.param_names,
+            self.num_data,
+            has_external=self.has_external,
+            name=self.name,
+            baseline=transform.to_whitened(self.baseline),
+        )
 
 
 def build_chi2(eft_model, data, fit_covmat):
@@ -77,6 +104,7 @@ def build_datasets_chi2(eft_model, data, fit_covmat):
                     eft_model.coefficients.free_names,
                     ndata,
                     name=name,
+                    baseline=eft_model.coefficients.baseline_free,
                 )
             )
             start = end

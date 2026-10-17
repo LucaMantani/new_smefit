@@ -1,3 +1,11 @@
+.DS_Store
+
+# Machine-specific path configuration
+.config/
+
+# Template fit and report outputs
+template_runcards/*/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

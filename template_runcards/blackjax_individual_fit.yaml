@@ -1,6 +1,7 @@
-# path to data and theory
-data_path: ../commondata
-theory_path: ../theory
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml — run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
 # Covmat settings
 use_theory_covmat: True
 use_t0: True
@@ -50,7 +51,7 @@ coefficients:
 
 external_chi2:
   CMS_DYMee_13TeV:
-      path: ../external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"
@@ -61,6 +62,7 @@ external_chi2:
 # whitening:
 #   sigma_prior: 5.0
 #   eps: 1e-8
+#   shift: baseline  # baseline or gradient_descent
 
 actions_:
 - run_individual_blackjax_fits

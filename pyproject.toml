@@ -13,7 +13,7 @@ readme = "README.md"
 
 
 [tool.poetry.dependencies]
-python = ">=3.12"
+python = ">=3.14"
 prompt_toolkit = "*"
 h5py = "*"
 
@@ -24,9 +24,11 @@ optax = "*"
 flax = "*"
 wilson="^2.4"
 webdavclient3 = "*"
-blackjax = {git = "https://github.com/handley-lab/blackjax", tag = "v0.1.0-beta"}
+blackjax = "*"
 tqdm = "*"
 anesthetic = "^2.10.2"
+arviz = ">=1.0"
+getdist = "*"
 ipython = "*"
 pytest = "*"
 hypothesis = "*"
@@ -44,6 +46,7 @@ doc = ["sphinxcontrib-bibtex", "sphinx-rtd-theme", "sphinx", "tabulate", "sphinx
 
 [tool.poetry.scripts]
 smefit = "smefit.app:main"
+smefit_setup_local = "smefit.scripts.smefit_setup_local:main"
 smefit_ls = "smefit.scripts.smefit_ls:main"
 smefit_mv = "smefit.scripts.smefit_mv:main"
 smefit_rm = "smefit.scripts.smefit_rm:main"

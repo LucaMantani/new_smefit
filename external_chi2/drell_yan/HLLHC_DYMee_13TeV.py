@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from smefit import loader
 from smefit.core import DataGroup, TheoryGroup
 from smefit.model import EFTModel
-from smefit.rge import load_rge_matrix
+from smefit.rge import build_rge_matrix
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +52,10 @@ class HLLHC_DYMee_13TeV:
 
         coeff_list = sorted(coefficients.names)
 
-        dataset = loader.load_dataset(data_path, "HLLHC_DYMee_13TeV")
-        theory = loader.load_theory(theory_path, "HLLHC_DYMee_13TeV", order)
+        ds = {"name": "HLLHC_DYMee_13TeV", "order": order}
+
+        dataset = loader.load_dataset(data_path, ds)
+        theory = loader.load_theory(theory_path, ds)
 
         data = DataGroup([dataset])
         theory_group = TheoryGroup([theory])
@@ -67,12 +69,13 @@ class HLLHC_DYMee_13TeV:
             else:
                 rge_dict["rg_matrix"] = False
 
-            rge_matrix = load_rge_matrix(
+            rge_matrix = build_rge_matrix(
                 rge_dict=rge_dict,
                 coeff_list=coeff_list,
                 theory_group=theory_group,
-                save_path=save_rge_path,
             )
+            if save_rge_path is not None:
+                rge_matrix.write(save_rge_path)
 
         self.model = EFTModel(
             theory_group, coefficients, use_quad, rge_matrix=rge_matrix
@@ -93,7 +96,7 @@ class HLLHC_DYMee_13TeV:
 
     def compute_chi2(self, coeffs):
         theory = self.model.forward_map(coeffs)
-        safe_theory = jnp.clip(theory, a_min=1e-6)
+        safe_theory = jnp.clip(theory, min=1e-6)
 
         data = self.data_cv
         # Standard JAX pattern: safe_data=1.0 on masked bins keeps log(1/t) finite
@@ -104,4 +107,4 @@ class HLLHC_DYMee_13TeV:
             data > 0, safe_data * jnp.log(safe_data / safe_theory), 0.0
         )
 
-        return 2.0 * jnp.sum(theory - data + log_term)
+        return 2.0 * jnp.sum(safe_theory - data + log_term)

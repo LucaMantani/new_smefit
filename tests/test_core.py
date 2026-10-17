@@ -12,6 +12,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
 # Dataset
@@ -107,6 +108,25 @@ def test_coefficient_constrain_expr():
     assert float(c.constrain(2.0)) == pytest.approx(5.0)
 
 
+def test_coefficient_baseline_value_default():
+    c = Coefficient(
+        name="X", free=True, prior={"dist": "uniform", "low": -1, "high": 1}
+    )
+    assert c.baseline_value == 0.0
+
+
+def test_coeff_group_baseline_free():
+    """baseline_free follows free_names order; fixed-coeff baselines are ignored."""
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    c_b = Coefficient(name="OpB", free=True, prior=prior, baseline_value=0.7)
+    c_a = Coefficient(name="OpA", free=True, prior=prior, baseline_value=-0.3)
+    c_default = Coefficient(name="OpD", free=True, prior=prior)
+    c_fixed = Coefficient(name="OpC", free=False, value=1.0, baseline_value=5.0)
+    cg = CoefficientGroup([c_b, c_a, c_default, c_fixed])
+    assert cg.free_names == ["OpA", "OpB", "OpD"]
+    assert jnp.allclose(cg.baseline_free, jnp.array([-0.3, 0.7, 0.0]))
+
+
 # ---------------------------------------------------------------------------
 # DataGroup
 # ---------------------------------------------------------------------------
@@ -191,10 +211,56 @@ def test_coeff_group_whitened_resolve():
     cg = CoefficientGroup([c1, c2])
     # sorted: OpA (0), OpB (1)
     W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
-    wcg = cg.whitened(W)
+    transform = WhitenTransform(matrix=W, shift=jnp.zeros(2))
+    wcg = cg.whitened(transform)
     result = wcg.resolve(jnp.array([1.0, 1.0]))
     # un-whitened: W @ [1, 1] = [2, 3]; both free → result = [2, 3]
     assert jnp.allclose(result, jnp.array([2.0, 3.0]))
+
+
+def test_coeff_group_whitened_resolve_with_shift():
+    c1 = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c2 = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    cg = CoefficientGroup([c1, c2])
+    W = jnp.array([[2.0, 0.0], [0.0, 3.0]])
+    shift = jnp.array([0.5, -1.0])
+    transform = WhitenTransform(matrix=W, shift=shift)
+    wcg = cg.whitened(transform)
+    result = wcg.resolve(jnp.array([1.0, 1.0]))
+    # un-whitened: W @ [1, 1] + shift = [2, 3] + [0.5, -1.0] = [2.5, 2.0]
+    assert jnp.allclose(result, jnp.array([2.5, 2.0]))
+
+
+def test_coeff_group_whitened_baseline_free():
+    """baseline_free is whitened too, so resolve(baseline_free) is the baseline point."""
+    c1 = Coefficient(
+        name="OpA",
+        free=True,
+        prior={"dist": "uniform", "low": -1.0, "high": 1.0},
+        baseline_value=0.5,
+    )
+    c2 = Coefficient(
+        name="OpB",
+        free=True,
+        prior={"dist": "uniform", "low": -1.0, "high": 1.0},
+        baseline_value=-1.0,
+    )
+    cg = CoefficientGroup([c1, c2])
+    transform = WhitenTransform(
+        matrix=jnp.array([[2.0, 0.0], [0.0, 3.0]]), shift=jnp.array([0.5, -1.0])
+    )
+    wcg = cg.whitened(transform)
+
+    # centred on the baseline → whitened baseline is the origin
+    assert jnp.allclose(wcg.baseline_free, jnp.zeros(2))
+    # and resolving it lands back on the physical baseline
+    assert jnp.allclose(wcg.resolve(wcg.baseline_free), cg.resolve(cg.baseline_free))
+    # the original group is untouched
+    assert jnp.allclose(cg.baseline_free, jnp.array([0.5, -1.0]))
 
 
 def test_coeff_group_single_free():
@@ -207,9 +273,49 @@ def test_coeff_group_single_free():
     cg = CoefficientGroup([c1, c2])
     sg = cg.single_free("OpA")
     assert sg.free_names == ["OpA"]
-    # OpB is now fixed at 0; sorted: OpA (0), OpB (1)
+    # OpB is dropped (non-target free, no expressions need it)
+    assert "OpB" not in sg.names
     result = sg.resolve(jnp.array([5.0]))
-    assert jnp.allclose(result, jnp.array([5.0, 0.0]))
+    assert jnp.allclose(result, jnp.array([5.0]))
+
+
+def test_single_free_drops_independent_expr():
+    """Expression-constrained not depending on target is dropped along with its vars."""
+    c_a = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_b = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_expr = Coefficient(name="OpC", free=False, vars=["OpB"], expr="2*OpB")
+    cg = CoefficientGroup([c_a, c_b, c_expr])
+    sg = cg.single_free("OpA")
+    assert "OpA" in sg.names
+    assert "OpB" not in sg.names  # dropped — not needed by any kept expression
+    assert "OpC" not in sg.names  # dropped — doesn't depend on target
+
+
+def test_single_free_keeps_dependent_expr_and_its_vars():
+    """Expression-constrained depending on target is kept; its non-target free vars → 0."""
+    c_a = Coefficient(
+        name="OpA", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_b = Coefficient(
+        name="OpB", free=True, prior={"dist": "uniform", "low": -1.0, "high": 1.0}
+    )
+    c_expr = Coefficient(name="OpC", free=False, vars=["OpA", "OpB"], expr="OpA+OpB")
+    cg = CoefficientGroup([c_a, c_b, c_expr])
+    sg = cg.single_free("OpA")
+    assert sg.free_names == ["OpA"]
+    assert "OpB" in sg.names and not sg.coefficients[sg.coeff_index["OpB"]].free
+    assert float(sg.coefficients[sg.coeff_index["OpB"]].value) == pytest.approx(0.0)
+    assert "OpC" in sg.names
+    # Resolve: OpA=3 → OpC = 3 + 0 = 3
+    result = sg.resolve(jnp.array([3.0]))
+    slim_dict = {name: float(result[i]) for i, name in enumerate(sg.names)}
+    assert slim_dict["OpA"] == pytest.approx(3.0)
+    assert slim_dict["OpB"] == pytest.approx(0.0)
+    assert slim_dict["OpC"] == pytest.approx(3.0)
 
 
 def test_coeff_group_resolve_all_fixed_empty_array():

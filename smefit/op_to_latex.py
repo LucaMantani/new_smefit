@@ -1,8 +1,8 @@
-from matplotlib import rc
+"""
+smefit.op_to_latex.py
 
-rc("font", **{"family": "sans-serif", "sans-serif": ["Helvetica"], "size": 22})
-rc("text", usetex=True)
-rc("text.latex", preamble=r"\usepackage{amssymb}")
+LaTeX labels for the Wilson coefficients, used by the report tables and figures.
+"""
 
 coeff_info_latex = {
     # --------------------------

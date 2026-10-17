@@ -1,8 +1,12 @@
-"""Unit tests for smefit.fisher — fisher_information_matrices function."""
+"""Unit tests for smefit.fisher — the per-source and total Fisher matrices."""
+
+import logging
 
 import jax.numpy as jnp
+import numpy as np
+import pandas as pd
 
-from smefit.chi2 import Chi2, build_datasets_chi2
+from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import (
     Coefficient,
     CoefficientGroup,
@@ -11,7 +15,12 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
-from smefit.fisher import fisher_information_matrices
+from smefit.fisher import (
+    _resolve_groups,
+    aggregate_fisher_information_matrices,
+    fisher_information_matrices,
+    total_fisher_information_matrix,
+)
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -332,3 +341,131 @@ def test_fisher_uses_gd_best_fit_point():
     assert jnp.allclose(
         jnp.array(result_mle["DS_Q"].values), jnp.array([[13.0]]), atol=1e-5
     )
+
+
+# ---------------------------------------------------------------------------
+# _resolve_groups / aggregate_fisher_information_matrices
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_returns_unchanged_when_no_groups():
+    """data_groups=None returns the original dict unchanged (same object)."""
+    fim = {"DS_A": pd.DataFrame([[1.0]], index=["OpA"], columns=["OpA"])}
+
+    result = aggregate_fisher_information_matrices(fim, data_groups=None)
+
+    assert result is fim
+
+
+def test_resolve_groups_declared_group_first():
+    """Declared groups come first, in data_groups order, using source-name order."""
+    groups = _resolve_groups(["DS_A", "DS_B", "DS_C"], {"Group1": ["DS_B", "DS_C"]})
+
+    assert groups == [("Group1", [1, 2]), ("DS_A", [0])]
+
+
+def test_resolve_groups_ungrouped_kept_individually():
+    """With no groups declared, every source is kept as an individual entry."""
+    groups = _resolve_groups(["DS_A", "DS_B"], {})
+
+    assert groups == [("DS_A", [0]), ("DS_B", [1])]
+
+
+def test_resolve_groups_empty_match_skipped(caplog):
+    """A group matching no source is skipped, with a warning logged."""
+    with caplog.at_level(logging.WARNING):
+        groups = _resolve_groups(["DS_A"], {"EmptyGroup": ["NOPE"]})
+
+    assert groups == [("DS_A", [0])]
+    assert "EmptyGroup" in caplog.text
+
+
+def test_aggregate_sums_grouped_matrices():
+    """Grouped sources are summed elementwise; ungrouped sources are kept as-is."""
+    fim = {
+        "DS_A": pd.DataFrame(
+            [[1.0, 0.0], [0.0, 2.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+        "DS_B": pd.DataFrame(
+            [[3.0, 0.0], [0.0, 4.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+        "DS_C": pd.DataFrame(
+            [[5.0, 0.0], [0.0, 6.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+        ),
+    }
+    data_groups = {"Merged": ["DS_A", "DS_B"]}
+
+    result = aggregate_fisher_information_matrices(fim, data_groups)
+
+    assert list(result.keys()) == ["Merged", "DS_C"]
+    expected_merged = pd.DataFrame(
+        [[4.0, 0.0], [0.0, 6.0]], index=["OpA", "OpB"], columns=["OpA", "OpB"]
+    )
+    pd.testing.assert_frame_equal(result["Merged"], expected_merged)
+    pd.testing.assert_frame_equal(result["DS_C"], fim["DS_C"])
+
+
+def _linear_setup(fit_covmat):
+    """Two datasets, one free coefficient, linear EFT corrections only.
+
+    Returns the total Chi2 and the (ndata, n_ops) matrix of linear corrections,
+    so a test can compare the Fisher matrix against L^T C^-1 L directly.
+    """
+    theory_a = _make_theory("DS_A", sm=[10.0, 20.0], lin_op=[1.0, 2.0])
+    theory_b = _make_theory("DS_B", sm=[30.0, 40.0], lin_op=[3.0, 4.0])
+    theory = TheoryGroup([theory_a, theory_b])
+    cg = CoefficientGroup([_free("OpA")])
+    model = EFTModel(theory, cg, use_quad=False)
+    data = DataGroup(
+        [_make_dataset("DS_A", [10.0, 20.0]), _make_dataset("DS_B", [30.0, 40.0])]
+    )
+    total = Chi2(
+        build_chi2(model, data, fit_covmat),
+        param_names=["OpA"],
+        num_data=4,
+    )
+    per_dataset = build_datasets_chi2(model, data, fit_covmat)
+    lin = jnp.array([[1.0], [2.0], [3.0], [4.0]])
+    return total, per_dataset, lin
+
+
+def test_total_fisher_is_the_full_covmat_contraction():
+    """F = L^T C^-1 L for a linear model, using the whole covariance matrix."""
+    fit_covmat = jnp.eye(4).at[0, 2].set(0.4).at[2, 0].set(0.4)
+    total, _, lin = _linear_setup(fit_covmat)
+
+    result = total_fisher_information_matrix(total, _sm_point(1))
+
+    expected = lin.T @ jnp.linalg.inv(fit_covmat) @ lin
+    assert result.index.tolist() == ["OpA"]
+    assert result.columns.tolist() == ["OpA"]
+    assert jnp.allclose(jnp.array(result.values), expected)
+
+
+def test_total_fisher_differs_from_the_sum_of_per_dataset_fishers():
+    """The per-dataset matrices see diagonal blocks only, so they miss the
+    cross-dataset correlation the total one includes."""
+    fit_covmat = jnp.eye(4).at[0, 2].set(0.4).at[2, 0].set(0.4)
+    total, per_dataset, _ = _linear_setup(fit_covmat)
+    c0 = _sm_point(1)
+
+    combined = total_fisher_information_matrix(total, c0).values.sum()
+    summed = sum(
+        df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
+    )
+
+    assert not np.isclose(combined, summed)
+
+
+def test_total_fisher_equals_the_sum_when_the_covmat_is_block_diagonal():
+    """With no cross-dataset correlation the two agree, as they must."""
+    fit_covmat = jnp.eye(4)
+    total, per_dataset, _ = _linear_setup(fit_covmat)
+    c0 = _sm_point(1)
+
+    combined = total_fisher_information_matrix(total, c0).values.sum()
+    summed = sum(
+        df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
+    )
+
+    assert np.isclose(combined, summed)

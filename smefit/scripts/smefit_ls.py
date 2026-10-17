@@ -278,6 +278,79 @@ def _resolve_project(downloader, requested: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Local registry display
+# ---------------------------------------------------------------------------
+
+
+def _main_local(args) -> None:
+    """Display resources from the local smefit_results/registry.json."""
+    import pathlib
+    import sys
+
+    from smefit.paths import get_local_results_dir
+    from smefit.server_utils import _read_local_registry
+
+    local_results_dir = get_local_results_dir()
+    if local_results_dir is None:
+        log.error(
+            "smefit_results is not configured. Run 'smefit_setup_local' to set it up."
+        )
+        sys.exit(1)
+    registry = _read_local_registry(local_results_dir)
+
+    resource_type = args.resource_type
+    project_filter = args.project if hasattr(args, "project") else None
+
+    def _filter_fits(fits):
+        if project_filter is None:
+            return fits
+        return {k: v for k, v in fits.items() if v.get("project") == project_filter}
+
+    def _filter_reports(reports):
+        if project_filter is None:
+            return reports
+        return {k: v for k, v in reports.items() if v.get("project") == project_filter}
+
+    title_suffix = f" [{project_filter}]" if project_filter else ""
+    print(f"\n  {_dim(str(local_results_dir / 'registry.json'))}")
+
+    if resource_type in ("registry", "fit", "report", "rge"):
+        fits = _filter_fits(registry.get("fits", {}))
+        reports = _filter_reports(registry.get("reports", {}))
+
+        if resource_type == "rge":
+            rge_fits = {k: v for k, v in fits.items() if v.get("has_rge")}
+            _table(
+                f"Local fits with rge_matrix.pkl ({len(rge_fits)}){title_suffix}",
+                *_fit_rows(rge_fits),
+            )
+        elif resource_type == "fit":
+            _table(f"Local fits ({len(fits)}){title_suffix}", *_fit_rows(fits))
+        elif resource_type == "report":
+            _table(
+                f"Local reports ({len(reports)}){title_suffix}", *_report_rows(reports)
+            )
+        else:
+            _table(f"Local fits ({len(fits)}){title_suffix}", *_fit_rows(fits))
+            _table(
+                f"Local reports ({len(reports)}){title_suffix}", *_report_rows(reports)
+            )
+            if not project_filter:
+                projects = sorted(registry.get("projects", []))
+                print(f"\n  {_header(f'Local projects ({len(projects)})')}")
+                if projects:
+                    for p in projects:
+                        print(f"    {_green(p)}")
+                else:
+                    print(_dim("  (none)"))
+    else:
+        log.error("--local does not support resource type '%s'.", resource_type)
+        sys.exit(1)
+
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -317,7 +390,19 @@ def main():
         metavar="TYPE",
         help="Filter bin output by resource type: fit, report, or misc (only with 'bin').",
     )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "List locally downloaded resources from the local registry "
+            "(smefit_results/registry.json) instead of querying the server."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.local:
+        _main_local(args)
+        return
 
     from smefit.server_utils import Downloader, ServerError
 

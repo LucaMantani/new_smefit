@@ -68,7 +68,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `gim_table(global_information_matrix, params_to_plot=None)`
+- `global_information_table(global_information_matrix, params_to_plot=None)`
   - Share of each coefficient's variance contributed by each source.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.
@@ -83,7 +83,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
-- `plot_gim_heatmap(gim_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
+- `plot_global_information_heatmap(global_information_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the global information matrix as a heatmap.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.

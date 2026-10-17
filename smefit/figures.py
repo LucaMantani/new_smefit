@@ -357,8 +357,8 @@ def plot_posterior_correlations(
 
 
 @figure
-def plot_gim_heatmap(
-    gim_table,
+def plot_global_information_heatmap(
+    global_information_table,
     cmap="Blues",
     value_fmt="{:.1f}",
     colorbar=False,
@@ -367,7 +367,7 @@ def plot_gim_heatmap(
 
     Parameters
     ----------
-    gim_table : pd.DataFrame
+    global_information_table : pd.DataFrame
         Index = coeff_names, columns = source_names.
     cmap : str, optional
         Colormap. Sequential by default, as for
@@ -378,13 +378,13 @@ def plot_gim_heatmap(
         Whether to draw the colour scale alongside. Off by default: rows sum to
         100%, so the annotations already say what a cell is worth.
     """
-    shares = gim_table.values * 100
+    shares = global_information_table.values * 100
     # 0-100% unless a share falls outside it (see global_information_matrix):
     # clipping would hide exactly the cells the warning is about
     return _plot_heatmap(
         shares,
-        gim_table.index.tolist(),
-        gim_table.columns.tolist(),
+        global_information_table.index.tolist(),
+        global_information_table.columns.tolist(),
         vmin=min(0.0, shares.min()),
         vmax=max(100.0, shares.max()),
         cmap=cmap,

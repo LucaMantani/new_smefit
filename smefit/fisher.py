@@ -229,6 +229,14 @@ def global_information_matrix(aggregate_fisher_information_matrices):
 
     so that sum_k alpha[i, k] = 1 for every coefficient i.
 
+    Unlike the normalised Fisher diagonals, F_k[i, i] / F[i, i], which compare
+    the curvature along c_i with every other coefficient held fixed (the
+    question an individual fit asks), alpha splits the variance of c_i in the
+    global fit, with the others marginalised over. A source can then matter
+    through correlations alone: it constrains a direction that, once fixed,
+    breaks the degeneracy between c_i and other coefficients. The two agree
+    when the coefficients are uncorrelated.
+
     A share is non-negative when F_k is positive semi-definite, as it is for a
     chi2 linear in the coefficients. With quadratic corrections, or away from
     the SM point, one source's Hessian can have negative curvature, and its

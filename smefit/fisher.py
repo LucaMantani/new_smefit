@@ -139,6 +139,57 @@ def aggregate_fisher_information_matrices(
 # Global Information Matrix
 ############################
 
+# Same criterion, and default, as ``pca_settings.threshold``: an eigenvalue below
+# this fraction of the largest is a flat direction. Not read from pca_settings,
+# which would make every report runcard carry that block.
+_FLAT_THRESHOLD = 1e-12
+# Coefficients with at least this weight in a flat direction are named in the error.
+_FLAT_NAME_WEIGHT = 0.1
+
+
+def _check_invertible(fisher, coeff_names):
+    """Raise if ``fisher`` has a flat or negative-curvature direction.
+
+    Along such a direction the total Fisher matrix is no covariance's inverse,
+    so the variance a share is taken of is infinite or negative, and
+    ``np.linalg.inv`` returns large numbers rather than an error.
+
+    Parameters
+    ----------
+    fisher : np.ndarray
+        The total Fisher matrix, square.
+    coeff_names : list of str
+
+    Raises
+    ------
+    ValueError
+        Naming the coefficients that make up each offending direction.
+    """
+    # symmetrise: eigh reads one triangle only, see smefit.pca
+    eigenvalues, eigenvectors = np.linalg.eigh(0.5 * (fisher + fisher.T))
+    lam_max = eigenvalues.max()
+    bad = np.flatnonzero(eigenvalues <= _FLAT_THRESHOLD * max(lam_max, 0.0))
+    if bad.size == 0:
+        return
+
+    directions = []
+    for i in bad:
+        v = eigenvectors[:, i]
+        names = [
+            coeff_names[j]
+            for j in np.argsort(-np.abs(v))
+            if abs(v[j]) >= _FLAT_NAME_WEIGHT
+        ]
+        directions.append(f"  lambda = {eigenvalues[i]:.3e}: {', '.join(names)}")
+    raise ValueError(
+        f"Global information matrix: the total Fisher matrix has {bad.size} "
+        f"flat or negative-curvature direction(s), so the variances it would "
+        f"split between sources are not defined (lambda_max = {lam_max:.3e}):\n"
+        + "\n".join(directions)
+        + "\nFix or remove these coefficients, or add data constraining them; "
+        "pca_spectrum shows the full spectrum."
+    )
+
 
 def global_information_matrix(aggregate_fisher_information_matrices):
     """Compute the constraining power of each source on each coefficient.
@@ -171,6 +222,7 @@ def global_information_matrix(aggregate_fisher_information_matrices):
     matrices = [df.values for df in fim.values()]
 
     F_total = sum(matrices)
+    _check_invertible(F_total, coeff_names)
     Sigma = np.linalg.inv(F_total)
     diag_Sigma = np.diag(Sigma)
 

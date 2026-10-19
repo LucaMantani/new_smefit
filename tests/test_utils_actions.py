@@ -3,11 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from smefit.pca import PCA
-from smefit.rge.matrix import RGEMatrix
-from smefit.utils_actions import run_pca, write_rge_matrix
+from smefit.utils_actions import run_pca
 
 
 def test_run_pca_delegates_to_the_pca_object():
@@ -21,15 +18,7 @@ def test_run_pca_delegates_to_the_pca_object():
     result.write.assert_called_once_with(out)
 
 
-def test_write_rge_matrix_requires_rge_block(tmp_path):
-    """Without an rge: block rge_matrix is None, and the action must say so."""
-    with pytest.raises(ValueError, match="rge:"):
-        write_rge_matrix(None, tmp_path)
-
-
-def test_write_rge_matrix_graph_resolves(
-    fixtures_data_path, fixtures_theory_path, tmp_path
-):
+def test_rge_matrix_graph_resolves(fixtures_data_path, fixtures_theory_path, tmp_path):
     """The action resolves through reportengine on a fit-free runcard.
 
     Resolving (without executing) runs check_types and proves no fit settings

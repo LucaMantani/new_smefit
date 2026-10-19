@@ -27,6 +27,10 @@ rge:
 - To compute and save the matrix without running a fit, put
   `rge_matrix` under `actions_:` (the runcard still needs `datasets`,
   `coefficients` and this `rge:` block). Any fit action writes it as well.
+- `rge_matrix` only covers `datasets`. Each `external_chi2` likelihood (e.g. the
+  Drell-Yan ones) builds its own RGE matrix when it is loaded during a fit, and
+  saves it only if its entry sets `save_rge_path`; reuse it through that
+  entry's own `rg_matrix` key.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 

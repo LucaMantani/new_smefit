@@ -27,27 +27,6 @@ def test_write_rge_matrix_requires_rge_block(tmp_path):
         write_rge_matrix(None, tmp_path)
 
 
-def test_write_rge_matrix_does_not_rewrite_existing_file(tmp_path):
-    """produce_rge_matrix already wrote it; the action must not repeat that."""
-    (tmp_path / RGEMatrix.FILENAME).touch()
-    matrix = MagicMock(spec=RGEMatrix)
-    matrix.FILENAME = RGEMatrix.FILENAME
-
-    write_rge_matrix(matrix, tmp_path)
-
-    matrix.write.assert_not_called()
-
-
-def test_write_rge_matrix_writes_when_missing(tmp_path):
-    """Fallback: the action still guarantees the file exists."""
-    matrix = MagicMock(spec=RGEMatrix)
-    matrix.FILENAME = RGEMatrix.FILENAME
-
-    write_rge_matrix(matrix, tmp_path)
-
-    matrix.write.assert_called_once_with(tmp_path)
-
-
 def test_write_rge_matrix_graph_resolves(
     fixtures_data_path, fixtures_theory_path, tmp_path
 ):
@@ -76,7 +55,7 @@ def test_write_rge_matrix_graph_resolves(
     builder = ResourceBuilder(
         config,
         smefitAPI.provider_loaded,
-        [FuzzyTarget("write_rge_matrix", (), (), ())],
+        [FuzzyTarget("rge_matrix", (), (), ())],
         perform_final=False,
     )
     builder.rootns.update(smefitAPI.loadedenv.ns_dump())

@@ -94,8 +94,6 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Print the principal-component analysis and save it.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
-- `write_rge_matrix(rge_matrix, output_path)`
-  - Compute the RGE matrix and save it, without running a fit.
 
 ### `reportengine.report`
 

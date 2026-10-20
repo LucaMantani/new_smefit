@@ -79,13 +79,13 @@ datasets:
   - {name: CMS_tta_8TeV, order: NLO_QCD, group: LHC-top}
   # LHC-4H
   - {name: ATLAS_ttbb_13TeV_2016, order: NLO_QCD, group: LHC-4H}
-  - {name: ATLAS_tttt_13TeV_2023, order: NLO_QCD, group: LHC-4H}
-  - {name: ATLAS_tttt_13TeV_slep_inc, order: NLO_QCD, group: LHC-4H}
+  - {name: ATLAS_tttt_13TeV_2023, order: LO_QCD_EW, group: LHC-4H}
+  - {name: ATLAS_tttt_13TeV_slep_inc, order: LO_QCD_EW, group: LHC-4H}
   - {name: CMS_ttbb_13TeV_2016, order: NLO_QCD, group: LHC-4H}
   - {name: CMS_ttbb_13TeV_dilepton_inc, order: NLO_QCD, group: LHC-4H}
   - {name: CMS_ttbb_13TeV_ljets_inc, order: NLO_QCD, group: LHC-4H}
-  - {name: CMS_tttt_13TeV_2023, order: NLO_QCD, group: LHC-4H}
-  - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD, group: LHC-4H}
+  - {name: CMS_tttt_13TeV_2023, order: LO_QCD_EW, group: LHC-4H}
+  - {name: CMS_tttt_13TeV_slep_inc, order: LO_QCD_EW, group: LHC-4H}
 
 optimizer_settings:
     optimizer: adam

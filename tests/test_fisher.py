@@ -562,6 +562,20 @@ def test_gim_refuses_a_flat_direction_and_names_it():
     assert "OpA" not in str(err.value)
 
 
+def test_gim_refuses_a_flat_direction_in_float32():
+    """Under -f32 a flat direction is only flat to ~1e-7, far above the float64
+    threshold, and must still be caught."""
+    v = np.array([0.0, 1.0, -1.0]) / np.sqrt(2.0)
+    F = (np.eye(3) - np.outer(v, v)).astype(np.float32)
+    # rounding noise of float32 size along the flat direction
+    F += np.float32(1e-7) * np.outer(v, v).astype(np.float32)
+    names = ["OpA", "OpB", "OpC"]
+    fim = {"DS_A": pd.DataFrame(F, index=names, columns=names)}
+
+    with pytest.raises(ValueError, match="1 flat"):
+        global_information_matrix(fim)
+
+
 def test_gim_refuses_negative_total_curvature():
     """A total Fisher matrix that is not positive definite has no covariance."""
     fim = _fim(["OpA", "OpB"], DS_A=[[1.0, 0.0], [0.0, -1.0]])

@@ -196,7 +196,9 @@ def _check_invertible(fisher, coeff_names):
     # symmetrise: eigh reads one triangle only, see smefit.pca
     eigenvalues, eigenvectors = np.linalg.eigh(0.5 * (fisher + fisher.T))
     lam_max = eigenvalues.max()
-    bad = np.flatnonzero(eigenvalues <= _FLAT_THRESHOLD * max(lam_max, 0.0))
+
+    tol = max(_FLAT_THRESHOLD, 100 * np.finfo(fisher.dtype).eps)
+    bad = np.flatnonzero(eigenvalues <= tol * max(lam_max, 0.0))
     if bad.size == 0:
         return
 

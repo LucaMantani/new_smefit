@@ -17,6 +17,7 @@ from smefit.tables import (
     chi2_scan_table,
     coefficient_bounds_table,
     fisher_diagonals_normalised,
+    global_information_table,
     mass_scan_table,
     pca_components,
     pca_spectrum,
@@ -62,6 +63,34 @@ def test_fisher_diagonals_normalised_unknown_name_falls_back_to_raw():
     result = fisher_diagonals_normalised(fim)
 
     assert result.index.tolist() == ["NotARealOp"]
+
+
+def test_global_information_table_keeps_fractions_and_latex_labels():
+    """Values pass through as fractions, like fisher_diagonals_normalised;
+    known coefficients get their LaTeX label."""
+    gim = pd.DataFrame(
+        {"DS_A": [0.25, 0.6], "DS_B": [0.75, 0.4]}, index=["OQQ1", "NotARealOp"]
+    )
+
+    result = global_information_table(gim)
+
+    assert result.index.tolist() == [coeff_info_latex["OQQ1"], "NotARealOp"]
+    np.testing.assert_allclose(result.to_numpy(), gim.to_numpy())
+
+
+def test_global_information_table_restricts_and_orders_by_params_to_plot():
+    """params_to_plot picks and orders the rows; shares are unchanged, each row
+    being a split of that coefficient's own variance."""
+    gim = pd.DataFrame(
+        {"DS_A": [0.2, 0.5, 0.9], "DS_B": [0.8, 0.5, 0.1]},
+        index=["OpA", "OpB", "OpZZ"],
+    )
+
+    result = global_information_table(gim, params_to_plot=["OpZZ", "OpA", "Nope"])
+
+    assert result.index.tolist() == ["OpZZ", "OpA"]
+    assert result.loc["OpZZ"].tolist() == [0.9, 0.1]
+    assert gim.index.tolist() == ["OpA", "OpB", "OpZZ"]  # node left untouched
 
 
 def test_fisher_diagonals_normalised_restricts_and_orders_by_params_to_plot():

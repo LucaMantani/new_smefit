@@ -5,6 +5,7 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+import pytest
 
 from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import (
@@ -19,6 +20,7 @@ from smefit.fisher import (
     _resolve_groups,
     aggregate_fisher_information_matrices,
     fisher_information_matrices,
+    global_information_matrix,
     total_fisher_information_matrix,
 )
 from smefit.model import EFTModel
@@ -469,3 +471,141 @@ def test_total_fisher_equals_the_sum_when_the_covmat_is_block_diagonal():
     )
 
     assert np.isclose(combined, summed)
+
+
+# ---------------------------------------------------------------------------
+# Global information matrix
+# ---------------------------------------------------------------------------
+
+
+def _fim(names, **sources):
+    return {
+        source: pd.DataFrame(np.asarray(F, dtype=float), index=names, columns=names)
+        for source, F in sources.items()
+    }
+
+
+def test_gim_diagonal_fishers_reduce_to_the_diagonal_shares():
+    """Uncorrelated coefficients: alpha[i, k] = F_k[i, i] / F[i, i]."""
+    fim = _fim(["OpA", "OpB"], DS_A=np.diag([3.0, 1.0]), DS_B=np.diag([1.0, 3.0]))
+
+    gim = global_information_matrix(fim)
+
+    assert gim.index.tolist() == ["OpA", "OpB"]
+    assert gim.columns.tolist() == ["DS_A", "DS_B"]
+    np.testing.assert_allclose(gim.to_numpy(), [[0.75, 0.25], [0.25, 0.75]])
+
+
+def test_gim_credits_a_source_constraining_only_through_correlations():
+    """DS_A constrains OpA alone, DS_B only the sum OpA + OpB.
+
+    Sigma = F^{-1} = [[1, -1], [-1, 2]]. OpA is pinned by DS_A, so DS_B gets
+    none of its variance despite having half of its Fisher diagonal. DS_A has
+    no curvature along OpB, yet gets half of OpB's variance: fixing OpA is what
+    lets DS_B's sum constrain OpB.
+    """
+    fim = _fim(
+        ["OpA", "OpB"],
+        DS_A=[[1.0, 0.0], [0.0, 0.0]],
+        DS_B=[[1.0, 1.0], [1.0, 1.0]],
+    )
+
+    gim = global_information_matrix(fim)
+
+    np.testing.assert_allclose(gim.to_numpy(), [[1.0, 0.0], [0.5, 0.5]], atol=1e-12)
+
+
+def test_gim_rows_sum_to_one():
+    """Shares of one coefficient's variance add up to all of it."""
+    rng = np.random.default_rng(0)
+    names = ["OpA", "OpB", "OpC"]
+    sources = {}
+    for k in range(4):
+        m = rng.normal(size=(3, 3))
+        sources[f"DS_{k}"] = m @ m.T
+
+    gim = global_information_matrix(_fim(names, **sources))
+
+    np.testing.assert_allclose(gim.sum(axis=1).to_numpy(), 1.0)
+
+
+def test_gim_of_grouped_sources_is_the_sum_of_their_columns():
+    """Grouping before the attribution agrees with summing columns after it,
+    alpha being linear in F_k."""
+    rng = np.random.default_rng(1)
+    names = ["OpA", "OpB"]
+    sources = {}
+    for k in "ABC":
+        m = rng.normal(size=(2, 2))
+        sources[f"DS_{k}"] = m @ m.T
+    fim = _fim(names, **sources)
+
+    grouped = global_information_matrix(
+        aggregate_fisher_information_matrices(fim, {"Merged": ["DS_A", "DS_B"]})
+    )
+    ungrouped = global_information_matrix(fim)
+
+    assert grouped.columns.tolist() == ["Merged", "DS_C"]
+    np.testing.assert_allclose(grouped["Merged"], ungrouped["DS_A"] + ungrouped["DS_B"])
+    np.testing.assert_allclose(grouped["DS_C"], ungrouped["DS_C"])
+
+
+def test_gim_refuses_a_flat_direction_and_names_it():
+    """A flat combination OpB - OpC raises, rather than inverting to ~1e16."""
+    v = np.array([0.0, 1.0, -1.0]) / np.sqrt(2.0)
+    fim = _fim(["OpA", "OpB", "OpC"], DS_A=np.eye(3) - np.outer(v, v))
+
+    with pytest.raises(ValueError, match="1 flat") as err:
+        global_information_matrix(fim)
+
+    assert "OpB, OpC" in str(err.value) or "OpC, OpB" in str(err.value)
+    assert "OpA" not in str(err.value)
+
+
+def test_gim_refuses_a_flat_direction_in_float32():
+    """Under -f32 a flat direction is only flat to ~1e-7, far above the float64
+    threshold, and must still be caught."""
+    v = np.array([0.0, 1.0, -1.0]) / np.sqrt(2.0)
+    F = (np.eye(3) - np.outer(v, v)).astype(np.float32)
+    # rounding noise of float32 size along the flat direction
+    F += np.float32(1e-7) * np.outer(v, v).astype(np.float32)
+    names = ["OpA", "OpB", "OpC"]
+    fim = {"DS_A": pd.DataFrame(F, index=names, columns=names)}
+
+    with pytest.raises(ValueError, match="1 flat"):
+        global_information_matrix(fim)
+
+
+def test_gim_refuses_negative_total_curvature():
+    """A total Fisher matrix that is not positive definite has no covariance."""
+    fim = _fim(["OpA", "OpB"], DS_A=[[1.0, 0.0], [0.0, -1.0]])
+
+    with pytest.raises(ValueError, match="OpB"):
+        global_information_matrix(fim)
+
+
+def test_gim_warns_on_negative_shares(caplog):
+    """An indefinite F_k gives a negative share, kept and logged; the row still
+    sums to 1, so another share goes above it."""
+    fim = _fim(
+        ["OpA", "OpB"],
+        DS_A=[[2.0, 1.5], [1.5, 2.0]],
+        DS_B=[[1.0, -1.0], [-1.0, -0.5]],
+    )
+
+    with caplog.at_level(logging.WARNING):
+        gim = global_information_matrix(fim)
+
+    assert gim.loc["OpB", "DS_B"] < 0
+    assert gim.loc["OpB", "DS_A"] > 1
+    np.testing.assert_allclose(gim.sum(axis=1).to_numpy(), 1.0)
+    assert "OpB <- DS_B" in caplog.text
+
+
+def test_gim_silent_when_every_source_is_positive_semidefinite(caplog):
+    fim = _fim(["OpA", "OpB"], DS_A=np.eye(2), DS_B=[[1.0, 1.0], [1.0, 1.0]])
+
+    with caplog.at_level(logging.WARNING):
+        global_information_matrix(fim)
+
+    assert "negative share" not in caplog.text

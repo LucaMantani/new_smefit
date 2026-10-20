@@ -153,6 +153,12 @@ template_text: |
     Fisher heatmap
     ===========
     {@plot_fisher_diagonals_heatmap@}
+    Global information table
+    ===========
+    {@global_information_table@}
+    Global information heatmap
+    ===========
+    {@plot_global_information_heatmap@}
     PCA spectrum
     ===========
     {@plot_pca_spectrum@}

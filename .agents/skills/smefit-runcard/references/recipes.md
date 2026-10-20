@@ -281,6 +281,9 @@ template_text: |
   # Fisher information
   {@fisher_diagonals_normalised@}
   {@plot_fisher_diagonals_heatmap@}
+  # Global information matrix
+  {@global_information_table@}
+  {@plot_global_information_heatmap@}
 actions_:
   - report
 ```
@@ -290,9 +293,21 @@ actions_:
   `gradient_descent_settings: {sm_solution: True}` skips optimization and uses
   the SM point).
 - Add `group: <label>` to dataset entries (and external chi2 blocks) to
-  aggregate Fisher matrices per group instead of per dataset.
-- `plot_fisher_diagonals_heatmap` takes the same `cmap`, `value_fmt` and
-  `colorbar` as the correlation heatmap — see "Configuring an action" below.
+  aggregate Fisher matrices per group instead of per dataset. The global
+  information matrix is computed from those aggregated matrices, so it groups
+  the same way.
+- **Which one to show.** `fisher_diagonals_normalised` compares curvature along
+  each coefficient with all others held fixed — the individual-fit view.
+  `global_information_table` splits each coefficient's variance in the
+  *global* fit between sources, others marginalised, so it credits a source
+  that matters only by breaking a degeneracy. They agree when the coefficients
+  are uncorrelated; for a global fit the GIM is usually the question asked.
+- The GIM inverts the total Fisher matrix, so it raises if that has a flat
+  direction (an unconstrained coefficient or combination) and names the
+  coefficients involved. Fix or drop them, or add data; the `pca.yaml`
+  template shows the spectrum.
+- `plot_fisher_diagonals_heatmap` and `plot_global_information_heatmap` take
+  the same `cmap`, `value_fmt` and `colorbar` as the correlation heatmap — see "Configuring an action" below.
   `value_fmt: "{:.2f}"` is the one worth knowing: the default single decimal
   rounds a small but non-zero share to `0.0`.
 
@@ -394,10 +409,12 @@ Argument values are parsed as YAML, so strings, numbers and booleans work.
 **An action argument beats a top-level key** when both name the same
 parameter — the specific wins.
 
-Both heatmaps take `cmap`, `value_fmt` and `colorbar`, and they share those
-names, so one top-level `cmap:` sets both; use an action argument where they
-should differ. What is *not* settable is what would stop two plots being
-comparable: the colour scale ([-1, 1] for correlations, 0–100% for Fisher),
+The correlation, Fisher and global information heatmaps all take `cmap`,
+`value_fmt` and `colorbar`, and they share those names, so one top-level `cmap:`
+sets all three; use an action argument where they should differ. What is *not*
+settable is what would stop two plots being comparable: the colour scale
+([-1, 1] for correlations, 0–100% for Fisher and the GIM — the GIM's widening
+only when a share falls outside it, see the smefit-analysis skill),
 square cells, and the correlation heatmap's heading, which is always the fit's
 label so that every heatmap says which fit it is.
 
@@ -414,9 +431,9 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised` and
-`coefficient_bounds_table` — so the Fisher table's CSV and the heatmap drawn
-from it are restricted together, and a bounds table lists the same operators as
+Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised`,
+`global_information_table` and `coefficient_bounds_table` — so the Fisher and
+GIM tables' CSVs and the heatmaps drawn from them are restricted together, and a bounds table lists the same operators as
 the correlation heatmap beside it. An action argument still overrides it for one figure.
 
 - Write it as a YAML list of coefficient names — the raw names, not their LaTeX

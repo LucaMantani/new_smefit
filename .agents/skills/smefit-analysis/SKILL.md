@@ -78,6 +78,10 @@ Reading a row:
   owed to that source; a row sums to 100%. The normalised Fisher diagonals
   instead hold every other coefficient fixed, so the two differ exactly where
   correlations matter.
+- That global fit leaves out **systematics shared across datasets**: each
+  dataset's Fisher matrix uses only its own block of the covariance matrix,
+  and the global one is their sum. Grouping the datasets with `group:` does not
+  bring these systematics back.
 - A source can earn a large share of a coefficient it has no sensitivity to,
   by pinning a correlated one; and a source sensitive to a coefficient can get
   ~0% if another source already fixes that direction.

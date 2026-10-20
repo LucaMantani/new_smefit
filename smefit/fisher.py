@@ -246,6 +246,12 @@ def global_information_matrix(aggregate_fisher_information_matrices):
     variance up rather than down, which the others make up for. Such entries
     are kept and logged with a warning.
 
+    The global fit here is the one with F = sum_k F_k, and each per-dataset
+    F_k comes from that dataset's own block of the covariance matrix. So the
+    variance being split ignores systematics shared across datasets; grouping
+    those datasets with ``data_groups`` does not bring them back, since the
+    group sums the same blocks.
+
     The sources are those of ``aggregate_fisher_information_matrices``, so
     ``data_groups`` are merged before the attribution, not after. Here the two
     agree, ``alpha`` being linear in F_k, but an attribution that is not (one

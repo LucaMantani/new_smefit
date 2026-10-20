@@ -107,7 +107,8 @@ def global_information_table(global_information_matrix, params_to_plot=None):
         Restrict the rows to these coefficients, in this order. All of them by
         default. The shares of a row are taken of that coefficient's variance
         in the full fit, so a row says the same thing whichever others are kept
-        alongside it.
+        alongside it. The full fit leaves out systematics shared across
+        datasets: see :func:`smefit.fisher.global_information_matrix`.
 
     Returns
     -------

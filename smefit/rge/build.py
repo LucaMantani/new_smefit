@@ -177,12 +177,12 @@ def build_rge_matrix(
     rge_cache = {}
     rge_runner = RGE.from_rge_dict(rge_dict, coeff_list)
 
-    # load precomputed RGE matrix if it exists. A prefix-relative path is fine:
-    # smefitConfig.parse_rge resolves and fetches it early, and RGEMatrix.read_cache
-    # does the same for every other caller (external chi2 modules in particular).
-    path_to_rge_mat = rge_dict.get("rg_matrix", None)
-    if path_to_rge_mat:
-        rge_cache = RGEMatrix.read_cache(path_to_rge_mat, rge_runner.settings)
+    # Start from the precomputed matrices, if any. `rg_matrix` is a fit name, a
+    # directory or the file: smefitConfig.parse_rge resolves it early, and
+    # RGEMatrix.read_cache does the same for every other caller.
+    rg_matrix = rge_dict.get("rg_matrix", None)
+    if rg_matrix:
+        rge_cache = RGEMatrix.read_cache(rg_matrix, rge_runner.settings)
 
     # compute or fetch the RGE matrix for each scale
     rgemats = resolve_rge_matrices(scales, coeff_list, rge_runner, rge_cache)

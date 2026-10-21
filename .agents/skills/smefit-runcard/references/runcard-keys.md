@@ -32,7 +32,7 @@ In runcards, use the key name as a prefix for relative paths:
     data_path:  smefit_database/commondata
     theory_path: smefit_database/theory
     path:        new_smefit/external_chi2/drell_yan/MyModule.py
-    rg_matrix:   smefit_results/fits/my_fit/rge_matrix.pkl
+    rg_matrix:   smefit_results/fits/my_fit/rge_matrix.pkl  (or just: my_fit)
 
 Users can add extra aliases for any directory (e.g. an alternative database):
     lhc_database: /data/shared/lhc_database_v2
@@ -350,12 +350,19 @@ Validation errors raised while parsing:
 
 Parse and validate RGE settings.
 
+`rg_matrix` reuses a precomputed RGE matrix, and is resolved here to
+the pickle it names through `smefit.rge.RGEMatrix.locate`. It is a fit
+name (`rg_matrix: my_fit`, looked up like a `fits:` entry and downloaded
+from the server if missing), a directory holding an `rge_matrix.pkl`,
+or the pickle file itself. A local directory with a bare name must be
+written `./name`, or it is read as a fit name.
+
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
 - `adm_QCD`
 - `init_scale`
 - `obs_scale` — default: `'dynamic'`
-- `rg_matrix`
+- `rg_matrix` — default: `(no default)`
 - `scale_variation`
 - `smeft_accuracy` — default: `'integrate'`
 - `yukawa` — default: `'top'`

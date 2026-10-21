@@ -131,8 +131,12 @@ class RGEChi2:
 """
 
 
-def test_prefix_relative_rg_matrix_kwarg_loads(tmp_path, coeff_group):
-    """`rg_matrix` is forwarded verbatim, so read_cache is what resolves it.
+@pytest.mark.parametrize(
+    "rg_matrix", ["my_fit", f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}"]
+)
+def test_prefix_relative_rg_matrix_kwarg_loads(tmp_path, coeff_group, rg_matrix):
+    """`rg_matrix` is forwarded verbatim, so read_cache is what resolves it —
+    a fit name included.
 
     load_external_chi2 has no way to know which of the extra kwargs are paths;
     prefix support for this one lives in RGEMatrix.read_cache.
@@ -152,7 +156,7 @@ def test_prefix_relative_rg_matrix_kwarg_loads(tmp_path, coeff_group):
     external_chi2 = {
         "RGEChi2": {
             "path": str(module),
-            "rg_matrix": f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}",
+            "rg_matrix": rg_matrix,
         }
     }
     with patch(

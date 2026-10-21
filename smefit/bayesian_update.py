@@ -84,11 +84,12 @@ def build_exact_posterior_prior(
     # Local import to avoid circular dependency
     from smefit.api import smefitAPI
 
-    prev_chi2 = smefitAPI.chi2(**prev_fit.fit_runcard)
+    prev_runcard = prev_fit.rebuild_runcard()
+    prev_chi2 = smefitAPI.chi2(**prev_runcard)
     log_likelihood_1 = jax.jit(lambda theta: -prev_chi2(theta) / 2.0)
 
     # --- Reconstruct prior_1 in physical space via the API (handles chains recursively) ---
-    prior_1 = smefitAPI.prior(**prev_fit.fit_runcard)
+    prior_1 = smefitAPI.prior(**prev_runcard)
     if prev.whitening_active:
         if prev.whitening_transformation is None:
             raise ConfigError(

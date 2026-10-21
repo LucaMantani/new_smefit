@@ -85,7 +85,7 @@ Use `smefit_ls` to list the contents of the local registry, and `smefit_get` to 
 
 ### Loading an RGE matrix from a stored fit
 
-Once a fit containing an `rge_matrix.pkl` has been downloaded or produced locally, you can point a new runcard at it using the `smefit_results` prefix.
+A fit run with an `rge:` block writes its RGE matrix to `rge_matrix.pkl` in its directory. To reuse it, name the fit in `rg_matrix`:
 
 **Vanilla case** — `rg_matrix` lives inside the `rge:` block:
 
@@ -94,19 +94,27 @@ rge:
   init_scale: 1000
   obs_scale: 91.2
   yukawa: top
-  rg_matrix: smefit_results/fits/my_fit/rge_matrix.pkl
+  rg_matrix: my_fit
 ```
 
-**External likelihood case** — `rg_matrix` lives inside the relevant `external_chi2` entry:
+`rg_matrix` takes three forms:
+
+- a **fit name** (`my_fit`): looked up in `smefit_results/fits/` like a `fits:` entry, and downloaded from the server if it is missing;
+- a **directory** holding an `rge_matrix.pkl` (`smefit_results/fits/my_fit`). A local directory with a bare name must be written `./name`, or it is read as a fit name;
+- the **file** itself (`smefit_results/fits/my_fit/rge_matrix.pkl`), as before.
+
+**External likelihood case** — `rg_matrix` lives inside the relevant `external_chi2` entry, and takes the same three forms:
 
 ```yaml
 external_chi2:
   CMS_DYMee_13TeV:
     path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
-    rg_matrix: smefit_results/fits/my_fit/CMS_DYMee_13TeV/rge_matrix.pkl #(needs to be saved there manually)
+    rg_matrix: smefit_results/fits/my_fit/CMS_DYMee_13TeV #(needs to be saved there manually)
 ```
 
-In both cases the `smefit_results/` prefix is resolved automatically against the path configured in `.config/paths.yaml`.
+In all cases the `smefit_results/` prefix is resolved automatically against the path configured in `.config/paths.yaml`.
+
+A Bayesian update (`bayesian_update:`) reuses the previous fit's own `rge_matrix.pkl` automatically when it rebuilds that fit's likelihood. External likelihoods are rebuilt exactly as the previous runcard configured them.
 
 ### Automatic fit download
 

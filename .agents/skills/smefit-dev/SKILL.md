@@ -474,6 +474,32 @@ no Python branching on traced values, no numpy in the hot path, no in-place
 mutation. Precision is set once at startup by `smefitEnvironment`
 (`-f32` flag) — never call `jax.config` yourself.
 
+## `smefit.utils` is the bottom of the import graph
+
+`smefit/utils.py` imports nothing from `smefit` — only the standard library,
+JAX/numpy and third-party packages. That is what lets any module, including
+`core.py`, `priors.py` and `fit_result.py`, do `from smefit.utils import ...`
+without a circular import. `tests/test_utils.py::test_utils_imports_no_smefit_module`
+enforces it.
+
+- **Put a helper in `utils.py`** when it works on plain values and arrays, or
+  only duck-types a smefit object by its attributes (`resolve_posterior` takes
+  anything with `.resolve` and `.names`; it never imports `CoefficientGroup`).
+- **Put it next to its domain object** as soon as it needs to import one —
+  a `Fit`, a `Prior`, a `CoefficientGroup` used for more than a type hint. The
+  Bayesian-update prior builder needs `Fit` and the prior classes, so it lives
+  in `smefit/bayesian_update.py`, not `utils.py`. If the only smefit import
+  would be for an annotation, drop the annotation (or duck-type it) rather than
+  add the import.
+- Do not reach for a function-local import to sneak a smefit module into
+  `utils.py`: it hides the cycle instead of removing it, and the test above
+  rejects it anyway.
+
+`utils.py` is also a provider module (it is in `smefit_providers`, for
+`run_test`/`run_prior_test`/`chi2_timing`), so the rule applies to actions
+added there too: an action that needs domain imports goes in
+`smefit/utils_actions.py`.
+
 ## After the change
 
 1. **Tests** — mirror the module: `smefit/<mod>.py` → `tests/test_<mod>.py`.

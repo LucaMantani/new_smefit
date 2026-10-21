@@ -17,6 +17,7 @@ from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
+from smefit.bayesian_update import build_exact_posterior_prior
 from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
@@ -37,7 +38,6 @@ from smefit.paths import (
 from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
 from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
-from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import (
     _whitening_baseline_shift,
     _whitening_gradient_descent_shift,

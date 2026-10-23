@@ -6,8 +6,10 @@ Functions for creating figures and plots.
 
 import logging
 
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 from reportengine.figure import figure, figuregen
 
 from smefit.op_to_latex import coeff_info_latex
@@ -131,7 +133,12 @@ def plot_chi2_scan(individual_chi2_scans):
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     for name, data in results.items():
         label = coeff_info_latex.get(name, name)
-        fig, ax = plt.subplots(figsize=(6, 5), layout="constrained")
+        # Not plt.subplots, here or in any @figuregen: reportengine materialises
+        # the whole generator before saving and never closes what it saved, so
+        # figures registered with pyplot pile up (and warn past 20). A bare
+        # Figure is not tracked by pyplot and is freed once written.
+        fig = Figure(figsize=(6, 5), layout="constrained")
+        ax = fig.subplots()
         ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
         ax.set_xlabel(label)
         ax.set_ylabel(r"$\chi^2$")
@@ -354,3 +361,225 @@ def plot_posterior_correlations(
         colorbar=colorbar,
         title=fit.plot_label,
     )
+
+
+def _tex_escape(text):
+    """Escape the characters LaTeX treats specially in text mode.
+
+    Dataset names are plain identifiers full of underscores, and the figures
+    render text through usetex, where a bare ``_`` is a math-mode error.
+    """
+    for char in ("\\", "_", "%", "&", "#", "$"):
+        text = text.replace(char, "\\" + char)
+    return text
+
+
+def _chi2(residuals, covmat):
+    """``r^T C^{-1} r``, by a solve rather than an explicit inverse."""
+    return float(residuals @ np.linalg.solve(covmat, residuals))
+
+
+def _stairs_band(axis, low, high, edges, **kwargs):
+    """Fill between *low* and *high*, constant across each bin."""
+    return axis.stairs(high, edges, baseline=low, fill=True, linewidth=0, **kwargs)
+
+
+def _best_fit_predictions(fit, eft_model, coefficients):
+    """Theory predictions at the fit's best-fit point.
+
+    The predictions are those of *this* runcard's ``eft_model``, evaluated at
+    the values the fit found for the runcard's free coefficients — so the
+    datasets plotted need not be the ones that were fitted.
+
+    Returns
+    -------
+    np.ndarray, shape (n_data,)
+    """
+    best_fit_point = fit.fit_results.best_fit_point
+    free = coefficients.free_names
+    missing = [name for name in free if name not in best_fit_point]
+    if missing:
+        raise ValueError(
+            f"Fit '{fit.fit_name}' has no best-fit value for {missing}, which "
+            "are free in this runcard. Declare as free only coefficients the "
+            "fit determined."
+        )
+    if fit.use_quad != eft_model.use_quad:
+        log.warning(
+            "Fit '%s' was run with use_quad=%s, but the predictions are drawn "
+            "with use_quad=%s.",
+            fit.fit_name,
+            fit.use_quad,
+            eft_model.use_quad,
+        )
+
+    best_point = jnp.array([best_fit_point[name] for name in free])
+    return np.asarray(eft_model.forward_map(best_point))
+
+
+@figuregen
+def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_covmat):
+    """Compare the data with the SM and with the EFT at a fit's best-fit point.
+
+    Yields one ``(figure, dataset_name)`` per dataset of the runcard. The upper
+    panel shows
+
+    - the measurements, with the total experimental uncertainty as error bar
+      (statistical and every systematic, correlated or not, in quadrature —
+      the diagonal of the experimental covmat);
+    - the SM prediction, banded by its theory uncertainty (the diagonal of the
+      theory covmat), whether or not ``use_theory_covmat`` puts it in the fit;
+    - the EFT prediction at the fit's best-fit point.
+
+    The predictions are drawn constant across each bin. The lower panel shows
+    the same, divided by the SM. The legend gives the :math:`\\chi^2` per
+    data point of the SM and of the EFT best fit.
+
+    The data and the theory come from this runcard — its ``datasets``,
+    ``coefficients``, ``use_quad`` and ``rge`` — and only the coefficient values
+    from ``fit``, so a runcard listing several ``fits`` overlays nothing: it
+    gets one set of figures per fit, named after it.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run joint fit, loaded from disk. Every free coefficient of
+        this runcard must be one it determined.
+    data : smefit.core.DataGroup
+    theory : smefit.core.TheoryGroup
+    eft_model : smefit.model.EFTModel
+    coefficients : smefit.core.CoefficientGroup
+    fit_covmat : jnp.ndarray
+        The covariance of the likelihood, so the :math:`\\chi^2` follows
+        ``use_t0`` and ``use_theory_covmat`` as a fit would. Only the
+        dataset's diagonal block enters, as in ``datasets_chi2``: correlations
+        across datasets are ignored.
+
+    Raises
+    ------
+    ValueError
+        If the fit was run one coefficient at a time — its best-fit values
+        come from separate one-parameter fits, not one point in the joint
+        space the predictions need — or lacks a coefficient free in this
+        runcard.
+    """
+    if fit.individual_fit:
+        raise ValueError(
+            f"Fit '{fit.fit_name}' was run one coefficient at a time, so it has "
+            "no joint best-fit point to evaluate the predictions at."
+        )
+    if data.names != theory.names:
+        raise ValueError(
+            f"Data and theory contain different datasets.\n"
+            f"  data:   {data.names}\n"
+            f"  theory: {theory.names}"
+        )
+
+    set_plot_style()
+
+    eft_best = _best_fit_predictions(fit, eft_model, coefficients)
+    sm = np.asarray(theory.sm_pred)
+    sm_err = np.sqrt(np.diag(np.asarray(theory.sm_covmat)))
+    cv = np.asarray(data.cv)
+    exp_err = np.sqrt(np.diag(np.asarray(data.exp_covmat)))
+    covmat = np.asarray(fit_covmat)
+
+    offset = 0
+    for name, ndata in zip(data.names, data.ndata_list):
+        idx = slice(offset, offset + ndata)
+        offset += ndata
+        x = np.arange(1, ndata + 1)
+        block = covmat[idx, idx]
+        sm_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(
+            _chi2(cv[idx] - sm[idx], block) / ndata
+        )
+        eft_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(
+            _chi2(cv[idx] - eft_best[idx], block) / ndata
+        )
+        has_th_err = bool(sm_err[idx].any())
+
+        # a bare Figure, not plt.subplots: see plot_chi2_scan
+        fig = Figure(figsize=(max(7, ndata * 0.4), 7), layout="constrained")
+        ax, ax_ratio = fig.subplots(
+            2,
+            1,
+            sharex=True,
+            gridspec_kw={"height_ratios": [3, 1], "hspace": 0.05},
+        )
+        # The theory is drawn across its whole bin, a central line over its
+        # band; the data are points on top. The gids name each artist, which is
+        # how the tests find them.
+        edges = np.arange(0.5, ndata + 1.5)
+        for axis, norm in ((ax, 1.0), (ax_ratio, sm[idx])):
+            sm_band = (
+                _stairs_band(
+                    axis,
+                    (sm[idx] - sm_err[idx]) / norm,
+                    (sm[idx] + sm_err[idx]) / norm,
+                    edges,
+                    color="C0",
+                    alpha=0.3,
+                    zorder=2,
+                    gid="sm_band",
+                )
+                if has_th_err
+                else None
+            )
+            # baseline=None: an unfilled stairs otherwise closes down to zero
+            # at both ends of the axis
+            sm_line = axis.stairs(
+                sm[idx] / norm,
+                edges,
+                baseline=None,
+                color="C0",
+                linewidth=1.5,
+                zorder=3,
+                gid="sm",
+            )
+            eft_line = axis.stairs(
+                eft_best[idx] / norm,
+                edges,
+                baseline=None,
+                color="C1",
+                linewidth=1.5,
+                zorder=3.1,
+                gid="eft",
+            )
+            data = axis.errorbar(
+                x,
+                cv[idx] / norm,
+                # an error must stay positive when divided by a negative SM
+                yerr=exp_err[idx] / np.abs(norm),
+                fmt="o",
+                color="black",
+                markersize=4,
+                capsize=3,
+                elinewidth=1,
+                zorder=4,
+            )
+            axis.grid(alpha=0.3)
+
+        # Each theory entry pairs a line with its band, so the legend says what the
+        # shading is.
+        handles_labels = [
+            (
+                (sm_band, sm_line) if has_th_err else sm_line,
+                rf"$\mathrm{{SM}},\ {sm_chi2}$",
+            ),
+            (
+                eft_line,
+                # the fit's label is the runcard's, already LaTeX or plain text
+                rf"$\mathrm{{EFT}}$: {fit.plot_label}, ${eft_chi2}$",
+            ),
+            (data, r"$\mathrm{Data,\ stat.} + \mathrm{syst.}$"),
+        ]
+        ax.legend(*zip(*handles_labels), fontsize=12)
+
+        ax.set_title(rf"$\mathrm{{{_tex_escape(name)}}}$", fontsize=18)
+        ax.set_ylabel(r"$\mathrm{Observable}$", fontsize=16)
+        ax_ratio.axhline(1.0, color="black", linewidth=0.8, linestyle="--")
+        ax_ratio.set_ylabel(r"$\mathrm{Ratio\ to\ SM}$", fontsize=16)
+        ax_ratio.set_xlabel(r"$\mathrm{Bin}$")
+        ax_ratio.set_xticks(x)
+        ax_ratio.set_xlim(edges[0], edges[-1])
+        yield fig, name

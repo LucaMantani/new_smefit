@@ -57,6 +57,10 @@ ACTION_MODULES = {"smefit.tables", "smefit.figures"}
 # Actions that follow neither rule.
 EXTRA_ACTION_NAMES = {"chi2_timing", "time_chi2_vec"}
 
+# Resources only a runcard with its own `datasets`/`coefficients` can build. An
+# action taking one of them is not a fits-only action even when it reads a fit.
+RUNCARD_SETUP_RESOURCES = {"data", "theory", "eft_model", "coefficients", "chi2"}
+
 
 def is_runnable_action(module_name, func_name):
     """True if `func_name` is a legitimate `actions_:` entry."""
@@ -644,15 +648,20 @@ def collect_fit_reading_actions(action_modules):
     is whatever each was fitted with. Every other action builds a chi2 and
     needs the full setup — which is what validate_runcard.py uses this for.
 
-    An action qualifies by taking the `fit`/`fits` resource. `report` is added
-    by hand: it comes from reportengine, and its real actions are the `{@…@}`
-    tags of the template.
+    An action qualifies by taking the `fit`/`fits` resource, unless it also
+    takes one built from the runcard's own `datasets`/`coefficients`
+    (`RUNCARD_SETUP_RESOURCES`): `plot_data_theory_comparison` reads a fit but
+    draws this runcard's data. `report` is added by hand: it comes from
+    reportengine, and its real actions are the `{@…@}` tags of the template.
     """
     names = {"report"}
     for mod in action_modules:
         for fn in mod["functions"]:
-            if is_runnable_action(mod["module"], fn["name"]) and (
-                {"fit", "fits"} & set(fn["params"])
+            params = set(fn["params"])
+            if (
+                is_runnable_action(mod["module"], fn["name"])
+                and {"fit", "fits"} & params
+                and not RUNCARD_SETUP_RESOURCES & params
             ):
                 names.add(fn["name"])
     return sorted(names)

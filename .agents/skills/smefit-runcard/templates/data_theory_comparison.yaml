@@ -1,0 +1,50 @@
+# AUTO-COPIED from template_runcards/data_theory_comparison.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Data against theory, in the SM and in the EFT at the best-fit point of a fit
+# that has already been run: no fit is run here. One figure per dataset and per
+# fit listed under `fits`, with the measurements, the SM prediction with its
+# theory uncertainty and the EFT prediction at the fit's best-fit point.
+#
+# The data and theory are this runcard's own, so it carries the full setup of
+# a fit runcard; the fit only supplies the coefficient values. Every free
+# coefficient below must be one the fit determined, and the setup should match
+# the one the fit was run with (use_quad, rge) for the predictions to be its.
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory
+use_theory_covmat: True
+use_t0: True
+
+rge:
+  init_scale: 10000.0
+  obs_scale: dynamic
+  smeft_accuracy: integrate
+  yukawa: top
+  adm_QCD: false
+
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+
+coefficients:
+  OpWB: {free: True}
+  OpD: {free: True}
+
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+
+template_text: |
+    Data-theory comparison
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_data_theory_comparison@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

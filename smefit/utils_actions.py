@@ -56,3 +56,21 @@ def run_pca(pca, output_path):
     """Print the principal-component analysis and save it."""
     pca.print_summary()
     pca.write(output_path)
+
+
+def write_dataset_table(dataset_table_tex, dataset_bibliography, output_path):
+    """Write the LaTeX table of the runcard's datasets, for a paper's appendix.
+
+    ``dataset_table.tex`` holds the table. With ``fetch_bibtex: true`` the
+    table cites its references with INSPIRE keys, and ``dataset_table.bib``
+    holds their BibTeX. Otherwise — the default, or INSPIRE unreachable — no
+    ``.bib`` is written, and the table links to its references and compiles on
+    its own.
+    """
+    output_path = pathlib.Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    (output_path / "dataset_table.tex").write_text(dataset_table_tex, encoding="utf-8")
+    if dataset_bibliography.bibtex:
+        (output_path / "dataset_table.bib").write_text(
+            dataset_bibliography.bibtex, encoding="utf-8"
+        )

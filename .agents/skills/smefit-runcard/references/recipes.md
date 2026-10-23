@@ -272,6 +272,35 @@ Writes projected datasets to `<output>/pseudodata/*.yaml` (plus theory JSON
 copies for `_proj` datasets), ready to be used as `data_path` in a future-
 collider fit.
 
+## Dataset table for a paper
+
+```yaml
+data_path: smefit_database/commondata
+datasets:                        # the fit's own list; `group:` sections the table
+  - {name: ATLAS_tt_8TeV_ljets_Mtt, order: NLO_QCD, group: LHC-top}
+  - {name: LEP_eeWW_182GeV, order: LO, group: LEP}
+fetch_bibtex: True               # optional (default False): cite via INSPIRE
+actions_:
+  - write_dataset_table
+```
+
+Writes `<output>/dataset_table.tex`, a `longtable` with one row per dataset
+(name, commondata `description`, `n_dat`, luminosity, reference) and the total
+number of points. Only `datasets` and `data_path` are read, so a fit runcard
+can run it as is, with no theory tables or coefficients involved.
+
+- The references come from the commondata `arxiv` field. By default each is
+  written as an `\href` to arXiv/INSPIRE, which needs no network and no `.bib`.
+- `fetch_bibtex: True` looks them up on INSPIRE instead: the table `\cite`s
+  them with INSPIRE keys, and `<output>/dataset_table.bib` holds their BibTeX.
+  A reference INSPIRE cannot resolve (or all of them, when it is unreachable)
+  falls back to its link, with a warning.
+- A URL inside a description becomes a short link labelled with its site
+  (`HEPData`, `Indico`, ...), so it cannot run out of its column.
+- The paper needs `\usepackage{array,booktabs,longtable,hyperref}`, and
+  `amsmath` for the INSPIRE titles.
+- `{@dataset_table@}` in a report shows the same rows, without the lookup.
+
 ## Reports and Fisher information
 
 Use a `template_text` block with `{@action@}` tags and the `report` action:

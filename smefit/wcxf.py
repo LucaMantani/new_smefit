@@ -281,69 +281,82 @@ class WarsawMap:
         col = self.matrix[:, self.ops.index(op)]
         return {self.warsaw[i]: float(col[i]) for i in np.flatnonzero(col)}
 
+    def flavour_breaking(
+        self,
+        values: Mapping[str, float],
+        rtol: float = 1e-3,
+        atol: float = 1e-15,
+    ) -> dict[str, float]:
+        """SMEFiT operators whose flavour symmetry the Warsaw point breaks.
+
+        Each operator is checked on its own Warsaw components: it is broken if
+        the point misses the image of :attr:`matrix` there by more than
+        ``atol + rtol * size``, ``size`` being the largest of those components.
+        Checking per operator catches a breaking small next to the whole point
+        but still all of one operator (e.g. a loop-suppressed mixing).
+
+        Parameters
+        ----------
+        values : Mapping[str, float]
+            Warsaw coefficient values, keyed by WCxf name.
+        rtol, atol : float
+            Relative and absolute (units of *values*) tolerances. The default
+            ``atol`` only absorbs rounding; callers that cut small values before
+            mapping should pass about the cut.
+
+        Returns
+        -------
+        dict[str, float]
+            The broken operators with the share of their size missed, largest
+            first; empty on the image.
+        """
+        point = np.array([values.get(w, 0.0) for w in self.warsaw])
+        switched_on = self.matrix != 0
+        residual = np.abs(self.matrix @ (self.inverse @ point) - point)
+        # per operator (column), the largest residual and component on its rows
+        missed = np.where(switched_on, residual[:, None], 0.0).max(axis=0)
+        size = np.where(switched_on, np.abs(point)[:, None], 0.0).max(axis=0)
+
+        broken = np.flatnonzero(missed > atol + rtol * size)
+        share = missed[broken] / size[broken]
+        return {
+            self.ops[t]: float(s) for s, t in sorted(zip(share, broken), reverse=True)
+        }
+
     def to_smefit(
         self,
         values: Mapping[str, float],
         origin: str = "Warsaw point",
         rtol: float = 1e-3,
         atol: float = 1e-15,
+        warn: bool = True,
     ) -> dict[str, float]:
         """Map a point in the Warsaw basis back to the SMEFiT basis.
 
-        Warsaw coefficients no SMEFiT operator switches on are dropped. The rest
-        should lie in the image of :attr:`matrix`. Each SMEFiT operator is
-        checked on the Warsaw components it switches on: if the point misses
-        the image there by more than ``atol + rtol * size``, with ``size`` the
-        largest of those components, the operator is named in a warning, logged
-        on every call, with the share of that size missed, largest first.
-
-        The check is per operator, not against the whole point, because a
-        breaking that is small next to the point can still be all of the
-        operator it is mapped onto (e.g. a running operator mixing,
-        loop-suppressed, into a flavour-symmetric one).
-
-        Parameters
-        ----------
-        values : Mapping[str, float]
-            Warsaw coefficient values, keyed by WCxf name.
-        origin : str
-            What the point comes from, for the warning.
-        rtol : float
-            Largest flavour-symmetry violation accepted silently, relative to
-            the size of the operator's Warsaw components.
-        atol : float
-            Violation accepted silently whatever that size, in the units of
-            *values*. The default only absorbs rounding; callers that cut small
-            values before mapping, which breaks the symmetry of components
-            straddling the cut, should pass about the cut instead.
+        Warsaw coefficients no SMEFiT operator switches on are dropped. Off the
+        image of :attr:`matrix` the generation-1 components are read and, with
+        *warn*, the operators :meth:`flavour_breaking` finds are named in a
+        warning mentioning *origin*. *rtol* and *atol* are passed to it.
 
         Returns
         -------
         dict[str, float]
             The non-zero SMEFiT coefficients.
         """
-        point = np.array([values.get(w, 0.0) for w in self.warsaw])
-        coeffs = self.inverse @ point
+        if warn and (broken := self.flavour_breaking(values, rtol, atol)):
+            _logger.warning(breaking_message(origin, broken))
 
-        # per operator (column), the largest residual and component on its rows
-        switched_on = self.matrix != 0
-        residual = np.abs(self.matrix @ coeffs - point)
-        missed = np.where(switched_on, residual[:, None], 0.0).max(axis=0)
-        size = np.where(switched_on, np.abs(point)[:, None], 0.0).max(axis=0)
-
-        broken = np.flatnonzero(missed > atol + rtol * size)
-        if broken.size:
-            share = missed[broken] / size[broken]
-            named = ", ".join(
-                f"{self.ops[t]} ({s:.1%})"
-                for s, t in sorted(zip(share, broken), reverse=True)
-            )
-            _logger.warning(
-                f"{origin} breaks the flavour symmetry assumed by: {named}; "
-                "only their generation-1 Warsaw components are mapped back."
-            )
-
+        coeffs = self.inverse @ np.array([values.get(w, 0.0) for w in self.warsaw])
         return {op: float(c) for op, c in zip(self.ops, coeffs) if c != 0.0}
+
+
+def breaking_message(origin: str, broken: Mapping[str, float]) -> str:
+    """Describe a flavour-symmetry breaking found by :meth:`WarsawMap.flavour_breaking`."""
+    named = ", ".join(f"{op} ({share:.1%})" for op, share in broken.items())
+    return (
+        f"{origin} breaks the flavour symmetry assumed by: {named}; "
+        "only their generation-1 Warsaw components are mapped back."
+    )
 
 
 @functools.cache

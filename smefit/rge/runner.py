@@ -15,7 +15,7 @@ import pandas as pd
 import wilson
 
 from smefit.constants import gs, mz
-from smefit.wcxf import SMEFIT_TO_WARSAW, warsaw_map
+from smefit.wcxf import SMEFIT_TO_WARSAW, breaking_message, warsaw_map
 
 # Numerical threshold for filtering small Wilson coefficient values
 _SMALL_VALUE_THRESHOLD = 1e-14
@@ -146,6 +146,9 @@ class RGE:
         self.accuracy = accuracy
         self.adm_QCD = adm_QCD
         self.yukawa = yukawa
+        # origins whose flavour-symmetry breaking was already warned about, so
+        # a dynamic-scale run warns once per operator, not once per scale
+        self._reported_breaking: set[str] = set()
 
         if yukawa not in ALLOWED_YUKAWA:
             raise ValueError(f"Yukawa parameter not supported: {yukawa}")
@@ -351,6 +354,8 @@ class RGE:
         origin : str
             What was evolved, named, with *scale*, in the warning logged when
             the evolved point breaks the flavour symmetry of the SMEFiT basis.
+            The warning is logged once per *origin*; later scales breaking it
+            again are logged at DEBUG level.
 
         Returns
         -------
@@ -358,13 +363,22 @@ class RGE:
             The non-zero SMEFiT-basis coefficients in TeV^-2, as derived by
             :meth:`smefit.wcxf.WarsawMap.to_smefit`.
         """
+        wmap = warsaw_map(evolve_gs(scale))
+        point = {wc: val.real for wc, val in wc_final_vals.items()}
+
         # callers cut values below _SMALL_VALUE_THRESHOLD first: a symmetric pair
         # straddling the cut keeps one component, a residual of about the cut
-        smefit_vals = warsaw_map(evolve_gs(scale)).to_smefit(
-            {wc: val.real for wc, val in wc_final_vals.items()},
-            origin=f"{origin} to {scale:g} GeV",
-            atol=2 * _SMALL_VALUE_THRESHOLD,
-        )
+        if broken := wmap.flavour_breaking(point, atol=2 * _SMALL_VALUE_THRESHOLD):
+            message = breaking_message(f"{origin} to {scale:g} GeV", broken)
+            if origin in self._reported_breaking:
+                _logger.debug(message)
+            else:
+                self._reported_breaking.add(origin)
+                _logger.warning(
+                    f"{message} Further scales breaking it are logged at DEBUG level."
+                )
+
+        smefit_vals = wmap.to_smefit(point, warn=False)
         # 1e6 is to transform from GeV^-2 to TeV^-2
         return {op: 1e6 * val for op, val in smefit_vals.items()}
 

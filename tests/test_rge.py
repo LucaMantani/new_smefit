@@ -191,6 +191,26 @@ def test_map_to_smefit_otg_uses_gs_evolved_to_target_scale():
     assert result["OtG"] == pytest.approx(-1.0 / evolve_gs(500.0))
 
 
+def test_map_to_smefit_warns_once_per_origin_across_scales(caplog):
+    """A dynamic-scale run maps the same running operator at many scales: the
+    breaking is warned about once, the later scales logged at DEBUG level."""
+    rge = RGE(["Obb"], init_scale=1000.0)
+    point = {"phid_11": complex(1e-6, 0.0), "phid_33": complex(5e-6, 0.0)}
+    with caplog.at_level(logging.DEBUG, logger="smefit.rge.runner"):
+        for scale in (100.0, 200.0, 300.0):
+            rge.map_to_smefit(point, scale, origin="Running Obb")
+        rge.map_to_smefit(point, 100.0, origin="Running Oeb")
+
+    breaking = [r for r in caplog.records if "breaks the flavour" in r.getMessage()]
+    assert [(r.levelno, r.getMessage().split(" breaks")[0]) for r in breaking] == [
+        (logging.WARNING, "Running Obb to 100 GeV"),
+        (logging.DEBUG, "Running Obb to 200 GeV"),
+        (logging.DEBUG, "Running Obb to 300 GeV"),
+        (logging.WARNING, "Running Oeb to 100 GeV"),
+    ]
+    assert not any(r.name == "smefit.wcxf" for r in caplog.records)
+
+
 def test_map_to_smefit_skips_operators_with_no_overlap():
     """Only smefit operators touching an evolved Warsaw key appear in the output."""
     rge = RGE(["OpBox"], init_scale=1000.0)
@@ -580,7 +600,7 @@ def test_short_running_still_reports_flavour_breaking(caplog):
     """Oeb mixes, loop-suppressed, into Opdi splitting b off; over a short running
     that is small next to Oeb itself but still all of Opdi, so it must warn."""
     rge = RGE(["Oeb"], init_scale=1000, yukawa="top")
-    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+    with caplog.at_level(logging.WARNING, logger="smefit.rge.runner"):
         rge.RGEmatrix(900)
     assert "Running Oeb to 900 GeV" in caplog.text and "Opdi (100.0%)" in caplog.text
 
@@ -589,7 +609,8 @@ def test_short_running_still_reports_flavour_breaking(caplog):
 def test_rge_matrix_without_breaking_does_not_warn(caplog):
     rge = RGE(["OpBox"], init_scale=1000, yukawa="top")
     with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
-        rge.RGEmatrix(200)
+        with caplog.at_level(logging.WARNING, logger="smefit.rge.runner"):
+            rge.RGEmatrix(200)
     assert not caplog.records
 
 

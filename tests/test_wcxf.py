@@ -125,6 +125,29 @@ def test_broken_symmetry_warns_every_time_and_keeps_generation_one(caplog):
     assert "Running Obb" in caplog.text and "Opdi (80.0%)" in caplog.text
 
 
+def test_flavour_breaking_returns_shares_largest_first():
+    point = {"phid_11": 1.0, "phid_33": 5.0, "ud8_3311": 1.0, "ud8_3333": 2.0}
+    broken = warsaw_map(GS).flavour_breaking(point)
+    assert list(broken) == ["Opdi", "O8dt"]
+    assert broken == pytest.approx({"Opdi": 0.8, "O8dt": 0.5})
+
+
+def test_flavour_breaking_empty_on_the_image():
+    assert (
+        warsaw_map(GS).flavour_breaking(
+            {"phid_11": 1.0, "phid_22": 1.0, "phid_33": 1.0}
+        )
+        == {}
+    )
+
+
+def test_to_smefit_without_warn_is_silent(caplog):
+    point = {"phid_11": 1.0, "phid_22": 1.0, "phid_33": 5.0}
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        assert warsaw_map(GS).to_smefit(point, warn=False) == {"Opdi": 1.0}
+    assert not caplog.records
+
+
 def test_breaking_small_next_to_the_point_still_warns(caplog):
     # the breaking is 4e-6 of the point but all of what Opdi is read from
     point = {"phiBox": 1.0, "phid_11": 1e-6, "phid_22": 1e-6, "phid_33": 5e-6}

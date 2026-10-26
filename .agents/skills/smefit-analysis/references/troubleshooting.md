@@ -44,8 +44,9 @@ of the actual exceptions raised by the code.
   a `prior: {dist: uniform, low: …, high: …}` spanning the range you want.
 - **RGE running breaks the flavour symmetry of the basis**: smefit logs
   `Running <op> to <scale> GeV breaks the flavour symmetry assumed by: ...`,
-  once per operator and scale, giving each named operator with the share of it
-  dropped, largest first. Expected for the b-only (`Obb`, `Ol{1,2,3}b`, `O{e,mu,ta}b`) and d,s-only (`Ol{1,2,3}d`,
+  once per running operator (at the first scale that breaks it; later scales
+  go to DEBUG level), giving each named operator with the share of it dropped,
+  largest first. Expected for the b-only (`Obb`, `Ol{1,2,3}b`, `O{e,mu,ta}b`) and d,s-only (`Ol{1,2,3}d`,
   `O{e,mu,ta}d`) operators: their running splits b from d, s, while `Opdi`,
   `O1dt`, `O8dt`, `O1qd`, `O8qd` assume them universal, so only the generation-1
   part is kept. Not an error. With the default `yukawa: top` seeing it for any

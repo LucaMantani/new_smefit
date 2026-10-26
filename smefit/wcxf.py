@@ -286,7 +286,7 @@ class WarsawMap:
         values: Mapping[str, float],
         origin: str = "Warsaw point",
         rtol: float = 1e-3,
-        atol: float = 0.0,
+        atol: float = 1e-15,
     ) -> dict[str, float]:
         """Map a point in the Warsaw basis back to the SMEFiT basis.
 
@@ -313,8 +313,9 @@ class WarsawMap:
             the size of the operator's Warsaw components.
         atol : float
             Violation accepted silently whatever that size, in the units of
-            *values*; for callers that cut small values before mapping, which
-            breaks the symmetry of components straddling the cut.
+            *values*. The default only absorbs rounding; callers that cut small
+            values before mapping, which breaks the symmetry of components
+            straddling the cut, should pass about the cut instead.
 
         Returns
         -------

@@ -24,7 +24,9 @@ sector: ``Opdi``, ``O1dt``, ``O8dt``, ``O1qd`` and ``O8qd`` assume d, s and b
 universal, while ``Obb``, ``Ol{1,2,3}b``, ``O{e,mu,ta}b`` (b only) and
 ``Ol{1,2,3}d``, ``O{e,mu,ta}d`` (d and s only) split b off. Running the latter
 therefore produces points off the image of ``M``, and :meth:`WarsawMap.to_smefit`
-warns about them.
+warns about them. The inconsistency comes from the gradual move of the basis from
+the original U(3)_d symmetry towards U(2)_d: the universal operators predate it
+and still assume U(3)_d.
 """
 
 import functools

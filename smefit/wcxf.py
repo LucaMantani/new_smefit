@@ -206,7 +206,7 @@ def _blocks(matrix: np.ndarray) -> list[np.ndarray]:
     return [np.flatnonzero(row) for row in np.unique(reach, axis=0)]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class WarsawMap:
     """The SMEFiT → Warsaw matrix at a given g_s, and its derived inverse.
 
@@ -229,6 +229,11 @@ class WarsawMap:
     warsaw: tuple[str, ...]
     matrix: np.ndarray
     inverse: np.ndarray
+
+    def __post_init__(self) -> None:
+        # shared through the warsaw_map cache: in-place edits must fail
+        self.matrix.flags.writeable = False
+        self.inverse.flags.writeable = False
 
     @classmethod
     def from_table(

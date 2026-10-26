@@ -93,6 +93,14 @@ def test_operator_with_only_zero_entries_raises():
         WarsawMap.from_table(table, GS)
 
 
+def test_cached_map_arrays_are_read_only():
+    m = warsaw_map(GS)
+    with pytest.raises(ValueError, match="read-only"):
+        m.matrix[0, 0] = 5.0
+    with pytest.raises(ValueError, match="read-only"):
+        m.inverse[0, 0] = 5.0
+
+
 def test_inverse_OtG_is_minus_one_over_gs():
     assert warsaw_map(GS).to_smefit({"uG_33": 1.0}) == pytest.approx({"OtG": -1 / GS})
 

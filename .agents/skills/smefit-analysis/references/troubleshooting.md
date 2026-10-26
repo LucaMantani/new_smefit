@@ -49,8 +49,8 @@ of the actual exceptions raised by the code.
   `O{e,mu,ta}d`) operators: their running splits b from d, s, while `Opdi`,
   `O1dt`, `O8dt`, `O1qd`, `O8qd` assume them universal, so only the generation-1
   part is kept. Not an error. With the default `yukawa: top` seeing it for any
-  other operator is one; with `yukawa: full` the b and τ Yukawas break the
-  symmetry too, so most operators trigger it.
+  other operator is one; with `yukawa: full` the light-quark masses and the
+  CKM matrix break the quark flavour symmetry too, so most operators trigger it.
 - **A run produced no `fit_results.json`**: expected when `actions_:` contains
   only table/figure actions (Fisher, `chi2_scan_table`, `mass_scan_table`) —
   results are under `tables/` and `figures/`, not in a fit result file.

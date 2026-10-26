@@ -246,8 +246,8 @@ class WarsawMap:
         Raises
         ------
         ValueError
-            If some SMEFiT operators are linearly dependent in the Warsaw
-            basis, so that no inverse exists.
+            If a SMEFiT operator switches on no Warsaw coefficient, or some are
+            linearly dependent in the Warsaw basis, so that no inverse exists.
         """
         ops = tuple(table)
         # rows in the order the table first lists them: the inverse reads the
@@ -259,6 +259,11 @@ class WarsawMap:
         for col, op in enumerate(ops):
             for w, coeff in table[op].items():
                 matrix[row[w], col] = coeff(gs) if callable(coeff) else coeff
+
+        if empty := [op for op, col in zip(ops, matrix.T) if not col.any()]:
+            raise ValueError(
+                f"SMEFiT operators {empty} switch on no Warsaw coefficient."
+            )
 
         inverse = np.zeros((len(ops), len(warsaw)))
         for cols in _blocks(matrix):

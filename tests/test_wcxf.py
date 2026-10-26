@@ -81,6 +81,18 @@ def test_inverse_matches_previous_convention(op, expected):
     assert {m.warsaw[i]: row[i] for i in np.flatnonzero(row)} == pytest.approx(expected)
 
 
+def test_empty_operator_raises():
+    table = {"OpBox": {"phiBox": 1.0}, "Onew": {}}
+    with pytest.raises(ValueError, match="switch on no Warsaw"):
+        WarsawMap.from_table(table, GS)
+
+
+def test_operator_with_only_zero_entries_raises():
+    table = {"OpBox": {"phiBox": 1.0}, "Onew": {"phiD": 0.0}}
+    with pytest.raises(ValueError, match="switch on no Warsaw"):
+        WarsawMap.from_table(table, GS)
+
+
 def test_inverse_OtG_is_minus_one_over_gs():
     assert warsaw_map(GS).to_smefit({"uG_33": 1.0}) == pytest.approx({"OtG": -1 / GS})
 

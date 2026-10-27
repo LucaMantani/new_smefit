@@ -257,7 +257,11 @@ def test_dataset_table_lists_datasets_in_runcard_order():
             7,
             description="tt",
             luminosity=(36.1, 139.0),
-            references=("arxiv:1511.04716", "recid:1323200"),
+            references=(
+                "arxiv:1511.04716",
+                "recid:1323200",
+                "url:https://repository.cern/records/3rj9z-94994",
+            ),
             group="Top",
         ),
         DatasetInfo("A", 1),
@@ -271,7 +275,8 @@ def test_dataset_table_lists_datasets_in_runcard_order():
         "tt",
         7,
         "36.1, 139",
-        "arXiv:1511.04716, recid:1323200",
+        "arXiv:1511.04716, recid:1323200, "
+        "https://repository.cern/records/3rj9z-94994",
     ]
     assert result.loc["A"].tolist() == ["", "", 1, "--", ""]
 

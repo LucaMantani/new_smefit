@@ -1,6 +1,7 @@
 """Unit tests for smefit.dataset_info — the provenance of the datasets and
 their LaTeX table."""
 
+import inspect
 import json
 import logging
 import urllib.error
@@ -57,12 +58,24 @@ def test_arxiv_number_keeps_its_trailing_zero(tmp_path):
         ("https://inspirehep.net/literature/1323200", ("recid:1323200",)),
         ("1511.04716, 1511.04716", ("arxiv:1511.04716",)),
         ("1403.7366", ("arxiv:1403.7366",)),
-        # the number in a link to another site is not an arXiv number
+        # the number in a link to another site is not an arXiv number: the
+        # link is kept as it is
         (
             "2205.08553v2, https://indico.cern.ch/event/1439855/contributions/6461561",
-            ("arxiv:2205.08553",),
+            (
+                "arxiv:2205.08553",
+                "url:https://indico.cern.ch/event/1439855/contributions/6461561",
+            ),
         ),
-        ("https://repository.cern/records/3rj9z-94994", ()),
+        (
+            "https://repository.cern/records/3rj9z-94994",
+            ("url:https://repository.cern/records/3rj9z-94994",),
+        ),
+        # a link to a file on INSPIRE names no record to look up
+        (
+            "https://inspirehep.net/files/82aa29e742f4324970d810e88817b0ac",
+            ("url:https://inspirehep.net/files/82aa29e742f4324970d810e88817b0ac",),
+        ),
         ("1812.059", ()),
         ("0509008", ()),
         ("none", ()),
@@ -75,11 +88,9 @@ def test_parse_references(raw, expected):
 
 
 def test_unreadable_reference_is_left_out_with_a_warning(caplog):
-    """A link to a file on INSPIRE names no record, so nothing can cite it."""
-    raw = "https://inspirehep.net/files/82aa29e742f4324970d810e88817b0ac"
-
+    """Neither an arXiv number nor a link: 1812.059 has lost two digits."""
     with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
-        assert di._parse_references(raw, "DS") == ()
+        assert di._parse_references("1812.059", "DS") == ()
 
     assert "DS" in caplog.text
 
@@ -126,6 +137,48 @@ def test_per_point_luminosity_keeps_its_distinct_values(tmp_path):
     assert info.luminosity == (36.1, 139.0)
 
 
+def test_empty_luminosity_is_missing_without_a_warning(tmp_path, caplog):
+    """LEP1_EWPOs_2006 writes `luminosity:` with no value."""
+    _write_commondata(tmp_path, "DS", ["luminosity:"])
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        (info,) = dataset_info([{"name": "DS"}], tmp_path)
+
+    assert info.luminosity == ()
+    assert caplog.text == ""
+
+
+def test_description_arxiv_numbers_are_cited_when_the_file_has_none(tmp_path, caplog):
+    """The LCF projections name their sources only in the description. A
+    guess, so it is warned about."""
+    _write_commondata(
+        tmp_path,
+        "DS",
+        [
+            "description: Projection from 1907.04311 Table 6, rescaled by "
+            "luminosity from 2503.19983 Table 3.",
+        ],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        (info,) = dataset_info([{"name": "DS"}], tmp_path)
+
+    assert info.references == ("arxiv:1907.04311", "arxiv:2503.19983")
+    assert "DS: no arxiv field" in caplog.text
+
+
+def test_description_is_not_read_for_references_when_the_file_has_some(tmp_path):
+    _write_commondata(
+        tmp_path,
+        "DS",
+        ["arxiv: 1511.04716", "description: Compared with 1907.04311."],
+    )
+
+    (info,) = dataset_info([{"name": "DS"}], tmp_path)
+
+    assert info.references == ("arxiv:1511.04716",)
+
+
 def test_missing_metadata_falls_back_to_empty(tmp_path):
     """The LEP datasets have no arxiv, luminosity or description at all."""
     _write_commondata(tmp_path, "DS", [])
@@ -169,13 +222,37 @@ def test_cite_uses_keys_and_links_the_rest():
     cited = bibliography.cite(("arxiv:1", "recid:2", "arxiv:3"))
 
     assert cited == (
-        r"\cite{A:2020a,B:2021b}, " r"\href{https://arxiv.org/abs/3}{arXiv:3}"
+        r"\begin{tabular}[t]{@{}l@{}}\cite{A:2020a,B:2021b} \\ "
+        r"\href{https://arxiv.org/abs/3}{arXiv:3}\end{tabular}"
     )
+
+
+def test_cite_stacks_links_one_per_line():
+    """Two links side by side cannot break, and run out of the column
+    (ATLAS_CMS_SSinc_RunI)."""
+    assert Bibliography().cite(("arxiv:1", "arxiv:2")) == (
+        r"\begin{tabular}[t]{@{}l@{}}\href{https://arxiv.org/abs/1}{arXiv:1} \\ "
+        r"\href{https://arxiv.org/abs/2}{arXiv:2}\end{tabular}"
+    )
+
+
+def test_cite_keys_alone_are_one_cite():
+    bibliography = Bibliography(texkeys={"arxiv:1": "A:2020a", "arxiv:2": "B:2021b"})
+
+    assert bibliography.cite(("arxiv:1", "arxiv:2")) == r"\cite{A:2020a,B:2021b}"
 
 
 def test_cite_links_inspire_records():
     assert Bibliography().cite(("recid:1323200",)) == (
         r"\href{https://inspirehep.net/literature/1323200}{INSPIRE:1323200}"
+    )
+
+
+def test_cite_links_another_site_by_its_name():
+    reference = "url:https://repository.cern/records/3rj9z-94994"
+
+    assert Bibliography().cite((reference,)) == (
+        r"\href{https://repository.cern/records/3rj9z-94994}{repository.cern}"
     )
 
 
@@ -225,6 +302,39 @@ def test_bibliography_maps_references_to_their_current_texkey(monkeypatch):
     assert bibliography.bibtex == "@article{A:2020a,}\n"
 
 
+def test_paper_without_doi_links_to_its_inspire_record(monkeypatch):
+    """A paper with a DOI is linked to its journal through the ``doi`` field
+    INSPIRE writes; one without gets a ``url`` to INSPIRE instead."""
+    _fake_inspire(
+        monkeypatch,
+        [
+            {
+                "control_number": 1404878,
+                "texkeys": ["ATLAS:2015lsn"],
+                "dois": [{"value": "10.1140/epjc/s10052-016-3910-7"}],
+            },
+            {"control_number": 1323200, "texkeys": ["CMS:2014ika"]},
+        ],
+        bibtex=(
+            '@article{ATLAS:2015lsn,\n    doi = "10.1140/epjc/s10052-016-3910-7"\n}'
+            '\n\n@techreport{CMS:2014ika,\n    title = "x"\n}'
+        ),
+    )
+    infos = [
+        DatasetInfo("DS1", 1, references=("recid:1404878",)),
+        DatasetInfo("DS2", 1, references=("recid:1323200",)),
+    ]
+
+    bibtex = dataset_bibliography(infos, fetch_bibtex=True).bibtex
+
+    assert bibtex == (
+        '@article{ATLAS:2015lsn,\n    doi = "10.1140/epjc/s10052-016-3910-7"\n}'
+        "\n\n@techreport{CMS:2014ika,\n"
+        '    url = "https://inspirehep.net/literature/1323200",\n'
+        '    title = "x"\n}\n'
+    )
+
+
 def test_bibliography_queries_each_reference_once_in_batches(monkeypatch):
     queries = _fake_inspire(monkeypatch, [])
     monkeypatch.setattr(di, "_INSPIRE_BATCH", 2)
@@ -261,6 +371,20 @@ def test_inspire_lookup_is_opt_in(monkeypatch):
 
     assert dataset_bibliography(infos) == Bibliography()
     assert dataset_bibliography(infos, fetch_bibtex=False) == Bibliography()
+
+
+def test_links_to_other_sites_are_not_looked_up(monkeypatch):
+    """INSPIRE holds no record for them: they are only ever linked."""
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("INSPIRE was queried")
+
+    monkeypatch.setattr(di, "_inspire_query", no_network)
+    infos = [
+        DatasetInfo("DS", 1, references=("url:https://repository.cern/records/x",))
+    ]
+
+    assert dataset_bibliography(infos, fetch_bibtex=True) == Bibliography()
 
 
 def test_unreachable_inspire_degrades_to_links(monkeypatch, caplog):
@@ -302,7 +426,8 @@ def test_table_row_escapes_text_and_keeps_math():
     (row,) = _rows(dataset_table_tex([info], bibliography))
 
     assert row == (
-        r"\texttt{ATLAS\_tt\_8TeV} & 50\% of $p_{\rm T}$ in t\_t \& more & 7 & "
+        r"\texttt{ATLAS\_\allowbreak{}tt\_\allowbreak{}8TeV} & "
+        r"50\% of $p_{\rm T}$ in t\_t \& more & 7 & "
         r"20.3 & \cite{ATLAS:2015lsn} \\"
     )
 
@@ -386,5 +511,55 @@ def test_table_ends_with_the_total_number_of_points():
     tex = dataset_table_tex(infos, Bibliography())
 
     assert tex.endswith(
-        "\\midrule\n\\multicolumn{2}{l}{Total} & 22 & & \\\\\n\\end{longtable}\n"
+        "\\midrule\n\\multicolumn{2}{l}{Total} & 22 & & \\\\\n\\end{xltabular}\n"
     )
+
+
+def test_table_spans_the_line_width():
+    """The name and description columns take what the others leave, so the
+    table fits any text width."""
+    tex = dataset_table_tex([DatasetInfo("A", 1)], Bibliography())
+
+    assert r"\begin{xltabular}{\linewidth}" in tex
+    assert r"\usepackage{array,booktabs,xltabular,hyperref}" in tex
+
+
+def test_preview_typesets_the_table_at_paper_width():
+    tex = di._preview_tex(with_bibliography=False)
+
+    assert r"\usepackage[textwidth=483pt]{geometry}" in tex
+    assert r"\input{dataset_table}" in tex
+    assert "natbib" not in tex
+    assert r"\bibliography" not in tex
+
+
+def test_preview_with_bibliography_links_its_dois():
+    tex = di._preview_tex(with_bibliography=True)
+
+    assert r"\usepackage[numbers]{natbib}" in tex
+    assert r"\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}" in tex
+    assert tex.endswith(
+        "\\bibliographystyle{unsrtnat}\n\\bibliography{dataset_table}\n"
+        "\\end{document}\n"
+    )
+
+
+def test_nodes_read_only_the_commondata():
+    """The contract the skill references rely on: every node of this module
+    needs only `datasets`, `data_path` and the other nodes here, so its
+    actions run on a runcard with no theory or coefficients
+    (`collect_commondata_actions` in scripts/generate_skill_reference.py)."""
+    nodes = {
+        name
+        for name, obj in vars(di).items()
+        if inspect.isfunction(obj)
+        and obj.__module__ == di.__name__
+        and not name.startswith("_")
+    }
+    for name in nodes:
+        required = {
+            p.name
+            for p in inspect.signature(getattr(di, name)).parameters.values()
+            if p.default is inspect.Parameter.empty
+        }
+        assert required <= nodes | {"datasets", "data_path"}, name

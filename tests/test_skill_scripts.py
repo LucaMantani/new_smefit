@@ -399,6 +399,35 @@ def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
     assert code == 0, out
 
 
+def test_runcard_that_only_describes_its_datasets_needs_no_theory_or_coefficients(
+    tmp_path,
+):
+    """The dataset table reads the commondata files and nothing else, so the
+    recipe's runcard (datasets + data_path) is complete."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fetch_bibtex=False,
+        compile_pdf=True,
+        actions_=["write_dataset_table"],
+    )
+    assert code == 0, out
+
+
+def test_dataset_table_next_to_a_fit_still_needs_the_fit_setup(tmp_path):
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        coefficients=None,
+        actions_=["write_dataset_table", "run_analytic_fit"],
+    )
+    assert code == 1, out
+    assert "'theory_path' is required" in out
+    assert "non-empty 'coefficients' mapping" in out
+
+
 def test_runcard_listing_fits_and_fitting_too_still_needs_data(tmp_path):
     """Listing 'fits:' is not a licence to skip the requirements: a runcard
     that also declares coefficients is setting up a fit of its own."""

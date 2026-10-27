@@ -33,9 +33,11 @@
                           #  reusable via rge.rg_matrix in later runcards
   pseudodata/             # written by the write_pseudodata action
     <dataset>.yaml        # projected commondata (+ theory JSON copies for _proj sets)
-  dataset_table.tex       # write_dataset_table: LaTeX longtable of the datasets
+  dataset_table.tex       # write_dataset_table: LaTeX xltabular of the datasets
   dataset_table.bib       #  and the INSPIRE BibTeX it cites (only with
                           #  fetch_bibtex: true)
+  dataset_table_preview.tex  # compile_pdf: true — the table as a PDF document,
+  dataset_table_preview.pdf  #  compiled with pdflatex (no auxiliaries kept)
   index.html              # report action output, alongside the index.md it was
   index.md                #  rendered from, plus report.css / report.template
 ```

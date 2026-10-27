@@ -7,6 +7,10 @@
     "vars",
     "baseline_value"
   ],
+  "commondata_actions": [
+    "dataset_table",
+    "write_dataset_table"
+  ],
   "dataset_entry_keys": [
     "name",
     "order",
@@ -70,6 +74,7 @@
     "bounds_levels",
     "cmap",
     "colorbar",
+    "compile_pdf",
     "fetch_bibtex",
     "n_eval",
     "n_samples",
@@ -305,6 +310,7 @@
     "cmap",
     "coefficients",
     "colorbar",
+    "compile_pdf",
     "data_path",
     "datasets",
     "external_chi2",

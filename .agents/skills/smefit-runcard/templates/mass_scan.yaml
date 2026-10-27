@@ -66,8 +66,8 @@ datasets:
   - {name: ATLAS_tt_8TeV_ljets_Mtt, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: ATLAS_tta_8TeV, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: ATLAS_ttbb_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
-  - {name: ATLAS_tttt_13TeV_2023, order: NLO_QCD}   # order: LO, NLO_QCD
-  - {name: ATLAS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+  - {name: ATLAS_tttt_13TeV_2023, order: LO_QCD_EW}   # order: LO, LO_QCD_EW
+  - {name: ATLAS_tttt_13TeV_slep_inc, order: LO_QCD_EW}   # order: LO, LO_QCD_EW
   #   # CMS
   - {name: CMS_H_13TeV_2015_pTH, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: CMS_SSinc_RunII, order: NLO_QCD}   # order: LO, NLO_QCD
@@ -97,8 +97,8 @@ datasets:
   - {name: CMS_ttbb_13TeV_2016, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: CMS_ttbb_13TeV_dilepton_inc, order: NLO_QCD}   # order: LO, NLO_QCD
   - {name: CMS_ttbb_13TeV_ljets_inc, order: NLO_QCD}   # order: LO, NLO_QCD
-  - {name: CMS_tttt_13TeV_2023, order: NLO_QCD}   # order: LO, NLO_QCD
-  - {name: CMS_tttt_13TeV_slep_inc, order: NLO_QCD}   # order: LO, NLO_QCD
+  - {name: CMS_tttt_13TeV_2023, order: LO_QCD_EW}   # order: LO, LO_QCD_EW
+  - {name: CMS_tttt_13TeV_slep_inc, order: LO_QCD_EW}   # order: LO, LO_QCD_EW
 # Coefficients to fit
 # The scanned mass `m` is in TeV, so that 1/m**2 is directly a Wilson
 # coefficient in TeV^-2. The scan point is converted to GeV internally when it

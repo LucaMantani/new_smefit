@@ -10,6 +10,8 @@ import shutil
 import numpy as np
 import yaml
 
+from smefit.dataset_info import _compile_preview, _preview_tex
+
 
 def write_pseudodata(pseudodata, theory_path, output_path):
     """Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
@@ -58,7 +60,9 @@ def run_pca(pca, output_path):
     pca.write(output_path)
 
 
-def write_dataset_table(dataset_table_tex, dataset_bibliography, output_path):
+def write_dataset_table(
+    dataset_table_tex, dataset_bibliography, output_path, compile_pdf=False
+):
     """Write the LaTeX table of the runcard's datasets, for a paper's appendix.
 
     ``dataset_table.tex`` holds the table. With ``fetch_bibtex: true`` the
@@ -66,11 +70,22 @@ def write_dataset_table(dataset_table_tex, dataset_bibliography, output_path):
     holds their BibTeX. Otherwise — the default, or INSPIRE unreachable — no
     ``.bib`` is written, and the table links to its references and compiles on
     its own.
+
+    With ``compile_pdf: true``, ``dataset_table_preview.tex`` typesets the table
+    and its bibliography as a document of their own, compiled into
+    ``dataset_table_preview.pdf`` when pdflatex is installed. No auxiliary file
+    is left behind, and a failed compilation only warns.
     """
     output_path = pathlib.Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     (output_path / "dataset_table.tex").write_text(dataset_table_tex, encoding="utf-8")
-    if dataset_bibliography.bibtex:
+    with_bibliography = bool(dataset_bibliography.bibtex)
+    if with_bibliography:
         (output_path / "dataset_table.bib").write_text(
             dataset_bibliography.bibtex, encoding="utf-8"
         )
+    if compile_pdf:
+        (output_path / "dataset_table_preview.tex").write_text(
+            _preview_tex(with_bibliography), encoding="utf-8"
+        )
+        _compile_preview(output_path, with_bibliography)

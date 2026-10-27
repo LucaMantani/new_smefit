@@ -1,21 +1,24 @@
 """
 smefit.dataset_info.py
 
-The datasets of a fit as a paper describes them: one row per dataset with its
-size, luminosity and the publication it comes from, rendered as the LaTeX table
+Descriptive table about the datasets of a fit:
+one row per dataset with its size, luminosity and
+the publication it comes from, rendered as the LaTeX table
 of an appendix.
 
 The commondata YAML of a dataset carries its provenance (``description``,
-``arxiv``, ``luminosity``) next to the numbers, but
-:func:`smefit.loader.load_dataset` reads only the numbers. This module reads the
+``arxiv``, ``luminosity``) next to the numbers. This module reads the
 provenance, and resolves the references to the citation keys and BibTeX entries
-of INSPIRE, so that the table cites the papers the way the rest of a paper does.
+of INSPIRE, so that the table cites the papers in publication style.
 """
 
 import json
 import logging
 import pathlib
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -57,6 +60,14 @@ _LATEX_SPECIAL = {
     "$": r"\$",
     "^": r"\^{}",
 }
+# The text width of the preview: a single-column paper with 2 cm margins.
+_PREVIEW_TEXTWIDTH = "483pt"
+# What LaTeX writes to its log when another run would change the output
+_LATEX_RERUN = re.compile(r"Rerun (?:to get|LaTeX)")
+# pdflatex runs past the first; longtable settles within two or three
+_MAX_LATEX_RERUNS = 4
+# Seconds a single pdflatex or bibtex run may take
+_LATEX_TIMEOUT = 120
 
 
 @dataclass(frozen=True)
@@ -68,13 +79,15 @@ class DatasetInfo:
     name : str
     num_data : int
     description : str
-        Free text as the commondata file has it, LaTeX math included.
+        Free text, LaTeX math included.
     luminosity : tuple of float
         The distinct integrated luminosities of the data points, in fb^-1;
         empty when the file gives none.
     references : tuple of str
         The publications the data come from, each as the INSPIRE search term
-        that finds it: ``arxiv:<number>`` or ``recid:<record>``.
+        that finds it: ``arxiv:<number>`` or ``recid:<record>``; or, for a
+        source INSPIRE does not hold (a CERN repository record, a talk),
+        ``url:<address>``, which is only ever linked.
     group : str or None
         The ``group:`` of the runcard's dataset entry.
     """
@@ -99,7 +112,7 @@ class Bibliography:
     bibtex : str
         The BibTeX entries of those keys.
 
-    A reference without a key — every one, when the lookup was skipped — is
+    A reference without a key is
     linked rather than cited, so the table compiles without the ``.bib``.
     """
 
@@ -108,32 +121,47 @@ class Bibliography:
 
     def cite(self, references) -> str:
         """The LaTeX that cites *references*: one ``\\cite`` for those with a
-        key, then a link to each of the others."""
+        key, then a link to each of the others.
+
+        Several pieces are stacked one per line, since a link cannot break and
+        two side by side run out of their column.
+        """
         keys = list(
             dict.fromkeys(self.texkeys[r] for r in references if r in self.texkeys)
         )
         pieces = [rf"\cite{{{','.join(keys)}}}"] if keys else []
         pieces += [_link(r) for r in references if r not in self.texkeys]
-        return ", ".join(pieces)
+        if len(pieces) < 2:
+            return "".join(pieces)
+        stacked = r" \\ ".join(pieces)
+        return rf"\begin{{tabular}}[t]{{@{{}}l@{{}}}}{stacked}\end{{tabular}}"
 
 
 def _link(reference: str) -> str:
     """A ``\\href`` to *reference*, labelled with its identifier."""
     kind, _, identifier = reference.partition(":")
+    if kind == "url":
+        return _latex_link(identifier)
     if kind == "arxiv":
         return rf"\href{{https://arxiv.org/abs/{identifier}}}{{arXiv:{identifier}}}"
     return rf"\href{{https://inspirehep.net/literature/{identifier}}}{{INSPIRE:{identifier}}}"
 
 
+def _is_blank(raw: Optional[str]) -> bool:
+    """Whether a commondata field is missing, or written but left empty."""
+    return raw is None or raw.strip().lower() in ("", "none", "null")
+
+
 def _parse_references(raw: Optional[str], dataset: str) -> Tuple[str, ...]:
-    """The INSPIRE search terms for the ``arxiv`` field of a commondata file.
+    """The references of the ``arxiv`` field of a commondata file.
 
     The field is free text: an arXiv number, several separated by commas, or
-    an INSPIRE record URL in their place. Anything else — a link to a file on
-    INSPIRE names no record, nor does a link to another site — is left out
-    with a warning, and so is an arXiv number that has lost its last digit.
+    a URL in their place. An INSPIRE record URL is looked up like an arXiv
+    number; any other URL (a CERN repository record, a talk) is kept as a
+    link. Anything else is left out with a warning, and so is an arXiv
+    number that has lost its last digit.
     """
-    if raw is None or raw.strip().lower() in ("", "none", "null"):
+    if _is_blank(raw):
         return ()
     references = []
     for token in re.split(r"[,;\s]+", raw.strip()):
@@ -148,6 +176,8 @@ def _parse_references(raw: Optional[str], dataset: str) -> Tuple[str, ...]:
         )
         if record:
             references.append(f"recid:{record.group(1)}")
+        elif re.fullmatch(_URL, token) and not arxiv:
+            references.append(f"url:{token}")
         elif arxiv and re.fullmatch(r"(1[5-9]|[2-9]\d)\d{2}\.\d{4}", arxiv.group(1)):
             # numbers have five digits after the dot since 2015: this one was
             # read as a float and its trailing zero dropped
@@ -171,7 +201,7 @@ def _parse_references(raw: Optional[str], dataset: str) -> Tuple[str, ...]:
 
 def _parse_luminosity(raw, dataset: str) -> Tuple[float, ...]:
     """The distinct luminosities of a commondata ``luminosity`` field."""
-    if raw is None:
+    if not isinstance(raw, list) and _is_blank(raw):
         return ()
     values = raw if isinstance(raw, list) else [raw]
     try:
@@ -191,14 +221,37 @@ def _load_dataset_info(data_path, dataset_entry) -> DatasetInfo:
     # number 1609.03920 as the float 1609.0392.
     with open(path, encoding="utf-8") as file:
         commondata = yaml.load(file, Loader=yaml.BaseLoader)
+    description = " ".join((commondata.get("description") or "").split())
+    if _is_blank(commondata.get("arxiv")):
+        references = _references_in_description(description, name)
+    else:
+        references = _parse_references(commondata["arxiv"], name)
     return DatasetInfo(
         name=name,
         num_data=int(commondata["num_data"]),
-        description=" ".join((commondata.get("description") or "").split()),
+        description=description,
         luminosity=_parse_luminosity(commondata.get("luminosity"), name),
-        references=_parse_references(commondata.get("arxiv"), name),
+        references=references,
         group=dataset_entry.get("group"),
     )
+
+
+def _references_in_description(description: str, dataset: str) -> Tuple[str, ...]:
+    """The arXiv numbers a description mentions, for a file with no ``arxiv``.
+
+    A guess, so each use is warned about: "projection from 1907.04311,
+    rescaled by luminosity from 2503.19983" cites both papers.
+    """
+    numbers = [match.group(1) for match in _ARXIV_ID.finditer(description)]
+    references = _parse_references(" ".join(numbers), dataset) if numbers else ()
+    if references:
+        log.warning(
+            "%s: no arxiv field; the dataset table cites the arXiv numbers its "
+            "description mentions: %s.",
+            dataset,
+            ", ".join(r.removeprefix("arxiv:") for r in references),
+        )
+    return references
 
 
 def _inspire_query(terms, **params) -> bytes:
@@ -210,15 +263,32 @@ def _inspire_query(terms, **params) -> bytes:
         return response.read()
 
 
+def _with_urls(bibtex: str, urls) -> str:
+    """*bibtex* with a ``url`` field added to the entries keyed in *urls*."""
+
+    def add(match):
+        url = urls.get(match.group(2))
+        return f'{match.group(0)}\n    url = "{url}",' if url else match.group(0)
+
+    return re.sub(r"(?m)^(@\w+\{)([^,\s]+),", add, bibtex)
+
+
 def _fetch_inspire_bibliography(references) -> Bibliography:
-    """Look *references* up on INSPIRE, in batches of ``_INSPIRE_BATCH``."""
+    """Look *references* up on INSPIRE, in batches of ``_INSPIRE_BATCH``.
+
+    Every entry links to the paper: through its ``doi`` to the journal, or,
+    for a paper with none, through a ``url`` added to its INSPIRE record. A
+    ``url`` on the others too would be printed next to the DOI by the styles
+    that show both.
+    """
     references = list(dict.fromkeys(references))
     found = {}
+    urls = {}
     entries = []
     for start in range(0, len(references), _INSPIRE_BATCH):
         batch = references[start : start + _INSPIRE_BATCH]
         hits = json.loads(
-            _inspire_query(batch, fields="texkeys,arxiv_eprints,control_number")
+            _inspire_query(batch, fields="texkeys,arxiv_eprints,control_number,dois")
         )["hits"]["hits"]
         for hit in hits:
             record = hit["metadata"]
@@ -230,7 +300,12 @@ def _fetch_inspire_bibliography(references) -> Bibliography:
             found[f"recid:{record['control_number']}"] = texkey
             for eprint in record.get("arxiv_eprints", []):
                 found[f"arxiv:{eprint['value']}"] = texkey
-        entries.append(_inspire_query(batch, format="bibtex").decode("utf-8").strip())
+            if not record.get("dois"):
+                urls[texkey] = (
+                    f"https://inspirehep.net/literature/{record['control_number']}"
+                )
+        bibtex = _inspire_query(batch, format="bibtex").decode("utf-8").strip()
+        entries.append(_with_urls(bibtex, urls))
 
     missing = [r for r in references if r not in found]
     if missing:
@@ -304,9 +379,8 @@ def _by_group(infos) -> List[Tuple[Optional[str], List[DatasetInfo]]]:
 
 def dataset_info(datasets, data_path) -> List[DatasetInfo]:
     """The provenance of each dataset of the runcard, in runcard order.
-
-    Reads only the commondata files, so it needs neither theory predictions
-    nor coefficients: a runcard with ``datasets`` and ``data_path`` is enough.
+    Reads only the commondata files, a runcard with ``datasets`` and
+    ``data_path`` is enough.
     """
     return [_load_dataset_info(data_path, entry) for entry in datasets]
 
@@ -325,11 +399,11 @@ def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
     Returns
     -------
     Bibliography
-        Empty when the lookup is off or INSPIRE cannot be reached: a failed
-        lookup degrades the table to links, with a warning, rather than
-        failing the run.
+        Empty when the lookup is off or INSPIRE cannot be reached.
     """
-    references = [r for info in dataset_info for r in info.references]
+    references = [
+        r for info in dataset_info for r in info.references if not r.startswith("url:")
+    ]
     if not fetch_bibtex or not references:
         return Bibliography()
     try:
@@ -344,17 +418,24 @@ def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
 
 
 def dataset_table_tex(dataset_info, dataset_bibliography) -> str:
-    """The datasets as a LaTeX ``longtable``, one section per ``group``.
+    """The datasets as a LaTeX ``xltabular``, one section per ``group``.
 
-    The table needs the ``array``, ``booktabs``, ``longtable`` and
+    An ``xltabular`` is a ``longtable`` as wide as the line: the name and
+    description columns share what the numbers and references leave, so the
+    table fits the text width of whatever paper it is put in. A name breaks
+    after its underscores.
+
+    The table needs the ``array``, ``booktabs``, ``xltabular`` and
     ``hyperref`` packages, and its citations the BibTeX of
     ``dataset_bibliography``. Datasets without a group come in their own
     section with no heading.
     """
     lines = [
         "% Written by smefit (write_dataset_table).",
-        r"% Needs \usepackage{array,booktabs,longtable,hyperref}.",
-        r"\begin{longtable}{l >{\raggedright\arraybackslash}p{0.33\textwidth} r r l}",
+        r"% Needs \usepackage{array,booktabs,xltabular,hyperref}.",
+        r"\begin{xltabular}{\linewidth}{"
+        r">{\raggedright\arraybackslash\hsize=0.8\hsize}X "
+        r">{\raggedright\arraybackslash\hsize=1.2\hsize}X r r l}",
         r"\caption{Datasets included in the fit.}",
         r"\label{tab:datasets} \\",
         r"\toprule",
@@ -379,8 +460,9 @@ def dataset_table_tex(dataset_info, dataset_bibliography) -> str:
             )
         for info in infos:
             luminosity = ", ".join(f"{value:g}" for value in info.luminosity) or "--"
+            name = _latex_text(info.name).replace(r"\_", r"\_\allowbreak{}")
             lines.append(
-                rf"\texttt{{{_latex_text(info.name)}}} & "
+                rf"\texttt{{{name}}} & "
                 rf"{_latex_text(info.description)} & {info.num_data} & "
                 rf"{luminosity} & {dataset_bibliography.cite(info.references)} \\"
             )
@@ -388,6 +470,118 @@ def dataset_table_tex(dataset_info, dataset_bibliography) -> str:
     lines += [
         r"\midrule",
         rf"\multicolumn{{2}}{{l}}{{Total}} & {total} & & \\",
-        r"\end{longtable}",
+        r"\end{xltabular}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _preview_tex(with_bibliography: bool) -> str:
+    """A document that typesets ``dataset_table.tex`` on its own, at the text
+    width of a paper, with the bibliography of ``dataset_table.bib`` when
+    there is one."""
+    lines = [
+        "% Written by smefit (write_dataset_table, compile_pdf: true).",
+        r"\documentclass{article}",
+        rf"\usepackage[textwidth={_PREVIEW_TEXTWIDTH}]{{geometry}}",
+        r"\usepackage{amsmath,array,booktabs,xltabular}",
+    ]
+    if with_bibliography:
+        lines.append(r"\usepackage[numbers]{natbib}")
+    lines.append(r"\usepackage{hyperref}")
+    if with_bibliography:
+        # unsrtnat prints a DOI as plain text unless \doi is already defined
+        lines.append(r"\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}")
+    lines += [r"\begin{document}", r"\input{dataset_table}"]
+    if with_bibliography:
+        lines += [r"\bibliographystyle{unsrtnat}", r"\bibliography{dataset_table}"]
+    lines.append(r"\end{document}")
+    return "\n".join(lines) + "\n"
+
+
+class _CompileError(Exception):
+    """A LaTeX tool that failed, with what it said about it."""
+
+
+def _run_tool(command, cwd, ok_codes=(0,)):
+    """Run one LaTeX tool in *cwd*, raising :class:`_CompileError` on failure.
+
+    bibtex exits with 1 on a mere warning (an INSPIRE entry with no author,
+    say), so it passes ``ok_codes=(0, 1)``.
+    """
+    try:
+        result = subprocess.run(
+            command, cwd=cwd, capture_output=True, timeout=_LATEX_TIMEOUT, check=False
+        )
+    except subprocess.TimeoutExpired as e:
+        raise _CompileError(f"{command[0]} timed out") from e
+    if result.returncode in ok_codes:
+        return
+    output = result.stdout.decode("utf-8", errors="replace").splitlines()
+    # pdflatex marks its errors with "!"; bibtex's last line counts them
+    errors = [line for line in output if line.startswith("!")] or output[-1:]
+    raise _CompileError(f"{command[0]} failed: {' '.join(errors[:2])}")
+
+
+def _compile_preview(output_path, with_bibliography: bool):
+    """Compile ``dataset_table_preview.tex`` of *output_path* into its PDF.
+
+    The tools run in a scratch folder, so only the PDF comes back: pdflatex,
+    bibtex when there is a bibliography, then pdflatex again until LaTeX stops
+    asking for a rerun. Stopping earlier is not enough for the table: longtable
+    settles its column widths over runs, and a table one run short overfills
+    its line.
+
+    A missing tool or a LaTeX error is warned about since
+    the table itself is already written; on an error the ``.log`` is copied
+    next to it.
+    """
+    output_path = pathlib.Path(output_path)
+    tools = ["pdflatex"] + (["bibtex"] if with_bibliography else [])
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if missing:
+        log.warning(
+            "%s not found: dataset_table_preview.pdf is not compiled.",
+            " and ".join(missing),
+        )
+        return
+    sources = ["dataset_table.tex", "dataset_table_preview.tex"]
+    if with_bibliography:
+        sources.append("dataset_table.bib")
+    pdflatex = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error"]
+    pdflatex.append("dataset_table_preview.tex")
+
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch = pathlib.Path(scratch)
+        for name in sources:
+            shutil.copy(output_path / name, scratch)
+        latex_log = scratch / "dataset_table_preview.log"
+        try:
+            _run_tool(pdflatex, scratch)
+            if with_bibliography:
+                _run_tool(["bibtex", "dataset_table_preview"], scratch, ok_codes=(0, 1))
+            # after bibtex a rerun is due whatever the log says
+            due = with_bibliography
+            reruns = 0
+            while due or _LATEX_RERUN.search(
+                latex_log.read_text(encoding="utf-8", errors="replace")
+            ):
+                if reruns == _MAX_LATEX_RERUNS:
+                    log.warning(
+                        "LaTeX still asks for a rerun after %d runs: "
+                        "dataset_table_preview.pdf may not be final.",
+                        reruns + 1,
+                    )
+                    break
+                _run_tool(pdflatex, scratch)
+                reruns += 1
+                due = False
+        except _CompileError as e:
+            if latex_log.exists():
+                shutil.copy(latex_log, output_path)
+            log.warning(
+                "%s: dataset_table_preview.pdf is not compiled (see "
+                "dataset_table_preview.log).",
+                e,
+            )
+            return
+        shutil.copy(scratch / "dataset_table_preview.pdf", output_path)

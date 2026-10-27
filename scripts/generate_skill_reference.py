@@ -658,6 +658,37 @@ def collect_fit_reading_actions(action_modules):
     return sorted(names)
 
 
+def collect_commondata_actions(action_modules):
+    """Actions that read nothing but the commondata files.
+
+    A runcard that only runs these needs `datasets` and `data_path`, but no
+    `theory_path` or `coefficients`: they only describe the datasets. 
+    validate_runcard.py uses this.
+
+    An action qualifies when every parameter it requires is `output_path` or a
+    node of `smefit.dataset_info`, the module that reads only commondata —
+    `tests/test_dataset_info.py` pins that contract.
+    """
+    nodes = {
+        fn["name"]
+        for mod in action_modules
+        if mod["module"] == "smefit.dataset_info"
+        for fn in mod["functions"]
+    }
+    names = set()
+    for mod in action_modules:
+        for fn in mod["functions"]:
+            required = set(fn["params"]) - set(fn["optional_params"])
+            required -= {"output_path"}
+            if (
+                is_runnable_action(mod["module"], fn["name"])
+                and required
+                and required <= nodes
+            ):
+                names.add(fn["name"])
+    return sorted(names)
+
+
 def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_keys):
     """Machine-readable key list consumed by validate_runcard.py."""
     settings_blocks = {}
@@ -676,6 +707,7 @@ def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_k
     return {
         "top_level_keys": top_level,
         "fit_reading_actions": collect_fit_reading_actions(action_modules),
+        "commondata_actions": collect_commondata_actions(action_modules),
         "settings_blocks": settings_blocks,
         "raw_keys": surface["raw"],
         "derived_keys": sorted(e["key"] for e in surface["produce"]),

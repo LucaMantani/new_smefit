@@ -235,7 +235,10 @@ def dataset_table(dataset_info):
                 for info in dataset_info
             ],
             "References": [
-                ", ".join(r.replace("arxiv:", "arXiv:") for r in info.references)
+                ", ".join(
+                    r.removeprefix("url:").replace("arxiv:", "arXiv:", 1)
+                    for r in info.references
+                )
                 for info in dataset_info
             ],
         },

@@ -2,9 +2,11 @@
 their LaTeX table."""
 
 import inspect
+import io
 import json
 import logging
 import urllib.error
+import urllib.parse
 
 import pytest
 
@@ -57,6 +59,8 @@ def test_arxiv_number_keeps_its_trailing_zero(tmp_path):
         ("hep-ex/0509008", ("arxiv:hep-ex/0509008",)),
         ("https://inspirehep.net/literature/1323200", ("recid:1323200",)),
         ("1511.04716, 1511.04716", ("arxiv:1511.04716",)),
+        # a separator left at the end splits off an empty token
+        ("1511.04716,", ("arxiv:1511.04716",)),
         ("1403.7366", ("arxiv:1403.7366",)),
         # the number in a link to another site is not an arXiv number: the
         # link is kept as it is
@@ -177,6 +181,16 @@ def test_description_is_not_read_for_references_when_the_file_has_some(tmp_path)
     (info,) = dataset_info([{"name": "DS"}], tmp_path)
 
     assert info.references == ("arxiv:1511.04716",)
+
+
+def test_unreadable_luminosity_is_left_out_with_a_warning(tmp_path, caplog):
+    _write_commondata(tmp_path, "DS", ["luminosity: TBD"])
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        (info,) = dataset_info([{"name": "DS"}], tmp_path)
+
+    assert info.luminosity == ()
+    assert "DS: unreadable luminosity 'TBD'" in caplog.text
 
 
 def test_missing_metadata_falls_back_to_empty(tmp_path):
@@ -347,6 +361,46 @@ def test_bibliography_queries_each_reference_once_in_batches(monkeypatch):
 
     searched = [terms for terms, params in queries if "fields" in params]
     assert searched == [["arxiv:1", "arxiv:2"], ["arxiv:3"]]
+
+
+def test_inspire_query_searches_for_any_of_the_terms(monkeypatch):
+    """The one request every other test fakes."""
+    requests = []
+
+    def urlopen(url, timeout):
+        requests.append((url, timeout))
+        return io.BytesIO(b"@article{A,}")
+
+    monkeypatch.setattr(di.urllib.request, "urlopen", urlopen)
+
+    assert di._inspire_query(["arxiv:1", "recid:2"], format="bibtex") == (
+        b"@article{A,}"
+    )
+
+    ((url, timeout),) = requests
+    base, _, query = url.partition("?")
+    assert base == di.INSPIRE_API
+    assert urllib.parse.parse_qs(query) == {
+        "q": ["arxiv:1 or recid:2"],
+        "size": ["2"],
+        "format": ["bibtex"],
+    }
+    assert timeout == 30
+
+
+def test_record_without_a_citation_key_is_linked(monkeypatch, caplog):
+    """INSPIRE found the paper but has no key to cite it by."""
+    _fake_inspire(
+        monkeypatch,
+        [{"control_number": 1404878, "arxiv_eprints": [{"value": "1511.04716"}]}],
+    )
+    infos = [DatasetInfo("DS", 1, references=("arxiv:1511.04716",))]
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        bibliography = dataset_bibliography(infos, fetch_bibtex=True)
+
+    assert bibliography.texkeys == {}
+    assert "arxiv:1511.04716" in caplog.text
 
 
 def test_reference_inspire_does_not_know_is_warned_about(monkeypatch, caplog):

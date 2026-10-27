@@ -135,6 +135,21 @@ def test_compile_pdf_without_pdflatex_writes_the_table_and_warns(
     assert _files(tmp_path) == {"dataset_table.tex", "dataset_table_preview.tex"}
 
 
+def test_compile_pdf_gives_up_on_a_tool_that_hangs(monkeypatch, tmp_path, caplog):
+    def hang(command, cwd, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(di.subprocess, "run", hang)
+    monkeypatch.setattr(di.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
+
+    assert "pdflatex timed out" in caplog.text
+    # it never got as far as writing a log
+    assert _files(tmp_path) == {"dataset_table.tex", "dataset_table_preview.tex"}
+
+
 def test_compile_pdf_latex_error_warns_and_keeps_the_log(monkeypatch, tmp_path, caplog):
     _fake_latex(monkeypatch, [""], fail="pdflatex")
 

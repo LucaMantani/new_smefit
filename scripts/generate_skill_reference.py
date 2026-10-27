@@ -662,7 +662,7 @@ def collect_commondata_actions(action_modules):
     """Actions that read nothing but the commondata files.
 
     A runcard that only runs these needs `datasets` and `data_path`, but no
-    `theory_path` or `coefficients`: they only describe the datasets. 
+    `theory_path` or `coefficients`: they only describe the datasets.
     validate_runcard.py uses this.
 
     An action qualifies when every parameter it requires is `output_path` or a

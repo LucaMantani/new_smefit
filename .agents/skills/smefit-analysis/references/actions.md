@@ -66,6 +66,8 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Per-coefficient 1D chi2 scan results as a table.
 - `coefficient_bounds_table(fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
+- `dataset_table(dataset_info)`
+  - The datasets of the runcard, as :func:`write_dataset_table` lists them.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `global_information_table(global_information_matrix, params_to_plot=None)`
@@ -96,6 +98,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `run_pca(pca, output_path)`
   - Print the principal-component analysis and save it.
+- `write_dataset_table(dataset_table_tex, dataset_bibliography, output_path, compile_pdf=False)`
+  - Write the LaTeX table of the runcard's datasets, for a paper's appendix.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 
@@ -180,3 +184,12 @@ names in tracebacks. They are resolved for you.
 
 - `pca(total_fisher_information_matrix, pca_settings) -> smefit.pca.PCA`
   - Diagonalise the total Fisher matrix.
+
+### `smefit.dataset_info`
+
+- `dataset_bibliography(dataset_info, fetch_bibtex=False) -> smefit.dataset_info.Bibliography`
+  - Resolve the references of the datasets on INSPIRE, when asked to.
+- `dataset_info(datasets, data_path) -> List[smefit.dataset_info.DatasetInfo]`
+  - The provenance of each dataset of the runcard, in runcard order. Reads only the commondata files, a runcard with ``datasets`` and ``data_path`` is enough.
+- `dataset_table_tex(dataset_info, dataset_bibliography) -> str`
+  - The datasets as a LaTeX ``xltabular``, one section per ``group``.

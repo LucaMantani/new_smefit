@@ -119,3 +119,18 @@ If the download also fails (fit not on server, no network, wrong name), a clear 
 ```
 FileNotFoundError: '<path>' does not exist locally and could not be downloaded from the server: Fit '<name>' not found on server.
 ```
+
+## LaTeX
+
+Two features need a LaTeX installation on the machine, which `pip install`
+cannot provide:
+
+- **Figures** render their text with LaTeX (matplotlib `text.usetex`), so every
+  plotting action needs `latex` on the `PATH`.
+- **`write_dataset_table` with `compile_pdf: true`** runs `pdflatex` and
+  `bibtex`, and the table needs the `xltabular`, `booktabs` and `hyperref`
+  packages (plus `natbib` for the bibliography). Without them it warns and
+  writes the `.tex`/`.bib` only.
+
+A standard TeX Live installation (e.g. `texlive-latex-extra` on Debian/Ubuntu)
+covers both.

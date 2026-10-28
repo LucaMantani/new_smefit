@@ -10,12 +10,14 @@ import pytest
 
 from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
+from smefit.dataset_info import DatasetInfo
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.op_to_latex import coeff_info_latex
 from smefit.pca import PCA
 from smefit.tables import (
     chi2_scan_table,
     coefficient_bounds_table,
+    dataset_table,
     fisher_diagonals_normalised,
     global_information_table,
     mass_scan_table,
@@ -270,6 +272,42 @@ def test_coefficient_bounds_table_rejects_empty_bounds_levels() -> None:
 def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
     with pytest.raises(ValueError, match="interval_types is empty"):
         coefficient_bounds_table(_joint_fit({"OtG": _RAMP}), interval_types=[])
+
+
+# ---------------------------------------------------------------------------
+# dataset_table
+# ---------------------------------------------------------------------------
+
+
+def test_dataset_table_lists_datasets_in_runcard_order():
+    infos = [
+        DatasetInfo(
+            "B",
+            7,
+            description="tt",
+            luminosity=(36.1, 139.0),
+            references=(
+                "arxiv:1511.04716",
+                "recid:1323200",
+                "url:https://repository.cern/records/3rj9z-94994",
+            ),
+            group="Top",
+        ),
+        DatasetInfo("A", 1),
+    ]
+
+    result = dataset_table(infos)
+
+    assert result.index.tolist() == ["B", "A"]
+    assert result.loc["B"].tolist() == [
+        "Top",
+        "tt",
+        7,
+        "36.1, 139",
+        "arXiv:1511.04716, recid:1323200, "
+        "https://repository.cern/records/3rj9z-94994",
+    ]
+    assert result.loc["A"].tolist() == ["", "", 1, "--", ""]
 
 
 # ---------------------------------------------------------------------------

@@ -44,6 +44,10 @@ ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
 # there; this is the fallback.
 FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
 
+# Actions that read only the commondata files, so a runcard running only these
+# needs no theory_path or coefficients. Same source and fallback rule as above.
+COMMONDATA_ACTIONS = {"dataset_table", "write_dataset_table"}
+
 
 def action_name(action):
     """The bare action name of an `actions_:` entry.
@@ -571,15 +575,25 @@ def main():
         and "external_chi2" not in runcard
     ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
+    # A runcard that only describes its datasets (the dataset table of a
+    # paper) reads their commondata files and nothing else.
+    commondata = set((keys or {}).get("commondata_actions") or COMMONDATA_ACTIONS)
+    reads_commondata_only = (
+        "datasets" in runcard and bool(action_names) and action_names <= commondata
+    )
+
     if "datasets" in runcard:
-        for key in ("data_path", "theory_path"):
+        required = (
+            ("data_path",) if reads_commondata_only else ("data_path", "theory_path")
+        )
+        for key in required:
             if key not in runcard:
                 rep.error(f"'{key}' is required when 'datasets' is present")
 
     coefficients = runcard.get("coefficients")
     nonlinear_exprs = []
     if not coefficients:
-        if not reads_fits_only:
+        if not (reads_fits_only or reads_commondata_only):
             rep.error("runcard needs a non-empty 'coefficients' mapping")
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}

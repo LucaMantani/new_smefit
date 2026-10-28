@@ -235,6 +235,46 @@ def coefficient_bounds_table(
 
 
 @table
+def dataset_table(dataset_info):
+    """The datasets of the runcard, as :func:`write_dataset_table` lists them.
+
+    The report counterpart of the LaTeX table: the same rows, with the
+    references as identifiers rather than citations, so it needs no INSPIRE
+    lookup.
+
+    Parameters
+    ----------
+    dataset_info : list of smefit.dataset_info.DatasetInfo
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = dataset names, in runcard order. Columns ``Group``,
+        ``Description``, ``n_dat``, ``Luminosity [fb^-1]`` (``--`` when the
+        commondata gives none) and ``References``.
+    """
+    return pd.DataFrame(
+        {
+            "Group": [info.group or "" for info in dataset_info],
+            "Description": [info.description for info in dataset_info],
+            "n_dat": [info.num_data for info in dataset_info],
+            "Luminosity [fb^-1]": [
+                ", ".join(f"{value:g}" for value in info.luminosity) or "--"
+                for info in dataset_info
+            ],
+            "References": [
+                ", ".join(
+                    r.removeprefix("url:").replace("arxiv:", "arXiv:", 1)
+                    for r in info.references
+                )
+                for info in dataset_info
+            ],
+        },
+        index=[info.name for info in dataset_info],
+    )
+
+
+@table
 def pca_components(pca):
     """Weight of each coefficient in each principal direction.
 

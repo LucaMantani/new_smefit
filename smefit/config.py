@@ -17,6 +17,7 @@ from reportengine.configparser import ConfigError, element_of, explicit_node
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
+from smefit.bayesian_update import build_exact_posterior_prior
 from smefit.blackjax_samplers import (
     BJ_ALGORITHM_SETTINGS,
     BJ_ALGORITHMS,
@@ -29,15 +30,15 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
-from smefit.paths import (
-    fetch_fit_if_missing,
-    resolve_fit_dir,
-    resolve_path,
-)
+from smefit.paths import resolve_fit_dir, resolve_path
 from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
-from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
-from smefit.utils import build_exact_posterior_prior
+from smefit.rge import (
+    ALLOWED_SMEFT_ACCURACY,
+    ALLOWED_YUKAWA,
+    RGEMatrix,
+    build_rge_matrix,
+)
 from smefit.whitening import (
     _whitening_baseline_shift,
     _whitening_gradient_descent_shift,
@@ -106,7 +107,15 @@ class smefitConfig(Config):
         return groups if groups else None
 
     def parse_rge(self, rge):
-        """Parse and validate RGE settings."""
+        """Parse and validate RGE settings.
+
+        `rg_matrix` reuses a precomputed RGE matrix, and is resolved here to
+        the pickle it names through `smefit.rge.RGEMatrix.locate`. It is a fit
+        name (`rg_matrix: my_fit`, looked up like a `fits:` entry and downloaded
+        from the server if missing), a directory holding an `rge_matrix.pkl`,
+        or the pickle file itself. A local directory with a bare name must be
+        written `./name`, or it is read as a fit name.
+        """
         known_keys = {
             "init_scale",
             "obs_scale",
@@ -139,9 +148,14 @@ class smefitConfig(Config):
                 sorted(ALLOWED_YUKAWA),
                 display_alternatives="all",
             )
-        if "rg_matrix" in rge:
-            rge["rg_matrix"] = resolve_path(rge["rg_matrix"])
-            fetch_fit_if_missing(pathlib.Path(rge["rg_matrix"]))
+        if rge.get("rg_matrix"):
+            # One resolver for every form `rg_matrix` takes (fit name,
+            # directory, file), so a wrong one fails here and external chi2
+            # modules receive a concrete file path in their rge_dict.
+            try:
+                rge["rg_matrix"] = str(RGEMatrix.locate(rge["rg_matrix"]))
+            except FileNotFoundError as e:
+                raise ConfigError(str(e)) from e
         return rge
 
     def produce_init_scale(self, rge):

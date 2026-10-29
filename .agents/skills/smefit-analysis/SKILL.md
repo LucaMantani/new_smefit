@@ -148,7 +148,7 @@ Reading them:
 
 1. Benchmark first: `chi2_timing` action (template `time_likelihood.yaml`).
 2. RGE matrix computation can dominate startup — it is cached per run at
-   `<output>/rge_matrix.pkl`; reuse it in later runs via `rge.rg_matrix:`.
+   `<output>/rge_matrix.pkl`; reuse it in later runs via `rge.rg_matrix: <fit_name>`.
 3. `-f32` roughly halves memory and speeds up sampling; verify results against
    a float64 run before trusting it.
 4. Prefer `run_analytic_fit` (exact, seconds) whenever the model is linear

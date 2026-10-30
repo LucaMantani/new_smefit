@@ -6,6 +6,7 @@ Functions for creating figures and plots.
 
 import logging
 
+import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -384,25 +385,63 @@ def _stairs_band(axis, low, high, edges, **kwargs):
     return axis.stairs(high, edges, baseline=low, fill=True, linewidth=0, **kwargs)
 
 
-def _best_fit_predictions(fit, eft_model, coefficients):
-    """Theory predictions at the fit's best-fit point.
+# Fixed so the EFT band of a report is the same every time it is rebuilt.
+_EFT_BAND_SEED = 0
+
+
+def _gaussian_draws(covmat, n_draws, rng):
+    """*n_draws* draws of :math:`N(0, C)`, shape ``(n_draws, len(C))``.
+
+    Negative eigenvalues of *covmat* are set to zero, which makes it the
+    nearest positive-semidefinite matrix. Theory covmats in the database are
+    not all exactly PSD — rounding at 1e-15 is common, and a few carry
+    negative eigenvalues near 1e-4 of the largest, from rounded correlations —
+    and a Gaussian with a negative variance has no draws to give.
+    """
+    eigvals, eigvecs = np.linalg.eigh(np.asarray(covmat))
+    root = eigvecs * np.sqrt(np.clip(eigvals, 0.0, None))
+    return rng.standard_normal((n_draws, len(eigvals))) @ root.T
+
+
+def _eft_predictions(fit, eft_model, coefficients, theory_covmat=None):
+    """EFT predictions at the fit's best-fit point and over its posterior.
 
     The predictions are those of *this* runcard's ``eft_model``, evaluated at
     the values the fit found for the runcard's free coefficients — so the
     datasets plotted need not be the ones that were fitted.
 
+    Each posterior sample :math:`c_i` gives one prediction,
+    :math:`\\sigma_i = f(c_i) + \\theta_i` with
+    :math:`\\theta_i \\sim N(0, C_{\\rm th})`: the full model ``forward_map``,
+    quadratic corrections and RGE running included, plus a draw of the theory
+    uncertainty, correlated across data points as in ``theory_covmat``. That is
+    the predictive distribution the likelihood assumes, so its quantiles are
+    exact whatever its shape; for a linear model and a Gaussian posterior they
+    reduce to the best fit :math:`\\pm \\sqrt{L\\Sigma L^T + C_{\\rm th}}`.
+
+    Parameters
+    ----------
+    theory_covmat : array-like, shape (n_data, n_data), optional
+        Covariance of the theory uncertainty added to every sample. None adds
+        none, and the samples are the posterior's spread alone.
+
     Returns
     -------
-    np.ndarray, shape (n_data,)
+    best : np.ndarray, shape (n_data,)
+    samples : np.ndarray, shape (n_samples, n_data)
     """
-    best_fit_point = fit.fit_results.best_fit_point
+    results = fit.fit_results
     free = coefficients.free_names
-    missing = [name for name in free if name not in best_fit_point]
+    missing = [
+        name
+        for name in free
+        if name not in results.best_fit_point or name not in (results.samples or {})
+    ]
     if missing:
         raise ValueError(
-            f"Fit '{fit.fit_name}' has no best-fit value for {missing}, which "
-            "are free in this runcard. Declare as free only coefficients the "
-            "fit determined."
+            f"Fit '{fit.fit_name}' has no best-fit value or posterior samples "
+            f"for {missing}, which are free in this runcard. Declare as free "
+            "only coefficients the fit determined."
         )
     if fit.use_quad != eft_model.use_quad:
         log.warning(
@@ -413,13 +452,22 @@ def _best_fit_predictions(fit, eft_model, coefficients):
             eft_model.use_quad,
         )
 
-    best_point = jnp.array([best_fit_point[name] for name in free])
-    return np.asarray(eft_model.forward_map(best_point))
+    best_point = jnp.array([results.best_fit_point[name] for name in free])
+    posterior = jnp.stack([jnp.asarray(results.samples[name]) for name in free], 1)
+    # Batched rather than vmapped over every sample at once: with quadratic
+    # corrections the intermediate is (n_samples, n_data, n_ops, n_ops).
+    samples = np.asarray(jax.lax.map(eft_model.forward_map, posterior, batch_size=256))
+    if theory_covmat is not None:
+        rng = np.random.default_rng(_EFT_BAND_SEED)
+        samples = samples + _gaussian_draws(theory_covmat, len(samples), rng)
+    return np.asarray(eft_model.forward_map(best_point)), samples
 
 
 @figuregen
-def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_covmat):
-    """Compare the data with the SM and with the EFT at a fit's best-fit point.
+def plot_data_theory_comparison(
+    fit, data, theory, eft_model, coefficients, fit_covmat, use_theory_covmat=False
+):
+    """Compare the data with the SM and with the EFT at a fit's posterior.
 
     Yields one ``(figure, dataset_name)`` per dataset of the runcard. The upper
     panel shows
@@ -429,7 +477,11 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
       the diagonal of the experimental covmat);
     - the SM prediction, banded by its theory uncertainty (the diagonal of the
       theory covmat), whether or not ``use_theory_covmat`` puts it in the fit;
-    - the EFT prediction at the fit's best-fit point.
+    - the EFT prediction at the fit's best-fit point, banded by the 16th to
+      84th percentiles of the predictions over the posterior, with the theory
+      uncertainty sampled in when ``use_theory_covmat`` is set (see
+      :func:`_eft_predictions`). With quadratic corrections the band need not
+      be symmetric about the best fit, nor even contain it.
 
     The predictions are drawn constant across each bin. The lower panel shows
     the same, divided by the SM. The legend gives the :math:`\\chi^2` per
@@ -454,19 +506,23 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
         ``use_t0`` and ``use_theory_covmat`` as a fit would. Only the
         dataset's diagonal block enters, as in ``datasets_chi2``: correlations
         across datasets are ignored.
+    use_theory_covmat : bool, optional
+        Whether the theory uncertainty is part of the EFT band, as it is part
+        of the likelihood. The runcard's own key, so the band follows what the
+        fit assumed.
 
     Raises
     ------
     ValueError
-        If the fit was run one coefficient at a time — its best-fit values
-        come from separate one-parameter fits, not one point in the joint
-        space the predictions need — or lacks a coefficient free in this
-        runcard.
+        If the fit was run one coefficient at a time — its samples are
+        independent 1D posteriors, not points in the joint space the
+        predictions need — or lacks a best-fit value or posterior samples for
+        a coefficient free in this runcard.
     """
     if fit.individual_fit:
         raise ValueError(
             f"Fit '{fit.fit_name}' was run one coefficient at a time, so it has "
-            "no joint best-fit point to evaluate the predictions at."
+            "no joint posterior to evaluate the predictions on."
         )
     if data.names != theory.names:
         raise ValueError(
@@ -477,7 +533,13 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
 
     set_plot_style()
 
-    eft_best = _best_fit_predictions(fit, eft_model, coefficients)
+    eft_best, eft_samples = _eft_predictions(
+        fit,
+        eft_model,
+        coefficients,
+        theory.sm_covmat if use_theory_covmat else None,
+    )
+    eft_low, eft_high = np.percentile(eft_samples, [16, 84], axis=0)
     sm = np.asarray(theory.sm_pred)
     sm_err = np.sqrt(np.diag(np.asarray(theory.sm_covmat)))
     cv = np.asarray(data.cv)
@@ -536,6 +598,16 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
                 zorder=3,
                 gid="sm",
             )
+            eft_band = _stairs_band(
+                axis,
+                eft_low[idx] / norm,
+                eft_high[idx] / norm,
+                edges,
+                color="C1",
+                alpha=0.3,
+                zorder=2.1,
+                gid="eft_band",
+            )
             eft_line = axis.stairs(
                 eft_best[idx] / norm,
                 edges,
@@ -545,7 +617,7 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
                 zorder=3.1,
                 gid="eft",
             )
-            data = axis.errorbar(
+            data_points = axis.errorbar(
                 x,
                 cv[idx] / norm,
                 # an error must stay positive when divided by a negative SM
@@ -559,19 +631,18 @@ def plot_data_theory_comparison(fit, data, theory, eft_model, coefficients, fit_
             )
             axis.grid(alpha=0.3)
 
-        # Each theory entry pairs a line with its band, so the legend says what the
-        # shading is.
+        # Each theory entry pairs a line with its band.
         handles_labels = [
             (
                 (sm_band, sm_line) if has_th_err else sm_line,
                 rf"$\mathrm{{SM}},\ {sm_chi2}$",
             ),
             (
-                eft_line,
+                (eft_band, eft_line),
                 # the fit's label is the runcard's, already LaTeX or plain text
                 rf"$\mathrm{{EFT}}$: {fit.plot_label}, ${eft_chi2}$",
             ),
-            (data, r"$\mathrm{Data,\ stat.} + \mathrm{syst.}$"),
+            (data_points, r"$\mathrm{Data,\ stat.} + \mathrm{syst.}$"),
         ]
         ax.legend(*zip(*handles_labels), fontsize=12)
 

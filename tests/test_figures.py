@@ -9,6 +9,8 @@ stored attributes), but that is not something to rely on — anything that
 measures text, `tight_layout()` above all, renders it.
 """
 
+import warnings
+
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
@@ -20,6 +22,7 @@ from matplotlib.collections import PathCollection
 from smefit import figures as figures_mod
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.figures import (
+    _gaussian_draws,
     _plot_heatmap,
     _tex_escape,
     plot_chi2_scan,
@@ -596,7 +599,7 @@ def test_plot_data_theory_comparison_spans_every_bin_edge_to_edge(comparison_set
     ones included, and the axis ends where the bins do."""
     ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
     ax = fig.axes[0]
-    for gid in ("sm", "sm_band", "eft"):
+    for gid in ("sm", "sm_band", "eft", "eft_band"):
         np.testing.assert_allclose(_stairs(ax, gid).edges, [0.5, 1.5, 2.5, 3.5])
     assert ax.get_xlim() == (0.5, 3.5)
     # the central lines do not drop to zero at the ends of the axis
@@ -676,6 +679,103 @@ def test_plot_data_theory_comparison_drops_an_absent_theory_error(comparison_set
     ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
     # no SM band to draw
     assert not [p for p in fig.axes[0].patches if p.get_gid() == "sm_band"]
+
+
+_LIN = np.array([1.0, 2.0, 3.0])  # linear OpA correction in the fixture
+_SM = np.array([10.0, 20.0, 30.0])
+
+
+def test_plot_data_theory_comparison_eft_band_spans_the_posterior(comparison_setup):
+    """Without the theory uncertainty the band is the 16th-84th percentiles of
+    the predictions over the posterior, the theory covmat notwithstanding."""
+    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    band = _stairs(fig.axes[0], "eft_band")
+
+    # OpA samples [0, 1, 2], OpB 0: percentiles at OpA = 0.32 and 1.68
+    np.testing.assert_allclose(band.baseline, _SM + 0.32 * _LIN, rtol=1e-5)
+    np.testing.assert_allclose(band.values, _SM + 1.68 * _LIN, rtol=1e-5)
+
+
+def test_plot_data_theory_comparison_eft_band_follows_quadratic_corrections(
+    comparison_setup,
+):
+    """With quadratic corrections the band is the percentiles of the full
+    predictions, so a posterior symmetric about zero gives a band that is not
+    symmetric about the best fit."""
+    theory = comparison_setup["theory"]
+    comparison_setup["eft_model"] = EFTModel(
+        theory, comparison_setup["coefficients"], use_quad=True
+    )
+    opa = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+    fit = _comparison_fit(samples={"OpA": list(opa), "OpB": [0.0] * len(opa)})
+    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    band = _stairs(fig.axes[0], "eft_band")
+
+    quad = np.array([0.1, 0.2, 0.3])  # OpA*OpA in the fixture
+    predictions = _SM + np.outer(opa, _LIN) + np.outer(opa**2, quad)
+    low, high = np.percentile(predictions, [16, 84], axis=0)
+    np.testing.assert_allclose(band.baseline, low, rtol=1e-5)
+    np.testing.assert_allclose(band.values, high, rtol=1e-5)
+    # best fit OpA = 0 is the SM; the quadratic term only pushes upwards
+    assert np.all(band.values - _SM > _SM - band.baseline)
+
+
+def test_plot_data_theory_comparison_eft_band_samples_the_theory_error(
+    comparison_setup,
+):
+    """With use_theory_covmat each sample gets a draw of the theory error: on
+    a posterior pinned at the SM, the band is the SM theory uncertainty."""
+    fit = _comparison_fit(samples={"OpA": [0.0] * 20000, "OpB": [0.0] * 20000})
+    ((fig, _),) = plot_data_theory_comparison(
+        fit, use_theory_covmat=True, **comparison_setup
+    )
+    band = _stairs(fig.axes[0], "eft_band")
+
+    th = np.array([0.1, 0.2, 0.3])  # sqrt of the fixture theory covmat diagonal
+    z = 0.9945  # the 84th percentile of a standard normal
+    np.testing.assert_allclose(band.values - _SM, z * th, rtol=0.05)
+    np.testing.assert_allclose(_SM - band.baseline, z * th, rtol=0.05)
+
+
+def test_gaussian_draws_follow_the_covariance():
+    covmat = np.array([[4.0, 1.2], [1.2, 1.0]])
+    draws = _gaussian_draws(covmat, 200_000, np.random.default_rng(1))
+    assert draws.shape == (200_000, 2)
+    np.testing.assert_allclose(np.cov(draws.T), covmat, rtol=0.02)
+
+
+def test_gaussian_draws_treat_a_slightly_negative_eigenvalue_as_zero():
+    """A covmat a rounding error off positive-semidefinite is sampled as its
+    nearest PSD matrix, without a warning."""
+    # perfectly correlated, with the correlation rounded just above 1
+    covmat = np.array([[1.0, 1.0001], [1.0001, 1.0]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        draws = _gaussian_draws(covmat, 100_000, np.random.default_rng(1))
+    np.testing.assert_allclose(np.var(draws, axis=0), [1.0, 1.0], rtol=0.02)
+    np.testing.assert_allclose(np.corrcoef(draws.T)[0, 1], 1.0, rtol=1e-6)
+
+
+def test_plot_data_theory_comparison_eft_band_is_reproducible(comparison_setup):
+    fit = _comparison_fit()
+    bands = [
+        _stairs(fig.axes[0], "eft_band")
+        for ((fig, _),) in (
+            plot_data_theory_comparison(fit, use_theory_covmat=True, **comparison_setup)
+            for _ in range(2)
+        )
+    ]
+    np.testing.assert_array_equal(bands[0].values, bands[1].values)
+    np.testing.assert_array_equal(bands[0].baseline, bands[1].baseline)
+
+
+def test_plot_data_theory_comparison_rejects_a_fit_without_samples(
+    comparison_setup,
+):
+    fit = _comparison_fit()
+    fit.fit_results.samples = None
+    with pytest.raises(ValueError, match="posterior samples"):
+        list(plot_data_theory_comparison(fit, **comparison_setup))
 
 
 def test_plot_data_theory_comparison_reports_the_chi2_per_point(comparison_setup):

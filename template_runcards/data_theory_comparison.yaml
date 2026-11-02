@@ -7,10 +7,9 @@
 # fit's own runcard: its use_quad, rge, use_t0, use_theory_covmat and
 # coefficients, so nothing of the setup is repeated here.
 #
-# Only the datasets listed under `datasets` are drawn; leave the key out to
-# draw all of the fit's. A dataset the fit included is drawn with the fit's own
-# order and theory_cov; one it did not include is taken as listed, read from
-# the fit's data_path and theory_path.
+# Only the datasets listed under `datasets` are drawn. A dataset the fit
+# included is drawn with the fit's own order and theory_cov; one it did not
+# include is taken as listed, read from the fit's data_path and theory_path.
 datasets:
   - {name: LEP1_EWPOs_2006, order: LO}
   - {name: LEP_Bhabha_2013, order: LO}

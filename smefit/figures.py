@@ -381,8 +381,8 @@ def plot_data_theory_comparison(fit, fit_model):
     """Compare the data with the SM and with the EFT at a fit's posterior.
 
     Yields one ``(figure, dataset_name)`` per dataset listed under the
-    runcard's ``datasets``, whether or not the fit was run on it, or per
-    dataset of the fit when the runcard lists none. The upper panel shows
+    runcard's ``datasets``, whether or not the fit was run on it. The upper
+    panel shows
 
     - the measurements, with the total experimental uncertainty as error bar
       (statistical and every systematic, correlated or not, in quadrature —

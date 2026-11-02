@@ -926,8 +926,12 @@ def test_plot_data_theory_comparison_graph_resolves(
     (fit_dir / "input").mkdir()
     (fit_dir / "input" / "runcard.yaml").write_text(yaml.safe_dump(fit_runcard))
 
-    # the model is the fit's: the comparison runcard need only name it
-    runcard = {"fits": [{"name": "my_fit", "path": str(tmp_path)}]}
+    # the model is the fit's: the comparison runcard need only name it and
+    # the datasets to draw
+    runcard = {
+        "fits": [{"name": "my_fit", "path": str(tmp_path)}],
+        "datasets": [_TESTDATA],
+    }
     config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
     builder = ResourceBuilder(
         config,

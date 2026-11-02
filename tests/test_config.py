@@ -1466,7 +1466,7 @@ _FIT_RUNCARD = {
 }
 
 
-def _runcards_seen(monkeypatch, fit_runcard, datasets=None):
+def _runcards_seen(monkeypatch, fit_runcard, datasets):
     """Run produce_fit_model with smefitAPI stubbed; return the runcards it was
     built from, one per resource asked for, and the FitModel."""
     from smefit import api
@@ -1487,9 +1487,8 @@ def _runcards_seen(monkeypatch, fit_runcard, datasets=None):
 
 
 def test_produce_fit_model_is_built_from_the_fit_s_runcard(monkeypatch):
-    """Without datasets of its own, every resource is the fit's, over all of
-    the fit's datasets."""
-    seen, model = _runcards_seen(monkeypatch, _FIT_RUNCARD)
+    """Listing the fit's own datasets, every resource is the fit's."""
+    seen, _ = _runcards_seen(monkeypatch, _FIT_RUNCARD, _FIT_RUNCARD["datasets"])
     assert len(seen) == 3
     assert all(runcard == _FIT_RUNCARD for runcard in seen)
 
@@ -1528,7 +1527,9 @@ def test_produce_fit_model_drops_an_rge_cache_that_no_longer_resolves(
     """The fit's rg_matrix is a cache: if the file is gone, the matrix is
     computed from the same rge settings rather than failing."""
     rge = {"init_scale": 1000.0, "rg_matrix": str(tmp_path / "gone.pkl")}
-    seen, _ = _runcards_seen(monkeypatch, {**_FIT_RUNCARD, "rge": rge})
+    seen, _ = _runcards_seen(
+        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"]
+    )
     assert all(runcard["rge"] == {"init_scale": 1000.0} for runcard in seen)
 
 
@@ -1536,7 +1537,9 @@ def test_produce_fit_model_keeps_an_rge_cache_that_exists(monkeypatch, tmp_path)
     cache = tmp_path / "rge_matrix.pkl"
     cache.write_bytes(b"")
     rge = {"init_scale": 1000.0, "rg_matrix": str(cache)}
-    seen, _ = _runcards_seen(monkeypatch, {**_FIT_RUNCARD, "rge": rge})
+    seen, _ = _runcards_seen(
+        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"]
+    )
     assert all(runcard["rge"] == rge for runcard in seen)
 
 

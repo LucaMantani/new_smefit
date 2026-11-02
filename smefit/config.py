@@ -331,7 +331,7 @@ class smefitConfig(Config):
             use_theory_covmat=use_theory_covmat,
         )
 
-    def produce_fit_model(self, fit, datasets=None):
+    def produce_fit_model(self, fit, datasets):
         """The model ``fit`` was run with, to draw predictions at its posterior.
 
         Rebuilt from the fit's own runcard, as the Bayesian update rebuilds a
@@ -339,8 +339,8 @@ class smefitConfig(Config):
         ``use_theory_covmat`` and the coefficients are the fit's, whatever this
         runcard says.
 
-        It covers the datasets listed under ``datasets``, in that order, or
-        every dataset of the fit when the runcard lists none. A listed dataset
+        It covers only the datasets listed under ``datasets``, in that order,
+        whether or not the fit included them. A listed dataset
         the fit included is taken with the fit's own entry (its ``order`` and
         ``theory_cov``), whatever the listing says; one it did not include is
         taken as listed, read from the fit's ``data_path`` and ``theory_path``.
@@ -349,8 +349,6 @@ class smefitConfig(Config):
         from smefit.api import smefitAPI
 
         fitted = {ds["name"]: ds for ds in fit.setting("datasets", None) or []}
-        if datasets is None:
-            datasets = list(fitted.values())
         runcard = dict(fit.fit_runcard)
         runcard["datasets"] = [fitted.get(ds["name"], ds) for ds in datasets]
         rge = runcard.get("rge")

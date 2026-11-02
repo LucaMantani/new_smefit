@@ -194,29 +194,18 @@ class EFTModel(BaseModel):
     ) -> jnp.ndarray:
         """The model's prediction at every posterior sample.
 
-        Sample :math:`c_i` gives :math:`\\sigma_i = f(c_i) + \\theta_i`: the
-        full ``forward_map``, quadratic corrections and RGE running included,
-        plus, when ``use_theory_covmat`` is on, a draw
-        :math:`\\theta_i \\sim N(0, C_{\\rm th})` of the theory uncertainty,
-        correlated across data points as in ``theory.sm_covmat``. That is the
-        predictive distribution the likelihood assumes, so quantiles taken
-        over the result are exact whatever its shape; for a linear model and a
-        Gaussian posterior they reduce to
-        :math:`f(\\hat c) \\pm \\sqrt{L\\Sigma L^T + C_{\\rm th}}`.
+        Each sample gives ``forward_map(c)``, plus a draw from
+        :math:`N(0, C_{\\rm th})` (``theory.sm_covmat``) when
+        ``use_theory_covmat`` is on.
 
         Parameters
         ----------
         posterior : jnp.ndarray, shape (n_samples, n_free)
-            One sample of the free coefficients per row, in
-            ``coefficients.free_names`` order, as
-            :meth:`smefit.fit_result.FitResult.posterior_array` gives them.
+            One sample per row, in ``coefficients.free_names`` order.
         seed : int, optional
-            Seeds the theory-uncertainty draws, so the same posterior always
-            gives the same predictions.
+            Seed of the theory-uncertainty draws.
         batch_size : int, optional
-            Samples evaluated at once. Batched rather than vmapped over all of
-            them: with quadratic corrections the intermediate is
-            ``(batch_size, n_data, n_ops, n_ops)``.
+            Samples evaluated at once, to bound memory.
 
         Returns
         -------
@@ -251,7 +240,7 @@ class FitModel:
     Built by ``smefitConfig.produce_fit_model`` from the fit's own runcard, so
     ``use_quad``, ``rge``, ``use_t0``, ``use_theory_covmat``, the coefficients
     and their constraints are the fit's. The datasets are those the report
-    lists, or all of the fit's when it lists none.
+    lists.
 
     Attributes
     ----------

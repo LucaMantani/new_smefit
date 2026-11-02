@@ -339,29 +339,20 @@ class smefitConfig(Config):
         ``use_theory_covmat`` and the coefficients are the fit's, whatever this
         runcard says.
 
-        It always covers the fit's datasets. ``datasets`` adds others the fit
-        did not include, each given with its ``order`` and ``theory_cov`` as in
-        a fit runcard and read from the fit's ``data_path`` and
-        ``theory_path``; they follow the fit's in ``data`` and are named in
-        ``FitModel.additional_datasets``. A listed dataset the fit did include
-        is already covered, with the fit's own entry, and is not added again.
+        It covers the datasets listed under ``datasets``, in that order, or
+        every dataset of the fit when the runcard lists none. A listed dataset
+        the fit included is taken with the fit's own entry (its ``order`` and
+        ``theory_cov``), whatever the listing says; one it did not include is
+        taken as listed, read from the fit's ``data_path`` and ``theory_path``.
         """
         # local import: smefit.api imports this module
         from smefit.api import smefitAPI
 
-        fitted = list(fit.setting("datasets", None) or [])
-        fitted_names = {ds["name"] for ds in fitted}
-        additional = [ds for ds in datasets or [] if ds["name"] not in fitted_names]
-        already = [ds["name"] for ds in datasets or [] if ds["name"] in fitted_names]
-        if already:
-            log.info(
-                "Datasets %s are part of fit '%s' and drawn with it, not as "
-                "additional datasets.",
-                already,
-                fit.fit_name,
-            )
+        fitted = {ds["name"]: ds for ds in fit.setting("datasets", None) or []}
+        if datasets is None:
+            datasets = list(fitted.values())
         runcard = dict(fit.fit_runcard)
-        runcard["datasets"] = fitted + additional
+        runcard["datasets"] = [fitted.get(ds["name"], ds) for ds in datasets]
         rge = runcard.get("rge")
         if rge and "rg_matrix" in rge:
             # The fit's RGE matrix cache is an optimisation, and a path that no
@@ -378,7 +369,6 @@ class smefitConfig(Config):
             data=data,
             eft_model=eft_model,
             datasets_chi2=build_datasets_chi2(eft_model, data, fit_covmat),
-            additional_datasets=[ds["name"] for ds in additional],
         )
 
     def parse_external_chi2(self, external_chi2):

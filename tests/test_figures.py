@@ -25,7 +25,6 @@ from smefit.figures import (
     _tex_escape,
     plot_chi2_scan,
     plot_data_theory_comparison,
-    plot_data_theory_comparison_additional,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
@@ -853,32 +852,6 @@ def test_plot_data_theory_comparison_skips_external_chi2(comparison_setup):
     figs = list(_plot_comparison(fit, **comparison_setup))
     assert [name for _, name in figs] == ["TESTDATA"]
     assert _legend_chi2(figs[0][0].axes[0]) == baseline
-
-
-def test_additional_datasets_get_their_own_section(comparison_setup):
-    """A dataset the fit did not include is drawn by the _additional action,
-    and only there."""
-    fit_model = FitModel(
-        data=comparison_setup["data"],
-        eft_model=comparison_setup["eft_model"],
-        datasets_chi2=comparison_setup["datasets_chi2"],
-        additional_datasets=["TESTDATA"],
-    )
-    fit = _comparison_fit()
-    assert list(plot_data_theory_comparison(fit, fit_model)) == []
-    figs = list(plot_data_theory_comparison_additional(fit, fit_model))
-    assert [name for _, name in figs] == ["TESTDATA"]
-
-
-def test_additional_section_is_empty_without_additional_datasets(comparison_setup):
-    fit_model = FitModel(
-        data=comparison_setup["data"],
-        eft_model=comparison_setup["eft_model"],
-        datasets_chi2=comparison_setup["datasets_chi2"],
-    )
-    assert (
-        list(plot_data_theory_comparison_additional(_comparison_fit(), fit_model)) == []
-    )
 
 
 def test_plot_data_theory_comparison_rejects_an_individual_fit(comparison_setup):

@@ -380,9 +380,9 @@ def _stairs_band(axis, low, high, edges, **kwargs):
 def plot_data_theory_comparison(fit, fit_model):
     """Compare the data with the SM and with the EFT at a fit's posterior.
 
-    Yields one ``(figure, dataset_name)`` per dataset the fit was run on;
-    :func:`plot_data_theory_comparison_additional` draws the others the
-    runcard lists, for a section of their own. The upper panel shows
+    Yields one ``(figure, dataset_name)`` per dataset listed under the
+    runcard's ``datasets``, whether or not the fit was run on it, or per
+    dataset of the fit when the runcard lists none. The upper panel shows
 
     - the measurements, with the total experimental uncertainty as error bar
       (statistical and every systematic, correlated or not, in quadrature —
@@ -421,26 +421,6 @@ def plot_data_theory_comparison(fit, fit_model):
         independent 1D posteriors, not points in the joint space the
         predictions need — or stored no posterior samples.
     """
-    yield from _data_theory_figures(fit, fit_model, additional=False)
-
-
-@figuregen
-def plot_data_theory_comparison_additional(fit, fit_model):
-    """As :func:`plot_data_theory_comparison`, for the datasets the fit did not
-    include.
-
-    Yields one ``(figure, dataset_name)`` per dataset listed under the
-    runcard's ``datasets`` that is not part of the fit, drawn with the fit's
-    model (see ``produce_fit_model``), so that a report can show how the fit
-    describes data it never saw in a section of its own. Yields nothing when
-    the runcard lists none.
-    """
-    yield from _data_theory_figures(fit, fit_model, additional=True)
-
-
-def _data_theory_figures(fit, fit_model, additional):
-    """The figures of :func:`plot_data_theory_comparison`, for the fit's own
-    datasets or, with *additional*, for the others in ``fit_model``."""
     if fit.individual_fit:
         raise ValueError(
             f"Fit '{fit.fit_name}' was run one coefficient at a time, so it has "
@@ -473,8 +453,6 @@ def _data_theory_figures(fit, fit_model, additional):
     for name, ndata, chi2 in zip(data.names, data.ndata_list, fit_model.datasets_chi2):
         idx = slice(offset, offset + ndata)
         offset += ndata
-        if (name in fit_model.additional_datasets) != additional:
-            continue
         x = np.arange(1, ndata + 1)
         sm_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(float(chi2(sm_point)) / ndata)
         eft_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(

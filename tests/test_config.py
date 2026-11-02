@@ -1487,32 +1487,39 @@ def _runcards_seen(monkeypatch, fit_runcard, datasets=None):
 
 
 def test_produce_fit_model_is_built_from_the_fit_s_runcard(monkeypatch):
-    """Without datasets of its own, every resource is the fit's."""
+    """Without datasets of its own, every resource is the fit's, over all of
+    the fit's datasets."""
     seen, model = _runcards_seen(monkeypatch, _FIT_RUNCARD)
     assert len(seen) == 3
     assert all(runcard == _FIT_RUNCARD for runcard in seen)
-    assert model.additional_datasets == []
 
 
-def test_produce_fit_model_adds_the_datasets_the_fit_did_not_include(monkeypatch):
-    """Listed datasets the fit did not include follow the fit's own, as
-    listed; one it did include is not added again, and keeps the fit's entry."""
+_TWO_DATASET_FIT = {
+    **_FIT_RUNCARD,
+    "datasets": [
+        {"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"},
+        {"name": "DS_B", "order": "NLO"},
+    ],
+}
+
+
+def test_produce_fit_model_covers_only_the_listed_datasets(monkeypatch):
+    """Only the listed datasets, in listed order: one the fit included keeps
+    the fit's entry, one it did not is taken as listed."""
     datasets = [
-        {"name": "DS_A", "order": "LO"},
         {"name": "DS_NEW", "order": "NLO", "theory_cov": "conservative"},
+        {"name": "DS_A", "order": "LO"},
     ]
-    seen, model = _runcards_seen(monkeypatch, _FIT_RUNCARD, datasets)
+    seen, _ = _runcards_seen(monkeypatch, _TWO_DATASET_FIT, datasets)
+    fit_datasets = _TWO_DATASET_FIT["datasets"]
     for runcard in seen:
-        assert runcard["datasets"] == [_FIT_RUNCARD["datasets"][0], datasets[1]]
+        assert runcard["datasets"] == [datasets[0], fit_datasets[0]]
         # the rest of the model is still the fit's
         assert {k: v for k, v in runcard.items() if k != "datasets"} == {
-            k: v for k, v in _FIT_RUNCARD.items() if k != "datasets"
+            k: v for k, v in _TWO_DATASET_FIT.items() if k != "datasets"
         }
-    assert model.additional_datasets == ["DS_NEW"]
     # the fit's own runcard is left alone
-    assert _FIT_RUNCARD["datasets"] == [
-        {"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"}
-    ]
+    assert len(fit_datasets) == 2
 
 
 def test_produce_fit_model_drops_an_rge_cache_that_no_longer_resolves(

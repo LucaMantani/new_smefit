@@ -15,12 +15,12 @@
 # fit's own runcard: its use_quad, rge, use_t0, use_theory_covmat and
 # coefficients, so nothing of the setup is repeated here.
 #
-# Every dataset of the fit is drawn, by plot_data_theory_comparison. `datasets`
-# (optional) adds datasets the fit did not include, drawn with the fit's model
-# by plot_data_theory_comparison_additional in a section of their own. They
-# are read from the fit's data_path and theory_path; a listed dataset the fit
-# did include is drawn once, with the fit's.
+# Only the datasets listed under `datasets` are drawn; leave the key out to
+# draw all of the fit's. A dataset the fit included is drawn with the fit's own
+# order and theory_cov; one it did not include is taken as listed, read from
+# the fit's data_path and theory_path.
 datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
   - {name: LEP_Bhabha_2013, order: LO}
 
 fits:
@@ -32,11 +32,7 @@ template_text: |
     {@with fits@}
     {@fit@}
     ---------
-    ### Datasets in the fit
     {@plot_data_theory_comparison@}
-
-    ### Additional datasets
-    {@plot_data_theory_comparison_additional@}
     {@endwith@}
 
 actions_:

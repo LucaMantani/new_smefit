@@ -44,7 +44,6 @@
   "fit_reading_actions": [
     "coefficient_bounds_table",
     "plot_data_theory_comparison",
-    "plot_data_theory_comparison_additional",
     "plot_posterior_correlations",
     "report"
   ],

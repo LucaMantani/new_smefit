@@ -550,8 +550,8 @@ def main():
     # something, and it is a fit runcard like any other, held to the
     # requirements below. Only actions_ is read; an action that a report
     # template calls is not seen here. Such a runcard may still list
-    # 'datasets': plot_data_theory_comparison_additional draws them with the
-    # fit's model, read from the fit's own data_path/theory_path.
+    # 'datasets': plot_data_theory_comparison draws them with the fit's model,
+    # read from the fit's own data_path/theory_path.
     fit_reading = set((keys or {}).get("fit_reading_actions") or FIT_READING_ACTIONS)
     raw_actions = runcard.get("actions_")
     action_names = {

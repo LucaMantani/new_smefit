@@ -409,7 +409,7 @@ def test_runcard_that_only_reads_fits_may_list_datasets_without_paths(tmp_path):
         use_quad=None,
         coefficients=None,
         fits=[{"name": "my_fit", "path": "."}],
-        template_text="{@with fits@}{@plot_data_theory_comparison_additional@}{@endwith@}",
+        template_text="{@with fits@}{@plot_data_theory_comparison@}{@endwith@}",
         actions_=["report(main=True)"],
     )
     assert code == 0, out

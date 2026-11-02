@@ -6,7 +6,7 @@ Model module of smefit, where the prediction model is defined.
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
@@ -250,8 +250,8 @@ class FitModel:
 
     Built by ``smefitConfig.produce_fit_model`` from the fit's own runcard, so
     ``use_quad``, ``rge``, ``use_t0``, ``use_theory_covmat``, the coefficients
-    and their constraints are the fit's. The datasets are the fit's, followed
-    by any additional ones the report asked for.
+    and their constraints are the fit's. The datasets are those the report
+    lists, or all of the fit's when it lists none.
 
     Attributes
     ----------
@@ -261,12 +261,8 @@ class FitModel:
     datasets_chi2 : list of smefit.chi2.Chi2
         One per dataset, in ``data`` order, from the dataset's diagonal block
         of the fit's covariance.
-    additional_datasets : list[str]
-        The datasets in ``data`` the fit did not include; every other one is
-        the fit's own.
     """
 
     data: object
     eft_model: EFTModel
     datasets_chi2: list
-    additional_datasets: list = field(default_factory=list)

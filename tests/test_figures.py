@@ -22,6 +22,7 @@ from smefit.figures import (
     _plot_heatmap,
     plot_chi2_scan,
     plot_fisher_diagonals_heatmap,
+    plot_global_information_heatmap,
     plot_pca_components_heatmap,
     plot_pca_spectrum,
     plot_posterior_correlations,
@@ -172,6 +173,32 @@ def test_plot_fisher_diagonals_heatmap_scales_values_to_percent():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
     texts = {t.get_text() for t in ax.texts}
     assert texts == {"30.0", "70.0", "60.0", "40.0"}
+
+
+def test_plot_global_information_heatmap_scales_values_to_percent():
+    table = pd.DataFrame(
+        {"DS_A": [0.3, 0.7], "DS_B": [0.7, 0.3]},
+        index=["OpA", "OpZZ"],
+    )
+
+    fig = plot_global_information_heatmap(table)
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["DS_A", "DS_B"]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
+    assert {t.get_text() for t in ax.texts} == {"30.0", "70.0"}
+    assert ax.images[0].get_clim() == (0.0, 100.0)
+
+
+def test_plot_global_information_heatmap_widens_range_for_negative_shares():
+    """Shares outside 0-100% widen the colour range instead of being clipped."""
+    table = pd.DataFrame({"DS_A": [0.5, 1.1], "DS_B": [0.5, -0.1]}, index=["a", "b"])
+
+    fig = plot_global_information_heatmap(table)
+
+    ax = fig.axes[0]
+    np.testing.assert_allclose(ax.images[0].get_clim(), (-10.0, 110.0))
+    assert {"-10.0", "110.0"} <= {t.get_text() for t in ax.texts}
 
 
 def test_plot_chi2_scan_yields_one_figure_per_coefficient():

@@ -4,6 +4,7 @@ import math
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from smefit.priors import (
@@ -349,7 +350,8 @@ def derived_prior(request):
 def test_derived_prior_bijector_round_trips(derived_prior):
     u = jnp.array([0.7, -1.3])
     back = derived_prior.to_unconstrained(derived_prior.from_unconstrained(u))
-    assert back == pytest.approx(u, rel=1e-5, abs=1e-5)
+    # numpy on both sides: JAX >= 0.12 arrays have no .flat, which approx needs
+    assert np.asarray(back) == pytest.approx(np.asarray(u), rel=1e-5, abs=1e-5)
 
 
 def test_derived_prior_log_det_matches_numerical_jacobian(derived_prior):

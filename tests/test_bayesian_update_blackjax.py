@@ -2,7 +2,7 @@
 Integration tests for the Bayesian sequential update via blackjax_fit.
 
 Marked @pytest.mark.slow — these run the real sampler and are skipped in fast CI.
-Run explicitly with:  pytest -m slow tests/test_bayes_update_blackjax.py
+Run explicitly with:  pytest -m slow tests/test_bayesian_update_blackjax.py
 
 The problem definition, coefficient stubs and posterior assertions live in
 tests/gaussian_problem.py, shared with tests/test_blackjax_nuts.py.

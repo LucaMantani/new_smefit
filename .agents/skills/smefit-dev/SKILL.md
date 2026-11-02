@@ -496,7 +496,7 @@ enforces it.
   rejects it anyway.
 
 `utils.py` is also a provider module (it is in `smefit_providers`, for
-`run_test`/`run_prior_test`/`chi2_timing`), so the rule applies to actions
+`chi2_timing`), so the rule applies to actions
 added there too: an action that needs domain imports goes in
 `smefit/utils_actions.py`.
 

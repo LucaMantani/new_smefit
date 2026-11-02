@@ -650,8 +650,7 @@ def collect_fit_reading_actions(action_modules):
 
     An action qualifies by taking the `fit`/`fits` resource, unless it also
     takes one built from the runcard's own `datasets`/`coefficients`
-    (`RUNCARD_SETUP_RESOURCES`): `plot_data_theory_comparison` reads a fit but
-    draws this runcard's data. `report` is added by hand: it comes from
+    (`RUNCARD_SETUP_RESOURCES`). `report` is added by hand: it comes from
     reportengine, and its real actions are the `{@…@}` tags of the template.
     """
     names = {"report"}

@@ -9,8 +9,6 @@ stored attributes), but that is not something to rely on — anything that
 measures text, `tight_layout()` above all, renders it.
 """
 
-import warnings
-
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
@@ -20,13 +18,14 @@ import pytest
 from matplotlib.collections import PathCollection
 
 from smefit import figures as figures_mod
+from smefit.chi2 import Chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.figures import (
-    _gaussian_draws,
     _plot_heatmap,
     _tex_escape,
     plot_chi2_scan,
     plot_data_theory_comparison,
+    plot_data_theory_comparison_additional,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
@@ -35,7 +34,7 @@ from smefit.figures import (
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.loader import load_dataset, load_theory
-from smefit.model import EFTModel
+from smefit.model import EFTModel, FitModel
 from smefit.op_to_latex import coeff_info_latex
 from smefit.pca import PCA
 
@@ -583,7 +582,7 @@ def comparison_setup(fixtures_data_path, fixtures_theory_path):
         "theory": theory,
         "eft_model": model,
         "coefficients": coefficients,
-        "fit_covmat": data.exp_covmat,
+        "datasets_chi2": build_datasets_chi2(model, data, data.exp_covmat),
     }
 
 
@@ -593,8 +592,31 @@ def _comparison_fit(**kwargs):
     return _fit(**kwargs)
 
 
+def _plot_comparison(
+    fit,
+    data,
+    theory,
+    eft_model,
+    coefficients,
+    datasets_chi2,
+    use_theory_covmat=False,
+):
+    """plot_data_theory_comparison on the FitModel these pieces make up.
+
+    *use_theory_covmat* rebuilds the model with the theory uncertainty in it,
+    as produce_fit_model does for a fit run with it.
+    """
+    if use_theory_covmat:
+        eft_model = EFTModel(
+            theory, coefficients, eft_model.use_quad, use_theory_covmat=True
+        )
+    return plot_data_theory_comparison(
+        fit, FitModel(data=data, eft_model=eft_model, datasets_chi2=datasets_chi2)
+    )
+
+
 def test_plot_data_theory_comparison_yields_one_figure_per_dataset(comparison_setup):
-    figs = list(plot_data_theory_comparison(_comparison_fit(), **comparison_setup))
+    figs = list(_plot_comparison(_comparison_fit(), **comparison_setup))
 
     assert [name for _, name in figs] == ["TESTDATA"]
     fig = figs[0][0]
@@ -604,7 +626,7 @@ def test_plot_data_theory_comparison_yields_one_figure_per_dataset(comparison_se
 
 def test_plot_data_theory_comparison_draws_data_sm_and_eft(comparison_setup):
     fit = _comparison_fit(label="My fit")
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
 
     ax, ax_ratio = fig.axes
     assert _legend_texts(ax) == [
@@ -624,7 +646,7 @@ def test_plot_data_theory_comparison_draws_data_sm_and_eft(comparison_setup):
 def test_plot_data_theory_comparison_spans_every_bin_edge_to_edge(comparison_setup):
     """The predictions are drawn across the whole of each bin, the outermost
     ones included, and the axis ends where the bins do."""
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     ax = fig.axes[0]
     for gid in ("sm", "sm_band", "eft", "eft_band"):
         np.testing.assert_allclose(_stairs(ax, gid).edges, [0.5, 1.5, 2.5, 3.5])
@@ -637,7 +659,7 @@ def test_plot_data_theory_comparison_spans_every_bin_edge_to_edge(comparison_set
 def test_plot_data_theory_comparison_evaluates_the_best_fit_point(comparison_setup):
     fit = _comparison_fit()
     fit.fit_results.best_fit_point["OpA"] = 1.0
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
 
     # SM + OpA * lin(OpA), with lin(OpA) = [1, 2, 3]
     np.testing.assert_allclose(_stairs(fig.axes[0], "eft").values, [11.0, 22.0, 33.0])
@@ -677,7 +699,7 @@ def test_plot_data_theory_comparison_error_bar_is_the_total_experimental_error(
     comparison_setup,
 ):
     """One error bar per point: statistical and systematic in quadrature."""
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     np.testing.assert_allclose(
         _data_errors(fig.axes[0]),
         np.sqrt(np.diag(np.asarray(comparison_setup["data"].exp_covmat))),
@@ -691,7 +713,7 @@ def test_plot_data_theory_comparison_draws_the_ratio_to_a_negative_sm(
     """Dividing by a negative SM flips the ratio, not the sign of the error."""
     theory = comparison_setup["theory"]
     theory.sm_pred = -theory.sm_pred
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     ratio = fig.axes[1]
     np.testing.assert_allclose(_stairs(ratio, "sm").values, 1.0)
     exp_err = np.sqrt(np.diag(np.asarray(comparison_setup["data"].exp_covmat)))
@@ -703,7 +725,7 @@ def test_plot_data_theory_comparison_draws_the_ratio_to_a_negative_sm(
 def test_plot_data_theory_comparison_drops_an_absent_theory_error(comparison_setup):
     theory = comparison_setup["theory"]
     theory.sm_covmat = jnp.zeros_like(theory.sm_covmat)
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     # no SM band to draw
     assert not [p for p in fig.axes[0].patches if p.get_gid() == "sm_band"]
 
@@ -715,7 +737,7 @@ _SM = np.array([10.0, 20.0, 30.0])
 def test_plot_data_theory_comparison_eft_band_spans_the_posterior(comparison_setup):
     """Without the theory uncertainty the band is the 16th-84th percentiles of
     the predictions over the posterior, the theory covmat notwithstanding."""
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     band = _stairs(fig.axes[0], "eft_band")
 
     # OpA samples [0, 1, 2], OpB 0: percentiles at OpA = 0.32 and 1.68
@@ -730,12 +752,14 @@ def test_plot_data_theory_comparison_eft_band_follows_quadratic_corrections(
     predictions, so a posterior symmetric about zero gives a band that is not
     symmetric about the best fit."""
     theory = comparison_setup["theory"]
-    comparison_setup["eft_model"] = EFTModel(
-        theory, comparison_setup["coefficients"], use_quad=True
+    model = EFTModel(theory, comparison_setup["coefficients"], use_quad=True)
+    comparison_setup["eft_model"] = model
+    comparison_setup["datasets_chi2"] = build_datasets_chi2(
+        model, comparison_setup["data"], comparison_setup["data"].exp_covmat
     )
     opa = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
     fit = _comparison_fit(samples={"OpA": list(opa), "OpB": [0.0] * len(opa)})
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
     band = _stairs(fig.axes[0], "eft_band")
 
     quad = np.array([0.1, 0.2, 0.3])  # OpA*OpA in the fixture
@@ -753,9 +777,7 @@ def test_plot_data_theory_comparison_eft_band_samples_the_theory_error(
     """With use_theory_covmat each sample gets a draw of the theory error: on
     a posterior pinned at the SM, the band is the SM theory uncertainty."""
     fit = _comparison_fit(samples={"OpA": [0.0] * 20000, "OpB": [0.0] * 20000})
-    ((fig, _),) = plot_data_theory_comparison(
-        fit, use_theory_covmat=True, **comparison_setup
-    )
+    ((fig, _),) = _plot_comparison(fit, use_theory_covmat=True, **comparison_setup)
     band = _stairs(fig.axes[0], "eft_band")
 
     th = np.array([0.1, 0.2, 0.3])  # sqrt of the fixture theory covmat diagonal
@@ -764,31 +786,12 @@ def test_plot_data_theory_comparison_eft_band_samples_the_theory_error(
     np.testing.assert_allclose(_SM - band.baseline, z * th, rtol=0.05)
 
 
-def test_gaussian_draws_follow_the_covariance():
-    covmat = np.array([[4.0, 1.2], [1.2, 1.0]])
-    draws = _gaussian_draws(covmat, 200_000, np.random.default_rng(1))
-    assert draws.shape == (200_000, 2)
-    np.testing.assert_allclose(np.cov(draws.T), covmat, rtol=0.02)
-
-
-def test_gaussian_draws_treat_a_slightly_negative_eigenvalue_as_zero():
-    """A covmat a rounding error off positive-semidefinite is sampled as its
-    nearest PSD matrix, without a warning."""
-    # perfectly correlated, with the correlation rounded just above 1
-    covmat = np.array([[1.0, 1.0001], [1.0001, 1.0]])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        draws = _gaussian_draws(covmat, 100_000, np.random.default_rng(1))
-    np.testing.assert_allclose(np.var(draws, axis=0), [1.0, 1.0], rtol=0.02)
-    np.testing.assert_allclose(np.corrcoef(draws.T)[0, 1], 1.0, rtol=1e-6)
-
-
 def test_plot_data_theory_comparison_eft_band_is_reproducible(comparison_setup):
     fit = _comparison_fit()
     bands = [
         _stairs(fig.axes[0], "eft_band")
         for ((fig, _),) in (
-            plot_data_theory_comparison(fit, use_theory_covmat=True, **comparison_setup)
+            _plot_comparison(fit, use_theory_covmat=True, **comparison_setup)
             for _ in range(2)
         )
     ]
@@ -802,15 +805,15 @@ def test_plot_data_theory_comparison_rejects_a_fit_without_samples(
     fit = _comparison_fit()
     fit.fit_results.samples = None
     with pytest.raises(ValueError, match="posterior samples"):
-        list(plot_data_theory_comparison(fit, **comparison_setup))
+        list(_plot_comparison(fit, **comparison_setup))
 
 
 def test_plot_data_theory_comparison_reports_the_chi2_per_point(comparison_setup):
     fit = _comparison_fit()
     fit.fit_results.best_fit_point["OpA"] = 1.0
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
 
-    covmat = np.asarray(comparison_setup["fit_covmat"])
+    covmat = np.asarray(comparison_setup["data"].exp_covmat)
     cv = np.array([1.0, 2.0, 3.0])
     for prediction, shown in zip(
         ([10.0, 20.0, 30.0], [11.0, 22.0, 33.0]), _legend_chi2(fig.axes[0])
@@ -820,23 +823,68 @@ def test_plot_data_theory_comparison_reports_the_chi2_per_point(comparison_setup
         assert shown == pytest.approx(expected, rel=1e-2)
 
 
-def test_plot_data_theory_comparison_chi2_uses_the_fit_covmat(comparison_setup):
-    """Doubling the covariance halves the chi2: it is fit_covmat, not exp_covmat."""
+def test_plot_data_theory_comparison_chi2_is_datasets_chi2(comparison_setup):
+    """Doubling the covariance of datasets_chi2 halves the chi2 shown: it is
+    the likelihood's, not one rebuilt from exp_covmat."""
     fit = _comparison_fit()
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
     baseline = _legend_chi2(fig.axes[0])
 
-    comparison_setup["fit_covmat"] = 2 * comparison_setup["fit_covmat"]
-    ((fig, _),) = plot_data_theory_comparison(fit, **comparison_setup)
+    data = comparison_setup["data"]
+    comparison_setup["datasets_chi2"] = build_datasets_chi2(
+        comparison_setup["eft_model"], data, 2 * data.exp_covmat
+    )
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
     np.testing.assert_allclose(
         _legend_chi2(fig.axes[0]), np.array(baseline) / 2, rtol=1e-2
+    )
+
+
+def test_plot_data_theory_comparison_skips_external_chi2(comparison_setup):
+    """External chi2 entries follow the datasets in datasets_chi2 and have no
+    data to plot: they add no figure and leave the legend alone."""
+    fit = _comparison_fit()
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+    baseline = _legend_chi2(fig.axes[0])
+
+    comparison_setup["datasets_chi2"] = comparison_setup["datasets_chi2"] + [
+        Chi2(lambda c: 1e6, ["OpA", "OpB"], 1, name="external")
+    ]
+    figs = list(_plot_comparison(fit, **comparison_setup))
+    assert [name for _, name in figs] == ["TESTDATA"]
+    assert _legend_chi2(figs[0][0].axes[0]) == baseline
+
+
+def test_additional_datasets_get_their_own_section(comparison_setup):
+    """A dataset the fit did not include is drawn by the _additional action,
+    and only there."""
+    fit_model = FitModel(
+        data=comparison_setup["data"],
+        eft_model=comparison_setup["eft_model"],
+        datasets_chi2=comparison_setup["datasets_chi2"],
+        additional_datasets=["TESTDATA"],
+    )
+    fit = _comparison_fit()
+    assert list(plot_data_theory_comparison(fit, fit_model)) == []
+    figs = list(plot_data_theory_comparison_additional(fit, fit_model))
+    assert [name for _, name in figs] == ["TESTDATA"]
+
+
+def test_additional_section_is_empty_without_additional_datasets(comparison_setup):
+    fit_model = FitModel(
+        data=comparison_setup["data"],
+        eft_model=comparison_setup["eft_model"],
+        datasets_chi2=comparison_setup["datasets_chi2"],
+    )
+    assert (
+        list(plot_data_theory_comparison_additional(_comparison_fit(), fit_model)) == []
     )
 
 
 def test_plot_data_theory_comparison_rejects_an_individual_fit(comparison_setup):
     fit = _comparison_fit(action="run_individual_analytic_fits")
     with pytest.raises(ValueError, match="one coefficient at a time"):
-        list(plot_data_theory_comparison(fit, **comparison_setup))
+        list(_plot_comparison(fit, **comparison_setup))
 
 
 def test_plot_data_theory_comparison_rejects_a_fit_lacking_a_coefficient(
@@ -844,7 +892,7 @@ def test_plot_data_theory_comparison_rejects_a_fit_lacking_a_coefficient(
 ):
     fit = _comparison_fit(free=("OpA",), samples={"OpA": [0.0, 1.0]})
     with pytest.raises(ValueError, match="OpB"):
-        list(plot_data_theory_comparison(fit, **comparison_setup))
+        list(_plot_comparison(fit, **comparison_setup))
 
 
 def test_plot_data_theory_comparison_leaves_no_figure_open_in_pyplot(
@@ -853,7 +901,7 @@ def test_plot_data_theory_comparison_leaves_no_figure_open_in_pyplot(
     """reportengine never closes the figures a @figuregen yields, so they must
     not be registered with pyplot, or a report with many datasets warns about
     (and holds on to) more than 20 open figures."""
-    list(plot_data_theory_comparison(_comparison_fit(), **comparison_setup))
+    list(_plot_comparison(_comparison_fit(), **comparison_setup))
     assert plt.get_fignums() == []
 
 
@@ -868,7 +916,7 @@ def test_plot_data_theory_comparison_title_escapes_the_dataset_name(
 ):
     for group in ("data", "theory"):
         comparison_setup[group].names = ["ATLAS_tt_13TeV"]
-    ((fig, _),) = plot_data_theory_comparison(_comparison_fit(), **comparison_setup)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
     assert fig.axes[0].get_title() == r"$\mathrm{ATLAS\_tt\_13TeV}$"
 
 
@@ -889,15 +937,8 @@ def test_plot_data_theory_comparison_graph_resolves(
 
     from smefit.api import smefitAPI
 
-    fit_dir = tmp_path / "my_fit"
-    _comparison_fit().fit_results.write(fit_dir)
-    (fit_dir / "input").mkdir()
-    (fit_dir / "input" / "runcard.yaml").write_text(
-        yaml.safe_dump({"actions_": ["run_analytic_fit"]})
-    )
-
     prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
-    runcard = {
+    fit_runcard = {
         "data_path": str(fixtures_data_path),
         "theory_path": str(fixtures_theory_path),
         "datasets": [_TESTDATA],
@@ -905,8 +946,15 @@ def test_plot_data_theory_comparison_graph_resolves(
             "OpA": {"free": True, "prior": prior},
             "OpB": {"free": True, "prior": prior},
         },
-        "fits": [{"name": "my_fit", "path": str(tmp_path)}],
+        "actions_": ["run_analytic_fit"],
     }
+    fit_dir = tmp_path / "my_fit"
+    _comparison_fit().fit_results.write(fit_dir)
+    (fit_dir / "input").mkdir()
+    (fit_dir / "input" / "runcard.yaml").write_text(yaml.safe_dump(fit_runcard))
+
+    # the model is the fit's: the comparison runcard need only name it
+    runcard = {"fits": [{"name": "my_fit", "path": str(tmp_path)}]}
     config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
     builder = ResourceBuilder(
         config,

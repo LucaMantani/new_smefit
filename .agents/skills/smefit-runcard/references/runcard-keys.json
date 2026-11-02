@@ -21,6 +21,7 @@
     "eft_model",
     "ext_chi2_func",
     "fit_covmat",
+    "fit_model",
     "individual_chi2",
     "individual_coefficients",
     "individual_eft_model",
@@ -42,6 +43,8 @@
   ],
   "fit_reading_actions": [
     "coefficient_bounds_table",
+    "plot_data_theory_comparison",
+    "plot_data_theory_comparison_additional",
     "plot_posterior_correlations",
     "report"
   ],
@@ -85,8 +88,15 @@
       "used_by": [
         "data",
         "data_groups",
+        "fit_model",
         "prior",
         "theory"
+      ]
+    },
+    "fit": {
+      "default": null,
+      "used_by": [
+        "fit_model"
       ]
     },
     "use_quad": {
@@ -106,6 +116,7 @@
     "use_theory_covmat": {
       "default": "False",
       "used_by": [
+        "eft_model",
         "fit_covmat",
         "pseudodata"
       ]
@@ -307,6 +318,7 @@
     "data_path",
     "datasets",
     "external_chi2",
+    "fit",
     "fits",
     "gradient_descent_settings",
     "hessian_settings",

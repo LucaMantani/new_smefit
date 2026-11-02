@@ -549,7 +549,9 @@ def main():
     # agree — 'fits:' next to a fit action means the runcard *does* fit
     # something, and it is a fit runcard like any other, held to the
     # requirements below. Only actions_ is read; an action that a report
-    # template calls is not seen here.
+    # template calls is not seen here. Such a runcard may still list
+    # 'datasets': plot_data_theory_comparison_additional draws them with the
+    # fit's model, read from the fit's own data_path/theory_path.
     fit_reading = set((keys or {}).get("fit_reading_actions") or FIT_READING_ACTIONS)
     raw_actions = runcard.get("actions_")
     action_names = {
@@ -557,11 +559,7 @@ def main():
     }
     reads_fits_only = (
         bool(runcard.get("fits"))
-        and not (
-            "datasets" in runcard
-            or "external_chi2" in runcard
-            or "coefficients" in runcard
-        )
+        and not ("external_chi2" in runcard or "coefficients" in runcard)
         and action_names <= fit_reading
     )
 
@@ -571,7 +569,7 @@ def main():
         and "external_chi2" not in runcard
     ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
-    if "datasets" in runcard:
+    if "datasets" in runcard and not reads_fits_only:
         for key in ("data_path", "theory_path"):
             if key not in runcard:
                 rep.error(f"'{key}' is required when 'datasets' is present")

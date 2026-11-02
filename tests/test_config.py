@@ -24,6 +24,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+from smefit.fit_result import Fit
 from smefit.model import EFTModel
 from smefit.priors import Prior
 from smefit.whitening import (
@@ -1449,3 +1450,92 @@ def test_parse_fit_loads_a_single_fit(cfg, tmp_path):
     fit = cfg.parse_fit({"name": "fit_a", "path": str(tmp_path)})
 
     assert fit.fit_name == "fit_a"
+
+
+# ---------------------------------------------------------------------------
+# produce_fit_model: the model a loaded fit was run with
+# ---------------------------------------------------------------------------
+
+_FIT_RUNCARD = {
+    "data_path": "/data",
+    "theory_path": "/theory",
+    "use_quad": True,
+    "use_theory_covmat": True,
+    "datasets": [{"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"}],
+    "coefficients": {"OpA": {"free": True}},
+}
+
+
+def _runcards_seen(monkeypatch, fit_runcard, datasets=None):
+    """Run produce_fit_model with smefitAPI stubbed; return the runcards it was
+    built from, one per resource asked for, and the FitModel."""
+    from smefit import api
+
+    seen = []
+
+    def resource(**runcard):
+        seen.append(runcard)
+        return MagicMock()
+
+    monkeypatch.setattr(api.smefitAPI, "data", resource, raising=False)
+    monkeypatch.setattr(api.smefitAPI, "eft_model", resource, raising=False)
+    monkeypatch.setattr(api.smefitAPI, "fit_covmat", resource, raising=False)
+    monkeypatch.setattr("smefit.config.build_datasets_chi2", MagicMock())
+    fit = Fit(fit_results=MagicMock(), fit_name="my_fit", fit_runcard=fit_runcard)
+    model = smefitConfig.produce_fit_model(MagicMock(), fit, datasets)
+    return seen, model
+
+
+def test_produce_fit_model_is_built_from_the_fit_s_runcard(monkeypatch):
+    """Without datasets of its own, every resource is the fit's."""
+    seen, model = _runcards_seen(monkeypatch, _FIT_RUNCARD)
+    assert len(seen) == 3
+    assert all(runcard == _FIT_RUNCARD for runcard in seen)
+    assert model.additional_datasets == []
+
+
+def test_produce_fit_model_adds_the_datasets_the_fit_did_not_include(monkeypatch):
+    """Listed datasets the fit did not include follow the fit's own, as
+    listed; one it did include is not added again, and keeps the fit's entry."""
+    datasets = [
+        {"name": "DS_A", "order": "LO"},
+        {"name": "DS_NEW", "order": "NLO", "theory_cov": "conservative"},
+    ]
+    seen, model = _runcards_seen(monkeypatch, _FIT_RUNCARD, datasets)
+    for runcard in seen:
+        assert runcard["datasets"] == [_FIT_RUNCARD["datasets"][0], datasets[1]]
+        # the rest of the model is still the fit's
+        assert {k: v for k, v in runcard.items() if k != "datasets"} == {
+            k: v for k, v in _FIT_RUNCARD.items() if k != "datasets"
+        }
+    assert model.additional_datasets == ["DS_NEW"]
+    # the fit's own runcard is left alone
+    assert _FIT_RUNCARD["datasets"] == [
+        {"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"}
+    ]
+
+
+def test_produce_fit_model_drops_an_rge_cache_that_no_longer_resolves(
+    monkeypatch, tmp_path
+):
+    """The fit's rg_matrix is a cache: if the file is gone, the matrix is
+    computed from the same rge settings rather than failing."""
+    rge = {"init_scale": 1000.0, "rg_matrix": str(tmp_path / "gone.pkl")}
+    seen, _ = _runcards_seen(monkeypatch, {**_FIT_RUNCARD, "rge": rge})
+    assert all(runcard["rge"] == {"init_scale": 1000.0} for runcard in seen)
+
+
+def test_produce_fit_model_keeps_an_rge_cache_that_exists(monkeypatch, tmp_path):
+    cache = tmp_path / "rge_matrix.pkl"
+    cache.write_bytes(b"")
+    rge = {"init_scale": 1000.0, "rg_matrix": str(cache)}
+    seen, _ = _runcards_seen(monkeypatch, {**_FIT_RUNCARD, "rge": rge})
+    assert all(runcard["rge"] == rge for runcard in seen)
+
+
+def test_produce_eft_model_carries_use_theory_covmat(theory_a):
+    cg = CoefficientGroup([Coefficient(name="OpA", free=True)])
+    model = smefitConfig.produce_eft_model(
+        MagicMock(), TheoryGroup([theory_a]), cg, None, use_theory_covmat=True
+    )
+    assert model.use_theory_covmat

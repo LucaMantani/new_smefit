@@ -29,7 +29,7 @@ from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
 from smefit.fit_result import Fit
 from smefit.loader import load_dataset, load_theory
-from smefit.model import EFTModel
+from smefit.model import EFTModel, FitModel
 from smefit.paths import (
     fetch_fit_if_missing,
     resolve_fit_dir,
@@ -308,7 +308,14 @@ class smefitConfig(Config):
         log.info("Whitening: centering on the coefficients' baseline point.")
         return _whitening_baseline_shift
 
-    def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+    def produce_eft_model(
+        self,
+        theory,
+        coefficients,
+        rge_matrix,
+        use_quad=False,
+        use_theory_covmat=False,
+    ):
         """Produce EFT model mapping coefficients to theory predictions.
 
         ``rge_matrix`` is deliberately required: giving it a ``None`` default
@@ -316,7 +323,63 @@ class smefitConfig(Config):
         ``KeyError`` and substitutes the default) and hand back a model with no
         RGE running, silently.
         """
-        return EFTModel(theory, coefficients, use_quad, rge_matrix)
+        return EFTModel(
+            theory,
+            coefficients,
+            use_quad,
+            rge_matrix,
+            use_theory_covmat=use_theory_covmat,
+        )
+
+    def produce_fit_model(self, fit, datasets=None):
+        """The model ``fit`` was run with, to draw predictions at its posterior.
+
+        Rebuilt from the fit's own runcard, as the Bayesian update rebuilds a
+        previous fit's chi2: ``use_quad``, ``rge``, ``use_t0``,
+        ``use_theory_covmat`` and the coefficients are the fit's, whatever this
+        runcard says.
+
+        It always covers the fit's datasets. ``datasets`` adds others the fit
+        did not include, each given with its ``order`` and ``theory_cov`` as in
+        a fit runcard and read from the fit's ``data_path`` and
+        ``theory_path``; they follow the fit's in ``data`` and are named in
+        ``FitModel.additional_datasets``. A listed dataset the fit did include
+        is already covered, with the fit's own entry, and is not added again.
+        """
+        # local import: smefit.api imports this module
+        from smefit.api import smefitAPI
+
+        fitted = list(fit.setting("datasets", None) or [])
+        fitted_names = {ds["name"] for ds in fitted}
+        additional = [ds for ds in datasets or [] if ds["name"] not in fitted_names]
+        already = [ds["name"] for ds in datasets or [] if ds["name"] in fitted_names]
+        if already:
+            log.info(
+                "Datasets %s are part of fit '%s' and drawn with it, not as "
+                "additional datasets.",
+                already,
+                fit.fit_name,
+            )
+        runcard = dict(fit.fit_runcard)
+        runcard["datasets"] = fitted + additional
+        rge = runcard.get("rge")
+        if rge and "rg_matrix" in rge:
+            # The fit's RGE matrix cache is an optimisation, and a path that no
+            # longer resolves from here is no reason to fail: the matrix is
+            # computed from the same rge settings instead.
+            path = pathlib.Path(resolve_path(str(rge["rg_matrix"])))
+            if not path.exists():
+                runcard["rge"] = {k: v for k, v in rge.items() if k != "rg_matrix"}
+
+        data = smefitAPI.data(**runcard)
+        eft_model = smefitAPI.eft_model(**runcard)
+        fit_covmat = smefitAPI.fit_covmat(**runcard)
+        return FitModel(
+            data=data,
+            eft_model=eft_model,
+            datasets_chi2=build_datasets_chi2(eft_model, data, fit_covmat),
+            additional_datasets=[ds["name"] for ds in additional],
+        )
 
     def parse_external_chi2(self, external_chi2):
         """Parse the `external_chi2:` mapping of custom likelihood modules.

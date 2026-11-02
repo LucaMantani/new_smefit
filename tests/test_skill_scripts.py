@@ -399,6 +399,22 @@ def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
     assert code == 0, out
 
 
+def test_runcard_that_only_reads_fits_may_list_datasets_without_paths(tmp_path):
+    """The datasets of a post-fit runcard are drawn with each fit's model, and
+    read from that fit's data_path/theory_path."""
+    code, out = validate(
+        tmp_path,
+        data_path=None,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fits=[{"name": "my_fit", "path": "."}],
+        template_text="{@with fits@}{@plot_data_theory_comparison_additional@}{@endwith@}",
+        actions_=["report(main=True)"],
+    )
+    assert code == 0, out
+
+
 def test_runcard_listing_fits_and_fitting_too_still_needs_data(tmp_path):
     """Listing 'fits:' is not a licence to skip the requirements: a runcard
     that also declares coefficients is setting up a fit of its own."""

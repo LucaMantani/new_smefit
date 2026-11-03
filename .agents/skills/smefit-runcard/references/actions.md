@@ -79,6 +79,8 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `plot_chi2_scan(individual_chi2_scans)`
   - Plot the 1D chi2 scan for each free coefficient.
+- `plot_data_theory_comparison(fit, fit_model)`
+  - Compare the data with the SM and with the EFT at a fit's posterior.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
 - `plot_global_information_heatmap(global_information_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`

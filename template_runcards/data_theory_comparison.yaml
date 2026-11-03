@@ -1,0 +1,30 @@
+# Data against theory, in the SM and in the EFT, for a fit that has already
+# been run: no fit is run here. One figure per dataset and per fit listed under
+# `fits`, with the measurements, the SM prediction with its theory uncertainty
+# and the EFT prediction at the fit's best-fit point, banded over its posterior.
+#
+# The predictions are those of the model the fit was run with, rebuilt from the
+# fit's own runcard: its use_quad, rge, use_t0, use_theory_covmat and
+# coefficients, so nothing of the setup is repeated here.
+#
+# Only the datasets listed under `datasets` are drawn. A dataset the fit
+# included is drawn with the fit's own order and theory_cov; one it did not
+# include is taken as listed, read from the fit's data_path and theory_path.
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP_Bhabha_2013, order: LO}
+
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+
+template_text: |
+    Data-theory comparison
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_data_theory_comparison@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

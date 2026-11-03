@@ -43,10 +43,11 @@ and then use them in runcards the same way:
 
 ## Keys consumed directly from the runcard (no dedicated parser)
 
-- `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
+- `datasets` (consumed by `data`, `data_groups`, `fit_model`, `prior`, `theory`)
+- `fit` (consumed by `fit_model`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
-- `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
+- `use_theory_covmat` — default: `False` (consumed by `eft_model`, `fit_covmat`, `pseudodata`)
 
 Notes:
 
@@ -418,9 +419,10 @@ which runcard keys each action ultimately needs.
 - `data`(datasets, data_path) — Produce data group object.
 - `data_groups`(datasets) — Build data_groups from inline group: keys on each dataset entry.
 - `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
-- `eft_model`(theory, coefficients, rge_matrix, use_quad) — Produce EFT model mapping coefficients to theory predictions.
+- `eft_model`(theory, coefficients, rge_matrix, use_quad, use_theory_covmat) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.
 - `fit_covmat`(data, theory, use_t0, use_theory_covmat) — Produce the covariance matrix to be used in the fit.
+- `fit_model`(fit, datasets) — The model ``fit`` was run with, to draw predictions at its posterior.
 - `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
 - `individual_coefficients`(coefficients, individual_fit_coefficient) — Produce a single-free-parameter coefficient group for individual fits.
 - `individual_eft_model`(theory, individual_coefficients, rge_matrix, use_quad) — Produce EFT model for a single-free-parameter individual fit.

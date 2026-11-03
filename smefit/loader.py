@@ -130,6 +130,18 @@ def load_theory(theory_path, dataset_dict):
     with open(theory_file) as file:
         theory_data = json.load(file)
 
+    # Orders are the keys holding a dict of predictions. A ValueError, not the
+    # KeyError of theory_data[order]: reportengine treats a KeyError raised
+    # while producing a node as "input not available" and falls back to the
+    # consumer's default, so the missing order would surface somewhere else.
+    available_orders = sorted(k for k, v in theory_data.items() if isinstance(v, dict))
+    if order not in available_orders:
+        raise ValueError(
+            f"Order {order} not found in the theory predictions for dataset "
+            f"{dataset_name} ({theory_file}). Available orders: "
+            f"{', '.join(available_orders)}."
+        )
+
     sm_pred = jnp.array(theory_data["best_sm"])
     if th_cov_type == "zero":
         # explicitly opt out of a theory covmat for this dataset

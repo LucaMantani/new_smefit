@@ -248,3 +248,53 @@ def test_blackjax_fit_unknown_algorithm_raises(
             coefficients=coeff_group,
             blackjax_settings=settings,
         )
+
+
+# ---------------------------------------------------------------------------
+# Graph construction through reportengine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("algorithm", ["nested_sampling", "nuts"])
+@pytest.mark.parametrize("whitening", [None, {"sigma_prior": 5.0}])
+def test_blackjax_fit_graph_resolves(
+    algorithm, whitening, fixtures_data_path, fixtures_theory_path
+):
+    """blackjax_fit's annotations must pass reportengine's check_types.
+
+    The check runs isinstance(value, annotation) while the graph is built, so
+    resolving the target (without executing it) is enough to catch an
+    annotation isinstance rejects, or one the namespace value cannot match
+    (e.g. the ExplicitNode behind whitening_transformation). Calling
+    blackjax_fit directly, as the tests above do, bypasses it (issue #138).
+    """
+    from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
+
+    from smefit.api import smefitAPI
+
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    runcard = {
+        "data_path": str(fixtures_data_path),
+        "theory_path": str(fixtures_theory_path),
+        "use_theory_covmat": False,
+        "use_t0": False,
+        "use_quad": True,
+        "datasets": [{"name": "TESTDATA", "order": "NLO"}],
+        "coefficients": {
+            "OpA": {"free": True, "prior": prior},
+            "OpB": {"free": True, "prior": prior},
+        },
+        "blackjax_settings": {"algorithm": algorithm},
+    }
+    if whitening is not None:
+        runcard["whitening"] = whitening
+
+    config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget("blackjax_fit", (), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()

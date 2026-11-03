@@ -7,6 +7,7 @@ invokes them.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -499,10 +500,15 @@ def database_configured():
         return False
 
 
-@pytest.mark.skipif(
-    not database_configured(),
+# CI clones the database (.github/workflows/tests.yml), so there a missing
+# clone must fail these tests rather than skip them silently.
+requires_database = pytest.mark.skipif(
+    not database_configured() and not os.environ.get("CI"),
     reason="no smefit_database clone configured in .config/paths.yaml",
 )
+
+
+@requires_database
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.name)
 def test_template_runcards_validate(template):
     """Templates must be clean, warnings included.
@@ -568,10 +574,7 @@ def test_smefit_db_locate_is_json_parseable_or_reports_absence(tmp_path):
         assert Path(payload["resolved_theory_path"]).is_dir()
 
 
-@pytest.mark.skipif(
-    not database_configured(),
-    reason="no smefit_database clone configured in .config/paths.yaml",
-)
+@requires_database
 @pytest.mark.parametrize(
     "args", [("search", "zzzznomatch"), ("info", "NOPE"), ("operators", "zzzznomatch")]
 )

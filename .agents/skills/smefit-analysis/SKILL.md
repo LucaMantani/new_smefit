@@ -1,6 +1,6 @@
 ---
 name: smefit-analysis
-description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information tables and heatmaps, scanning the chi2 over a coefficient or a new-physics mass scale, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
+description: Use this skill when running smefit fits or analyses from the command line, interpreting fit output (fit_results.json, posterior samples, chi2, log-evidence, best-fit tables), producing reports with Fisher information or global information matrix tables and heatmaps, scanning the chi2 over a coefficient or a new-physics mass scale, comparing or post-processing fits, debugging failed or slow smefit runs, or timing the likelihood.
 ---
 
 # Running and interpreting smefit analyses
@@ -70,6 +70,26 @@ evaluates at the gradient-descent best fit; group datasets with `group:` labels
 to aggregate rows. See the smefit-runcard skill's `recipes.md` for the runcard
 side.
 
+The global information matrix (`global_information_table`,
+`plot_global_information_heatmap`) is built from the same Fisher matrices.
+Reading a row:
+
+- Each cell is the share of that coefficient's variance **in the global fit**
+  owed to that source; a row sums to 100%. The normalised Fisher diagonals
+  instead hold every other coefficient fixed, so the two differ exactly where
+  correlations matter.
+- That global fit leaves out **systematics shared across datasets**: each
+  dataset's Fisher matrix uses only its own block of the covariance matrix,
+  and the global one is their sum. Grouping the datasets with `group:` does not
+  bring these systematics back.
+- A source can earn a large share of a coefficient it has no sensitivity to,
+  by pinning a correlated one; and a source sensitive to a coefficient can get
+  ~0% if another source already fixes that direction.
+- **A negative share** (with another above 100% to compensate) means that
+  source's chi2 has negative curvature at the evaluation point — possible with
+  quadratic corrections or away from the SM point. It is real, logged as a
+  warning, and the heatmap's colour range widens to show it rather than clip.
+
 A report can also be run over fits that already exist on disk, refitting
 nothing: list them under `fits:`, and run an action once per fit by putting it
 in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
@@ -82,11 +102,22 @@ correlations of each fit's free coefficients. Template:
 equal-tailed 68% and 95% bounds of every free coefficient,
 also written to `tables/<fit_name>_coefficient_bounds_table.csv`. It reads
 individual-fit outputs too, one row per single-parameter fit. `bounds_levels`
-picks other levels (in percent) and `round_val` the decimals. Template:
+picks other levels (in percent) and `round_val` the decimals.
+`interval_types` picks the construction: `eti` (equal-tailed, default) or
+`hdi` (highest-density); a list, e.g. `interval_types: [eti, hdi]`, puts them
+side by side. `hdi` is defined as the region above one density threshold that collects the requested percentage of probability mass: arviz counts
+the modes, getdist's boundary-corrected KDE estimates each mode's density, and
+a multimodal posterior gets one disjoint piece per mode. A small mode separated
+from its neighbour only by a shallow dip is counted with it, so the region errs
+wide rather than splitting a unimodal posterior at noise. For a sign-definite
+coefficient — a prior with `low: 0` or `high: 0` — the region is pinned at 0
+rather than leaking past it; no other prior edge is a bound, and neither a
+whitened fit (its stored priors are not physical) nor a `bayesian_update` (its
+stored prior is the previous posterior, not the base prior) has one. Template:
 `coefficient_bounds_table.yaml`. In Python the same numbers are
-`Fit.from_folder(path).confidence_bounds(95)` →
-`{coeff: [(low, high), ...]}` (one interval for `eti`;
-several pieces, joined by `∪` in the table, for a multimodal region).
+`Fit.from_folder(path).confidence_bounds(95, "hdi")` →
+`{coeff: [(low, high), ...]}` (always one interval for `eti`;
+several pieces, joined by `∪` in the table, for a multimodal `hdi` region).
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

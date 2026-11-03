@@ -100,12 +100,12 @@ In particular, the fundamental components of the code are nodes of this graph an
 - **`fit_actions.py`**: The reportengine actions listed under `actions_:` in a runcard (`run_analytic_fit`, `run_ultranest_fit`, `run_blackjax_fit`, `run_hessian_fit`, and their `run_individual_*_fits` counterparts) — each takes its produced fit object plus `output_path` and executes/writes it.
 - **`blackjax_fit.py` / `blackjax_samplers/`**: `blackjax_fit` is the provider node; it applies whitening, resolves the posterior and builds the `FitResult`, and dispatches the actual sampling to a runner looked up in `_SAMPLER_REGISTRY` by `blackjax_settings.algorithm` (`nested_sampling` or `nuts`). The `blackjax_samplers` package holds one module per algorithm (`nuts.py`, `nested_sampling.py`), each exposing `run(...)` and the `SETTINGS` frozenset of the runcard keys it owns; `_common.py` carries `SamplerOutput` and the `_HealthReport` verdict scaffolding, and `__init__.py` builds both `_SAMPLER_REGISTRY` and `BJ_ALGORITHM_SETTINGS` from a single `_ALGORITHM_MODULES` map. Adding an algorithm is therefore one new module, one entry in that map, and the matching keys in the `known_keys` literal of `parse_blackjax_settings`. The package is deliberately **not** registered in `smefit_providers` — its contents are helpers, not DAG nodes. The `BJ_` prefix marks the constants that `config.py` imports from it, so they stay recognisable at the import site.
 - **`whitening.py`**: `WhitenTransform` (the affine map between whitened and physical coefficients) and the `_whitening_*_shift` workers that build it. Callers whiten by asking the domain objects themselves: `chi2.whitened(transform)` and `coefficients.whitened(transform)`.
-- **`utils.py`**: Posterior helpers (`resolve_posterior`, `build_exact_posterior_prior`), benchmarking (`chi2_timing`), and the `run_test`/`run_prior_test` reportengine actions.
+- **`utils.py`**: Low-level helpers (`resolve_posterior`, `ensure_list`) and benchmarking (`chi2_timing`). It imports no other `smefit` module, so anything can import from it — keep it that way (see the `smefit-dev` skill).
 - **`environment.py`**: `smefitEnvironment` sets JAX float32/float64 precision at startup.
 
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
-`hessian_fit.py`, `individual_fit.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
-`external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `fisher.py`, `pca.py`,
+`hessian_fit.py`, `individual_fit.py`, `bayesian_update.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
+`external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `credible_intervals.py`, `fisher.py`, `pca.py`,
 `figures.py`, `tables.py`, `plot_utils.py`, `wcxf.py`, `latex_labels.py`, `utils_actions.py`,
 `constants.py`, `api.py` (the `reportengine` programmatic API).
 
@@ -119,6 +119,12 @@ dependencies — so the dependency set is chosen at graph-build time from the
 runcard. `produce_whitening_transformation` (`config.py`) is the example: only
 `whitening.shift: gradient_descent` makes the graph depend on `gd_best_fit`.
 Never flatten one back into a plain `produce_`; see the `smefit-dev` skill.
+
+Annotations on provider parameters and `parse_` inputs are **checked at
+runtime** by reportengine with `isinstance`. Use plain classes (`Mapping`, not
+`Mapping[str, Any]`), and remember that an `@explicit_node` resource is still an
+`ExplicitNode` when it is checked (hence `smefit.whitening.WhitenTransformNode`).
+`tests/test_app.py` enforces both; the `smefit-dev` skill has the details.
 
 **Adding to the graph** — a node, a runcard key, an action, a prior — has
 conventions that the reference generator and validator depend on: use the
@@ -173,7 +179,7 @@ coefficients:
   OpFixed: {free: False, value: 1.0}
   OpExpr: {free: False, vars: [other_coeff], expr: "other_coeff**2"}
 actions_:
-  - run_test
+  - run_analytic_fit
 ```
 
 `baseline_value` (optional, defaults to `0.0`) sets the "default" value of a free

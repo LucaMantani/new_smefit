@@ -1,3 +1,5 @@
+.DS_Store
+
 # Machine-specific path configuration
 .config/
 

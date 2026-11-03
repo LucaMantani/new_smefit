@@ -353,7 +353,7 @@ that depend on each other):
    `parse_data_path`. A path the parser only forwards — an `external_chi2` entry
    passes every key but `path` straight to a user-authored constructor — cannot
    be resolved by name at this layer; resolve it in whatever loads the file, as
-   `RGEMatrix.read_cache` does for `rg_matrix`.
+   `RGEMatrix.read_cache` does for `rg_matrix` (through `RGEMatrix.locate`).
 
 **Unknown keys warn rather than raise** — that is a deliberate
 backwards-compatibility choice, and the reason `validate_runcard.py` exists.

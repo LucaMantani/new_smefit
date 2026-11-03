@@ -248,6 +248,7 @@
     "rge": {
       "defaults": {
         "obs_scale": "'dynamic'",
+        "rg_matrix": "(no default)",
         "smeft_accuracy": "'integrate'",
         "yukawa": "'top'"
       },

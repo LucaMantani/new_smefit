@@ -68,6 +68,22 @@ fit comes back with how it was configured — `use_quad`, `fit_type`,
 `FitResult.from_json("<output>")` reads this file alone, and plain `json.load`
 does for quick lookups.
 
+What the fit was *computed from* — its `eft_model`, `theory`, `chi2` — is not
+stored; rebuild it through the API from the loaded fit:
+
+```python
+from smefit.api import smefitAPI
+from smefit.fit_result import Fit
+
+fit = Fit.from_folder("<output>")
+model = smefitAPI.eft_model(**fit.rebuild_runcard())
+```
+
+`rebuild_runcard()` is the fit's runcard with its own `rge_matrix.pkl` as
+`rge.rg_matrix`, so the RGE is not rerun. It needs the fit's database present
+locally. The matrices themselves are `fit.rge_cache` (an `RGECache`, loaded on
+first use).
+
 ## fit_results.json schema (individual fits)
 
 `run_individual_*_fits` writes one subdirectory per free coefficient under

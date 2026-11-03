@@ -63,15 +63,16 @@ class InputManifest:
         A theory file is hashed whole, so a change to any of its orders
         counts. Of an external likelihood only the module file named by its
         ``path`` is hashed: whatever it loads by itself is opaque to smefit.
-    database : dict of str to str or None
+    database_commit : dict of str to str or None
         The git commit of the ``commondata`` and ``theory`` directories, to
-        trace a fit back to a database version.
+        trace a fit back to a database version. One each, as the two paths
+        may resolve to different checkouts.
     smefit_commit : str or None
         The git commit of the smefit checkout that ran the fit.
     """
 
     files: Dict[str, Optional[str]] = field(default_factory=dict)
-    database: Dict[str, Optional[str]] = field(default_factory=dict)
+    database_commit: Dict[str, Optional[str]] = field(default_factory=dict)
     smefit_commit: Optional[str] = None
 
     # Where in a fit directory the manifest lives, next to input/runcard.yaml.
@@ -85,7 +86,7 @@ class InputManifest:
         :func:`smefit.paths.resolve_path`.
         """
         datasets = runcard.get("datasets") or []
-        files, database = {}, {}
+        files, database_commit = {}, {}
         for key, role, ext in (
             ("data_path", "commondata", "yaml"),
             ("theory_path", "theory", "json"),
@@ -96,11 +97,11 @@ class InputManifest:
             for ds in datasets:
                 name = f"{ds['name']}.{ext}"
                 files[f"{role}/{name}"] = _sha256(directory / name)
-            database[role] = _git_commit(directory)
+            database_commit[role] = _git_commit(directory)
         for class_name, entry in (runcard.get("external_chi2") or {}).items():
             module = pathlib.Path(resolve_path(str(entry["path"])))
             files[f"external_chi2/{class_name}"] = _sha256(module)
-        return cls(files, database, _git_commit(_SMEFIT_SOURCE))
+        return cls(files, database_commit, _git_commit(_SMEFIT_SOURCE))
 
     def differences(self, current: "InputManifest") -> Tuple[List[str], List[str]]:
         """How *current* differs from this manifest: ``(changed, notes)``.
@@ -123,8 +124,11 @@ class InputManifest:
 
         # With the files unchanged, the rest of the database is irrelevant.
         if changed:
-            for role in sorted(self.database.keys() | current.database.keys()):
-                was, now = self.database.get(role), current.database.get(role)
+            for role in sorted(
+                self.database_commit.keys() | current.database_commit.keys()
+            ):
+                was = self.database_commit.get(role)
+                now = current.database_commit.get(role)
                 if _known_and_different(was, now):
                     notes.append(f"{role} database commit: {was} -> {now}")
 

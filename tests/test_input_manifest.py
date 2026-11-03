@@ -42,7 +42,7 @@ def test_from_runcard_hashes_every_input_file(runcard, tmp_path):
         "theory/TESTDATA.json": _sha(tmp_path / "theory" / "TESTDATA.json"),
         "external_chi2/MyChi2": _sha(module),
     }
-    assert set(manifest.database) == {"commondata", "theory"}
+    assert set(manifest.database_commit) == {"commondata", "theory"}
 
 
 def test_from_runcard_resolves_prefix_paths(runcard, tmp_path, monkeypatch):
@@ -66,7 +66,7 @@ def test_an_external_only_runcard_records_no_database():
     manifest = InputManifest.from_runcard({"external_chi2": {}})
 
     assert manifest.files == {}
-    assert manifest.database == {}
+    assert manifest.database_commit == {}
 
 
 def test_git_commit_outside_a_checkout_is_none(tmp_path):
@@ -92,7 +92,7 @@ def test_a_manifest_is_recorded_without_git(runcard, monkeypatch):
 
     assert all(manifest.files.values())  # the hashes need no git
     assert manifest.smefit_commit is None
-    assert set(manifest.database.values()) == {None}
+    assert set(manifest.database_commit.values()) == {None}
 
 
 # ---------------------------------------------------------------------------

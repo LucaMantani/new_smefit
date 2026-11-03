@@ -206,6 +206,7 @@ def test_write_dataset_table_runs_on_a_fit_free_runcard(fixtures_data_path, tmp_
         "data_path": str(fixtures_data_path),
         "datasets": [{"name": "TESTDATA", "order": "NLO", "group": "Test"}],
         "fetch_bibtex": False,
+        "dataset_table_caption": "The data of this fit.",
     }
 
     config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
@@ -221,6 +222,8 @@ def test_write_dataset_table_runs_on_a_fit_free_runcard(fixtures_data_path, tmp_
 
     tex = (tmp_path / "dataset_table.tex").read_text(encoding="utf-8")
     assert r"\texttt{TESTDATA} &  & 3 & 1.5 &  \\" in tex
+    # a runcard key, resolved by name like any provider argument
+    assert r"\caption{The data of this fit.}" in tex
     assert not (tmp_path / "dataset_table.bib").exists()
 
 

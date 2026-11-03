@@ -281,6 +281,8 @@ datasets:                        # the fit's own list; `group:` sections the tab
   - {name: LEP_eeWW_182GeV, order: LO, group: LEP}
 fetch_bibtex: True               # optional (default False): cite via INSPIRE
 compile_pdf: True                # optional (default False): also a PDF preview
+dataset_table_caption: "Datasets included in the fit."  # optional, LaTeX as is
+dataset_table_label: tab:datasets                       # optional, for \ref
 actions_:
   - write_dataset_table
 ```
@@ -296,11 +298,13 @@ can run it as is, with no theory tables or coefficients involved.
   A URL there that is not an INSPIRE record (a CERN repository record, a
   talk) is always linked, labelled with its site. A file with no `arxiv`
   field cites the arXiv numbers its `description` mentions, with a warning
-  per dataset since that is a guess.
+  per dataset since that is a guess. The datasets left with no reference at
+  all are named together in a single warning.
 - `fetch_bibtex: True` looks them up on INSPIRE instead: the table `\cite`s
   them with INSPIRE keys, and `<output>/dataset_table.bib` holds their BibTeX.
   A reference INSPIRE cannot resolve (or all of them, when it is unreachable)
-  falls back to its link, with a warning.
+  falls back to its link, with a warning. A paper is written to the `.bib`
+  once, however many datasets cite it.
 - Each `.bib` entry links to its paper: through the `doi` INSPIRE writes (to
   the journal), or, for a paper with no DOI, a `url` to its INSPIRE record.
   Whether the bibliography shows them as links is up to its style: `JHEP.bst`,

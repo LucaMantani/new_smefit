@@ -149,7 +149,7 @@ def test_empty_luminosity_is_missing_without_a_warning(tmp_path, caplog):
         (info,) = dataset_info([{"name": "DS"}], tmp_path)
 
     assert info.luminosity == ()
-    assert caplog.text == ""
+    assert "luminosity" not in caplog.text
 
 
 def test_description_arxiv_numbers_are_cited_when_the_file_has_none(tmp_path, caplog):
@@ -191,6 +191,22 @@ def test_unreadable_luminosity_is_left_out_with_a_warning(tmp_path, caplog):
 
     assert info.luminosity == ()
     assert "DS: unreadable luminosity 'TBD'" in caplog.text
+
+
+def test_datasets_without_a_reference_are_warned_about_together(tmp_path, caplog):
+    """One warning for all of them: a projection database has hundreds."""
+    _write_commondata(tmp_path, "A", [])
+    _write_commondata(tmp_path, "B", ["arxiv: 1511.04716"])
+    _write_commondata(tmp_path, "C", ["arxiv: none"])
+
+    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+        dataset_info([{"name": "A"}, {"name": "B"}, {"name": "C"}], tmp_path)
+
+    (record,) = caplog.records
+    assert record.getMessage() == (
+        "2 dataset(s) have no reference, so their Ref. cell in the dataset "
+        "table is empty: A, C."
+    )
 
 
 def test_missing_metadata_falls_back_to_empty(tmp_path):
@@ -347,6 +363,40 @@ def test_paper_without_doi_links_to_its_inspire_record(monkeypatch):
         '    url = "https://inspirehep.net/literature/1323200",\n'
         '    title = "x"\n}\n'
     )
+
+
+def test_paper_two_batches_return_is_written_once(monkeypatch):
+    """Referenced by arXiv number in one batch and by INSPIRE record in the
+    next, a paper comes back twice; bibtex would warn about the repeat."""
+    _fake_inspire(
+        monkeypatch,
+        [
+            {
+                "control_number": 1404878,
+                "texkeys": ["ATLAS:2015lsn"],
+                "arxiv_eprints": [{"value": "1511.04716"}],
+                "dois": [{"value": "10.1140/epjc/s10052-016-3910-7"}],
+            }
+        ],
+        bibtex='@article{ATLAS:2015lsn,\n    title = "x"\n}\n',
+    )
+    monkeypatch.setattr(di, "_INSPIRE_BATCH", 1)
+    infos = [
+        DatasetInfo("DS1", 1, references=("arxiv:1511.04716",)),
+        DatasetInfo("DS2", 1, references=("recid:1404878",)),
+    ]
+
+    bibtex = dataset_bibliography(infos, fetch_bibtex=True).bibtex
+
+    assert bibtex == '@article{ATLAS:2015lsn,\n    title = "x"\n}\n'
+
+
+def test_no_bibtex_from_inspire_is_no_bibliography(monkeypatch):
+    """Nothing to write: an empty string, so no .bib file follows."""
+    _fake_inspire(monkeypatch, [], bibtex="")
+    infos = [DatasetInfo("DS", 1, references=("arxiv:9999.99999",))]
+
+    assert dataset_bibliography(infos, fetch_bibtex=True).bibtex == ""
 
 
 def test_bibliography_queries_each_reference_once_in_batches(monkeypatch):
@@ -567,6 +617,26 @@ def test_table_ends_with_the_total_number_of_points():
     assert tex.endswith(
         "\\midrule\n\\multicolumn{2}{l}{Total} & 22 & & \\\\\n\\end{xltabular}\n"
     )
+
+
+def test_table_caption_and_label_default_to_a_fit():
+    tex = dataset_table_tex([DatasetInfo("A", 1)], Bibliography())
+
+    assert (
+        "\\caption{Datasets included in the fit.}\n\\label{tab:datasets} \\\\\n" in tex
+    )
+
+
+def test_table_caption_is_written_as_latex():
+    tex = dataset_table_tex(
+        [DatasetInfo("A", 1)],
+        Bibliography(),
+        dataset_table_caption=r"The $t\bar{t}$ data of~\cite{X}.",
+        dataset_table_label="tab:top",
+    )
+
+    assert r"\caption{The $t\bar{t}$ data of~\cite{X}.}" in tex
+    assert r"\label{tab:top} \\" in tex
 
 
 def test_table_spans_the_line_width():

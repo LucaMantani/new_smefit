@@ -60,6 +60,8 @@ _LATEX_SPECIAL = {
     "$": r"\$",
     "^": r"\^{}",
 }
+# The head of a BibTeX entry, ``@article{<key>,``
+_BIBTEX_KEY = re.compile(r"(?m)^(@\w+\{)([^,\s]+),")
 # The text width of the preview: a single-column paper with 2 cm margins.
 _PREVIEW_TEXTWIDTH = "483pt"
 # What LaTeX writes to its log when another run would change the output
@@ -270,7 +272,17 @@ def _with_urls(bibtex: str, urls) -> str:
         url = urls.get(match.group(2))
         return f'{match.group(0)}\n    url = "{url}",' if url else match.group(0)
 
-    return re.sub(r"(?m)^(@\w+\{)([^,\s]+),", add, bibtex)
+    return _BIBTEX_KEY.sub(add, bibtex)
+
+
+def _bibtex_entries(bibtex: str) -> List[Tuple[str, str]]:
+    """The entries of *bibtex* as (citation key, entry), in order."""
+    matches = list(_BIBTEX_KEY.finditer(bibtex))
+    ends = [match.start() for match in matches[1:]] + [len(bibtex)]
+    return [
+        (match.group(2), bibtex[match.start() : end].strip())
+        for match, end in zip(matches, ends)
+    ]
 
 
 def _fetch_inspire_bibliography(references) -> Bibliography:
@@ -280,11 +292,15 @@ def _fetch_inspire_bibliography(references) -> Bibliography:
     for a paper with none, through a ``url`` added to its INSPIRE record. A
     ``url`` on the others too would be printed next to the DOI by the styles
     that show both.
+
+    A paper is written once even when two batches return it: referenced once
+    by arXiv number and once by INSPIRE record, it can be in both, and bibtex
+    warns about a repeated entry.
     """
     references = list(dict.fromkeys(references))
     found = {}
     urls = {}
-    entries = []
+    entries = {}
     for start in range(0, len(references), _INSPIRE_BATCH):
         batch = references[start : start + _INSPIRE_BATCH]
         hits = json.loads(
@@ -304,8 +320,9 @@ def _fetch_inspire_bibliography(references) -> Bibliography:
                 urls[texkey] = (
                     f"https://inspirehep.net/literature/{record['control_number']}"
                 )
-        bibtex = _inspire_query(batch, format="bibtex").decode("utf-8").strip()
-        entries.append(_with_urls(bibtex, urls))
+        bibtex = _inspire_query(batch, format="bibtex").decode("utf-8")
+        for texkey, entry in _bibtex_entries(bibtex):
+            entries.setdefault(texkey, entry)
 
     missing = [r for r in references if r not in found]
     if missing:
@@ -314,9 +331,10 @@ def _fetch_inspire_bibliography(references) -> Bibliography:
             "instead of citing them.",
             ", ".join(missing),
         )
+    bibtex = _with_urls("\n\n".join(entries.values()), urls)
     return Bibliography(
         texkeys={r: found[r] for r in references if r in found},
-        bibtex="\n\n".join(entries) + "\n",
+        bibtex=bibtex + "\n" if bibtex else "",
     )
 
 
@@ -381,8 +399,20 @@ def dataset_info(datasets, data_path) -> List[DatasetInfo]:
     """The provenance of each dataset of the runcard, in runcard order.
     Reads only the commondata files, a runcard with ``datasets`` and
     ``data_path`` is enough.
+
+    The datasets left with no reference are warned about together: one
+    warning naming all of them, since a database can have hundreds.
     """
-    return [_load_dataset_info(data_path, entry) for entry in datasets]
+    infos = [_load_dataset_info(data_path, entry) for entry in datasets]
+    unreferenced = [info.name for info in infos if not info.references]
+    if unreferenced:
+        log.warning(
+            "%d dataset(s) have no reference, so their Ref. cell in the "
+            "dataset table is empty: %s.",
+            len(unreferenced),
+            ", ".join(unreferenced),
+        )
+    return infos
 
 
 def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
@@ -417,8 +447,16 @@ def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
         return Bibliography()
 
 
-def dataset_table_tex(dataset_info, dataset_bibliography) -> str:
+def dataset_table_tex(
+    dataset_info,
+    dataset_bibliography,
+    dataset_table_caption="Datasets included in the fit.",
+    dataset_table_label="tab:datasets",
+) -> str:
     """The datasets as a LaTeX ``xltabular``, one section per ``group``.
+
+    ``dataset_table_caption`` is written as LaTeX, as it is, so it may hold
+    math or a ``\\cite``; ``dataset_table_label`` is what ``\\ref`` takes.
 
     An ``xltabular`` is a ``longtable`` as wide as the line: the name and
     description columns share what the numbers and references leave, so the
@@ -436,8 +474,8 @@ def dataset_table_tex(dataset_info, dataset_bibliography) -> str:
         r"\begin{xltabular}{\linewidth}{"
         r">{\raggedright\arraybackslash\hsize=0.8\hsize}X "
         r">{\raggedright\arraybackslash\hsize=1.2\hsize}X r r l}",
-        r"\caption{Datasets included in the fit.}",
-        r"\label{tab:datasets} \\",
+        rf"\caption{{{dataset_table_caption}}}",
+        rf"\label{{{dataset_table_label}}} \\",
         r"\toprule",
         r"Dataset & Description & $n_{\rm dat}$ & $\mathcal{L}$ [fb$^{-1}$] "
         r"& Ref. \\",

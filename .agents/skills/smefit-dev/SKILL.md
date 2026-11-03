@@ -392,6 +392,32 @@ protection against misspelling it.
    the `fit_reading_actions` list in `runcard-keys.json`: it is what tells
    `validate_runcard.py` that a `fits:`-only runcard running this action needs
    no `datasets`/`coefficients` of its own.
+7. **A node that recomputes something from a loaded fit** (its chi2, its
+   predictions at the best fit, …) rebuilds it through the API from
+   `fit.rebuild_runcard()` — never by reimplementing the config logic on
+   `Fit`. `rebuild_runcard` checks the fit's `input/manifest.json` and raises
+   a `ValueError` when a commondata/theory/external chi2 file changed since the
+   fit ran — the recomputed quantity would not be the fit's.
+
+   Where recomputing from changed files is still meaningful (a report asking
+   how an old fit does on corrected data), accept it through a plain
+   `allow_changed_inputs=False` parameter, which makes it a top-level runcard
+   key, and pass it on — one key for the whole run, never a per-feature
+   sub-key:
+
+   ```python
+   def plot_predictions_at_best_fit(fit, allow_changed_inputs=False):
+       from smefit.api import smefitAPI  # local: smefit.api imports every provider
+
+       runcard = fit.rebuild_runcard(allow_changed_inputs=allow_changed_inputs)
+       model = smefitAPI.eft_model(**runcard)
+       ...
+   ```
+
+   Where it is not, leave the parameter out: the Bayesian update has none,
+   because its prior pairs the stored samples with the rebuilt likelihood,
+   which agree only on unchanged files. Only rebuilding is checked: a node
+   that reads the stored samples alone needs none of this.
 
 ## Coefficients, priors, external chi2
 

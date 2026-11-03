@@ -9,6 +9,9 @@
     runcard.yaml          # copy of the runcard (reportengine bookkeeping;
                           #  required later by bayesian_update)
     lockfile.yaml         # reportengine lockfile
+    manifest.json         # written by every run_*_fit action: sha256 of each
+                          #  commondata/theory file and external chi2 module,
+                          #  database and smefit git commits
   figures/  tables/       # created on every run; populated by table/figure actions
                           #  (Fisher, chi2_scan_table, mass_scan_table,
                           #   plot_chi2_scan_<coefficient>.*)
@@ -83,6 +86,22 @@ model = smefitAPI.eft_model(**fit.rebuild_runcard())
 `rge.rg_matrix`, so the RGE is not rerun. It needs the fit's database present
 locally. The matrices themselves are `fit.rge_cache` (an `RGECache`, loaded on
 first use).
+
+A runcard names paths, not versions, so `rebuild_runcard()` also checks the
+inputs it would rebuild from against the fit's `input/manifest.json`
+(an `InputManifest`, `smefit/input_manifest.py`):
+
+- a commondata/theory file or external chi2 module whose content **changed**
+  since the fit ran raises a `ValueError`, naming the files: the rebuilt
+  likelihood would not be the fit's. In Python,
+  `rebuild_runcard(allow_changed_inputs=True)` rebuilds from the current files
+  anyway, with a warning; a `bayesian_update` never does;
+- a **missing** input file, and a different smefit commit, are only
+  warned about.
+
+Fits written before the manifest was introduced have none and are not checked.
+Only the module file of an external chi2 is hashed — anything it loads by
+itself is not covered.
 
 ## fit_results.json schema (individual fits)
 

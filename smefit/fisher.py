@@ -157,6 +157,12 @@ def _aggregate_fisher_from_fit(fit):
     # Local import to avoid circular dependency
     from smefit.api import smefitAPI
 
+    if fit.setting("bayesian_update") is not None:
+        log.warning(
+            "'%s' is a Bayesian update: its Fisher information matrices cover only "
+            "the data of this update, not the previous fit it used as a prior.",
+            fit.fit_name,
+        )
     runcard = fit.rebuild_runcard()
     datasets_chi2 = smefitAPI.datasets_chi2(**runcard)
     best_fit_point = fit.fit_results.best_fit_point

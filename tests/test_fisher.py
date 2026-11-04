@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 import yaml
 from reportengine import namespaces
+from reportengine.configparser import ConfigError
 from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
 
 from smefit.api import smefitAPI
@@ -33,7 +34,7 @@ from smefit.fisher import (
     global_information_matrix,
     total_fisher_information_matrix,
 )
-from smefit.fit_result import Fit, FitResult
+from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.model import EFTModel
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
@@ -835,3 +836,68 @@ def test_data_groups_need_no_other_node_to_parse_external_chi2(tmp_path: Path) -
         datasets=[{"name": "A", "order": "LO", "group": "G"}],
         external_chi2=_external_entry(tmp_path, group="G"),
     ) == {"G": ["A", "ExtChi2"]}
+
+
+# ---------------------------------------------------------------------------
+# Fits whose stored runcard does not describe the joint likelihood
+# ---------------------------------------------------------------------------
+
+
+def test_fisher_node_refuses_individual_fits(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    runcard["actions_"] = ["run_individual_analytic_fits"]
+    fit_dir = tmp_path / "my_fit"
+    (fit_dir / "input").mkdir(parents=True)
+    (fit_dir / "input" / "runcard.yaml").write_text(yaml.dump(runcard))
+    FitResultGroup(
+        [
+            FitResult(
+                free_parameters=[name],
+                best_fit_point={name: value},
+                max_loglikelihood=-1.0,
+                num_data=3,
+                samples={name: jnp.array([value - 0.1, value, value + 0.1])},
+            )
+            for name, value in _BEST_FIT.items()
+        ]
+    ).write_summary(fit_dir)
+
+    with pytest.raises(ConfigError, match="individual fits"):
+        smefitAPI.aggregate_fisher_information_matrices(
+            fit={"name": "my_fit", "path": str(tmp_path)}
+        )
+
+
+def test_fisher_of_a_bayesian_update_warns_it_covers_only_the_update(
+    tmp_path: Path,
+    fixtures_data_path: Path,
+    fixtures_theory_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The previous fit is not needed: datasets_chi2 does not depend on the prior."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    runcard["bayesian_update"] = {"name": "previous_fit"}
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    with caplog.at_level(logging.WARNING, logger="smefit.fisher"):
+        result = _aggregate_fisher_from_fit(fit)
+
+    assert "Bayesian update" in caplog.text
+    assert list(result) == ["TESTDATA"]
+
+
+def test_fisher_of_an_ordinary_fit_does_not_warn(
+    tmp_path: Path,
+    fixtures_data_path: Path,
+    fixtures_theory_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    with caplog.at_level(logging.WARNING, logger="smefit.fisher"):
+        _aggregate_fisher_from_fit(fit)
+
+    assert "Bayesian update" not in caplog.text

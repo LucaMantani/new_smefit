@@ -304,6 +304,8 @@ def pca_spectrum(pca, latex_label):
         direction, ``Ratio`` its eigenvalue relative to the largest, and
         ``Cumulative`` the share of the total eigenvalue sum reached by that
         row — how much of the constraint the leading directions carry.
+        ``Direction`` writes each direction as a combination of the
+        coefficient labels.
     """
     eigenvalues = pca.eigenvalues
     return pd.DataFrame(
@@ -313,7 +315,9 @@ def pca_spectrum(pca, latex_label):
             "Ratio": pca.eigenvalue_ratios,
             "Cumulative": np.cumsum(eigenvalues) / eigenvalues.sum(),
             "Flat": pca.flat_mask,
-            "Direction": [pca.describe(i) for i in range(pca.n_components)],
+            "Direction": [
+                pca.describe(i, latex_label) for i in range(pca.n_components)
+            ],
         },
         index=[latex_label(name) for name in pca.component_names],
     )

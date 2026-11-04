@@ -395,6 +395,12 @@ def test_pca_components_labels_the_components():
     ]
 
 
+def test_pca_spectrum_writes_directions_with_latex_labels():
+    result = pca_spectrum(_pca(), latex_label=make_latex_label({"OpA": "$c_A$"}))
+
+    assert result["Direction"].iloc[0] == r"0.80 $c_A$ + 0.60 $\mathrm{OpZZ}$"
+
+
 def test_pca_spectrum_labels_the_components():
     result = pca_spectrum(_pca(), latex_label=make_latex_label({"PC2": "$v_2$"}))
 

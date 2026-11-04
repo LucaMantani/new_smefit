@@ -161,10 +161,9 @@ def _aggregate_fisher_from_fit(fit):
     datasets_chi2 = smefitAPI.datasets_chi2(**runcard)
     best_fit_point = fit.fit_results.best_fit_point
     c0 = jnp.array([best_fit_point[name] for name in datasets_chi2[0].param_names])
-    # data_groups needs datasets: an external-only fit has no groups to rebuild
-    data_groups = smefitAPI.data_groups(**runcard) if "datasets" in runcard else None
     return _aggregate_fisher_from_runcard(
-        fisher_information_matrices(datasets_chi2, c0), data_groups
+        fisher_information_matrices(datasets_chi2, c0),
+        smefitAPI.data_groups(**runcard),
     )
 
 

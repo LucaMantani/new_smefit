@@ -97,10 +97,16 @@ class smefitConfig(Config):
         self._cached_data_group = DataGroup(parsed_datasets)
         return self._cached_data_group
 
-    def produce_data_groups(self, datasets):
-        """Build data_groups from inline group: keys on each dataset entry."""
+    def produce_data_groups(self, datasets=None, external_chi2=None):
+        """Build data_groups from inline group: keys on datasets and external chi2s.
+
+        Both keys are optional, as a runcard may have only one of them.
+        ``external_chi2`` is taken for its parser, which sets aside the groups it
+        strips from the entries: without the dependency they would be there only
+        if another node happened to parse the key first.
+        """
         groups: dict = {}
-        for ds in datasets:
+        for ds in datasets or []:
             group = ds.get("group")
             if group is not None:
                 groups.setdefault(group, []).append(ds["name"])

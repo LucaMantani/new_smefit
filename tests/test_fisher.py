@@ -760,3 +760,78 @@ def test_fisher_node_without_a_fit_still_reads_the_runcard(
     np.testing.assert_allclose(
         result["Top"].values, 0.5 * jax.hessian(chi2)(jnp.zeros(2))
     )
+
+
+# A quadratic bowl in OpA and OpB, with a curvature its constructor is given.
+_EXTERNAL_CHI2 = """
+import jax.numpy as jnp
+
+
+class ExtChi2:
+    def __init__(self, coefficients, rge_dict=None, curvature=1.0):
+        self.num_data = 1
+        self.param_names = coefficients.free_names
+        self.curvature = curvature
+
+    def compute_chi2(self, c):
+        return self.curvature * jnp.sum(c**2)
+"""
+
+
+def _external_entry(tmp_path: Path, group: str | None = None) -> dict:
+    module = tmp_path / "ext_chi2_for_fisher.py"
+    module.write_text(_EXTERNAL_CHI2)
+    entry: dict = {"path": str(module), "curvature": 2.0}
+    if group is not None:
+        entry["group"] = group
+    return {"ExtChi2": entry}
+
+
+def test_fisher_of_a_fit_merges_an_external_chi2_into_its_group(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """A group shared by a dataset and an external chi2 is one source."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path, group="Top")
+    runcard["external_chi2"] = _external_entry(tmp_path, group="Top")
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    result = _aggregate_fisher_from_fit(fit)
+
+    assert list(result) == ["Top"]
+    data_chi2 = smefitAPI.datasets_chi2(**fit.rebuild_runcard())[0]
+    data_fisher = 0.5 * jax.hessian(data_chi2)(jnp.array(list(_BEST_FIT.values())))
+    # F = 0.5 * H of curvature * c^2 is curvature on the diagonal
+    np.testing.assert_allclose(result["Top"].values, data_fisher + 2.0 * np.eye(2))
+
+
+def test_fisher_of_a_fit_keeps_an_external_chi2_in_its_own_group(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path, group="Top")
+    runcard["external_chi2"] = _external_entry(tmp_path, group="DY")
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    assert sorted(_aggregate_fisher_from_fit(fit)) == ["DY", "Top"]
+
+
+def test_fisher_of_an_external_only_fit_uses_its_groups(tmp_path: Path) -> None:
+    """No datasets: the groups come from the external chi2s alone."""
+    runcard = {
+        "external_chi2": _external_entry(tmp_path, group="DY"),
+        "coefficients": {name: {"free": True, "prior": _PRIOR} for name in _BEST_FIT},
+        "actions_": ["run_analytic_fit"],
+    }
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    result = _aggregate_fisher_from_fit(fit)
+
+    assert list(result) == ["DY"]
+    np.testing.assert_allclose(result["DY"].values, 2.0 * np.eye(2))
+
+
+def test_data_groups_need_no_other_node_to_parse_external_chi2(tmp_path: Path) -> None:
+    """Asked for on its own, the node still sees the external chi2 groups."""
+    assert smefitAPI.data_groups(
+        datasets=[{"name": "A", "order": "LO", "group": "G"}],
+        external_chi2=_external_entry(tmp_path, group="G"),
+    ) == {"G": ["A", "ExtChi2"]}

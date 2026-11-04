@@ -442,7 +442,7 @@ which runcard keys each action ultimately needs.
 - `aggregate_fisher_information_matrices`(fit) — Dispatch to the worker computing the per-source Fisher matrices.
 - `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
 - `data`(datasets, data_path) — Produce data group object.
-- `data_groups`(datasets) — Build data_groups from inline group: keys on each dataset entry.
+- `data_groups`(datasets, external_chi2) — Build data_groups from inline group: keys on datasets and external chi2s.
 - `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
 - `eft_model`(theory, coefficients, rge_matrix, use_quad) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.

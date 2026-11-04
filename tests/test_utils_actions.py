@@ -1,8 +1,6 @@
 """Unit tests for smefit.utils_actions."""
 
-import logging
 import shutil
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -10,6 +8,7 @@ import pytest
 
 from smefit import utils_actions as ua
 from smefit.dataset_info import Bibliography, DatasetInfo, dataset_table_tex
+from smefit.latex_preview import preview_tex
 from smefit.pca import PCA
 from smefit.utils_actions import run_pca, write_dataset_table
 
@@ -31,59 +30,23 @@ def test_write_dataset_table_without_bibliography_writes_no_bib(tmp_path):
     assert not (tmp_path / "dataset_table.bib").exists()
 
 
-def test_preview_typesets_the_table_at_paper_width():
-    tex = ua._preview_tex(with_bibliography=False)
-
-    assert r"\usepackage[textwidth=483pt]{geometry}" in tex
-    assert r"\input{dataset_table}" in tex
-    assert "natbib" not in tex
-    assert r"\bibliography" not in tex
-
-
-def test_preview_with_bibliography_links_its_dois():
-    tex = ua._preview_tex(with_bibliography=True)
-
-    assert r"\usepackage[numbers]{natbib}" in tex
-    assert r"\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}" in tex
-    assert tex.endswith(
-        "\\bibliographystyle{unsrtnat}\n\\bibliography{dataset_table}\n"
-        "\\end{document}\n"
-    )
-
-
 def _files(folder):
     return {path.name for path in Path(folder).iterdir()}
 
 
-def _fake_latex(monkeypatch, logs, fail=None):
-    """Stand in for pdflatex and bibtex, recording which ran.
+def _record_compile(monkeypatch):
+    """Stand in for compile_preview, recording what it was asked to compile.
 
-    Each pdflatex run leaves the next of *logs* as its log, an auxiliary file
-    and a PDF; the tool named *fail* exits with a LaTeX error instead.
+    How the preview compiles is tested in test_latex_preview.py; here only
+    which files the action hands it.
     """
     calls = []
-    logs = iter(logs)
-
-    def run(command, cwd, **kwargs):
-        tool = command[0]
-        calls.append(tool)
-        if tool == "pdflatex":
-            (Path(cwd) / "dataset_table_preview.log").write_text(next(logs))
-            (Path(cwd) / "dataset_table_preview.aux").write_text("")
-            (Path(cwd) / "dataset_table_preview.pdf").write_bytes(b"%PDF")
-        if tool == fail:
-            return subprocess.CompletedProcess(
-                command, 1, stdout=b"! LaTeX Error: File `xltabular.sty' not found."
-            )
-        return subprocess.CompletedProcess(command, 0, stdout=b"")
-
-    monkeypatch.setattr(ua.subprocess, "run", run)
-    monkeypatch.setattr(ua.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+    monkeypatch.setattr(ua, "compile_preview", lambda *args: calls.append(args))
     return calls
 
 
 def test_write_dataset_table_compiles_only_when_asked(monkeypatch, tmp_path):
-    calls = _fake_latex(monkeypatch, [])
+    calls = _record_compile(monkeypatch)
 
     write_dataset_table("TABLE", Bibliography(), tmp_path)
 
@@ -91,97 +54,30 @@ def test_write_dataset_table_compiles_only_when_asked(monkeypatch, tmp_path):
     assert _files(tmp_path) == {"dataset_table.tex"}
 
 
-def test_compile_pdf_reruns_latex_until_it_settles(monkeypatch, tmp_path):
-    """After bibtex, and for as long as the log asks: longtable settles its
-    column widths over runs, and stopping one short overfills the line."""
-    calls = _fake_latex(
-        monkeypatch,
-        [
-            "",
-            "Package natbib Warning: Citation(s) may have changed.\n"
-            "(natbib) Rerun to get citations correct.",
-            "Package longtable Warning: Table widths have changed. Rerun LaTeX.",
-            "",
-        ],
-    )
+def test_compile_pdf_previews_the_table_with_its_bibliography(monkeypatch, tmp_path):
+    calls = _record_compile(monkeypatch)
 
     write_dataset_table(
         "TABLE", Bibliography(bibtex="@article{A,}\n"), tmp_path, compile_pdf=True
     )
 
-    assert calls == ["pdflatex", "bibtex", "pdflatex", "pdflatex", "pdflatex"]
-    # the auxiliary files stay in the scratch folder
-    assert _files(tmp_path) == {
-        "dataset_table.tex",
-        "dataset_table.bib",
-        "dataset_table_preview.tex",
-        "dataset_table_preview.pdf",
-    }
+    preview = (tmp_path / "dataset_table_preview.tex").read_text(encoding="utf-8")
+    assert preview == preview_tex("dataset_table", "dataset_table")
+    assert calls == [
+        (tmp_path, "dataset_table_preview", "dataset_table", "dataset_table")
+    ]
 
 
-def test_compile_pdf_without_bibliography_runs_no_bibtex(monkeypatch, tmp_path):
-    calls = _fake_latex(monkeypatch, ["Table widths have changed. Rerun LaTeX.", ""])
+def test_compile_pdf_without_bibliography_previews_the_table_alone(
+    monkeypatch, tmp_path
+):
+    calls = _record_compile(monkeypatch)
 
     write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
 
-    assert calls == ["pdflatex", "pdflatex"]
-    assert "dataset_table_preview.pdf" in _files(tmp_path)
-
-
-def test_compile_pdf_gives_up_on_a_log_that_never_settles(
-    monkeypatch, tmp_path, caplog
-):
-    calls = _fake_latex(monkeypatch, ["Rerun LaTeX."] * 10)
-
-    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
-        write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
-
-    assert calls == ["pdflatex"] * (1 + ua._MAX_LATEX_RERUNS)
-    assert "still asks for a rerun" in caplog.text
-    assert "dataset_table_preview.pdf" in _files(tmp_path)
-
-
-def test_compile_pdf_without_pdflatex_writes_the_table_and_warns(
-    monkeypatch, tmp_path, caplog
-):
-    calls = _fake_latex(monkeypatch, [])
-    monkeypatch.setattr(ua.shutil, "which", lambda tool: None)
-
-    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
-        write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
-
-    assert calls == []
-    assert "pdflatex not found" in caplog.text
-    assert _files(tmp_path) == {"dataset_table.tex", "dataset_table_preview.tex"}
-
-
-def test_compile_pdf_gives_up_on_a_tool_that_hangs(monkeypatch, tmp_path, caplog):
-    def hang(command, cwd, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-
-    monkeypatch.setattr(ua.subprocess, "run", hang)
-    monkeypatch.setattr(ua.shutil, "which", lambda tool: f"/usr/bin/{tool}")
-
-    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
-        write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
-
-    assert "pdflatex timed out" in caplog.text
-    # it never got as far as writing a log
-    assert _files(tmp_path) == {"dataset_table.tex", "dataset_table_preview.tex"}
-
-
-def test_compile_pdf_latex_error_warns_and_keeps_the_log(monkeypatch, tmp_path, caplog):
-    _fake_latex(monkeypatch, [""], fail="pdflatex")
-
-    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
-        write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
-
-    assert "xltabular.sty" in caplog.text
-    assert _files(tmp_path) == {
-        "dataset_table.tex",
-        "dataset_table_preview.tex",
-        "dataset_table_preview.log",
-    }
+    preview = (tmp_path / "dataset_table_preview.tex").read_text(encoding="utf-8")
+    assert preview == preview_tex("dataset_table")
+    assert calls == [(tmp_path, "dataset_table_preview", "dataset_table", None)]
 
 
 @pytest.mark.skipif(

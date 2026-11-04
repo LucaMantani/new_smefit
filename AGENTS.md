@@ -106,7 +106,7 @@ In particular, the fundamental components of the code are nodes of this graph an
 Other modules not detailed here (see file docstrings): `analytic_fit.py`, `ultranest_fit.py`,
 `hessian_fit.py`, `individual_fit.py`, `bayesian_update.py`, `chi2_scan.py`, `gradient_descent.py`, `projections.py`,
 `external_chi2.py`, `rge/`, `priors.py`, `paths.py`, `fit_result.py`, `credible_intervals.py`, `fisher.py`, `pca.py`, `dataset_info.py`,
-`figures.py`, `tables.py`, `plot_utils.py`, `wcxf.py`, `latex_labels.py`, `utils_actions.py`,
+`figures.py`, `tables.py`, `plot_utils.py`, `wcxf.py`, `latex_labels.py`, `latex_preview.py`, `utils_actions.py`,
 `constants.py`, `api.py` (the `reportengine` programmatic API).
 
 ### reportengine integration

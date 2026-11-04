@@ -279,25 +279,28 @@ def pca_components(pca, latex_label):
     Returns
     -------
     pd.DataFrame
-        Index = coeff_names, columns = PC1..PCn.
+        Index = coefficient labels, columns = labels of PC1..PCn.
     """
     frame = pca.as_frame()
     frame.index = [latex_label(name) for name in frame.index]
+    frame.columns = [latex_label(name) for name in frame.columns]
     return frame
 
 
 @table
-def pca_spectrum(pca):
+def pca_spectrum(pca, latex_label):
     """One row per principal direction, strongest first.
 
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
 
     Returns
     -------
     pd.DataFrame
-        Index = PC1..PCn. ``Sigma`` is the width the data allow along the
+        Index = labels of PC1..PCn. ``Sigma`` is the width the data allow along the
         direction, ``Ratio`` its eigenvalue relative to the largest, and
         ``Cumulative`` the share of the total eigenvalue sum reached by that
         row — how much of the constraint the leading directions carry.
@@ -312,5 +315,5 @@ def pca_spectrum(pca):
             "Flat": pca.flat_mask,
             "Direction": [pca.describe(i) for i in range(pca.n_components)],
         },
-        index=pca.component_names,
+        index=[latex_label(name) for name in pca.component_names],
     )

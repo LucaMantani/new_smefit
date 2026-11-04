@@ -385,6 +385,26 @@ def test_pca_components_uses_latex_label_when_known():
     ]
 
 
+def test_pca_components_labels_the_components():
+    result = pca_components(_pca(), latex_label=make_latex_label({"PC2": "$v_2$"}))
+
+    assert result.columns.tolist() == [
+        r"$\mathrm{PC1}$",
+        "$v_2$",
+        r"$\mathrm{PC3}$",
+    ]
+
+
+def test_pca_spectrum_labels_the_components():
+    result = pca_spectrum(_pca(), latex_label=make_latex_label({"PC2": "$v_2$"}))
+
+    assert result.index.tolist() == [
+        r"$\mathrm{PC1}$",
+        "$v_2$",
+        r"$\mathrm{PC3}$",
+    ]
+
+
 def test_pca_components_applies_latex_labels():
     result = pca_components(_pca(), latex_label=make_latex_label({"OpC": "$c_C$"}))
 
@@ -400,7 +420,7 @@ def test_pca_components_keeps_every_coefficient():
 
 
 def test_pca_spectrum_columns_and_order():
-    result = pca_spectrum(_pca())
+    result = pca_spectrum(_pca(), latex_label=_plain)
 
     assert result.index.tolist() == ["PC1", "PC2", "PC3"]
     assert result["Eigenvalue"].tolist() == [4.0, 1.0, 1e-9]
@@ -410,14 +430,14 @@ def test_pca_spectrum_columns_and_order():
 
 
 def test_pca_spectrum_cumulative_reaches_one():
-    result = pca_spectrum(_pca())
+    result = pca_spectrum(_pca(), latex_label=_plain)
 
     assert result["Cumulative"].iloc[-1] == pytest.approx(1.0)
     assert result["Cumulative"].iloc[0] == pytest.approx(0.8)
 
 
 def test_pca_spectrum_names_the_direction():
-    result = pca_spectrum(_pca())
+    result = pca_spectrum(_pca(), latex_label=_plain)
 
     assert result["Direction"].iloc[0] == "0.80 OpA + 0.60 OpZZ"
 

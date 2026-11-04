@@ -541,11 +541,22 @@ def test_plot_pca_components_heatmap_uses_a_symmetric_scale():
 
 
 def test_plot_pca_spectrum_axis_and_threshold():
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     assert ax.get_yscale() == "log"
     assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
+
+
+def test_plot_pca_spectrum_labels_the_components():
+    fig = plot_pca_spectrum(_pca(), latex_label=make_latex_label({"PC2": "$v_2$"}))
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        r"$\mathrm{PC1}$",
+        "$v_2$",
+        r"$\mathrm{PC3}$",
+    ]
     # the dashed line sits at the flat-direction threshold
     thresholds = [
         line.get_ydata()[0] for line in ax.lines if line.get_linestyle() == "--"
@@ -559,7 +570,7 @@ def _bar_sizes(ax):
 
 def test_plot_pca_spectrum_separates_flat_from_constrained():
     """The flat direction is drawn as its own, labelled, set of bars."""
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     assert _bar_sizes(ax) == [2, 1]
@@ -571,7 +582,7 @@ def test_plot_pca_spectrum_separates_flat_from_constrained():
 
 def test_plot_pca_spectrum_marks_the_exactly_flat_direction():
     """A zero eigenvalue leaves a bar of no length, so it gets a marker too."""
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     markers = [coll for coll in ax.collections if isinstance(coll, PathCollection)]
@@ -586,7 +597,7 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
         threshold=1.0e-3,
         min_weight=0.01,
     )
-    fig = plot_pca_spectrum(pca_obj)
+    fig = plot_pca_spectrum(pca_obj, latex_label=_plain)
 
     ax = fig.axes[0]
     assert _bar_sizes(ax) == [2]

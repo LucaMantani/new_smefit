@@ -218,7 +218,7 @@ def plot_pca_components_heatmap(
 
 
 @figure
-def plot_pca_spectrum(pca):
+def plot_pca_spectrum(pca, latex_label):
     """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 
     The one picture of the whole analysis: bars falling below the dashed line
@@ -227,6 +227,8 @@ def plot_pca_spectrum(pca):
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     """
     set_plot_style()
 
@@ -292,7 +294,9 @@ def plot_pca_spectrum(pca):
     # above it
     ax.set_ylim(floor, 2.0)
     ax.set_xticks(index)
-    ax.set_xticklabels(pca.component_names, rotation=90, fontsize=12)
+    ax.set_xticklabels(
+        [latex_label(name) for name in pca.component_names], rotation=90, fontsize=12
+    )
     ax.set_ylabel(r"$\lambda_i / \lambda_{\rm max}$", fontsize=16)
     ax.grid(axis="y", alpha=0.3)
     ax.legend(fontsize=12)

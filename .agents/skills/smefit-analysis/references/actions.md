@@ -72,7 +72,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Mass scan results as a table.
 - `pca_components(pca, latex_label)`
   - Weight of each coefficient in each principal direction.
-- `pca_spectrum(pca)`
+- `pca_spectrum(pca, latex_label)`
   - One row per principal direction, strongest first.
 
 ### `smefit.figures`
@@ -85,7 +85,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the global information matrix as a heatmap.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
-- `plot_pca_spectrum(pca)`
+- `plot_pca_spectrum(pca, latex_label)`
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 - `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.

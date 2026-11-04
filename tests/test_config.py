@@ -1036,7 +1036,9 @@ def test_produce_latex_label_applies_the_runcard_key(cfg):
         tables.global_information_table,
         tables.coefficient_bounds_table,
         tables.pca_components,
+        tables.pca_spectrum,
         figures.plot_chi2_scan,
+        figures.plot_pca_spectrum,
         figures.plot_posterior_correlations,
     ],
 )

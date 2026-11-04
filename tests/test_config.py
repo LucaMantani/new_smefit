@@ -12,7 +12,7 @@ import yaml
 from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
-from smefit import credible_intervals
+from smefit import credible_intervals, figures, tables
 from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
@@ -24,6 +24,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+from smefit.latex_labels import default_latex_labels
 from smefit.model import EFTModel
 from smefit.priors import Prior
 from smefit.whitening import (
@@ -151,6 +152,28 @@ def test_parse_rge_valid(cfg):
     rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
     result = cfg.parse_rge(rge)
     assert result == rge
+
+
+def test_parse_rge_resolves_rg_matrix_given_as_a_fit_name(cfg, tmp_path):
+    fit_dir = tmp_path / "fits" / "my_fit"
+    fit_dir.mkdir(parents=True)
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_rge({"init_scale": 1000.0, "rg_matrix": "my_fit"})
+
+    assert result["rg_matrix"] == str(fit_dir / "rge_matrix.pkl")
+
+
+def test_parse_rge_unknown_rg_matrix_raises(cfg, tmp_path):
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ), patch("smefit.paths.fetch_fit_if_missing"):
+        with pytest.raises(ConfigError, match="no_such_fit"):
+            cfg.parse_rge({"init_scale": 1000.0, "rg_matrix": "no_such_fit"})
 
 
 def test_parse_rge_missing_init_scale_raises(cfg):
@@ -989,6 +1012,63 @@ def test_produce_optimizer_with_scheduler(cfg):
     }
     opt = cfg.produce_optimizer(settings)
     assert hasattr(opt, "init") and hasattr(opt, "update")
+
+
+# ---------------------------------------------------------------------------
+# parse_latex_labels
+# ---------------------------------------------------------------------------
+
+
+def test_parse_latex_labels_returns_the_mapping(cfg):
+    labels = {"OtG": "$c_{tG}$", "LHC-top": r"$t\bar{t}$"}
+    assert cfg.parse_latex_labels(labels) == labels
+
+
+def test_parse_latex_labels_rejects_a_non_mapping(cfg):
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        cfg.parse_latex_labels(["OtG"])
+
+
+def test_parse_latex_labels_rejects_a_non_string_label(cfg):
+    with pytest.raises(ConfigError, match="'OtG' must be a string"):
+        cfg.parse_latex_labels({"OtG": 1.0})
+
+
+# ---------------------------------------------------------------------------
+# produce_latex_label
+# ---------------------------------------------------------------------------
+
+
+def test_produce_latex_label_resolves_with_no_runcard_key(cfg):
+    assert cfg.produce_latex_label()("OtG") == "$c_{tG}$"
+
+
+def test_produce_latex_label_applies_the_runcard_key(cfg):
+    latex_label = cfg.produce_latex_label(latex_labels={"OtG": "$c$"})
+    assert latex_label("OtG") == "$c$"
+    assert latex_label("OQQ1") == default_latex_labels["OQQ1"]
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        tables.chi2_scan_table,
+        tables.mass_scan_table,
+        tables.fisher_diagonals_normalised,
+        tables.global_information_table,
+        tables.coefficient_bounds_table,
+        tables.pca_components,
+        tables.pca_spectrum,
+        figures.plot_chi2_scan,
+        figures.plot_pca_spectrum,
+        figures.plot_posterior_correlations,
+    ],
+)
+def test_report_routines_require_latex_label(consumer):
+    """A default would swallow a failure to resolve the node (the `=None` rule of
+    the smefit-dev skill): the only optional thing here is the runcard key."""
+    param = inspect.signature(consumer).parameters["latex_label"]
+    assert param.default is inspect.Parameter.empty
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from reportengine.figure import figure, figuregen
 
-from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
@@ -36,6 +35,8 @@ def _plot_heatmap(
     matrix : array-like, shape (n_coeffs, n_sources)
     coeff_names : list of str
     source_names : list of str
+        Row and column labels, drawn as given: the callers have already
+        turned names into labels.
     vmin, vmax : float, optional
         Colour scale limits passed to imshow.
     cmap : str, optional
@@ -73,9 +74,8 @@ def _plot_heatmap(
     if title is not None:
         ax.set_xlabel(title, fontsize=18, labelpad=12)
 
-    coeff_labels = [coeff_info_latex.get(name, name) for name in coeff_names]
     ax.set_yticks(range(n_coeffs))
-    ax.set_yticklabels(coeff_labels, fontsize=14)
+    ax.set_yticklabels(coeff_names, fontsize=14)
 
     masked = np.ma.masked_invalid(matrix)
     if mask_zeros:
@@ -115,7 +115,7 @@ def _plot_heatmap(
 
 
 @figuregen
-def plot_chi2_scan(individual_chi2_scans):
+def plot_chi2_scan(individual_chi2_scans, latex_label):
     """Plot the 1D chi2 scan for each free coefficient.
 
     Yields one ``(figure, coeff_name)`` per scanned coefficient, with the
@@ -125,12 +125,14 @@ def plot_chi2_scan(individual_chi2_scans):
     ----------
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     """
     set_plot_style()
 
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     for name, data in results.items():
-        label = coeff_info_latex.get(name, name)
+        label = latex_label(name)
         fig, ax = plt.subplots(figsize=(6, 5), layout="constrained")
         ax.plot(data["points"], data["chi2"], "-o", color="C0", markersize=4)
         ax.set_xlabel(label)
@@ -216,7 +218,7 @@ def plot_pca_components_heatmap(
 
 
 @figure
-def plot_pca_spectrum(pca):
+def plot_pca_spectrum(pca, latex_label):
     """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 
     The one picture of the whole analysis: bars falling below the dashed line
@@ -225,6 +227,8 @@ def plot_pca_spectrum(pca):
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     """
     set_plot_style()
 
@@ -290,7 +294,9 @@ def plot_pca_spectrum(pca):
     # above it
     ax.set_ylim(floor, 2.0)
     ax.set_xticks(index)
-    ax.set_xticklabels(pca.component_names, rotation=90, fontsize=12)
+    ax.set_xticklabels(
+        [latex_label(name) for name in pca.component_names], rotation=90, fontsize=12
+    )
     ax.set_ylabel(r"$\lambda_i / \lambda_{\rm max}$", fontsize=16)
     ax.grid(axis="y", alpha=0.3)
     ax.legend(fontsize=12)
@@ -300,7 +306,12 @@ def plot_pca_spectrum(pca):
 
 @figure
 def plot_posterior_correlations(
-    fit, params_to_plot=None, cmap="RdBu_r", value_fmt="{:.2f}", colorbar=True
+    fit,
+    latex_label,
+    params_to_plot=None,
+    cmap="RdBu_r",
+    value_fmt="{:.2f}",
+    colorbar=True,
 ):
     """Plot the posterior correlations of one fit's free coefficients.
 
@@ -311,6 +322,8 @@ def plot_posterior_correlations(
     ----------
     fit : smefit.fit_result.Fit
         A previously run fit, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     params_to_plot : list of str, optional
         Restrict the heatmap to these coefficients, in this order.
         All of them by default.
@@ -340,7 +353,7 @@ def plot_posterior_correlations(
     corr = fit.fit_results.correlations
     selected = select_params(corr.index, params_to_plot, context=fit.fit_name)
     corr = corr.loc[selected, selected]
-    labels = [coeff_info_latex.get(name, name) for name in selected]
+    labels = [latex_label(name) for name in selected]
     return _plot_heatmap(
         corr.values,
         labels,
@@ -353,4 +366,41 @@ def plot_posterior_correlations(
         value_fmt=value_fmt,
         colorbar=colorbar,
         title=fit.plot_label,
+    )
+
+
+@figure
+def plot_global_information_heatmap(
+    global_information_table,
+    cmap="Blues",
+    value_fmt="{:.1f}",
+    colorbar=False,
+):
+    """Plot the global information matrix as a heatmap.
+
+    Parameters
+    ----------
+    global_information_table : pd.DataFrame
+        Index = coeff_names, columns = source_names.
+    cmap : str, optional
+        Colormap. Sequential by default, as for
+        :func:`plot_fisher_diagonals_heatmap`: the values are percentage shares.
+    value_fmt : str, optional
+        Format of the per-cell annotation, in percent.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside. Off by default: rows sum to
+        100%, so the annotations already say what a cell is worth.
+    """
+    shares = global_information_table.values * 100
+    # 0-100% unless a share falls outside it (see global_information_matrix):
+    # clipping would hide exactly the cells the warning is about
+    return _plot_heatmap(
+        shares,
+        global_information_table.index.tolist(),
+        global_information_table.columns.tolist(),
+        vmin=min(0.0, shares.min()),
+        vmax=max(100.0, shares.max()),
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
     )

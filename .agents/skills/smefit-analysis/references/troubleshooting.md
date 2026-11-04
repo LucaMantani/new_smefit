@@ -24,6 +24,7 @@ of the actual exceptions raised by the code.
 | `fit_results.json not found at <path>` / `input/runcard.yaml not found` | The `bayesian_update` fit must be a *completed* smefit output directory. |
 | reportengine `ConfigError` about an unknown action | Action name not in `references/actions.md` (typo, or the runcard predates a rename). |
 | `whitening is not compatible with bayesian_update` | Exactly that — remove one of the two. |
+| `Global information matrix: the total Fisher matrix has N flat or negative-curvature direction(s)` | Some coefficient or combination (named in the message) is unconstrained by the data at the evaluation point, so its variance is undefined. Fix or remove those coefficients, or add data; a PCA (`pca.yaml` template) shows the spectrum. |
 | `mass_scan requires exactly one free coefficient, got N: [...]` | `mass_scan_table` scans a single mass parameter; every Wilson coefficient must be tied to it with `expr:`/`vars:`, i.e. `free: False`. |
 
 ## Silent misbehavior (no crash)
@@ -34,6 +35,10 @@ of the actual exceptions raised by the code.
   with the smefit-runcard skill's `validate_runcard.py`.
 - **Posterior equals prior** for a coefficient: the selected datasets are not
   sensitive to it (`smefit_db.py info <dataset>` shows which operators enter).
+- **`Global information matrix: N negative share(s)` warning**: not a bug. A
+  source whose chi2 has negative curvature at the evaluation point (quadratic
+  corrections, or a best fit away from the SM) takes a negative share, and
+  another in that row goes above 100%. See the smefit-analysis skill.
 - **chi2/dof ≫ 1**: dataset tension or covariance misconfiguration — typical
   culprits are `use_t0: False` with multiplicative systematics, or missing
   `use_theory_covmat: True`.

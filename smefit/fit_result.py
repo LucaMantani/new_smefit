@@ -24,13 +24,14 @@ as a field of its own — see its docstring. The result classes stay the minimal
 numerical record and own the ``fit_results.json`` schemas on their own.
 """
 
+import copy
 import json
 import logging
 import pathlib
 import re
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -43,6 +44,9 @@ from rich.table import Table
 from smefit.credible_intervals import _INTERVAL_TYPES, Bounds
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
+
+if TYPE_CHECKING:
+    from smefit.rge import RGECache
 
 log = logging.getLogger(__name__)
 
@@ -604,7 +608,14 @@ class Fit:
 
     None of this is serialised: a fit's numbers live in ``fit_results.json``,
     while how it was configured is read back from ``input/runcard.yaml`` in the
-    fit directory, the authoritative record of that.
+    fit directory, the authoritative record of that. Files the fit wrote
+    alongside those two — its RGE matrices, :attr:`rge_cache` — are found
+    through :attr:`path`.
+
+    Whatever the fit was *computed from* (its ``eft_model``, ``chi2``, …) is
+    not held here at all: it is rebuilt by reportengine from
+    :meth:`rebuild_runcard`, so ``Fit`` never grows a second copy of the
+    config logic.
 
     Attributes
     ----------
@@ -627,12 +638,16 @@ class Fit:
         :meth:`from_folder` requires it: a fit whose configuration is unknown
         cannot be loaded. It defaults to empty only for a ``Fit`` built by
         hand, in which case every property below falls back to its default.
+    path : pathlib.Path or None
+        The fit directory it was loaded from. None only for a ``Fit`` built by
+        hand, which then has no files of its own: :attr:`rge_cache` is None.
     """
 
     fit_results: Union[FitResult, FitResultGroup]
     fit_name: str
     label: Optional[str] = None
     fit_runcard: Dict = field(default_factory=dict)
+    path: Optional[pathlib.Path] = None
 
     def __str__(self) -> str:
         """The fit's name — not cosmetic, it ends up in file names.
@@ -698,6 +713,77 @@ class Fit:
         posteriors rather than a joint one — see :class:`FitResultGroup`.
         """
         return self._fit_action["is_individual_fit"]
+
+    @cached_property
+    def rge_cache(self) -> Optional["RGECache"]:
+        """The RGE matrices the fit wrote, or None when it has none.
+
+        A fit run with an ``rge:`` block writes the matrices it computed to its
+        directory, keyed by scale (see :class:`smefit.rge.RGECache`). Loaded on
+        first use and kept: a report that only plots never pays for it.
+
+        For code that needs the matrices themselves. Rebuilding the fit does
+        not go through it: :meth:`rebuild_runcard` hands the file on instead.
+        External likelihoods are not covered — they save their own matrices,
+        if at all, wherever their entry says.
+
+        Raises
+        ------
+        ValueError
+            If the fit's ``rge_matrix.pkl`` is not a valid RGE matrix cache.
+        """
+        # imported here: smefit.rge monkey-patches wilson on import, which
+        # loading a fit for a plot has no reason to pay for
+        from smefit.rge import RGECache
+
+        rge_file = self._rge_matrix_file
+        return RGECache.load(rge_file) if rge_file is not None else None
+
+    @property
+    def _rge_matrix_file(self) -> Optional[pathlib.Path]:
+        """The ``rge_matrix.pkl`` in the fit directory, None when there is none."""
+        from smefit.rge import RGEMatrix
+
+        if self.path is None:
+            return None
+        rge_file = self.path / RGEMatrix.FILENAME
+        return rge_file if rge_file.exists() else None
+
+    # ------------------------------------------------------------------
+    # Rebuilding what the fit was computed from
+    # ------------------------------------------------------------------
+
+    def rebuild_runcard(self) -> Dict:
+        """The runcard to rebuild this fit's resources from, through the API.
+
+        Anything the fit was computed from — its ``chi2``, ``eft_model``,
+        ``theory``, prior — is rebuilt by reportengine from the runcard the fit
+        ran with, never by ``Fit`` itself::
+
+            from smefit.api import smefitAPI
+
+            model = smefitAPI.eft_model(**fit.rebuild_runcard())
+
+        That runcard, with the fit's own ``rge_matrix.pkl`` as its
+        ``rge.rg_matrix`` when it has one: every scale is then found in it, so
+        the full per-data-point RGE matrix comes back without any running.
+        Whatever ``rg_matrix`` the fit's runcard named is overridden, as the
+        fit's own matrices are the ones it ran with. External likelihoods are
+        rebuilt as their entries say, being opaque to smefit.
+
+        The one place a fit is rebuilt from, so that anything every rebuild
+        must do happens here. A deep copy: :attr:`fit_runcard` is the record of
+        how the fit was run and stays untouched, also by the parsers that write
+        into the dicts they are given. Rebuilding needs the fit's database (data, theory,
+        external likelihood modules) present locally, under the prefix paths
+        its runcard names.
+        """
+        runcard = copy.deepcopy(self.fit_runcard)
+        rge_file = self._rge_matrix_file
+        if runcard.get("rge") and rge_file is not None:
+            log.info("Reusing the RGE matrix of '%s' from %s.", self.fit_name, rge_file)
+            runcard["rge"]["rg_matrix"] = str(rge_file)
+        return runcard
 
     @cached_property
     def _fit_action(self) -> Dict:
@@ -833,4 +919,5 @@ class Fit:
             fit_name=path.name,
             label=label,
             fit_runcard=fit_runcard,
+            path=path,
         )

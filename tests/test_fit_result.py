@@ -421,6 +421,103 @@ def test_fit_from_folder_roundtrip(tmp_path):
     assert isinstance(recovered.fit_results, FitResult)
     assert recovered.fit_results.max_loglikelihood == pytest.approx(-3.0)
     assert list(recovered.fit_results.samples["OpA"]) == pytest.approx([1.0, 2.0])
+    assert recovered.path == out
+
+
+# ---------------------------------------------------------------------------
+# The fit's RGE matrices, and rebuilding from the fit
+# ---------------------------------------------------------------------------
+
+_RGE_SETTINGS = {
+    "init_scale": 1000.0,
+    "smeft_accuracy": "integrate",
+    "adm_QCD": False,
+    "yukawa": "top",
+}
+
+
+def _write_rge(path):
+    from smefit.rge import RGEMatrix
+
+    RGEMatrix(
+        stacked_mats=jnp.array([[[1.0]]]),
+        obs_operators=["Op1"],
+        init_operators=["OpA"],
+        scales=[100.0],
+        settings=_RGE_SETTINGS,
+    ).write(path)
+
+
+def _fit_with(tmp_path, rge=None, with_matrix=False):
+    out = _write_runcard(tmp_path / "my_fit")
+    _make_written_result().write(out)
+    if rge is not None:
+        rc = yaml.safe_load((out / "input" / "runcard.yaml").read_text())
+        rc["rge"] = rge
+        (out / "input" / "runcard.yaml").write_text(yaml.dump(rc))
+    if with_matrix:
+        _write_rge(out)
+    return Fit.from_folder(out)
+
+
+def test_rge_cache_is_none_without_a_matrix(tmp_path):
+    assert _fit_with(tmp_path).rge_cache is None
+
+
+def test_rge_cache_loads_the_matrices_the_fit_wrote(tmp_path):
+    fit = _fit_with(tmp_path, with_matrix=True)
+
+    cache = fit.rge_cache
+    assert cache.settings == _RGE_SETTINGS
+    assert cache.frames[100.0].loc["Op1", "OpA"] == pytest.approx(1.0)
+    assert cache.source == fit.path / "rge_matrix.pkl"
+    # loaded once, then kept
+    assert fit.rge_cache is cache
+
+
+def test_a_hand_built_fit_has_no_rge_cache():
+    fit = Fit(fit_results=_make_written_result(), fit_name="my_fit")
+
+    assert fit.path is None
+    assert fit.rge_cache is None
+
+
+def test_rebuild_runcard_carries_the_fit_rge_cache(tmp_path):
+    fit = _fit_with(
+        tmp_path,
+        rge={"init_scale": 1000.0, "rg_matrix": "elsewhere.pkl"},
+        with_matrix=True,
+    )
+
+    runcard = fit.rebuild_runcard()
+
+    # the fit's own matrices win over whatever its runcard pointed at
+    assert runcard["rge"]["rg_matrix"] == str(fit.path / "rge_matrix.pkl")
+    assert runcard["rge"]["init_scale"] == 1000.0
+    # the record of how the fit was run is untouched
+    assert fit.fit_runcard["rge"]["rg_matrix"] == "elsewhere.pkl"
+
+
+def test_rebuild_runcard_does_not_load_the_matrices(tmp_path, monkeypatch):
+    """Rebuilding hands the file on; only code reading rge_cache loads it."""
+    from smefit.rge import RGECache
+
+    fit = _fit_with(tmp_path, rge={"init_scale": 1000.0}, with_matrix=True)
+    monkeypatch.setattr(RGECache, "load", lambda *a: pytest.fail("loaded"))
+
+    fit.rebuild_runcard()
+
+
+def test_rebuild_runcard_without_a_matrix_is_the_fit_runcard(tmp_path):
+    fit = _fit_with(tmp_path, rge={"init_scale": 1000.0})
+
+    assert fit.rebuild_runcard() == fit.fit_runcard
+
+
+def test_rebuild_runcard_adds_no_rge_block_to_a_fit_without_one(tmp_path):
+    fit = _fit_with(tmp_path, with_matrix=True)
+
+    assert "rge" not in fit.rebuild_runcard()
 
 
 # ---------------------------------------------------------------------------

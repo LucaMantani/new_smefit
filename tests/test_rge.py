@@ -14,7 +14,13 @@ import pytest
 import wilson
 
 from smefit.core import TheoryGroup
-from smefit.rge import RGE, RGEMatrix, build_rge_matrix, resolve_rge_matrices
+from smefit.rge import (
+    RGE,
+    RGECache,
+    RGEMatrix,
+    build_rge_matrix,
+    resolve_rge_matrices,
+)
 from smefit.rge.build import _find_cached_scale, _resolve_scales
 from smefit.rge.runner import _wilson_params, evolve_gs
 
@@ -577,6 +583,82 @@ def test_read_cache_missing_file_names_both_forms(tmp_path):
 
     assert "smefit_results/nowhere/rge_matrix.pkl" in str(exc.value)
     assert str(tmp_path / "nowhere" / "rge_matrix.pkl") in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# RGEMatrix.locate — every form an `rg_matrix` reference takes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def results_with_fit(tmp_path):
+    """A smefit_results tree holding fit 'my_fit' with its RGE matrix."""
+    fit_dir = tmp_path / "fits" / "my_fit"
+    _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0]).write(fit_dir)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        yield fit_dir
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "my_fit",
+        "smefit_results/fits/my_fit",
+        f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}",
+    ],
+)
+def test_locate_accepts_a_fit_name_a_directory_or_the_file(results_with_fit, ref):
+    assert RGEMatrix.locate(ref) == results_with_fit / RGEMatrix.FILENAME
+
+
+def test_locate_reads_a_local_directory_written_with_a_slash(tmp_path):
+    """`./name` is a directory; a bare `name` would be a fit name."""
+    _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0]).write(tmp_path / "rge_src")
+
+    assert RGEMatrix.locate(tmp_path / "rge_src") == (
+        tmp_path / "rge_src" / RGEMatrix.FILENAME
+    )
+
+
+def test_locate_an_unknown_fit_name_raises(tmp_path):
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ), patch("smefit.paths.fetch_fit_if_missing"):
+        with pytest.raises(FileNotFoundError, match="no_such_fit"):
+            RGEMatrix.locate("no_such_fit")
+
+
+def test_locate_a_fit_without_a_matrix_raises(tmp_path):
+    (tmp_path / "fits" / "bare_fit").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        with pytest.raises(FileNotFoundError, match="bare_fit"):
+            RGEMatrix.locate("bare_fit")
+
+
+def test_read_cache_accepts_a_fit_name(results_with_fit):
+    cache = RGEMatrix.read_cache("my_fit", SETTINGS)
+
+    assert cache[100.0].loc["Op1", "OpA"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# RGECache — the loaded file
+# ---------------------------------------------------------------------------
+
+
+def test_rge_cache_load_keeps_settings_frames_and_source(results_with_fit):
+    cache = RGECache.load("my_fit")
+
+    assert cache.settings == SETTINGS
+    assert list(cache.frames) == [100.0]
+    assert cache.source == results_with_fit / RGEMatrix.FILENAME
 
 
 # ---------------------------------------------------------------------------

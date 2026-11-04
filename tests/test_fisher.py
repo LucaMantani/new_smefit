@@ -30,9 +30,10 @@ from smefit.fisher import (
     _aggregate_fisher_from_fit,
     _aggregate_fisher_from_runcard,
     _resolve_groups,
+    _total_fisher_from_fit,
+    _total_fisher_from_runcard,
     fisher_information_matrices,
     global_information_matrix,
-    total_fisher_information_matrix,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.model import EFTModel
@@ -448,7 +449,7 @@ def test_total_fisher_is_the_full_covmat_contraction():
     fit_covmat = jnp.eye(4).at[0, 2].set(0.4).at[2, 0].set(0.4)
     total, _, lin = _linear_setup(fit_covmat)
 
-    result = total_fisher_information_matrix(total, _sm_point(1))
+    result = _total_fisher_from_runcard(total, _sm_point(1))
 
     expected = lin.T @ jnp.linalg.inv(fit_covmat) @ lin
     assert result.index.tolist() == ["OpA"]
@@ -463,7 +464,7 @@ def test_total_fisher_differs_from_the_sum_of_per_dataset_fishers():
     total, per_dataset, _ = _linear_setup(fit_covmat)
     c0 = _sm_point(1)
 
-    combined = total_fisher_information_matrix(total, c0).values.sum()
+    combined = _total_fisher_from_runcard(total, c0).values.sum()
     summed = sum(
         df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
     )
@@ -477,7 +478,7 @@ def test_total_fisher_equals_the_sum_when_the_covmat_is_block_diagonal():
     total, per_dataset, _ = _linear_setup(fit_covmat)
     c0 = _sm_point(1)
 
-    combined = total_fisher_information_matrix(total, c0).values.sum()
+    combined = _total_fisher_from_runcard(total, c0).values.sum()
     summed = sum(
         df.values.sum() for df in fisher_information_matrices(per_dataset, c0).values()
     )
@@ -662,6 +663,24 @@ def _write_fit(
     return fit_dir
 
 
+def _run_per_fit(target: str, fits: list[dict], **keys: object) -> list:
+    """The value of ``target`` for each entry of a ``fits:``-only runcard."""
+    config = smefitConfig({"fits": fits, **keys}, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget(target, ("fits",), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()
+    builder.execute_sequential()
+    return [
+        namespaces.resolve(builder.rootns, [("fits", index)])[target]
+        for index in range(len(fits))
+    ]
+
+
 def test_fisher_of_a_fit_is_the_hessian_of_its_runcard_at_its_best_fit(
     tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
 ) -> None:
@@ -729,22 +748,12 @@ def test_fisher_node_runs_once_per_entry_of_fits(
     fits = [{"name": "my_fit", "path": str(tmp_path / name)} for name in points]
 
     target = "aggregate_fisher_information_matrices"
-    config = smefitConfig({"fits": fits}, environment=smefitAPI.loadedenv)
-    builder = ResourceBuilder(
-        config,
-        smefitAPI.provider_loaded,
-        [FuzzyTarget(target, ("fits",), (), ())],
-        perform_final=False,
-    )
-    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
-    builder.resolve_fuzzytargets()
-    builder.execute_sequential()
+    results = _run_per_fit(target, fits)
 
     chi2 = smefitAPI.datasets_chi2(**runcard)[0]
     for index, point in enumerate(points.values()):
-        result = namespaces.resolve(builder.rootns, [("fits", index)])[target]
         expected = 0.5 * jax.hessian(chi2)(jnp.array(list(point.values())))
-        np.testing.assert_allclose(result["TESTDATA"].values, expected)
+        np.testing.assert_allclose(results[index]["TESTDATA"].values, expected)
 
 
 def test_fisher_node_without_a_fit_still_reads_the_runcard(
@@ -843,8 +852,15 @@ def test_data_groups_need_no_other_node_to_parse_external_chi2(tmp_path: Path) -
 # ---------------------------------------------------------------------------
 
 
-def test_fisher_node_refuses_individual_fits(
-    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+@pytest.mark.parametrize(
+    "target",
+    ["aggregate_fisher_information_matrices", "total_fisher_information_matrix"],
+)
+def test_fisher_nodes_refuse_individual_fits(
+    target: str,
+    tmp_path: Path,
+    fixtures_data_path: Path,
+    fixtures_theory_path: Path,
 ) -> None:
     runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
     runcard["actions_"] = ["run_individual_analytic_fits"]
@@ -865,9 +881,7 @@ def test_fisher_node_refuses_individual_fits(
     ).write_summary(fit_dir)
 
     with pytest.raises(ConfigError, match="individual fits"):
-        smefitAPI.aggregate_fisher_information_matrices(
-            fit={"name": "my_fit", "path": str(tmp_path)}
-        )
+        smefitAPI(target, fit={"name": "my_fit", "path": str(tmp_path)})
 
 
 def test_fisher_of_a_bayesian_update_warns_it_covers_only_the_update(
@@ -901,3 +915,81 @@ def test_fisher_of_an_ordinary_fit_does_not_warn(
         _aggregate_fisher_from_fit(fit)
 
     assert "Bayesian update" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# total_fisher_information_matrix and PCA of a fit that has already been run
+# ---------------------------------------------------------------------------
+
+
+def test_total_fisher_of_a_fit_is_the_hessian_of_its_runcard_at_its_best_fit(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    result = _total_fisher_from_fit(fit)
+
+    chi2 = smefitAPI.chi2(**runcard)
+    expected = 0.5 * jax.hessian(chi2)(jnp.array(list(_BEST_FIT.values())))
+    assert result.index.tolist() == list(_BEST_FIT)
+    np.testing.assert_allclose(result.values, expected)
+    # with quadratics the point matters: the test would pass on the SM otherwise
+    assert not np.allclose(result.values, 0.5 * jax.hessian(chi2)(jnp.zeros(2)))
+
+
+def test_total_fisher_of_a_bayesian_update_warns_it_covers_only_the_update(
+    tmp_path: Path,
+    fixtures_data_path: Path,
+    fixtures_theory_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    runcard["bayesian_update"] = {"name": "previous_fit"}
+    fit = Fit.from_folder(_write_fit(tmp_path, runcard))
+
+    with caplog.at_level(logging.WARNING, logger="smefit.fisher"):
+        _total_fisher_from_fit(fit)
+
+    assert "Bayesian update" in caplog.text
+
+
+def test_total_fisher_node_without_a_fit_still_reads_the_runcard(
+    fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    runcard["gradient_descent_settings"] = {"sm_solution": True}
+
+    result = smefitAPI.total_fisher_information_matrix(**runcard)
+
+    chi2 = smefitAPI.chi2(**runcard)
+    np.testing.assert_allclose(result.values, 0.5 * jax.hessian(chi2)(jnp.zeros(2)))
+
+
+def test_pca_runs_once_per_entry_of_fits_with_no_setup_of_its_own(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """Only ``fits`` and the required ``pca_settings``: the rest is each fit's."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    # at the minimum, as a real fit is: PCA refuses negative curvature
+    minimum = smefitAPI.gd_best_fit(**runcard, gradient_descent_settings={})
+    _write_fit(tmp_path / "a", runcard, dict(zip(_BEST_FIT, map(float, minimum))))
+    fits = [{"name": "my_fit", "path": str(tmp_path / "a")}]
+
+    [result] = _run_per_fit("pca", fits, pca_settings={})
+
+    fisher = 0.5 * jax.hessian(smefitAPI.chi2(**runcard))(minimum)
+    assert result.coeff_names == list(_BEST_FIT)
+    np.testing.assert_allclose(
+        np.sort(result.eigenvalues), np.linalg.eigvalsh(np.asarray(fisher))
+    )
+
+
+def test_pca_of_a_fit_off_its_minimum_names_the_fit(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """Advice to evaluate elsewhere is no use when the point is the stored one."""
+    _write_fit(tmp_path, _fit_runcard(fixtures_data_path, fixtures_theory_path))
+
+    with pytest.raises(ValueError, match="stored best fit of 'my_fit'"):
+        smefitAPI.pca(fit={"name": "my_fit", "path": str(tmp_path)}, pca_settings={})

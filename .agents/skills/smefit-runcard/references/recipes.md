@@ -386,6 +386,12 @@ actions_:
 - A `run_individual_*_fits` fit is rejected: its best-fit values are not a joint
   point. A `bayesian_update` fit logs a warning, as its matrices cover only the
   data of the update and not the previous fit.
+- The PCA actions (`pca_spectrum`, `pca_components`, `plot_pca_spectrum`,
+  `plot_pca_components_heatmap`, `run_pca`) read a fit in the same way, using the
+  total chi2 of its runcard. This runcard must still carry a `pca_settings:` block,
+  which may be empty and applies to every fit. PCA also refuses negative curvature,
+  and the error stops the whole run, not just that fit's section. `- fits run_pca`
+  writes `<fit_name>/pca.json` for each fit.
 
 ### Coefficient bounds table
 

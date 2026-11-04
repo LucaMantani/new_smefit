@@ -44,7 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
-- `fit` — default: `None` (consumed by `aggregate_fisher_information_matrices`)
+- `fit` — default: `None` (consumed by `aggregate_fisher_information_matrices`, `total_fisher_information_matrix`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -465,4 +465,5 @@ which runcard keys each action ultimately needs.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.
+- `total_fisher_information_matrix`(fit) — Dispatch to the worker computing the Fisher matrix of the full likelihood.
 - `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

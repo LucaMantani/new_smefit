@@ -471,6 +471,32 @@ def test_fisher_actions_can_read_only_fits(tmp_path, action):
     assert code == 0, out
 
 
+@pytest.mark.parametrize(
+    "action",
+    [
+        "run_pca",
+        "pca_spectrum",
+        "pca_components",
+        "plot_pca_spectrum",
+        "plot_pca_components_heatmap",
+    ],
+)
+def test_pca_actions_can_read_only_fits(tmp_path, action):
+    """They reach the fit through a node, and still carry pca_settings."""
+    code, out = validate(
+        tmp_path,
+        datasets=None,
+        data_path=None,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fits=[{"name": "my_fit", "path": "."}],
+        pca_settings={},
+        actions_=[f"fits {action}"],
+    )
+    assert code == 0, out
+
+
 def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
     """A post-fit runcard ('fits:' and nothing to fit) reports on fits already
     on disk: the data and coefficients are whatever each of those was run with.

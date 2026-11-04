@@ -49,6 +49,11 @@ FIT_READING_ACTIONS = {
     "plot_fisher_diagonals_heatmap",
     "global_information_table",
     "plot_global_information_heatmap",
+    "run_pca",
+    "pca_spectrum",
+    "pca_components",
+    "plot_pca_spectrum",
+    "plot_pca_components_heatmap",
 }
 
 

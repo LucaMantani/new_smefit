@@ -103,7 +103,8 @@ The Fisher and global information actions work the same way inside a
 `group:` labels, and the Hessians are taken at its stored best-fit point, not a
 gradient descent. So the fit's database must be available locally. Individual
 fits are rejected; a `bayesian_update` fit logs a warning, since its matrices
-leave out the previous fit. Template: `report_from_fit.yaml`. Details are in the
+leave out the previous fit. The PCA actions do the same, with a `pca_settings:`
+block in the report runcard. Template: `report_from_fit.yaml`. Details are in the
 smefit-runcard skill's `recipes.md`.
 
 `coefficient_bounds_table` is its tabular counterpart: per fit, the

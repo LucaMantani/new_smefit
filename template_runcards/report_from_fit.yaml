@@ -1,16 +1,20 @@
-# Fisher and global information matrices of fits that have already been run.
+# Fisher matrices, global information matrices and PCA of fits that have already
+# been run.
 #
 # Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
+# Required by the PCA actions, and applies to every fit. Every sub-key is optional.
+pca_settings: {}
+
 # Sources are the datasets of each fit, or its `group:` labels when it has them.
 # Outside `with fits` these actions read `datasets` from this runcard instead:
 # see report.yaml for that form.
 template_text: |
-    Fisher and global information
-    =============================
+    Fisher, global information and PCA
+    ==================================
     {@with fits@}
     {@fit@}
     ---------
@@ -22,6 +26,12 @@ template_text: |
     {@global_information_table@}
     Global information heatmap
     {@plot_global_information_heatmap@}
+    PCA spectrum
+    {@pca_spectrum@}
+    {@plot_pca_spectrum@}
+    PCA components
+    {@pca_components@}
+    {@plot_pca_components_heatmap@}
     {@endwith@}
 
 actions_:

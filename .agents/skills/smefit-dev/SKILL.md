@@ -112,8 +112,9 @@ fixed: whatever its own signature names, always. An `@explicit_node`-decorated
 from *that* function — resolving its parameters as further graph requirements.
 The dependency set is therefore chosen at graph-build time, from the runcard.
 
-There are two instances in smefit. `produce_aggregate_fisher_information_matrices`
-picks between a fit in scope and the runcard's own setup.
+There are three instances in smefit. `produce_aggregate_fisher_information_matrices`
+and `produce_total_fisher_information_matrix` pick between a fit in scope and the
+runcard's own setup.
 `produce_whitening_transformation` (`smefit/config.py`), shown here, dispatches to
 the workers in `smefit/whitening.py`:
 

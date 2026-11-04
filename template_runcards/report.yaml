@@ -131,6 +131,8 @@ coefficients:
     free: True
     prior: {dist: gaussian, mean: 0.0, std: 1.0}
 
+latex_labels:
+  y: '$y$'
 
 external_chi2:
   CMS_DYMee_13TeV:

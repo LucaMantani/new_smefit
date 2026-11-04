@@ -12,23 +12,24 @@ import numpy as np
 import pandas as pd
 from reportengine.table import table
 
-from smefit.op_to_latex import coeff_info_latex
 from smefit.plot_utils import select_params
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from smefit.fit_result import Fit
 
 
 @table
-def chi2_scan_table(individual_chi2_scans):
+def chi2_scan_table(individual_chi2_scans, latex_label):
     """Per-coefficient 1D chi2 scan results as a table.
 
     Parameters
     ----------
     individual_chi2_scans : list[dict]
         Each entry maps ``{coeff_name: {"points": [...], "chi2": [...]}}``.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
 
     Returns
     -------
@@ -39,17 +40,28 @@ def chi2_scan_table(individual_chi2_scans):
     """
     results = {k: v for d in individual_chi2_scans for k, v in d.items()}
     frames = {
-        coeff_info_latex.get(name, name): pd.DataFrame(
-            {"value": data["points"], "chi2": data["chi2"]}
-        )
+        name: pd.DataFrame({"value": data["points"], "chi2": data["chi2"]})
         for name, data in results.items()
     }
-    return pd.concat(frames, axis=1)
+    table = pd.concat(frames, axis=1)
+    # relabel only now: as dict keys, two coefficients sharing a label would
+    # silently lose one of the scans
+    table.columns = pd.MultiIndex.from_tuples(
+        [(latex_label(name), column) for name, column in table.columns]
+    )
+    return table
 
 
 @table
-def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points):
+def mass_scan_table(
+    coefficients, individual_mass_scales, individual_mass_scan_points, latex_label
+):
     """Mass scan results as a table.
+
+    Parameters
+    ----------
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
 
     Returns
     -------
@@ -57,7 +69,7 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
         Columns ``<mass_name>`` (mass scale, the scan points) and ``chi2``.
     """
     mass_name = coefficients.free_names[0]
-    latex = coeff_info_latex.get(mass_name, mass_name)
+    latex = latex_label(mass_name)
     return pd.DataFrame(
         {
             latex: [float(s) for s in individual_mass_scales],
@@ -68,13 +80,15 @@ def mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_p
 
 @table
 def fisher_diagonals_normalised(
-    aggregate_fisher_information_matrices, params_to_plot=None
+    aggregate_fisher_information_matrices, latex_label, params_to_plot=None
 ):
     """Extract row-normalised diagonals of per-source Fisher matrices.
 
     Parameters
     ----------
     aggregate_fisher_information_matrices : dict[str, pd.DataFrame]
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     params_to_plot : list of str, optional
         Restrict the rows to these coefficients, in this order. All of them by
         default. Each row is normalised on its own, so a row says the same
@@ -92,17 +106,22 @@ def fisher_diagonals_normalised(
         index=coeff_names,
     )
     raw = raw.loc[select_params(coeff_names, params_to_plot, context="Fisher")]
-    raw.index = [coeff_info_latex.get(name, name) for name in raw.index]
+    raw.index = [latex_label(name) for name in raw.index]
+    raw.columns = [latex_label(name) for name in raw.columns]
     return raw.div(raw.sum(axis=1), axis=0)
 
 
 @table
-def global_information_table(global_information_matrix, params_to_plot=None):
+def global_information_table(
+    global_information_matrix, latex_label, params_to_plot=None
+):
     """Share of each coefficient's variance contributed by each source.
 
     Parameters
     ----------
     global_information_matrix : pd.DataFrame
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     params_to_plot : list of str, optional
         Restrict the rows to these coefficients, in this order. All of them by
         default. The shares of a row are taken of that coefficient's variance
@@ -113,14 +132,15 @@ def global_information_table(global_information_matrix, params_to_plot=None):
     Returns
     -------
     pd.DataFrame
-        Index = LaTeX coefficient labels, columns = source_names. Fractions,
+        Index = coefficient labels, columns = source labels. Fractions,
         like :func:`fisher_diagonals_normalised`; rows sum to 1.
     """
     gim = global_information_matrix
     gim = gim.loc[
         select_params(gim.index, params_to_plot, context="global information")
     ]
-    gim.index = [coeff_info_latex.get(name, name) for name in gim.index]
+    gim.index = [latex_label(name) for name in gim.index]
+    gim.columns = [latex_label(name) for name in gim.columns]
     return gim
 
 
@@ -138,6 +158,7 @@ def _number(value: float, round_val: int) -> str:
 
 def _coefficient_bounds_table(
     fit: Fit,
+    latex_label: Callable[[str], str],
     params_to_plot: list[str] | str | None,
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
@@ -179,13 +200,22 @@ def _coefficient_bounds_table(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
                 for low, high in per_coeff[name]
             )
-        rows[coeff_info_latex.get(name, name)] = cells
-    return pd.DataFrame.from_dict(rows, orient="index")
+        rows[name] = cells
+    table = pd.DataFrame.from_dict(rows, orient="index")
+    # relabel only now: as dict keys, two coefficients sharing a label would
+    # silently lose one of the rows
+    table.index = [latex_label(name) for name in table.index]
+    return table
 
 
 @table
 def coefficient_bounds_table(
-    fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None
+    fit,
+    latex_label,
+    params_to_plot=None,
+    round_val=3,
+    bounds_levels=None,
+    interval_types=None,
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of one fit.
 
@@ -197,6 +227,8 @@ def coefficient_bounds_table(
     ----------
     fit : smefit.fit_result.Fit
         A previously run fit, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
     params_to_plot : list of str, optional
         Restrict the rows to these coefficients, in this order. All of them by
         default.
@@ -230,43 +262,50 @@ def coefficient_bounds_table(
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_table(
-        fit, params_to_plot, round_val, bounds_levels, interval_types
+        fit, latex_label, params_to_plot, round_val, bounds_levels, interval_types
     )
 
 
 @table
-def pca_components(pca):
+def pca_components(pca, latex_label):
     """Weight of each coefficient in each principal direction.
 
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
 
     Returns
     -------
     pd.DataFrame
-        Index = coeff_names, columns = PC1..PCn.
+        Index = coefficient labels, columns = labels of PC1..PCn.
     """
     frame = pca.as_frame()
-    frame.index = [coeff_info_latex.get(name, name) for name in frame.index]
+    frame.index = [latex_label(name) for name in frame.index]
+    frame.columns = [latex_label(name) for name in frame.columns]
     return frame
 
 
 @table
-def pca_spectrum(pca):
+def pca_spectrum(pca, latex_label):
     """One row per principal direction, strongest first.
 
     Parameters
     ----------
     pca : smefit.pca.PCA
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
 
     Returns
     -------
     pd.DataFrame
-        Index = PC1..PCn. ``Sigma`` is the width the data allow along the
+        Index = labels of PC1..PCn. ``Sigma`` is the width the data allow along the
         direction, ``Ratio`` its eigenvalue relative to the largest, and
         ``Cumulative`` the share of the total eigenvalue sum reached by that
         row — how much of the constraint the leading directions carry.
+        ``Direction`` writes each direction as a combination of the
+        coefficient labels.
     """
     eigenvalues = pca.eigenvalues
     return pd.DataFrame(
@@ -276,7 +315,9 @@ def pca_spectrum(pca):
             "Ratio": pca.eigenvalue_ratios,
             "Cumulative": np.cumsum(eigenvalues) / eigenvalues.sum(),
             "Flat": pca.flat_mask,
-            "Direction": [pca.describe(i) for i in range(pca.n_components)],
+            "Direction": [
+                pca.describe(i, latex_label) for i in range(pca.n_components)
+            ],
         },
-        index=pca.component_names,
+        index=[latex_label(name) for name in pca.component_names],
     )

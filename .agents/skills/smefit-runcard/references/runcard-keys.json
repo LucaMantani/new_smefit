@@ -33,6 +33,7 @@
     "individual_mass_scales",
     "individual_prior",
     "init_scale",
+    "latex_label",
     "optimizer",
     "prior",
     "pseudodata",
@@ -210,6 +211,10 @@
       "defaults": {},
       "known_keys": null
     },
+    "latex_labels": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -312,6 +317,7 @@
     "gradient_descent_settings",
     "hessian_settings",
     "interval_types",
+    "latex_labels",
     "meta",
     "n_eval",
     "n_samples",

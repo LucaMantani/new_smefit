@@ -5,6 +5,7 @@ import inspect
 import io
 import json
 import logging
+import re
 import urllib.error
 import urllib.parse
 
@@ -594,6 +595,51 @@ def test_link_target_escapes_what_breaks_a_table_cell():
 def test_unicode_pdflatex_cannot_typeset_is_spelled_out():
     """The two the database writes: a minus sign and the macron of tt̄."""
     assert di._latex_text("W− and tt̄Z") == r"W$-$ and t\={t}Z"
+
+
+def test_report_description_links_its_urls_as_the_latex_table_does():
+    """A written-out URL cannot wrap in the report table either."""
+    info = DatasetInfo(
+        "DS",
+        1,
+        description="from HEPData record:https://www.hepdata.net/record/ins1803608,"
+        "Table 04. See https://example.org/a_b/c.pdf.",
+    )
+
+    assert info.markdown_description() == (
+        "from HEPData record:[HEPData](https://www.hepdata.net/record/ins1803608),"
+        "Table 04. See [example.org](https://example.org/a_b/c.pdf)."
+    )
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "arxiv:1511.04716",
+        "recid:1323200",
+        # CMS_ggF_aa_13TeV: a file on INSPIRE, no record to look up
+        "url:https://inspirehep.net/files/82aa29e742f4324970d810e88817b0ac",
+        "url:https://repository.cern/records/3rj9z-94994",
+    ],
+)
+def test_report_links_a_reference_as_the_latex_table_does(reference):
+    """Same address, same short label: a URL never shows written out."""
+    latex = Bibliography().cite((reference,))
+
+    markdown = DatasetInfo("DS", 1, references=(reference,)).markdown_references()
+
+    label, address = re.fullmatch(r"\[(.+)\]\((.+)\)", markdown).groups()
+    assert latex == rf"\href{{{address}}}{{{label}}}"
+    assert "/" not in label
+
+
+def test_report_references_are_separated_by_commas():
+    info = DatasetInfo("DS", 1, references=("arxiv:1606.02266", "arxiv:1507.04548"))
+
+    assert info.markdown_references() == (
+        "[arXiv:1606.02266](https://arxiv.org/abs/1606.02266), "
+        "[arXiv:1507.04548](https://arxiv.org/abs/1507.04548)"
+    )
 
 
 def test_table_sections_follow_groups_in_order_of_first_appearance():

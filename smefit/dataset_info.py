@@ -101,6 +101,19 @@ class DatasetInfo:
     references: Tuple[str, ...] = ()
     group: Optional[str] = None
 
+    def markdown_description(self) -> str:
+        """The description as markdown, for the report table: each URL in it
+        becomes a link labelled with its site, as in the LaTeX table."""
+        return re.sub(
+            _URL, lambda match: _markdown_link(match.group(0)), self.description
+        )
+
+    def markdown_references(self) -> str:
+        """The references as markdown links, for the report table, labelled
+        as the LaTeX table labels them: ``arXiv:<number>``,
+        ``INSPIRE:<record>``, or the site of a URL."""
+        return ", ".join(_markdown_reference(r) for r in self.references)
+
 
 @dataclass(frozen=True)
 class Bibliography:
@@ -139,14 +152,29 @@ class Bibliography:
         return rf"\begin{{tabular}}[t]{{@{{}}l@{{}}}}{stacked}\end{{tabular}}"
 
 
+def _paper_link(reference: str) -> Tuple[str, str]:
+    """The address of an ``arxiv:`` or ``recid:`` *reference*, and the label
+    it is linked with: its identifier."""
+    kind, _, identifier = reference.partition(":")
+    if kind == "arxiv":
+        return f"https://arxiv.org/abs/{identifier}", f"arXiv:{identifier}"
+    return f"https://inspirehep.net/literature/{identifier}", f"INSPIRE:{identifier}"
+
+
 def _link(reference: str) -> str:
     """A ``\\href`` to *reference*, labelled with its identifier."""
-    kind, _, identifier = reference.partition(":")
-    if kind == "url":
-        return _latex_link(identifier)
-    if kind == "arxiv":
-        return rf"\href{{https://arxiv.org/abs/{identifier}}}{{arXiv:{identifier}}}"
-    return rf"\href{{https://inspirehep.net/literature/{identifier}}}{{INSPIRE:{identifier}}}"
+    if reference.startswith("url:"):
+        return _latex_link(reference.removeprefix("url:"))
+    address, label = _paper_link(reference)
+    return rf"\href{{{address}}}{{{label}}}"
+
+
+def _markdown_reference(reference: str) -> str:
+    """A markdown link to *reference*, labelled as :func:`_link` labels it."""
+    if reference.startswith("url:"):
+        return _markdown_link(reference.removeprefix("url:"))
+    address, label = _paper_link(reference)
+    return f"[{label}]({address})"
 
 
 def _is_blank(raw: Optional[str]) -> bool:
@@ -347,16 +375,13 @@ def _latex_plain(text: str) -> str:
     return text.replace("\u2212", "$-$")
 
 
-def _latex_link(url: str) -> str:
-    """A URL of a description as a ``\\href`` labelled with its site.
+def _site_link(url: str) -> Tuple[str, str, str]:
+    """A URL as the link a table shows in its place: its address, the label
+    it reads as, and the sentence punctuation the URL swallowed.
 
-    Written out, a URL has no point a table column can break it at, and runs
-    out of the column. Sentence punctuation the URL swallowed is put back
-    after the link.
     """
-    stripped = url.rstrip(".)")
-    trailing = url[len(stripped) :]
-    host = (urllib.parse.urlparse(stripped).hostname or "").removeprefix("www.")
+    address = url.rstrip(".)")
+    host = (urllib.parse.urlparse(address).hostname or "").removeprefix("www.")
     label = next(
         (
             label
@@ -365,9 +390,21 @@ def _latex_link(url: str) -> str:
         ),
         host,
     )
+    return address, label, url[len(address) :]
+
+
+def _latex_link(url: str) -> str:
+    """A URL as a ``\\href`` labelled with its site (:func:`_site_link`)."""
+    address, label, trailing = _site_link(url)
     # \href takes the URL verbatim but for these, which break a table cell
-    target = re.sub(r"(?<!\\)([&%#])", r"\\\1", stripped)
+    target = re.sub(r"(?<!\\)([&%#])", r"\\\1", address)
     return rf"\href{{{target}}}{{{label}}}{trailing}"
+
+
+def _markdown_link(url: str) -> str:
+    """A URL as a markdown link labelled with its site (:func:`_site_link`)."""
+    address, label, trailing = _site_link(url)
+    return f"[{label}]({address}){trailing}"
 
 
 def _latex_text(text: str) -> str:

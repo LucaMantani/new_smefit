@@ -276,8 +276,9 @@ def test_dataset_table_lists_datasets_in_the_order_given():
         "tt",
         7,
         "36.1, 139",
-        "arXiv:1511.04716, recid:1323200, "
-        "https://repository.cern/records/3rj9z-94994",
+        "[arXiv:1511.04716](https://arxiv.org/abs/1511.04716), "
+        "[INSPIRE:1323200](https://inspirehep.net/literature/1323200), "
+        "[repository.cern](https://repository.cern/records/3rj9z-94994)",
     ]
     assert result.loc["A"].tolist() == ["", "", 1, "--", ""]
 

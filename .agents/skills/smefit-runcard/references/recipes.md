@@ -324,7 +324,9 @@ come in order of first appearance, so an interleaved runcard is regrouped.
   (keeping `dataset_table_preview.log` on an error); the table is written
   either way.
 - `{@dataset_table@}` in a report shows the same rows in the same order, and
-  the total, without the lookup.
+  the total, without the lookup. Its references, and the URLs of its
+  descriptions, are short links labelled as in the LaTeX table; they are
+  markdown, so `tables/dataset_table.csv` holds them as `[label](url)`.
 
 ## Reports and Fisher information
 

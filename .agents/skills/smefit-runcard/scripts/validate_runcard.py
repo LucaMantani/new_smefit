@@ -576,11 +576,27 @@ def main():
     ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
     # A runcard that only describes its datasets (the dataset table of a
-    # paper) reads their commondata files and nothing else.
+    # paper) reads their commondata files and nothing else. A 'report' next to
+    # such actions is taken to report on them ({@dataset_table@}); on its own
+    # it says nothing about what the runcard does, so it does not count.
     commondata = set((keys or {}).get("commondata_actions") or COMMONDATA_ACTIONS)
+    describing = action_names - {"report"}
     reads_commondata_only = (
-        "datasets" in runcard and bool(action_names) and action_names <= commondata
+        "datasets" in runcard and bool(describing) and describing <= commondata
     )
+    # The likely intent behind a report-only runcard that shows the table: a
+    # hint, so it is never escalated by --strict.
+    if (
+        "datasets" in runcard
+        and action_names == {"report"}
+        and "dataset_table" in str(runcard.get("template_text") or "")
+        and not ("theory_path" in runcard and runcard.get("coefficients"))
+    ):
+        rep.warnings.append(
+            "actions_: 'report' alone does not write the dataset table, so this "
+            "runcard is held to the fit requirements — add 'write_dataset_table' "
+            "to actions_ to write dataset_table.tex from datasets and data_path only"
+        )
 
     if "datasets" in runcard:
         required = (

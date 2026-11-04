@@ -184,6 +184,6 @@ names in tracebacks. They are resolved for you.
 - `dataset_bibliography(dataset_info, fetch_bibtex=False) -> smefit.dataset_info.Bibliography`
   - Resolve the references of the datasets on INSPIRE, when asked to.
 - `dataset_info(datasets, data_path) -> List[smefit.dataset_info.DatasetInfo]`
-  - The provenance of each dataset of the runcard, in runcard order. Reads only the commondata files, a runcard with ``datasets`` and ``data_path`` is enough.
+  - The provenance of each dataset of the runcard, a group's datasets together: groups in order of first appearance, runcard order within one. Reads only the commondata files, a runcard with ``datasets`` and ``data_path`` is enough.
 - `dataset_table_tex(dataset_info, dataset_bibliography, dataset_table_caption='Datasets included in the fit.', dataset_table_label='tab:datasets') -> str`
   - The datasets as a LaTeX ``xltabular``, one section per ``group``.

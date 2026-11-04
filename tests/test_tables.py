@@ -250,7 +250,8 @@ def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_dataset_table_lists_datasets_in_runcard_order():
+def test_dataset_table_lists_datasets_in_the_order_given():
+    """dataset_info has already grouped them, as the LaTeX table lists them."""
     infos = [
         DatasetInfo(
             "B",
@@ -269,7 +270,7 @@ def test_dataset_table_lists_datasets_in_runcard_order():
 
     result = dataset_table(infos)
 
-    assert result.index.tolist() == ["B", "A"]
+    assert result.index.tolist() == ["B", "A", "Total"]
     assert result.loc["B"].tolist() == [
         "Top",
         "tt",
@@ -279,6 +280,15 @@ def test_dataset_table_lists_datasets_in_runcard_order():
         "https://repository.cern/records/3rj9z-94994",
     ]
     assert result.loc["A"].tolist() == ["", "", 1, "--", ""]
+
+
+def test_dataset_table_ends_with_the_total_number_of_points():
+    """The LaTeX table's last line, so the two tables agree."""
+    result = dataset_table([DatasetInfo("A", 7), DatasetInfo("B", 15)])
+
+    assert result.index[-1] == "Total"
+    assert result.loc["Total"].tolist() == ["", "", 22, "", ""]
+    assert result["n_dat"].dtype == "int64"
 
 
 # ---------------------------------------------------------------------------

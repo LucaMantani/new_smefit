@@ -210,9 +210,9 @@ def coefficient_bounds_table(
 def dataset_table(dataset_info):
     """The datasets of the runcard, as :func:`write_dataset_table` lists them.
 
-    The report counterpart of the LaTeX table: the same rows, with the
-    references as identifiers rather than citations, so it needs no INSPIRE
-    lookup.
+    The report counterpart of the LaTeX table: the same rows in the same
+    order, and the same total, with the references as identifiers rather than
+    citations, so it needs no INSPIRE lookup.
 
     Parameters
     ----------
@@ -221,11 +221,13 @@ def dataset_table(dataset_info):
     Returns
     -------
     pd.DataFrame
-        Index = dataset names, in runcard order. Columns ``Group``,
-        ``Description``, ``n_dat``, ``Luminosity [fb^-1]`` (``--`` when the
-        commondata gives none) and ``References``.
+        Index = dataset names, in the order of ``dataset_info`` (a group's
+        datasets together), then ``Total``, whose only cell is the sum of
+        ``n_dat``. Columns ``Group``, ``Description``, ``n_dat``,
+        ``Luminosity [fb^-1]`` (``--`` when the commondata gives none) and
+        ``References``.
     """
-    return pd.DataFrame(
+    table = pd.DataFrame(
         {
             "Group": [info.group or "" for info in dataset_info],
             "Description": [info.description for info in dataset_info],
@@ -244,6 +246,8 @@ def dataset_table(dataset_info):
         },
         index=[info.name for info in dataset_info],
     )
+    table.loc["Total"] = ["", "", table["n_dat"].sum(), "", ""]
+    return table
 
 
 @table

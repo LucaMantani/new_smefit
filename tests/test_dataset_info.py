@@ -227,6 +227,24 @@ def test_runcard_order_is_kept(tmp_path):
     assert [info.name for info in infos] == ["B", "A"]
 
 
+def test_datasets_of_a_group_are_listed_together(tmp_path):
+    """The LaTeX table has a section per group, and the report table follows
+    the same order, so an interleaved runcard is regrouped for both."""
+    for name in ("A", "B", "C", "D", "E"):
+        _write_commondata(tmp_path, name, [])
+    datasets = [
+        {"name": "A", "group": "Top"},
+        {"name": "B", "group": "Higgs"},
+        {"name": "C"},
+        {"name": "D", "group": "Top"},
+        {"name": "E", "group": "Higgs"},
+    ]
+
+    infos = dataset_info(datasets, tmp_path)
+
+    assert [info.name for info in infos] == ["A", "D", "B", "E", "C"]
+
+
 def test_missing_dataset_raises(tmp_path):
     with pytest.raises(FileNotFoundError, match="NOPE"):
         dataset_info([{"name": "NOPE"}], tmp_path)

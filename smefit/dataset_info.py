@@ -396,9 +396,13 @@ def _by_group(infos) -> List[Tuple[Optional[str], List[DatasetInfo]]]:
 
 
 def dataset_info(datasets, data_path) -> List[DatasetInfo]:
-    """The provenance of each dataset of the runcard, in runcard order.
+    """The provenance of each dataset of the runcard, a group's datasets
+    together: groups in order of first appearance, runcard order within one.
     Reads only the commondata files, a runcard with ``datasets`` and
     ``data_path`` is enough.
+
+    Both dataset tables list the datasets in this order: the LaTeX one has a
+    section per group, so a runcard interleaving groups cannot keep its order.
 
     The datasets left with no reference are warned about together: one
     warning naming all of them, since a database can have hundreds.
@@ -412,7 +416,7 @@ def dataset_info(datasets, data_path) -> List[DatasetInfo]:
             len(unreferenced),
             ", ".join(unreferenced),
         )
-    return infos
+    return [info for _, members in _by_group(infos) for info in members]
 
 
 def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:

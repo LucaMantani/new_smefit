@@ -291,7 +291,9 @@ Writes `<output>/dataset_table.tex`, an `xltabular` (a `longtable` as wide as
 the line, so it fits any text width) with one row per dataset
 (name, commondata `description`, `n_dat`, luminosity, reference) and the total
 number of points. Only `datasets` and `data_path` are read, so a fit runcard
-can run it as is, with no theory tables or coefficients involved.
+can run it as is, with no theory tables or coefficients involved. A group's
+datasets are listed together, under one heading, in runcard order: groups
+come in order of first appearance, so an interleaved runcard is regrouped.
 
 - The references come from the commondata `arxiv` field. By default each is
   written as an `\href` to arXiv/INSPIRE, which needs no network and no `.bib`.
@@ -321,7 +323,8 @@ can run it as is, with no theory tables or coefficients involved.
   folder. Without pdflatex, or on a LaTeX error, it warns and writes no PDF
   (keeping `dataset_table_preview.log` on an error); the table is written
   either way.
-- `{@dataset_table@}` in a report shows the same rows, without the lookup.
+- `{@dataset_table@}` in a report shows the same rows in the same order, and
+  the total, without the lookup.
 
 ## Reports and Fisher information
 

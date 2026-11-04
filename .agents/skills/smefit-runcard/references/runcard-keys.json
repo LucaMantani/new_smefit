@@ -14,6 +14,7 @@
     "group"
   ],
   "derived_keys": [
+    "aggregate_fisher_information_matrices",
     "chi2",
     "data",
     "data_groups",
@@ -88,6 +89,12 @@
         "data_groups",
         "prior",
         "theory"
+      ]
+    },
+    "fit": {
+      "default": "None",
+      "used_by": [
+        "aggregate_fisher_information_matrices"
       ]
     },
     "use_quad": {
@@ -313,6 +320,7 @@
     "data_path",
     "datasets",
     "external_chi2",
+    "fit",
     "fits",
     "gradient_descent_settings",
     "hessian_settings",

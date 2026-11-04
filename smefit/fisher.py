@@ -7,6 +7,7 @@ This module contains functions for computing Fisher information matrices.
 import logging
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
@@ -106,10 +107,12 @@ def _resolve_groups(source_names, data_groups):
     return groups
 
 
-def aggregate_fisher_information_matrices(
-    fisher_information_matrices, data_groups=None
-):
+def _aggregate_fisher_from_runcard(fisher_information_matrices, data_groups=None):
     """Aggregate Fisher matrices by summing within each group.
+
+    The worker of ``aggregate_fisher_information_matrices`` when no fit is in
+    scope: see ``produce_aggregate_fisher_information_matrices`` in
+    ``smefit.config``.
 
     Parameters
     ----------
@@ -133,6 +136,36 @@ def aggregate_fisher_information_matrices(
         group_name: sum(fim[source_names[i]] for i in indices)
         for group_name, indices in groups
     }
+
+
+def _aggregate_fisher_from_fit(fit):
+    """Aggregate Fisher matrices of a fit that has already been run.
+
+    The worker of ``aggregate_fisher_information_matrices`` when a fit is in
+    scope: see ``produce_aggregate_fisher_information_matrices`` in
+    ``smefit.config``. The chi2s and the groups are rebuilt from the fit's own
+    runcard, and the Hessians are evaluated at its stored best-fit point.
+
+    Parameters
+    ----------
+    fit : Fit
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+    """
+    # Local import to avoid circular dependency
+    from smefit.api import smefitAPI
+
+    runcard = fit.rebuild_runcard()
+    datasets_chi2 = smefitAPI.datasets_chi2(**runcard)
+    best_fit_point = fit.fit_results.best_fit_point
+    c0 = jnp.array([best_fit_point[name] for name in datasets_chi2[0].param_names])
+    # data_groups needs datasets: an external-only fit has no groups to rebuild
+    data_groups = smefitAPI.data_groups(**runcard) if "datasets" in runcard else None
+    return _aggregate_fisher_from_runcard(
+        fisher_information_matrices(datasets_chi2, c0), data_groups
+    )
 
 
 ############################

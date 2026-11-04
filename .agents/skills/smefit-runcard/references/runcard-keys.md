@@ -44,6 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
+- `fit` — default: `None` (consumed by `aggregate_fisher_information_matrices`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -438,6 +439,7 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 reportengine builds these nodes on demand; they are listed so you can trace
 which runcard keys each action ultimately needs.
 
+- `aggregate_fisher_information_matrices`(fit) — Dispatch to the worker computing the per-source Fisher matrices.
 - `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
 - `data`(datasets, data_path) — Produce data group object.
 - `data_groups`(datasets) — Build data_groups from inline group: keys on each dataset entry.

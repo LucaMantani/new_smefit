@@ -1,0 +1,28 @@
+# Fisher and global information matrices of fits that have already been run.
+#
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# Sources are the datasets of each fit, or its `group:` labels when it has them.
+# Outside `with fits` these actions read `datasets` from this runcard instead:
+# see report.yaml for that form.
+template_text: |
+    Fisher and global information
+    =============================
+    {@with fits@}
+    {@fit@}
+    ---------
+    Fisher table
+    {@fisher_diagonals_normalised@}
+    Fisher heatmap
+    {@plot_fisher_diagonals_heatmap@}
+    Global information table
+    {@global_information_table@}
+    Global information heatmap
+    {@plot_global_information_heatmap@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

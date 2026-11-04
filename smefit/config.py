@@ -27,6 +27,7 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
+from smefit.fisher import _aggregate_fisher_from_fit, _aggregate_fisher_from_runcard
 from smefit.fit_result import Fit
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
@@ -106,6 +107,21 @@ class smefitConfig(Config):
         for name, group in getattr(self, "_ext_chi2_groups", {}).items():
             groups.setdefault(group, []).append(name)
         return groups if groups else None
+
+    @explicit_node
+    def produce_aggregate_fisher_information_matrices(self, fit=None):
+        """Dispatch to the worker computing the per-source Fisher matrices.
+
+        Must stay an ExplicitNode because the two sources have different
+        dependencies. A fit in scope (``fit:``, or ``fits`` as a namespace) needs
+        nothing else, as it is rebuilt from its own runcard; otherwise the
+        runcard has to supply ``datasets_chi2`` and ``gd_best_fit``.
+        """
+        return (
+            _aggregate_fisher_from_runcard
+            if fit is None
+            else _aggregate_fisher_from_fit
+        )
 
     def parse_latex_labels(self, latex_labels):
         r"""Parse the optional map from a displayed name to its LaTeX label.

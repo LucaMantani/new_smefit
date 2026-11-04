@@ -44,6 +44,10 @@
   ],
   "fit_reading_actions": [
     "coefficient_bounds_table",
+    "fisher_diagonals_normalised",
+    "global_information_table",
+    "plot_fisher_diagonals_heatmap",
+    "plot_global_information_heatmap",
     "plot_posterior_correlations",
     "report"
   ],

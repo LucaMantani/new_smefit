@@ -42,7 +42,14 @@ ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
 # Actions that report on fits read back off disk, so a runcard running only
 # these needs no fit setup of its own. Taken from runcard-keys.json when it is
 # there; this is the fallback.
-FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
+FIT_READING_ACTIONS = {
+    "report",
+    "plot_posterior_correlations",
+    "fisher_diagonals_normalised",
+    "plot_fisher_diagonals_heatmap",
+    "global_information_table",
+    "plot_global_information_heatmap",
+}
 
 
 def action_name(action):

@@ -447,6 +447,30 @@ def test_runcard_without_any_data_is_rejected(tmp_path):
     assert "no data to fit" in out
 
 
+@pytest.mark.parametrize(
+    "action",
+    [
+        "fisher_diagonals_normalised",
+        "plot_fisher_diagonals_heatmap",
+        "global_information_table",
+        "plot_global_information_heatmap",
+    ],
+)
+def test_fisher_actions_can_read_only_fits(tmp_path, action):
+    """They reach the fit through a node, not through a parameter of their own."""
+    code, out = validate(
+        tmp_path,
+        datasets=None,
+        data_path=None,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fits=[{"name": "my_fit", "path": "."}],
+        actions_=[f"fits {action}"],
+    )
+    assert code == 0, out
+
+
 def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
     """A post-fit runcard ('fits:' and nothing to fit) reports on fits already
     on disk: the data and coefficients are whatever each of those was run with.

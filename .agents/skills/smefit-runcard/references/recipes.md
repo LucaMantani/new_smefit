@@ -387,6 +387,32 @@ template_text: |
   from the heatmaps' `value_fmt`.
 - `params_to_plot` restricts and orders the rows, as for the heatmaps below.
 
+#### One table for all the fits
+
+`coefficient_bounds_comparison_table` puts the fits side by side instead: one
+table for the whole `fits:` list, the columns of each fit's own bounds table
+grouped under that fit. It goes **outside** the `{@with fits@}` loop:
+
+```yaml
+template_text: |
+  # Coefficient bounds
+  {@coefficient_bounds_comparison_table@}
+```
+
+- Each fit is headed by the `label` of its `fits` entry, or by its directory
+  name when there is none; two fits resolving to the same heading raise.
+- Rows are the union of the fits' coefficients, in order of first appearance;
+  a coefficient a fit did not sample is `nan` in its columns.
+- It takes `bounds_levels`, `interval_types`, `params_to_plot` and `round_val`
+  itself, as a top-level key or as an action argument, with the same meaning
+  and defaults as `coefficient_bounds_table`. With `bounds_levels: 95` and the
+  default interval type the table has exactly one column per fit.
+- `params_to_plot` selects from the union, so its order holds whichever fit has
+  which coefficient, and a fit with none of them keeps its columns, all `nan`.
+  A list that selects nothing from any fit raises.
+- Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
+  are only written if the report also asks for `coefficient_bounds_table`.
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an

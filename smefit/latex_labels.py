@@ -185,9 +185,10 @@ default_latex_labels = {
     "Old": r"$c_{l d}$",
 }
 
-# What a plain name cannot contain inside \mathrm: set_plot_style turns usetex on,
-# so one unescaped underscore stops the whole figure from compiling. The hyphen
-# compiles, but math mode would set it as a minus sign.
+# What a plain name cannot contain inside \mathrm. set_plot_style turns usetex on,
+# where a raw &, #, ^ or $ stops the whole figure compiling; the others compile
+# but print wrongly in math mode (_ as a subscript, - as a minus sign, spaces
+# dropped, % ending the label).
 _LATEX_ESCAPES = str.maketrans(
     {
         "\\": r"\mbox{\textbackslash}",

@@ -238,10 +238,6 @@ def coefficient_bounds_table(
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of one fit.
 
-    Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
-    one table per fit. The bounds are those of :meth:`Fit.confidence_bounds`,
-    of the credible interval(s) ``interval_types`` names.
-
     Parameters
     ----------
     fit : smefit.fit_result.Fit
@@ -255,13 +251,11 @@ def coefficient_bounds_table(
         Number of decimals every cell is written with.
     bounds_levels : float or list of float, optional
         The confidence levels quoted, in percent, one column each in this
-        order. 68 and 95 by default. A list has to be a top-level runcard
-        key: the template parser splits action arguments on commas.
+        order. 68 and 95 by default.
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level. ``eti`` alone by default. A list has to be a top-level runcard
-        key.
+        level. ``eti`` alone by default.
 
     Returns
     -------
@@ -337,17 +331,9 @@ def coefficient_bounds_comparison_table(
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of several fits side by side.
 
-    Takes the arguments of :func:`coefficient_bounds_table` itself rather than
-    collecting that table over ``fits``: arguments given to this action would
-    not reach a collected table, and ``params_to_plot`` has to select from the
-    union of the fits, not from each fit on its own.
-
     Parameters
     ----------
     fits : list of smefit.fit_result.Fit
-        The previously run fits, loaded from disk. Each is headed by its
-        ``label`` where the runcard gave one, and by its directory name
-        otherwise (:attr:`Fit.plot_label`).
     latex_label : Callable[[str], str]
         Writes a name in LaTeX (the ``latex_label`` resource).
     params_to_plot : list of str, optional
@@ -357,13 +343,11 @@ def coefficient_bounds_comparison_table(
         Number of decimals every cell is written with.
     bounds_levels : float or list of float, optional
         The confidence levels quoted, in percent, one column each in this
-        order. 68 and 95 by default. A list has to be a top-level runcard
-        key: the template parser splits action arguments on commas.
+        order. 68 and 95 by default.
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level. ``eti`` alone by default. A list has to be a top-level runcard
-        key.
+        level. ``eti`` alone by default.
 
     Returns
     -------
@@ -371,8 +355,7 @@ def coefficient_bounds_comparison_table(
         Index = LaTeX coefficient labels, the union over the fits, in
         ``params_to_plot`` order if given and in order of first appearance
         otherwise; two-level columns ``(<fit label>, <level>% CL
-        (<INTERVAL_TYPE>))``. A coefficient a fit did not sample is NaN in that
-        fit's columns, written ``nan`` in the CSV like any missing table cell.
+        (<INTERVAL_TYPE>))``.
 
     Raises
     ------

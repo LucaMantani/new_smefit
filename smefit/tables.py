@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from reportengine import collect
 from reportengine.table import table
 
 from smefit.plot_utils import select_params
@@ -157,15 +156,19 @@ def _number(value: float, round_val: int) -> str:
     return text.lstrip("-") if float(text) == 0.0 else text
 
 
-def _coefficient_bounds_table(
+def _bounds_by_coefficient(
     fit: Fit,
-    latex_label: Callable[[str], str],
-    params_to_plot: list[str] | str | None,
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
     interval_types: str | Sequence[str] | None,
 ) -> pd.DataFrame:
-    """The typed core of :func:`coefficient_bounds_table`."""
+    """Every bound of ``fit`` as table cells, indexed by coefficient name.
+
+    Selecting the rows and relabelling them is left to the caller: the
+    comparison table does both on the union of its fits, not fit by fit. The
+    columns are there even with no rows, so a fit without samples for any of
+    its coefficients still has its columns in a comparison.
+    """
     if bounds_levels is None:
         bounds_levels = [68.0, 95.0]
     elif isinstance(bounds_levels, (int, float)):
@@ -186,23 +189,38 @@ def _coefficient_bounds_table(
         for level in bounds_levels
         for interval_type in interval_types
     }
+    # .10g: plain g would round 99.99994 (5 sigma) to 99.9999; the type is an
+    # acronym, so it is shown upper case: "(ETI)"
+    columns = [
+        f"{level:.10g}% CL ({interval_type.upper()})" for level, interval_type in bounds
+    ]
 
     # every entry covers the same coefficients, so any one will do
-    first = next(iter(bounds.values()))
-    names = select_params(first, params_to_plot, context=fit.fit_name)
-
-    rows: dict[str, dict[str, str]] = {}
-    for name in names:
-        cells = {}
-        for (level, interval_type), per_coeff in bounds.items():
-            # .10g: plain g would round 99.99994 (5 sigma) to 99.9999;
-            # the type is an acronym, so it is shown upper case: "(ETI)"
-            cells[f"{level:.10g}% CL ({interval_type.upper()})"] = " ∪ ".join(
+    names = next(iter(bounds.values()))
+    rows = {
+        name: [
+            " ∪ ".join(
                 f"[{_number(low, round_val)}, {_number(high, round_val)}]"
                 for low, high in per_coeff[name]
             )
-        rows[name] = cells
-    table = pd.DataFrame.from_dict(rows, orient="index")
+            for per_coeff in bounds.values()
+        ]
+        for name in names
+    }
+    return pd.DataFrame.from_dict(rows, orient="index", columns=columns)
+
+
+def _coefficient_bounds_table(
+    fit: Fit,
+    latex_label: Callable[[str], str],
+    params_to_plot: list[str] | str | None,
+    round_val: int,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+) -> pd.DataFrame:
+    """The typed core of :func:`coefficient_bounds_table`."""
+    table = _bounds_by_coefficient(fit, round_val, bounds_levels, interval_types)
+    table = table.loc[select_params(table.index, params_to_plot, context=fit.fit_name)]
     # relabel only now: as dict keys, two coefficients sharing a label would
     # silently lose one of the rows
     table.index = [latex_label(name) for name in table.index]
@@ -242,7 +260,8 @@ def coefficient_bounds_table(
     interval_types : str or list of str, optional
         The credible intervals quoted, among those
         :meth:`Fit.confidence_bounds` accepts: one column per type under each
-        level.
+        level. ``eti`` alone by default. A list has to be a top-level runcard
+        key.
 
     Returns
     -------
@@ -252,6 +271,12 @@ def coefficient_bounds_table(
         level, each cell the pieces of the region as ``[low, high]``, joined
         by ``∪`` when there are several. Coefficients without samples are
         left out.
+
+    Raises
+    ------
+    ValueError
+        If ``bounds_levels`` or ``interval_types`` is empty, or holds a value
+        :meth:`Fit.confidence_bounds` rejects.
     """
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
@@ -260,12 +285,13 @@ def coefficient_bounds_table(
     )
 
 
-# the per-fit bounds tables of every entry under ``fits:``, in runcard order
-fits_coefficient_bounds_tables = collect("coefficient_bounds_table", ("fits",))
-
-
 def _coefficient_bounds_comparison_table(
-    fits: Sequence[Fit], tables: Sequence[pd.DataFrame]
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: list[str] | str | None,
+    round_val: int,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
 ) -> pd.DataFrame:
     """The typed core of :func:`coefficient_bounds_comparison_table`."""
     if not fits:
@@ -279,16 +305,42 @@ def _coefficient_bounds_comparison_table(
             + ": give each a distinct 'label' in its fits entry."
         )
     # outer join on the rows, in order of first appearance: a coefficient one
-    # fit did not sample is an empty cell, not an error
-    comparison = pd.concat(tables, axis=1, keys=labels, sort=False)
-    return comparison.fillna("")
+    # fit did not sample is a missing cell, not an error
+    comparison = pd.concat(
+        [
+            _bounds_by_coefficient(fit, round_val, bounds_levels, interval_types)
+            for fit in fits
+        ],
+        axis=1,
+        keys=labels,
+        sort=False,
+    )
+    # selected once, on the union: ``params_to_plot`` is global, so a fit having
+    # none of the coefficients is an empty column rather than an error, and the
+    # order is the requested one whichever fit has which
+    context = ", ".join(fit.fit_name for fit in fits)
+    comparison = comparison.loc[
+        select_params(comparison.index, params_to_plot, context=context)
+    ]
+    comparison.index = [latex_label(name) for name in comparison.index]
+    return comparison
 
 
 @table
 def coefficient_bounds_comparison_table(
-    fits, fits_coefficient_bounds_tables
+    fits,
+    latex_label,
+    params_to_plot=None,
+    round_val=3,
+    bounds_levels=None,
+    interval_types=None,
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of several fits side by side.
+
+    Takes the arguments of :func:`coefficient_bounds_table` itself rather than
+    collecting that table over ``fits``: arguments given to this action would
+    not reach a collected table, and ``params_to_plot`` has to select from the
+    union of the fits, not from each fit on its own.
 
     Parameters
     ----------
@@ -296,21 +348,44 @@ def coefficient_bounds_comparison_table(
         The previously run fits, loaded from disk. Each is headed by its
         ``label`` where the runcard gave one, and by its directory name
         otherwise (:attr:`Fit.plot_label`).
-    fits_coefficient_bounds_tables : list of pd.DataFrame
-        The :func:`coefficient_bounds_table` of each fit, collected over
-        ``fits`` in the same order.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    params_to_plot : list of str, optional
+        Restrict the rows to these coefficients, in this order, keeping those
+        at least one of the fits has. All of them by default.
+    round_val : int, optional
+        Number of decimals every cell is written with.
+    bounds_levels : float or list of float, optional
+        The confidence levels quoted, in percent, one column each in this
+        order. 68 and 95 by default. A list has to be a top-level runcard
+        key: the template parser splits action arguments on commas.
+    interval_types : str or list of str, optional
+        The credible intervals quoted, among those
+        :meth:`Fit.confidence_bounds` accepts: one column per type under each
+        level. ``eti`` alone by default. A list has to be a top-level runcard
+        key.
 
     Returns
     -------
     pd.DataFrame
-        Index = LaTeX coefficient labels, the union over the fits in order of
-        first appearance; two-level columns ``(<fit label>, <level>% CL
-        (<INTERVAL_TYPE>))``. A coefficient a fit did not sample is an empty
-        cell in that fit's columns.
+        Index = LaTeX coefficient labels, the union over the fits, in
+        ``params_to_plot`` order if given and in order of first appearance
+        otherwise; two-level columns ``(<fit label>, <level>% CL
+        (<INTERVAL_TYPE>))``. A coefficient a fit did not sample is NaN in that
+        fit's columns, written ``nan`` in the CSV like any missing table cell.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty, two fits share a label, ``params_to_plot`` selects
+        nothing from any fit, or ``bounds_levels`` or ``interval_types`` is
+        empty or holds a value :meth:`Fit.confidence_bounds` rejects.
     """
     # parameters unannotated: reportengine isinstance-checks every annotated
     # one, which fails on the string annotations of `from __future__`
-    return _coefficient_bounds_comparison_table(fits, fits_coefficient_bounds_tables)
+    return _coefficient_bounds_comparison_table(
+        fits, latex_label, params_to_plot, round_val, bounds_levels, interval_types
+    )
 
 
 @table

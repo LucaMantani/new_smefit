@@ -385,6 +385,7 @@ template_text: |
   ```
 - `round_val` sets the decimals of every cell (default `3`). It is separate
   from the heatmaps' `value_fmt`.
+- `params_to_plot` restricts and orders the rows, as for the heatmaps below.
 
 #### One table for all the fits
 
@@ -401,13 +402,16 @@ template_text: |
 - Each fit is headed by the `label` of its `fits` entry, or by its directory
   name when there is none; two fits resolving to the same heading raise.
 - Rows are the union of the fits' coefficients, in order of first appearance;
-  a coefficient a fit did not sample is an empty cell in its columns.
-- `bounds_levels`, `interval_types`, `params_to_plot` and `round_val` apply
-  through the per-fit tables unchanged. With `bounds_levels: 95` and the
+  a coefficient a fit did not sample is `nan` in its columns.
+- It takes `bounds_levels`, `interval_types`, `params_to_plot` and `round_val`
+  itself, as a top-level key or as an action argument, with the same meaning
+  and defaults as `coefficient_bounds_table`. With `bounds_levels: 95` and the
   default interval type the table has exactly one column per fit.
-- Written to `tables/coefficient_bounds_comparison_table.csv`; the per-fit
-  tables it is built from are written alongside.
-- `params_to_plot` restricts and orders the rows, as for the heatmaps below.
+- `params_to_plot` selects from the union, so its order holds whichever fit has
+  which coefficient, and a fit with none of them keeps its columns, all `nan`.
+  A list that selects nothing from any fit raises.
+- Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
+  are only written if the report also asks for `coefficient_bounds_table`.
 
 ### Configuring an action
 

@@ -62,7 +62,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_scan_table(individual_chi2_scans, latex_label)`
   - Per-coefficient 1D chi2 scan results as a table.
-- `coefficient_bounds_comparison_table(fits, fits_coefficient_bounds_tables) -> 'pd.DataFrame'`
+- `coefficient_bounds_comparison_table(fits, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of several fits side by side.
 - `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.

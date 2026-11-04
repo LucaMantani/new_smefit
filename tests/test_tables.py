@@ -3,10 +3,15 @@ bounds report tables, and the multi-fit bounds comparison table."""
 
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
@@ -353,10 +358,8 @@ def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
 
 
 def _comparison(*fits: Fit, **kwargs) -> pd.DataFrame:
-    """The comparison table as the DAG builds it: the per-fit tables are the
-    ``coefficient_bounds_table`` of each fit, collected over ``fits``."""
     return coefficient_bounds_comparison_table(
-        list(fits), [coefficient_bounds_table(fit, **kwargs) for fit in fits]
+        list(fits), latex_label=make_latex_label(), **kwargs
     )
 
 
@@ -402,21 +405,87 @@ def test_coefficient_bounds_comparison_table_is_one_column_per_fit_at_one_level(
     assert table.iloc[0].tolist() == ["[25.000, 975.000]"] * 2
 
 
-def test_coefficient_bounds_comparison_table_leaves_a_missing_coefficient_empty() -> (
-    None
-):
+def test_coefficient_bounds_comparison_table_leaves_a_missing_coefficient_nan() -> None:
     """Rows are the union of the fits' coefficients, in order of first
-    appearance; a fit without one has empty cells there."""
+    appearance; a fit without one has NaN there, as the CSVs write it."""
     first = Fit(fit_results=_result({"OtG": _RAMP, "OpQM": _RAMP}), fit_name="a")
     second = Fit(fit_results=_result({"OpA": _RAMP, "OtG": _RAMP}), fit_name="b")
 
     table = _comparison(first, second, bounds_levels=95)
 
-    opqm = coeff_info_latex["OpQM"]
-    assert table.index.tolist() == [r"$c_{tG}$", opqm, "OpA"]
-    assert table.loc[opqm, ("b", "95% CL (ETI)")] == ""
-    assert table.loc["OpA", ("a", "95% CL (ETI)")] == ""
-    assert table.loc["OpA", ("b", "95% CL (ETI)")] == "[25.000, 975.000]"
+    latex = make_latex_label()
+    assert table.index.tolist() == [latex("OtG"), latex("OpQM"), latex("OpA")]
+    assert pd.isna(table.loc[latex("OpQM"), ("b", "95% CL (ETI)")])
+    assert pd.isna(table.loc[latex("OpA"), ("a", "95% CL (ETI)")])
+    assert table.loc[latex("OpA"), ("b", "95% CL (ETI)")] == "[25.000, 975.000]"
+
+
+def test_coefficient_bounds_comparison_table_forwards_its_arguments() -> None:
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="b")
+
+    table = _comparison(
+        first, second, round_val=1, bounds_levels=95, interval_types="hdi"
+    )
+
+    assert table.columns.tolist() == [("a", "95% CL (HDI)"), ("b", "95% CL (HDI)")]
+    low, high = table.iloc[0, 0].strip("[]").split(", ")
+    assert len(low.split(".")[1]) == len(high.split(".")[1]) == 1
+
+
+def test_coefficient_bounds_comparison_table_orders_rows_as_params_to_plot() -> None:
+    """The requested order holds even when the first fit lacks the first name."""
+    first = Fit(fit_results=_result({"OpQM": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="b")
+
+    table = _comparison(first, second, params_to_plot=["OtG", "OpQM"])
+
+    latex = make_latex_label()
+    assert table.index.tolist() == [latex("OtG"), latex("OpQM")]
+
+
+def test_coefficient_bounds_comparison_table_keeps_a_fit_without_the_selection() -> (
+    None
+):
+    """``params_to_plot`` is global: a fit with none of it is an empty column."""
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OpQM": _RAMP}), fit_name="b")
+
+    table = _comparison(first, second, params_to_plot=["OtG"], bounds_levels=95)
+
+    assert table.columns.tolist() == [("a", "95% CL (ETI)"), ("b", "95% CL (ETI)")]
+    assert table.iloc[0, 0] == "[25.000, 975.000]"
+    assert pd.isna(table.iloc[0, 1])
+
+
+def test_coefficient_bounds_comparison_table_keeps_a_fit_with_no_sampled_coefficient() -> (
+    None
+):
+    """Its per-fit table has no rows, which must not lose its column group."""
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a")
+    no_rows = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpQM"],
+            best_fit_point={"OpQM": 0.0},
+            max_loglikelihood=0.0,
+            num_data=1,
+            samples={"unrelated": jnp.array(_RAMP)},
+        ),
+        fit_name="b",
+    )
+
+    table = _comparison(first, no_rows, bounds_levels=95)
+
+    assert table.columns.tolist() == [("a", "95% CL (ETI)"), ("b", "95% CL (ETI)")]
+    assert pd.isna(table.iloc[0, 1])
+
+
+def test_coefficient_bounds_comparison_table_rejects_a_selection_no_fit_has() -> None:
+    first = Fit(fit_results=_result({"OtG": _RAMP}), fit_name="a")
+    second = Fit(fit_results=_result({"OpQM": _RAMP}), fit_name="b")
+
+    with pytest.raises(ValueError, match="selected none"):
+        _comparison(first, second, params_to_plot=["Nope"])
 
 
 def test_coefficient_bounds_comparison_table_rejects_duplicate_labels() -> None:
@@ -429,7 +498,73 @@ def test_coefficient_bounds_comparison_table_rejects_duplicate_labels() -> None:
 
 def test_coefficient_bounds_comparison_table_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
-        coefficient_bounds_comparison_table([], [])
+        coefficient_bounds_comparison_table([], latex_label=_plain)
+
+
+def _write_fit(folder: Path, samples: dict[str, list[float]]) -> None:
+    """A fit directory as ``Fit.from_folder`` reads it."""
+    _result(samples).write(folder)
+    (folder / "input").mkdir()
+    (folder / "input" / "runcard.yaml").write_text(
+        yaml.safe_dump({"actions_": ["run_analytic_fit"]})
+    )
+
+
+def test_coefficient_bounds_comparison_table_through_the_template_runcard(
+    tmp_path: Path,
+) -> None:
+    """A real ``smefit`` run of the template's fits, with action arguments.
+
+    Calling the provider directly skips what went wrong here before: whether
+    an argument given to the action reaches the bounds. Listed under
+    ``actions_`` rather than in the ``template_text``, which would need pandoc;
+    both parse their arguments the same way.
+    """
+    template_path = (
+        Path(__file__).parents[1] / "template_runcards/coefficient_bounds_table.yaml"
+    )
+    runcard = yaml.safe_load(template_path.read_text())
+    assert "{@coefficient_bounds_comparison_table@}" in runcard.pop("template_text")
+    first, second = runcard["fits"]
+    _write_fit(tmp_path / first["name"], {"OtG": _RAMP, "OpQM": _RAMP})
+    _write_fit(tmp_path / second["name"], {"OpQM": _RAMP})
+
+    runcard["actions_"] = [
+        "coefficient_bounds_comparison_table"
+        "(round_val=1, bounds_levels=95, interval_types=hdi, params_to_plot=OtG)"
+    ]
+    (tmp_path / "runcard.yaml").write_text(yaml.safe_dump(runcard))
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from smefit.app import main; main()",
+            "runcard.yaml",
+            "-o",
+            "output",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    table = pd.read_csv(
+        tmp_path / "output/tables/coefficient_bounds_comparison_table.csv",
+        sep="\t",
+        header=[0, 1],
+        index_col=0,
+    )
+    assert table.columns.tolist() == [
+        (first["label"], "95% CL (HDI)"),
+        (second["label"], "95% CL (HDI)"),
+    ]
+    assert table.index.tolist() == [make_latex_label()("OtG")]
+    low, _ = table.iloc[0, 0].strip("[]").split(", ")
+    assert len(low.split(".")[1]) == 1
+    assert pd.isna(table.iloc[0, 1])
 
 
 # ---------------------------------------------------------------------------

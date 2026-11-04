@@ -354,3 +354,40 @@ def plot_posterior_correlations(
         colorbar=colorbar,
         title=fit.plot_label,
     )
+
+
+@figure
+def plot_global_information_heatmap(
+    global_information_table,
+    cmap="Blues",
+    value_fmt="{:.1f}",
+    colorbar=False,
+):
+    """Plot the global information matrix as a heatmap.
+
+    Parameters
+    ----------
+    global_information_table : pd.DataFrame
+        Index = coeff_names, columns = source_names.
+    cmap : str, optional
+        Colormap. Sequential by default, as for
+        :func:`plot_fisher_diagonals_heatmap`: the values are percentage shares.
+    value_fmt : str, optional
+        Format of the per-cell annotation, in percent.
+    colorbar : bool, optional
+        Whether to draw the colour scale alongside. Off by default: rows sum to
+        100%, so the annotations already say what a cell is worth.
+    """
+    shares = global_information_table.values * 100
+    # 0-100% unless a share falls outside it (see global_information_matrix):
+    # clipping would hide exactly the cells the warning is about
+    return _plot_heatmap(
+        shares,
+        global_information_table.index.tolist(),
+        global_information_table.columns.tolist(),
+        vmin=min(0.0, shares.min()),
+        vmax=max(100.0, shares.max()),
+        cmap=cmap,
+        value_fmt=value_fmt,
+        colorbar=colorbar,
+    )

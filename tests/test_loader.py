@@ -129,6 +129,14 @@ def test_load_theory_missing_cov_type(fixtures_theory_path):
         )
 
 
+def test_load_theory_missing_order(fixtures_theory_path):
+    """A missing order raises a ValueError naming the dataset and the orders
+    the file does have; a KeyError would be swallowed by reportengine."""
+    with pytest.raises(ValueError, match="NLO_QCD.*TESTDATA") as err:
+        load_theory(fixtures_theory_path, {"name": "TESTDATA", "order": "NLO_QCD"})
+    assert "Available orders: NLO." in str(err.value)
+
+
 def test_load_theory_zero_cov_type(fixtures_theory_path):
     # "zero" opts out of a theory covmat, even though "theory_cov_zero" is not in the JSON
     th = load_theory(

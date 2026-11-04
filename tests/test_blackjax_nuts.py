@@ -5,7 +5,7 @@ Marked @pytest.mark.slow — these run the real sampler and are skipped in fast 
 Run explicitly with:  pytest -m slow tests/test_blackjax_nuts.py
 
 The problem definition and posterior assertions live in tests/gaussian_problem.py,
-shared with tests/test_bayes_update_blackjax.py. Fast, mocked coverage of the
+shared with tests/test_bayesian_update_blackjax.py. Fast, mocked coverage of the
 same code path is in tests/test_blackjax_samplers.py.
 """
 

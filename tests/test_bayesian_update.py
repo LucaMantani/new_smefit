@@ -6,7 +6,7 @@ Covers:
 - FitResult.from_json        (fit_result.py)
 - parse_bayesian_update      (config.py)
 - produce_prior with bayesian_update (config.py)
-- build_exact_posterior_prior (utils.py)
+- build_exact_posterior_prior (bayesian_update.py)
 """
 
 import json
@@ -20,6 +20,7 @@ import pytest
 import yaml
 from reportengine.configparser import ConfigError
 
+from smefit.bayesian_update import build_exact_posterior_prior
 from smefit.config import smefitConfig
 from smefit.fit_result import FitResult, _format_prior
 from smefit.priors import (
@@ -28,7 +29,6 @@ from smefit.priors import (
     WhitenedToPhysicalPrior,
     _UniformDist,
 )
-from smefit.utils import build_exact_posterior_prior
 from smefit.whitening import WhitenTransform
 
 # ---------------------------------------------------------------------------
@@ -654,3 +654,35 @@ def test_build_whitening_active_but_no_matrix_raises(tmp_path):
         mock_api.prior.return_value = base_prior
         with pytest.raises(ConfigError, match="whitening_transformation was saved"):
             build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
+
+
+# ---------------------------------------------------------------------------
+# The previous fit's RGE matrix is reused, not recomputed
+# ---------------------------------------------------------------------------
+
+
+def test_build_rebuilds_the_previous_fit_with_its_own_rge_matrix(tmp_path):
+    """chi2 and prior are both rebuilt from Fit.rebuild_runcard."""
+    from smefit.rge import RGEMatrix
+
+    fit_dir = _make_fit_dir(tmp_path, free_params=["OpA"], samples={"OpA": [0.1]})
+    runcard_path = fit_dir / "input" / "runcard.yaml"
+    rc = yaml.safe_load(runcard_path.read_text())
+    rc["rge"] = {"init_scale": 1000.0}
+    runcard_path.write_text(yaml.dump(rc))
+    RGEMatrix(
+        stacked_mats=jnp.array([[[1.0]]]),
+        obs_operators=["Op1"],
+        init_operators=["OpA"],
+        scales=[100.0],
+        settings={"init_scale": 1000.0},
+    ).write(fit_dir)
+
+    cg = _mock_coeff_group(["OpA"])
+    with patch("smefit.api.smefitAPI") as mock_api:
+        mock_api.chi2.return_value = lambda theta: jnp.sum(theta**2)
+        mock_api.prior.return_value = _uniform_prior(["OpA"])
+        build_exact_posterior_prior(_update(fit_dir), cg, datasets=None)
+
+    for call in (mock_api.chi2.call_args, mock_api.prior.call_args):
+        assert call.kwargs["rge"]["rg_matrix"] == str(fit_dir / RGEMatrix.FILENAME)

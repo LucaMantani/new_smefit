@@ -4,6 +4,7 @@ Fast unit tests run without real Wilson evolution.
 Slow tests (marked @pytest.mark.slow) call the real wilson package.
 """
 
+import logging
 import pickle
 from unittest.mock import patch
 
@@ -13,7 +14,13 @@ import pytest
 import wilson
 
 from smefit.core import TheoryGroup
-from smefit.rge import RGE, RGEMatrix, build_rge_matrix, resolve_rge_matrices
+from smefit.rge import (
+    RGE,
+    RGECache,
+    RGEMatrix,
+    build_rge_matrix,
+    resolve_rge_matrices,
+)
 from smefit.rge.build import _find_cached_scale, _resolve_scales
 from smefit.rge.runner import _wilson_params, evolve_gs
 
@@ -173,7 +180,8 @@ def test_rge_basis_unknown_coefficient_is_null_vector(caplog):
         basis = rge.RGEbasis
 
     assert basis == {"UVcoupling": {}}
-    assert "not present in the WCxf translation dictionary" in caplog.text
+    assert "UVcoupling is not in the WCxf translation table" in caplog.text
+    assert len(caplog.records) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +195,26 @@ def test_map_to_smefit_otg_uses_gs_evolved_to_target_scale():
     # 1e-6 GeV^-2 in, times 1e6 to get TeV^-2, times the -1/gs coefficient
     result = rge.map_to_smefit({"uG_33": complex(1e-6, 0.0)}, 500.0)
     assert result["OtG"] == pytest.approx(-1.0 / evolve_gs(500.0))
+
+
+def test_map_to_smefit_warns_once_per_origin_across_scales(caplog):
+    """A dynamic-scale run maps the same running operator at many scales: the
+    breaking is warned about once, the later scales logged at DEBUG level."""
+    rge = RGE(["Obb"], init_scale=1000.0)
+    point = {"phid_11": complex(1e-6, 0.0), "phid_33": complex(5e-6, 0.0)}
+    with caplog.at_level(logging.DEBUG, logger="smefit.rge.runner"):
+        for scale in (100.0, 200.0, 300.0):
+            rge.map_to_smefit(point, scale, origin="Running Obb")
+        rge.map_to_smefit(point, 100.0, origin="Running Oeb")
+
+    breaking = [r for r in caplog.records if "breaks the flavour" in r.getMessage()]
+    assert [(r.levelno, r.getMessage().split(" breaks")[0]) for r in breaking] == [
+        (logging.WARNING, "Running Obb to 100 GeV"),
+        (logging.DEBUG, "Running Obb to 200 GeV"),
+        (logging.DEBUG, "Running Obb to 300 GeV"),
+        (logging.WARNING, "Running Oeb to 100 GeV"),
+    ]
+    assert not any(r.name == "smefit.wcxf" for r in caplog.records)
 
 
 def test_map_to_smefit_skips_operators_with_no_overlap():
@@ -558,6 +586,82 @@ def test_read_cache_missing_file_names_both_forms(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# RGEMatrix.locate — every form an `rg_matrix` reference takes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def results_with_fit(tmp_path):
+    """A smefit_results tree holding fit 'my_fit' with its RGE matrix."""
+    fit_dir = tmp_path / "fits" / "my_fit"
+    _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0]).write(fit_dir)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        yield fit_dir
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "my_fit",
+        "smefit_results/fits/my_fit",
+        f"smefit_results/fits/my_fit/{RGEMatrix.FILENAME}",
+    ],
+)
+def test_locate_accepts_a_fit_name_a_directory_or_the_file(results_with_fit, ref):
+    assert RGEMatrix.locate(ref) == results_with_fit / RGEMatrix.FILENAME
+
+
+def test_locate_reads_a_local_directory_written_with_a_slash(tmp_path):
+    """`./name` is a directory; a bare `name` would be a fit name."""
+    _matrix([[[1.0]]], ["Op1"], ["OpA"], [100.0]).write(tmp_path / "rge_src")
+
+    assert RGEMatrix.locate(tmp_path / "rge_src") == (
+        tmp_path / "rge_src" / RGEMatrix.FILENAME
+    )
+
+
+def test_locate_an_unknown_fit_name_raises(tmp_path):
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ), patch("smefit.paths.fetch_fit_if_missing"):
+        with pytest.raises(FileNotFoundError, match="no_such_fit"):
+            RGEMatrix.locate("no_such_fit")
+
+
+def test_locate_a_fit_without_a_matrix_raises(tmp_path):
+    (tmp_path / "fits" / "bare_fit").mkdir(parents=True)
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        with pytest.raises(FileNotFoundError, match="bare_fit"):
+            RGEMatrix.locate("bare_fit")
+
+
+def test_read_cache_accepts_a_fit_name(results_with_fit):
+    cache = RGEMatrix.read_cache("my_fit", SETTINGS)
+
+    assert cache[100.0].loc["Op1", "OpA"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# RGECache — the loaded file
+# ---------------------------------------------------------------------------
+
+
+def test_rge_cache_load_keeps_settings_frames_and_source(results_with_fit):
+    cache = RGECache.load("my_fit")
+
+    assert cache.settings == SETTINGS
+    assert list(cache.frames) == [100.0]
+    assert cache.source == results_with_fit / RGEMatrix.FILENAME
+
+
+# ---------------------------------------------------------------------------
 # Slow tests — call real wilson RGE evolution
 # ---------------------------------------------------------------------------
 
@@ -571,6 +675,25 @@ def test_rge_matrix_returns_dataframe():
     result = rge.RGEmatrix(200)
     assert isinstance(result, pd.DataFrame)
     assert "OpBox" in result.columns
+
+
+@pytest.mark.slow
+def test_short_running_still_reports_flavour_breaking(caplog):
+    """Oeb mixes, loop-suppressed, into Opdi splitting b off; over a short running
+    that is small next to Oeb itself but still all of Opdi, so it must warn."""
+    rge = RGE(["Oeb"], init_scale=1000, yukawa="top")
+    with caplog.at_level(logging.WARNING, logger="smefit.rge.runner"):
+        rge.RGEmatrix(900)
+    assert "Running Oeb to 900 GeV" in caplog.text and "Opdi (100.0%)" in caplog.text
+
+
+@pytest.mark.slow
+def test_rge_matrix_without_breaking_does_not_warn(caplog):
+    rge = RGE(["OpBox"], init_scale=1000, yukawa="top")
+    with caplog.at_level(logging.WARNING, logger="smefit.wcxf"):
+        with caplog.at_level(logging.WARNING, logger="smefit.rge.runner"):
+            rge.RGEmatrix(200)
+    assert not caplog.records
 
 
 @pytest.mark.slow

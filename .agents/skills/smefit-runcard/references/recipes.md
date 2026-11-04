@@ -19,11 +19,22 @@ rge:
 ```
 
 - Computing the RGE matrix can be slow; it is saved automatically under the
-  run's output directory. To reuse one across runs, point `rg_matrix:` at the
-  saved pickle — preferably via the `smefit_results` prefix:
-  `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
+  run's output directory. To reuse one across runs, name the fit that saved it:
+  `rg_matrix: <fit_name>` (looked up in `smefit_results/fits/` like a `fits:`
+  entry). A directory holding an `rge_matrix.pkl`, or the pickle itself
+  (`smefit_results/fits/<fit_name>/rge_matrix.pkl`), works too; a local
+  directory with a bare name must be written `./name`. If the fit is not
   present locally, smefit automatically tries to download it from the server
   before failing.
+- A `bayesian_update:` reuses the previous fit's own `rge_matrix.pkl` when it
+  rebuilds that fit's likelihood; nothing to configure.
+- To compute and save the matrix without running a fit, put
+  `rge_matrix` under `actions_:` (the runcard still needs `datasets`,
+  `coefficients` and this `rge:` block). Any fit action writes it as well.
+- `rge_matrix` only covers `datasets`. Each `external_chi2` likelihood (e.g. the
+  Drell-Yan ones) builds its own RGE matrix when it is loaded during a fit, and
+  saves it only if its entry sets `save_rge_path`; reuse it through that
+  entry's own `rg_matrix` key, which takes the same three forms.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 
@@ -173,7 +184,8 @@ external_chi2:
 
 `path` and `rg_matrix` entries are prefix-resolved like all runcard paths
 (`new_smefit/...`, `smefit_database/...`, `smefit_results/...`); an `rg_matrix`
-under `smefit_results/` is auto-downloaded from the server when missing.
+may also be a fit name or a directory, and one under `smefit_results/` is
+auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,
@@ -274,6 +286,9 @@ template_text: |
   # Fisher information
   {@fisher_diagonals_normalised@}
   {@plot_fisher_diagonals_heatmap@}
+  # Global information matrix
+  {@global_information_table@}
+  {@plot_global_information_heatmap@}
 actions_:
   - report
 ```
@@ -283,9 +298,21 @@ actions_:
   `gradient_descent_settings: {sm_solution: True}` skips optimization and uses
   the SM point).
 - Add `group: <label>` to dataset entries (and external chi2 blocks) to
-  aggregate Fisher matrices per group instead of per dataset.
-- `plot_fisher_diagonals_heatmap` takes the same `cmap`, `value_fmt` and
-  `colorbar` as the correlation heatmap — see "Configuring an action" below.
+  aggregate Fisher matrices per group instead of per dataset. The global
+  information matrix is computed from those aggregated matrices, so it groups
+  the same way.
+- **Which one to show.** `fisher_diagonals_normalised` compares curvature along
+  each coefficient with all others held fixed — the individual-fit view.
+  `global_information_table` splits each coefficient's variance in the
+  *global* fit between sources, others marginalised, so it credits a source
+  that matters only by breaking a degeneracy. They agree when the coefficients
+  are uncorrelated; for a global fit the GIM is usually the question asked.
+- The GIM inverts the total Fisher matrix, so it raises if that has a flat
+  direction (an unconstrained coefficient or combination) and names the
+  coefficients involved. Fix or drop them, or add data; the `pca.yaml`
+  template shows the spectrum.
+- `plot_fisher_diagonals_heatmap` and `plot_global_information_heatmap` take
+  the same `cmap`, `value_fmt` and `colorbar` as the correlation heatmap — see "Configuring an action" below.
   `value_fmt: "{:.2f}"` is the one worth knowing: the default single decimal
   rounds a small but non-zero share to `0.0`.
 
@@ -409,10 +436,12 @@ Argument values are parsed as YAML, so strings, numbers and booleans work.
 **An action argument beats a top-level key** when both name the same
 parameter — the specific wins.
 
-Both heatmaps take `cmap`, `value_fmt` and `colorbar`, and they share those
-names, so one top-level `cmap:` sets both; use an action argument where they
-should differ. What is *not* settable is what would stop two plots being
-comparable: the colour scale ([-1, 1] for correlations, 0–100% for Fisher),
+The correlation, Fisher and global information heatmaps all take `cmap`,
+`value_fmt` and `colorbar`, and they share those names, so one top-level `cmap:`
+sets all three; use an action argument where they should differ. What is *not*
+settable is what would stop two plots being comparable: the colour scale
+([-1, 1] for correlations, 0–100% for Fisher and the GIM — the GIM's widening
+only when a share falls outside it, see the smefit-analysis skill),
 square cells, and the correlation heatmap's heading, which is always the fit's
 label so that every heatmap says which fit it is.
 
@@ -429,9 +458,9 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised` and
-`coefficient_bounds_table` — so the Fisher table's CSV and the heatmap drawn
-from it are restricted together, and a bounds table lists the same operators as
+Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised`,
+`global_information_table` and `coefficient_bounds_table` — so the Fisher and
+GIM tables' CSVs and the heatmaps drawn from them are restricted together, and a bounds table lists the same operators as
 the correlation heatmap beside it. An action argument still overrides it for one figure.
 
 - Write it as a YAML list of coefficient names — the raw names, not their LaTeX

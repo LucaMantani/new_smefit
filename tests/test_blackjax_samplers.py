@@ -1,7 +1,7 @@
 """Unit tests for the smefit/blackjax_samplers package — blackjax itself is mocked.
 
 The real samplers are exercised in tests/test_blackjax_nuts.py (slow) and
-tests/test_bayes_update_blackjax.py (slow).
+tests/test_bayesian_update_blackjax.py (slow).
 """
 
 import json

@@ -12,7 +12,7 @@ Setup
 
 chi2_full = chi2_D1 + chi2_D2 by construction (block-diagonal covmat assumption).
 
-Used by tests/test_bayes_update_blackjax.py and tests/test_blackjax_nuts.py.
+Used by tests/test_bayesian_update_blackjax.py and tests/test_blackjax_nuts.py.
 """
 
 import jax.numpy as jnp

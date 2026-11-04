@@ -12,7 +12,7 @@ import yaml
 from reportengine.configparser import BadInputType, ConfigError, ExplicitNode
 from reportengine.namespaces import NSList
 
-from smefit import fit_result
+from smefit import credible_intervals
 from smefit.blackjax_samplers import BJ_ALGORITHM_SETTINGS, BJ_SHARED_SETTINGS
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
@@ -151,6 +151,28 @@ def test_parse_rge_valid(cfg):
     rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
     result = cfg.parse_rge(rge)
     assert result == rge
+
+
+def test_parse_rge_resolves_rg_matrix_given_as_a_fit_name(cfg, tmp_path):
+    fit_dir = tmp_path / "fits" / "my_fit"
+    fit_dir.mkdir(parents=True)
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ):
+        result = cfg.parse_rge({"init_scale": 1000.0, "rg_matrix": "my_fit"})
+
+    assert result["rg_matrix"] == str(fit_dir / "rge_matrix.pkl")
+
+
+def test_parse_rge_unknown_rg_matrix_raises(cfg, tmp_path):
+    with patch(
+        "smefit.paths.load_user_paths",
+        return_value={"smefit_results": str(tmp_path)},
+    ), patch("smefit.paths.fetch_fit_if_missing"):
+        with pytest.raises(ConfigError, match="no_such_fit"):
+            cfg.parse_rge({"init_scale": 1000.0, "rg_matrix": "no_such_fit"})
 
 
 def test_parse_rge_missing_init_scale_raises(cfg):
@@ -1347,7 +1369,7 @@ def test_parse_interval_types_wraps_a_single_name(cfg):
 
 def test_parse_interval_types_keeps_a_list_in_order(cfg, monkeypatch):
     monkeypatch.setitem(
-        fit_result._INTERVAL_TYPES, "fake", lambda _v, _l: [(-1.0, 1.0)]
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
     )
 
     assert cfg.parse_interval_types(["fake", "eti"]) == ["fake", "eti"]

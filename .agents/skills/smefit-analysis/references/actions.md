@@ -36,8 +36,6 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `chi2_timing(chi2, n_eval=1000)`
   - Time the evaluation of the chi2 function.
-- `run_prior_test(prior)`
-- `run_test(eft_model, chi2)`
 - `time_chi2_vec(chi2, output_path, batch_sample_sizes=None)`
   - Time the vectorized chi2 across different batch sizes.
 
@@ -70,6 +68,8 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
+- `global_information_table(global_information_matrix, params_to_plot=None)`
+  - Share of each coefficient's variance contributed by each source.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
   - Mass scan results as a table.
 - `pca_components(pca)`
@@ -83,6 +83,8 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
+- `plot_global_information_heatmap(global_information_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
+  - Plot the global information matrix as a heatmap.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca)`
@@ -109,8 +111,6 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.utils`
 
-- `build_exact_posterior_prior(bayesian_update: collections.abc.Mapping, coefficients: smefit.core.CoefficientGroup, datasets: collections.abc.Sequence | None, external_chi2: collections.abc.Mapping | None = None) -> smefit.priors.ExactPosteriorPrior`
-  - Build ExactPosteriorPrior from a previous fit result and its saved runcard.
 - `ensure_list(x)`
   - Ensure the input is a list. If the input is not a list, wrap it in a list.
 - `resolve_posterior(resolve_coeffs, posterior_free, best_free)`
@@ -169,6 +169,8 @@ names in tracebacks. They are resolved for you.
   - Aggregate Fisher matrices by summing within each group.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
+- `global_information_matrix(aggregate_fisher_information_matrices)`
+  - Compute the constraining power of each source on each coefficient.
 - `total_fisher_information_matrix(chi2, gd_best_fit)`
   - Fisher information matrix of the full likelihood at the best-fit point.
 

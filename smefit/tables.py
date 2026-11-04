@@ -132,7 +132,7 @@ def global_information_table(
     Returns
     -------
     pd.DataFrame
-        Index = LaTeX coefficient labels, columns = source_names. Fractions,
+        Index = coefficient labels, columns = source labels. Fractions,
         like :func:`fisher_diagonals_normalised`; rows sum to 1.
     """
     gim = global_information_matrix
@@ -140,6 +140,7 @@ def global_information_table(
         select_params(gim.index, params_to_plot, context="global information")
     ]
     gim.index = [latex_label(name) for name in gim.index]
+    gim.columns = [latex_label(name) for name in gim.columns]
     return gim
 
 

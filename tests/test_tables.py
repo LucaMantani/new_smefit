@@ -91,7 +91,7 @@ def test_fisher_diagonals_normalised_typesets_a_name_without_a_label():
 
 def test_global_information_table_keeps_fractions_and_latex_labels():
     """Values pass through as fractions, like fisher_diagonals_normalised;
-    known coefficients get their LaTeX label."""
+    both axes are labelled, the sources as well as the coefficients."""
     gim = pd.DataFrame(
         {"DS_A": [0.25, 0.6], "DS_B": [0.75, 0.4]}, index=["OQQ1", "NotARealOp"]
     )
@@ -102,7 +102,18 @@ def test_global_information_table_keeps_fractions_and_latex_labels():
         default_latex_labels["OQQ1"],
         r"$\mathrm{NotARealOp}$",
     ]
+    assert result.columns.tolist() == [r"$\mathrm{DS\_A}$", r"$\mathrm{DS\_B}$"]
     np.testing.assert_allclose(result.to_numpy(), gim.to_numpy())
+
+
+def test_global_information_table_applies_latex_labels_to_the_sources():
+    gim = pd.DataFrame({"MyGroup": [1.0]}, index=["OQQ1"])
+
+    result = global_information_table(
+        gim, latex_label=make_latex_label({"MyGroup": r"$t\bar{t}$"})
+    )
+
+    assert result.columns.tolist() == [r"$t\bar{t}$"]
 
 
 def test_global_information_table_restricts_and_orders_by_params_to_plot():

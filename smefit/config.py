@@ -122,7 +122,17 @@ class smefitConfig(Config):
         dependencies. A fit in scope (``fit:``, or ``fits`` as a namespace) needs
         nothing else, as it is rebuilt from its own runcard; otherwise the
         runcard has to supply ``datasets_chi2`` and ``gd_best_fit``.
+
+        Individual fits are refused here, before anything runs: each coefficient
+        was fitted with the others at their baseline, so their best-fit values
+        taken together are not a point of the joint chi2.
         """
+        if fit is not None and fit.individual_fit:
+            raise ConfigError(
+                f"Cannot compute Fisher information matrices of '{fit.fit_name}': it "
+                "is a set of individual fits, whose best-fit values are not a joint "
+                "point of the likelihood."
+            )
         return (
             _aggregate_fisher_from_runcard
             if fit is None

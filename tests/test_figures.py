@@ -28,8 +28,13 @@ from smefit.figures import (
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
-from smefit.latex_labels import latex_label
+from smefit.latex_labels import make_latex_label
 from smefit.pca import PCA
+
+
+def _plain(name):
+    """A ``latex_label`` for tests that are not about labels: names stay readable."""
+    return name
 
 
 @pytest.fixture(autouse=True)
@@ -208,7 +213,7 @@ def test_plot_chi2_scan_yields_one_figure_per_coefficient():
         {"OpZZ": {"points": [-2.0, 2.0], "chi2": [1.0, 1.0]}},
     ]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=_plain)
 
     assert [name for _, name in result] == ["OpA", "OpZZ"]
     for fig, _ in result:
@@ -219,7 +224,7 @@ def test_plot_chi2_scan_yields_one_figure_per_coefficient():
 def test_plot_chi2_scan_plots_points_against_chi2():
     scans = [{"OpA": {"points": [-1.0, 0.0, 1.0], "chi2": [4.0, 0.0, 4.0]}}]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=_plain)
 
     fig, name = result[0]
     assert name == "OpA"
@@ -231,7 +236,7 @@ def test_plot_chi2_scan_plots_points_against_chi2():
 def test_plot_chi2_scan_uses_latex_label_when_known():
     scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=make_latex_label())
 
     fig, _ = result[0]
     assert fig.axes[0].get_xlabel() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
@@ -240,7 +245,7 @@ def test_plot_chi2_scan_uses_latex_label_when_known():
 def test_plot_chi2_scan_applies_latex_labels():
     scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
 
-    result = plot_chi2_scan(scans, latex_labels={"OQQ1": "$c_1$"})
+    result = plot_chi2_scan(scans, latex_label=make_latex_label({"OQQ1": "$c_1$"}))
 
     fig, name = result[0]
     assert fig.axes[0].get_xlabel() == "$c_1$"
@@ -310,20 +315,23 @@ def test_plot_posterior_correlations_labels_both_axes_with_the_coefficients():
         _fit(
             free=["OQQ1", "NotARealOp"],
             samples={"OQQ1": [0.0, 1.0, 2.0], "NotARealOp": [2.0, 0.0, 1.0]},
-        )
+        ),
+        latex_label=make_latex_label(),
     )
 
     ax = fig.axes[0]
-    labels = [r"$c_{QQ}^{\scriptscriptstyle 1}$", "NotARealOp"]
+    labels = [r"$c_{QQ}^{\scriptscriptstyle 1}$", r"$\mathrm{NotARealOp}$"]
     assert [t.get_text() for t in ax.get_xticklabels()] == labels
     assert [t.get_text() for t in ax.get_yticklabels()] == labels
 
 
 def test_plot_posterior_correlations_applies_latex_labels():
-    fig = plot_posterior_correlations(_fit(), latex_labels={"OpA": "$c_A$"})
+    fig = plot_posterior_correlations(
+        _fit(), latex_label=make_latex_label({"OpA": "$c_A$"})
+    )
 
     ax = fig.axes[0]
-    labels = ["$c_A$", latex_label("OpZZ")]
+    labels = ["$c_A$", make_latex_label()("OpZZ")]
     assert [t.get_text() for t in ax.get_xticklabels()] == labels
     assert [t.get_text() for t in ax.get_yticklabels()] == labels
 
@@ -339,7 +347,8 @@ def test_plot_posterior_correlations_covers_the_free_coefficients_only():
                 "OpZZ": [0.0, -1.0, -2.0, -3.0],
                 "OpDerived": [0.0, 1.0, 4.0, 9.0],
             },
-        )
+        ),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -354,8 +363,12 @@ def test_plot_posterior_correlations_covers_the_free_coefficients_only():
 
 def test_plot_posterior_correlations_is_headed_by_the_fit_it_is_drawn_from():
     """Several fits produce several heatmaps; each has to say which it is."""
-    labelled = plot_posterior_correlations(_fit(label=r"$\mathrm{Analytic}$"))
-    unlabelled = plot_posterior_correlations(_fit(fit_name="my_fit"))
+    labelled = plot_posterior_correlations(
+        _fit(label=r"$\mathrm{Analytic}$"), latex_label=_plain
+    )
+    unlabelled = plot_posterior_correlations(
+        _fit(fit_name="my_fit"), latex_label=_plain
+    )
 
     assert labelled.axes[0].get_xlabel() == r"$\mathrm{Analytic}$"
     assert unlabelled.axes[0].get_xlabel() == "my_fit"
@@ -371,6 +384,7 @@ def test_plot_posterior_correlations_presentation_is_overridable():
         cmap="PuOr",
         value_fmt="{:.3f}",
         colorbar=False,
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -392,7 +406,8 @@ def test_plot_posterior_correlations_annotates_uncorrelated_pairs_too():
     """An uncorrelated pair is a result, not a gap: zero cells are drawn and
     annotated rather than blanked as they are in the Fisher heatmap."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [1.0, -1.0, 1.0, -1.0], "OpZZ": [1.0, 1.0, -1.0, -1.0]})
+        _fit(samples={"OpA": [1.0, -1.0, 1.0, -1.0], "OpZZ": [1.0, 1.0, -1.0, -1.0]}),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -402,7 +417,8 @@ def test_plot_posterior_correlations_annotates_uncorrelated_pairs_too():
 def test_plot_posterior_correlations_blanks_a_frozen_coefficient():
     """A coefficient whose samples never moved correlates with nothing."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [0.0, 1.0, 2.0], "OpZZ": [1.0, 1.0, 1.0]})
+        _fit(samples={"OpA": [0.0, 1.0, 2.0], "OpZZ": [1.0, 1.0, 1.0]}),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -413,7 +429,8 @@ def test_plot_posterior_correlations_is_drawn_on_a_fixed_scale():
     """The colour scale spans the full range of a correlation whatever the
     matrix happens to contain, so two fits' heatmaps can be compared by eye."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [0.0, 1.0, 2.0, 5.0], "OpZZ": [2.0, 0.0, 1.0, 1.5]})
+        _fit(samples={"OpA": [0.0, 1.0, 2.0, 5.0], "OpZZ": [2.0, 0.0, 1.0, 1.5]}),
+        latex_label=_plain,
     )
 
     image = fig.axes[0].images[0]
@@ -439,7 +456,7 @@ def test_plot_posterior_correlations_rejects_an_individual_fit():
     )
 
     with pytest.raises(ValueError, match="my_individual_fit"):
-        plot_posterior_correlations(fit)
+        plot_posterior_correlations(fit, latex_label=_plain)
 
 
 def test_plot_posterior_correlations_restricts_to_params_to_plot():
@@ -456,6 +473,7 @@ def test_plot_posterior_correlations_restricts_to_params_to_plot():
             },
         ),
         params_to_plot=["OpZZ", "OpA"],
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -475,7 +493,9 @@ def test_plot_posterior_correlations_skips_a_coefficient_this_fit_lacks():
     given fit never fitted drops out of that fit's heatmap rather than
     stopping the report."""
     fig = plot_posterior_correlations(
-        _fit(free=["OpA", "OpZZ"]), params_to_plot=["OpA", "OpNotInThisFit"]
+        _fit(free=["OpA", "OpZZ"]),
+        params_to_plot=["OpA", "OpNotInThisFit"],
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]

@@ -60,24 +60,24 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
-- `chi2_scan_table(individual_chi2_scans, latex_labels=None)`
+- `chi2_scan_table(individual_chi2_scans, latex_label)`
   - Per-coefficient 1D chi2 scan results as a table.
-- `coefficient_bounds_table(fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None, latex_labels=None) -> 'pd.DataFrame'`
+- `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None, latex_labels=None)`
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `global_information_table(global_information_matrix, params_to_plot=None, latex_labels=None)`
+- `global_information_table(global_information_matrix, latex_label, params_to_plot=None)`
   - Share of each coefficient's variance contributed by each source.
-- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_labels=None)`
+- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_label)`
   - Mass scan results as a table.
-- `pca_components(pca, latex_labels=None)`
+- `pca_components(pca, latex_label)`
   - Weight of each coefficient in each principal direction.
 - `pca_spectrum(pca)`
   - One row per principal direction, strongest first.
 
 ### `smefit.figures`
 
-- `plot_chi2_scan(individual_chi2_scans, latex_labels=None)`
+- `plot_chi2_scan(individual_chi2_scans, latex_label)`
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.
@@ -87,7 +87,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca)`
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
-- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True, latex_labels=None)`
+- `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`

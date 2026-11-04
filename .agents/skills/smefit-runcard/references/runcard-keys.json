@@ -33,6 +33,7 @@
     "individual_mass_scales",
     "individual_prior",
     "init_scale",
+    "latex_label",
     "optimizer",
     "prior",
     "pseudodata",

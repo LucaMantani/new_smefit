@@ -28,13 +28,10 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
 from smefit.fit_result import Fit
+from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
-from smefit.paths import (
-    fetch_fit_if_missing,
-    resolve_fit_dir,
-    resolve_path,
-)
+from smefit.paths import fetch_fit_if_missing, resolve_fit_dir, resolve_path
 from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
 from smefit.rge import ALLOWED_SMEFT_ACCURACY, ALLOWED_YUKAWA, build_rge_matrix
@@ -117,7 +114,9 @@ class smefitConfig(Config):
         Single-quote the labels: YAML then keeps backslashes as written.
 
         An entry overrides the built-in label
-        (:data:`smefit.latex_labels.default_latex_labels`).
+        (:data:`smefit.latex_labels.default_latex_labels`); a name with neither
+        is typeset as it is written. Reports read the result through
+        :meth:`produce_latex_label`.
         """
         if not isinstance(latex_labels, Mapping):
             raise ConfigError(
@@ -131,6 +130,15 @@ class smefitConfig(Config):
                     f"got {type(label).__name__}"
                 )
         return dict(latex_labels)
+
+    def produce_latex_label(self, latex_labels=None):
+        """The function report tables and figures use to write a name in LaTeX.
+
+        Takes only an optional key, so it resolves for any runcard. The key is
+        the one place "absent" is valid: consumers require this resource and
+        carry no default of their own.
+        """
+        return make_latex_label(latex_labels)
 
     def parse_rge(self, rge):
         """Parse and validate RGE settings."""

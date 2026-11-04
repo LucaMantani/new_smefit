@@ -1,9 +1,11 @@
 """
 smefit.latex_labels.py
 
-Default LaTeX labels for the names a report shows — Wilson coefficients and
-data groups — used by the report tables and figures. A runcard's
-``latex_labels`` block has the same flat structure and overrides them.
+How a report writes a name in LaTeX. :func:`make_latex_label` holds the whole
+policy: a runcard's ``latex_labels`` entry wins, then the built-in Wilson
+coefficient label, and any other name is typeset as it stands. It backs the
+``latex_label`` resource (``smefitConfig.produce_latex_label``), which is what
+report tables and figures take.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 default_latex_labels = {
     # --------------------------
@@ -181,37 +183,56 @@ default_latex_labels = {
     "Ol3u": r"$c_{l_3 u}$",
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
-    # --------------------------
-    # Data groups
-    # --------------------------
-    "LEP": r"$\mathrm{LEP}$",
-    "LHC": r"$\mathrm{LHC}$",
-    "HL-LHC": r"$\mathrm{HL\mbox{-}LHC}$",
-    "LHC-top": r"$\mathrm{LHC\mbox{-}top}$",
-    "LHC-4H": r"$\mathrm{LHC\mbox{-}4H}$",
-    "LHC-Higgs": r"$\mathrm{LHC\mbox{-}Higgs}$",
-    "LHC-diboson": r"$\mathrm{LHC\mbox{-}diboson}$",
-    "LHC-DY": r"$\mathrm{LHC\mbox{-}DY}$",
-    "FCCee_91": r"$\mathrm{FCCee\_91}$",
-    "FCCee_161": r"$\mathrm{FCCee\_161}$",
-    "FCCee_240": r"$\mathrm{FCCee\_240}$",
-    "FCCee_365": r"$\mathrm{FCCee\_365}$",
-    "FCCee": r"$\mathrm{FCCee}$",
 }
 
+# What a plain name cannot contain inside \mathrm: set_plot_style turns usetex on,
+# so one unescaped underscore stops the whole figure from compiling. The hyphen
+# compiles, but math mode would set it as a minus sign.
+_LATEX_ESCAPES = str.maketrans(
+    {
+        "\\": r"\mbox{\textbackslash}",
+        "_": r"\_",
+        "-": r"\mbox{-}",
+        "&": r"\&",
+        "%": r"\%",
+        "#": r"\#",
+        "$": r"\$",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\mbox{\textasciitilde}",
+        "^": r"\mbox{\textasciicircum}",
+        " ": r"\ ",
+    }
+)
 
-def latex_label(name: str, latex_labels: Mapping[str, str] | None = None) -> str:
-    """How to write ``name`` (operator, group name...) in latex a report table or figure.
 
-    The runcard's optional ``latex_labels`` entry overrides the default labels in ``default_latex_labels``.
+def _escaped_fallback(name: str) -> str:
+    """Typeset a name that has no label of its own exactly as it is written."""
+    return rf"$\mathrm{{{name.translate(_LATEX_ESCAPES)}}}$"
+
+
+def make_latex_label(
+    overrides: Mapping[str, str] | None = None,
+) -> Callable[[str], str]:
+    """Build the function that writes a name in LaTeX for a report.
+
+    Data groups and datasets are named in the runcard, so no list of defaults
+    could cover them: they reach the fallback, which is why it has to be safe.
 
     Parameters
     ----------
-    name : str
-        The plain name: a coefficient, a data group, ...
-    latex_labels : Mapping[str, str], optional
-        The parsed ``latex_labels`` runcard key.
+    overrides : Mapping[str, str], optional
+        The parsed ``latex_labels`` runcard key. Takes precedence over
+        :data:`default_latex_labels`.
+
+    Returns
+    -------
+    Callable[[str], str]
+        Maps a plain name (a coefficient, a data group, ...) to its label.
     """
-    if latex_labels and name in latex_labels:
-        return latex_labels[name]
-    return default_latex_labels.get(name, name)
+    labels = {**default_latex_labels, **(overrides or {})}
+
+    def latex_label(name: str) -> str:
+        return labels[name] if name in labels else _escaped_fallback(name)
+
+    return latex_label

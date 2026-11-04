@@ -300,7 +300,9 @@ Parse the optional map from a displayed name to its LaTeX label.
 Single-quote the labels: YAML then keeps backslashes as written.
 
 An entry overrides the built-in label
-(:data:`smefit.latex_labels.default_latex_labels`).
+(:data:`smefit.latex_labels.default_latex_labels`); a name with neither
+is typeset as it is written. Reports read the result through
+:meth:`produce_latex_label`.
 
 ### `optimizer_settings`
 
@@ -448,6 +450,7 @@ which runcard keys each action ultimately needs.
 - `individual_mass_scales`(coefficients, chi2_scan_settings) — Produce an NSList of mass scan points from the single free coefficient's prior.
 - `individual_prior`(individual_coefficients) — Produce prior for a single-free-parameter individual fit.
 - `init_scale`(rge) — Produce the initial scale (in GeV) at which Wilson coefficients are defined.
+- `latex_label`(latex_labels) — The function report tables and figures use to write a name in LaTeX.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.

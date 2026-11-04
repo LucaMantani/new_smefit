@@ -215,3 +215,13 @@ fits need not share coefficients — via `smefit.plot_utils.select_params`.
 A routine only takes the key where a subset is still the same quantity: not every
 one does, and `pca_components` is the counterexample, since a principal direction
 is a combination of all the free coefficients at once.
+
+An optional `latex_labels: {OtG: '$c_{tG}^{\rm new}$', MyGroup: '$t\bar{t}$'}` map
+overrides how a report writes a name. Report routines do not read it: they take
+the `latex_label` resource (`produce_latex_label`, `config.py`), a function from a
+name to its label, with no default of its own. It always resolves, and it holds the
+policy in one place (`make_latex_label`, `latex_labels.py`): the runcard entry, then
+the built-in coefficient label, then the name typeset as written with its LaTeX
+specials escaped. Data groups and datasets rely on that last step, so they need no
+built-in entries. A routine that keys anything on a label must relabel last, since
+two names may share one.

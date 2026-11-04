@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from smefit import dataset_info as di
+from smefit import utils_actions as ua
 from smefit.dataset_info import Bibliography, DatasetInfo, dataset_table_tex
 from smefit.pca import PCA
 from smefit.utils_actions import run_pca, write_dataset_table
@@ -29,6 +29,26 @@ def test_write_dataset_table_without_bibliography_writes_no_bib(tmp_path):
 
     assert (tmp_path / "dataset_table.tex").exists()
     assert not (tmp_path / "dataset_table.bib").exists()
+
+
+def test_preview_typesets_the_table_at_paper_width():
+    tex = ua._preview_tex(with_bibliography=False)
+
+    assert r"\usepackage[textwidth=483pt]{geometry}" in tex
+    assert r"\input{dataset_table}" in tex
+    assert "natbib" not in tex
+    assert r"\bibliography" not in tex
+
+
+def test_preview_with_bibliography_links_its_dois():
+    tex = ua._preview_tex(with_bibliography=True)
+
+    assert r"\usepackage[numbers]{natbib}" in tex
+    assert r"\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}" in tex
+    assert tex.endswith(
+        "\\bibliographystyle{unsrtnat}\n\\bibliography{dataset_table}\n"
+        "\\end{document}\n"
+    )
 
 
 def _files(folder):
@@ -57,8 +77,8 @@ def _fake_latex(monkeypatch, logs, fail=None):
             )
         return subprocess.CompletedProcess(command, 0, stdout=b"")
 
-    monkeypatch.setattr(di.subprocess, "run", run)
-    monkeypatch.setattr(di.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+    monkeypatch.setattr(ua.subprocess, "run", run)
+    monkeypatch.setattr(ua.shutil, "which", lambda tool: f"/usr/bin/{tool}")
     return calls
 
 
@@ -113,10 +133,10 @@ def test_compile_pdf_gives_up_on_a_log_that_never_settles(
 ):
     calls = _fake_latex(monkeypatch, ["Rerun LaTeX."] * 10)
 
-    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
         write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
 
-    assert calls == ["pdflatex"] * (1 + di._MAX_LATEX_RERUNS)
+    assert calls == ["pdflatex"] * (1 + ua._MAX_LATEX_RERUNS)
     assert "still asks for a rerun" in caplog.text
     assert "dataset_table_preview.pdf" in _files(tmp_path)
 
@@ -125,9 +145,9 @@ def test_compile_pdf_without_pdflatex_writes_the_table_and_warns(
     monkeypatch, tmp_path, caplog
 ):
     calls = _fake_latex(monkeypatch, [])
-    monkeypatch.setattr(di.shutil, "which", lambda tool: None)
+    monkeypatch.setattr(ua.shutil, "which", lambda tool: None)
 
-    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
         write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
 
     assert calls == []
@@ -139,10 +159,10 @@ def test_compile_pdf_gives_up_on_a_tool_that_hangs(monkeypatch, tmp_path, caplog
     def hang(command, cwd, **kwargs):
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
-    monkeypatch.setattr(di.subprocess, "run", hang)
-    monkeypatch.setattr(di.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+    monkeypatch.setattr(ua.subprocess, "run", hang)
+    monkeypatch.setattr(ua.shutil, "which", lambda tool: f"/usr/bin/{tool}")
 
-    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
         write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
 
     assert "pdflatex timed out" in caplog.text
@@ -153,7 +173,7 @@ def test_compile_pdf_gives_up_on_a_tool_that_hangs(monkeypatch, tmp_path, caplog
 def test_compile_pdf_latex_error_warns_and_keeps_the_log(monkeypatch, tmp_path, caplog):
     _fake_latex(monkeypatch, [""], fail="pdflatex")
 
-    with caplog.at_level(logging.WARNING, logger="smefit.dataset_info"):
+    with caplog.at_level(logging.WARNING, logger="smefit.utils_actions"):
         write_dataset_table("TABLE", Bibliography(), tmp_path, compile_pdf=True)
 
     assert "xltabular.sty" in caplog.text

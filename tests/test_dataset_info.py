@@ -712,26 +712,6 @@ def test_table_spans_the_line_width():
     assert r"\usepackage{array,booktabs,xltabular,hyperref}" in tex
 
 
-def test_preview_typesets_the_table_at_paper_width():
-    tex = di._preview_tex(with_bibliography=False)
-
-    assert r"\usepackage[textwidth=483pt]{geometry}" in tex
-    assert r"\input{dataset_table}" in tex
-    assert "natbib" not in tex
-    assert r"\bibliography" not in tex
-
-
-def test_preview_with_bibliography_links_its_dois():
-    tex = di._preview_tex(with_bibliography=True)
-
-    assert r"\usepackage[numbers]{natbib}" in tex
-    assert r"\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}" in tex
-    assert tex.endswith(
-        "\\bibliographystyle{unsrtnat}\n\\bibliography{dataset_table}\n"
-        "\\end{document}\n"
-    )
-
-
 def test_nodes_read_only_the_commondata():
     """The contract the skill references rely on: every node of this module
     needs only `datasets`, `data_path` and the other nodes here, so its

@@ -211,8 +211,8 @@ def dataset_table(dataset_info):
     """The datasets of the runcard, as :func:`write_dataset_table` lists them.
 
     The report counterpart of the LaTeX table: the same rows in the same
-    order, and the same total, with the references as identifiers rather than
-    citations, so it needs no INSPIRE lookup.
+    order, and the same total, with the references as identifiers, so it needs 
+    no INSPIRE lookup.
 
     Parameters
     ----------

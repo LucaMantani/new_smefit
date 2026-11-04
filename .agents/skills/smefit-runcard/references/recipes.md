@@ -19,18 +19,22 @@ rge:
 ```
 
 - Computing the RGE matrix can be slow; it is saved automatically under the
-  run's output directory. To reuse one across runs, point `rg_matrix:` at the
-  saved pickle — preferably via the `smefit_results` prefix:
-  `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
+  run's output directory. To reuse one across runs, name the fit that saved it:
+  `rg_matrix: <fit_name>` (looked up in `smefit_results/fits/` like a `fits:`
+  entry). A directory holding an `rge_matrix.pkl`, or the pickle itself
+  (`smefit_results/fits/<fit_name>/rge_matrix.pkl`), works too; a local
+  directory with a bare name must be written `./name`. If the fit is not
   present locally, smefit automatically tries to download it from the server
   before failing.
+- A `bayesian_update:` reuses the previous fit's own `rge_matrix.pkl` when it
+  rebuilds that fit's likelihood; nothing to configure.
 - To compute and save the matrix without running a fit, put
   `rge_matrix` under `actions_:` (the runcard still needs `datasets`,
   `coefficients` and this `rge:` block). Any fit action writes it as well.
 - `rge_matrix` only covers `datasets`. Each `external_chi2` likelihood (e.g. the
   Drell-Yan ones) builds its own RGE matrix when it is loaded during a fit, and
   saves it only if its entry sets `save_rge_path`; reuse it through that
-  entry's own `rg_matrix` key.
+  entry's own `rg_matrix` key, which takes the same three forms.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 
@@ -180,7 +184,8 @@ external_chi2:
 
 `path` and `rg_matrix` entries are prefix-resolved like all runcard paths
 (`new_smefit/...`, `smefit_database/...`, `smefit_results/...`); an `rg_matrix`
-under `smefit_results/` is auto-downloaded from the server when missing.
+may also be a fit name or a directory, and one under `smefit_results/` is
+auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,

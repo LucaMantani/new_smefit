@@ -13,7 +13,7 @@ In runcards, use the key name as a prefix for relative paths:
     data_path:  smefit_database/commondata
     theory_path: smefit_database/theory
     path:        new_smefit/external_chi2/drell_yan/MyModule.py
-    rg_matrix:   smefit_results/fits/my_fit/rge_matrix.pkl
+    rg_matrix:   smefit_results/fits/my_fit/rge_matrix.pkl  (or just: my_fit)
 
 Users can add extra aliases for any directory (e.g. an alternative database):
     lhc_database: /data/shared/lhc_database_v2

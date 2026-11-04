@@ -441,19 +441,54 @@ def check_blackjax_algorithm(runcard, rep):
         )
 
 
-def check_rg_matrix(value, label, resolver, rep):
-    """Check an rg_matrix path. Missing files under smefit_results/ are only a
-    warning: smefit auto-downloads the fit from the server before failing."""
-    resolved = resolver.resolve(value, rep, label)
-    if resolved is None or Path(resolved).exists():
-        return
+RGE_MATRIX_FILENAME = "rge_matrix.pkl"  # smefit.rge.RGEMatrix.FILENAME
+
+
+def _check_fetchable(value, resolved, label, resolver, rep, what="file"):
+    """Report a missing path. Under smefit_results/ that is only a warning:
+    smefit auto-downloads the fit from the server before failing."""
+    if Path(resolved).exists():
+        return True
     if resolver.has_prefix(str(value), "smefit_results"):
         rep.warn(
             f"{label}: {resolved} not found locally — smefit will try to "
             "download the fit from the server at run time"
         )
     else:
-        rep.error(f"{label}: file not found: {resolved}")
+        rep.error(f"{label}: {what} not found: {resolved}")
+    return False
+
+
+def check_rg_matrix(value, label, resolver, rep):
+    """Check an external chi2 module's rg_matrix: a plain path to the file,
+    forwarded verbatim by smefit."""
+    resolved = resolver.resolve(value, rep, label)
+    if resolved is not None:
+        _check_fetchable(value, resolved, label, resolver, rep)
+
+
+def check_rge_rg_matrix(value, label, resolver, rep):
+    """Check `rge.rg_matrix`, mirroring smefit.rge.RGEMatrix.locate.
+
+    Three forms, told apart by their shape: a `.pkl` path is the file itself;
+    a bare name (no '/') is a fit name, looked up in smefit_results/fits/; any
+    other path is a directory holding rge_matrix.pkl.
+    """
+    value = str(value)
+    if value.endswith(".pkl"):
+        check_rg_matrix(value, label, resolver, rep)
+        return
+    # A fit name is looked up exactly like a `fits:` entry.
+    ref = f"smefit_results/fits/{value}" if "/" not in value else value
+    resolved = resolver.resolve(ref, rep, label)
+    if resolved is None:
+        return
+    what = "fit" if "/" not in value else "directory"
+    if not _check_fetchable(ref, resolved, label, resolver, rep, what=what):
+        return
+    pickle = Path(resolved) / RGE_MATRIX_FILENAME
+    if not pickle.is_file():
+        rep.error(f"{label}: {RGE_MATRIX_FILENAME} not found in {resolved}")
 
 
 def check_actions(runcard, rep, nonlinear_exprs=()):
@@ -617,8 +652,8 @@ def main():
             obs_scale = rge.get("obs_scale", "dynamic")
             if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
                 rep.error("rge.obs_scale must be a number or 'dynamic'")
-            if "rg_matrix" in rge:
-                check_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
+            if rge.get("rg_matrix"):
+                check_rge_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
 
     external = runcard.get("external_chi2")
     if external is not None:

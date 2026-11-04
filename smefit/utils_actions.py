@@ -52,7 +52,11 @@ def write_pseudodata(pseudodata, theory_path, output_path):
                 shutil.copy(src, th_dir / f"{ds.name}.json")
 
 
-def run_pca(pca, output_path):
-    """Print the principal-component analysis and save it."""
+def run_pca(pca, output_path, fit=None):
+    """Print the principal-component analysis and save it.
+
+    Run once per fit (``- fits run_pca``), each fit writes to a folder of its own
+    name, as they would otherwise all overwrite the same ``pca.json``.
+    """
     pca.print_summary()
-    pca.write(output_path)
+    pca.write(output_path if fit is None else output_path / fit.fit_name)

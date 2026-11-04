@@ -1,0 +1,46 @@
+# AUTO-COPIED from template_runcards/report_from_fit.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Fisher matrices, global information matrices and PCA of fits that have already
+# been run.
+#
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# Required by the PCA actions, and applies to every fit. Every sub-key is optional.
+pca_settings: {}
+
+# Sources are the datasets of each fit, or its `group:` labels when it has them.
+# Outside `with fits` these actions read `datasets` from this runcard instead:
+# see report.yaml for that form.
+template_text: |
+    Fisher, global information and PCA
+    ==================================
+    {@with fits@}
+    {@fit@}
+    ---------
+    Fisher table
+    {@fisher_diagonals_normalised@}
+    Fisher heatmap
+    {@plot_fisher_diagonals_heatmap@}
+    Global information table
+    {@global_information_table@}
+    Global information heatmap
+    {@plot_global_information_heatmap@}
+    PCA spectrum
+    {@pca_spectrum@}
+    {@plot_pca_spectrum@}
+    PCA components
+    {@pca_components@}
+    {@plot_pca_components_heatmap@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

@@ -44,6 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
+- `fit` — default: `None` (consumed by `aggregate_fisher_information_matrices`, `total_fisher_information_matrix`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -438,9 +439,10 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 reportengine builds these nodes on demand; they are listed so you can trace
 which runcard keys each action ultimately needs.
 
+- `aggregate_fisher_information_matrices`(fit) — Dispatch to the worker computing the per-source Fisher matrices.
 - `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
 - `data`(datasets, data_path) — Produce data group object.
-- `data_groups`(datasets) — Build data_groups from inline group: keys on each dataset entry.
+- `data_groups`(datasets, external_chi2) — Build data_groups from inline group: keys on datasets and external chi2s.
 - `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
 - `eft_model`(theory, coefficients, rge_matrix, use_quad) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge) — Load and wrap external chi2 modules into Chi2 objects.
@@ -463,4 +465,5 @@ which runcard keys each action ultimately needs.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.
+- `total_fisher_information_matrix`(fit) — Dispatch to the worker computing the Fisher matrix of the full likelihood.
 - `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

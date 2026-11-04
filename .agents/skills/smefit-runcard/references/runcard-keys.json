@@ -14,6 +14,7 @@
     "group"
   ],
   "derived_keys": [
+    "aggregate_fisher_information_matrices",
     "chi2",
     "data",
     "data_groups",
@@ -39,13 +40,23 @@
     "pseudodata",
     "rge_matrix",
     "theory",
+    "total_fisher_information_matrix",
     "whitening_transformation"
   ],
   "fit_reading_actions": [
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
+    "fisher_diagonals_normalised",
+    "global_information_table",
+    "pca_components",
+    "pca_spectrum",
+    "plot_fisher_diagonals_heatmap",
+    "plot_global_information_heatmap",
+    "plot_pca_components_heatmap",
+    "plot_pca_spectrum",
     "plot_posterior_correlations",
-    "report"
+    "report",
+    "run_pca"
   ],
   "path_prefixes": [
     "new_smefit",
@@ -89,6 +100,13 @@
         "data_groups",
         "prior",
         "theory"
+      ]
+    },
+    "fit": {
+      "default": "None",
+      "used_by": [
+        "aggregate_fisher_information_matrices",
+        "total_fisher_information_matrix"
       ]
     },
     "use_quad": {
@@ -314,6 +332,7 @@
     "data_path",
     "datasets",
     "external_chi2",
+    "fit",
     "fits",
     "gradient_descent_settings",
     "hessian_settings",

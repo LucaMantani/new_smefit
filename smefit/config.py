@@ -27,6 +27,12 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
+from smefit.fisher import (
+    _aggregate_fisher_from_fit,
+    _aggregate_fisher_from_runcard,
+    _total_fisher_from_fit,
+    _total_fisher_from_runcard,
+)
 from smefit.fit_result import Fit
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
@@ -96,16 +102,64 @@ class smefitConfig(Config):
         self._cached_data_group = DataGroup(parsed_datasets)
         return self._cached_data_group
 
-    def produce_data_groups(self, datasets):
-        """Build data_groups from inline group: keys on each dataset entry."""
+    def produce_data_groups(self, datasets=None, external_chi2=None):
+        """Build data_groups from inline group: keys on datasets and external chi2s.
+
+        Both keys are optional, as a runcard may have only one of them.
+        ``external_chi2`` is taken for its parser, which sets aside the groups it
+        strips from the entries: without the dependency they would be there only
+        if another node happened to parse the key first.
+        """
         groups: dict = {}
-        for ds in datasets:
+        for ds in datasets or []:
             group = ds.get("group")
             if group is not None:
                 groups.setdefault(group, []).append(ds["name"])
         for name, group in getattr(self, "_ext_chi2_groups", {}).items():
             groups.setdefault(group, []).append(name)
         return groups if groups else None
+
+    @explicit_node
+    def produce_aggregate_fisher_information_matrices(self, fit=None):
+        """Dispatch to the worker computing the per-source Fisher matrices.
+
+        Must stay an ExplicitNode because the two sources have different
+        dependencies. A fit in scope (``fit:``, or ``fits`` as a namespace) needs
+        nothing else, as it is rebuilt from its own runcard; otherwise the
+        runcard has to supply ``datasets_chi2`` and ``gd_best_fit``.
+        """
+        if fit is None:
+            return _aggregate_fisher_from_runcard
+        self._refuse_individual_fit(fit)
+        return _aggregate_fisher_from_fit
+
+    @explicit_node
+    def produce_total_fisher_information_matrix(self, fit=None):
+        """Dispatch to the worker computing the Fisher matrix of the full likelihood.
+
+        An ExplicitNode for the same reason as
+        :meth:`produce_aggregate_fisher_information_matrices`: without a fit in
+        scope the runcard has to supply ``chi2`` and ``gd_best_fit``, with one it
+        supplies neither.
+        """
+        if fit is None:
+            return _total_fisher_from_runcard
+        self._refuse_individual_fit(fit)
+        return _total_fisher_from_fit
+
+    @staticmethod
+    def _refuse_individual_fit(fit):
+        """Refuse a fit whose best-fit values are not a point of the joint chi2.
+
+        Each coefficient of an individual fit was fitted with the others at their
+        baseline. Raised while the graph is built, before anything runs.
+        """
+        if fit.individual_fit:
+            raise ConfigError(
+                f"Cannot compute Fisher information matrices of '{fit.fit_name}': it "
+                "is a set of individual fits, whose best-fit values are not a joint "
+                "point of the likelihood."
+            )
 
     def parse_latex_labels(self, latex_labels):
         r"""Parse the optional map from a displayed name to its LaTeX label.

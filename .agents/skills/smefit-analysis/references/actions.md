@@ -94,7 +94,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.utils_actions`
 
-- `run_pca(pca, output_path)`
+- `run_pca(pca, output_path, fit=None)`
   - Print the principal-component analysis and save it.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
@@ -165,16 +165,12 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.fisher`
 
-- `aggregate_fisher_information_matrices(fisher_information_matrices, data_groups=None)`
-  - Aggregate Fisher matrices by summing within each group.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
 - `global_information_matrix(aggregate_fisher_information_matrices)`
   - Compute the constraining power of each source on each coefficient.
-- `total_fisher_information_matrix(chi2, gd_best_fit)`
-  - Fisher information matrix of the full likelihood at the best-fit point.
 
 ### `smefit.pca`
 
-- `pca(total_fisher_information_matrix, pca_settings) -> smefit.pca.PCA`
+- `pca(total_fisher_information_matrix, pca_settings, fit=None) -> smefit.pca.PCA`
   - Diagonalise the total Fisher matrix.

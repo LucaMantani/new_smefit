@@ -112,8 +112,11 @@ fixed: whatever its own signature names, always. An `@explicit_node`-decorated
 from *that* function — resolving its parameters as further graph requirements.
 The dependency set is therefore chosen at graph-build time, from the runcard.
 
-The one instance in smefit is `produce_whitening_transformation`
-(`smefit/config.py`), dispatching to the workers in `smefit/whitening.py`:
+There are three instances in smefit. `produce_aggregate_fisher_information_matrices`
+and `produce_total_fisher_information_matrix` pick between a fit in scope and the
+runcard's own setup.
+`produce_whitening_transformation` (`smefit/config.py`), shown here, dispatches to
+the workers in `smefit/whitening.py`:
 
 ```python
 @explicit_node
@@ -389,7 +392,8 @@ protection against misspelling it.
 6. **An action that reports on finished fits** takes the `fit` (or `fits`)
    resource, which is how you would write it anyway. `collect_fit_reading_actions`
    (`scripts/generate_skill_reference.py`) reads that parameter name to build
-   the `fit_reading_actions` list in `runcard-keys.json`: it is what tells
+   the `fit_reading_actions` list in `runcard-keys.json`, following providers
+   down to a `produce_` that takes a `fit`: it is what tells
    `validate_runcard.py` that a `fits:`-only runcard running this action needs
    no `datasets`/`coefficients` of its own.
 

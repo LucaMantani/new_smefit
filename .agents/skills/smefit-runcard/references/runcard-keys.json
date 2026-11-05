@@ -49,6 +49,7 @@
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
     "plot_posterior_correlations",
+    "plot_posterior_histograms",
     "report"
   ],
   "path_prefixes": [
@@ -80,6 +81,8 @@
     "dataset_table_caption",
     "dataset_table_label",
     "fetch_bibtex",
+    "n_bins",
+    "n_cols",
     "n_eval",
     "n_samples",
     "n_steps",
@@ -332,6 +335,8 @@
     "interval_types",
     "latex_labels",
     "meta",
+    "n_bins",
+    "n_cols",
     "n_eval",
     "n_samples",
     "n_steps",

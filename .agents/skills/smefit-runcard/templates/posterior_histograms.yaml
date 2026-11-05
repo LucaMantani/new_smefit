@@ -1,0 +1,35 @@
+# AUTO-COPIED from template_runcards/posterior_histograms.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Marginal posteriors of the free coefficients of fits that have already been
+# run: no fit is run here, the posterior samples are read back from each fit's
+# fit_results.json. One figure, one panel per coefficient, every fit listed
+# under `fits` overlaid in its own colour (a single fit works too).
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# `params_to_plot`:
+# restrict the panels to these coefficients, in this order.
+# params_to_plot: [OtG, OtW, OpQM, OpQ3]
+
+# Presentation: top-level keys, or action arguments, which win —
+# {@plot_posterior_histograms(n_bins=50)@}.
+#
+# histogram bins per panel, shared by every fit so their bars line up
+n_bins: 30
+# panels per row
+n_cols: 4
+
+template_text: |
+    Marginal posteriors
+    ===================
+    {@plot_posterior_histograms@}
+
+actions_:
+  - report(main=True)

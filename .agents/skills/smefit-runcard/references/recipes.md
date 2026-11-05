@@ -408,6 +408,33 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Marginal posterior histograms
+
+`plot_posterior_histograms` draws the marginal posterior of every free and
+`expr`-constrained coefficient (fixed ones are left out), one panel each,
+with **every fit under `fits:` overlaid** in its own colour — one figure for
+the whole list, so it is called plainly, not inside `{@with fits@}`.
+Template: `posterior_histograms.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+template_text: |
+  {@plot_posterior_histograms@}
+actions_:
+  - report(main=True)
+```
+
+- `n_bins` (default 30) bins per panel, shared by all fits so the bars line up;
+  `n_cols` (default 4) panels per row; `params_to_plot` picks and orders the
+  panels, on the union of the fits' coefficients.
+- Histograms are normalised, so fits with different numbers of samples
+  compare directly. The legend names each fit by its `label`.
+- A coefficient one fit did not sample just has no histogram from it. Fits run
+  with `run_individual_*_fits` are accepted: the marginals are what each
+  sampled.
+
 ### Coefficient bounds table
 
 `coefficient_bounds_table` tabulates, per fit, the confidence bounds of every
@@ -518,7 +545,7 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised`,
+Taken today by `plot_posterior_correlations`, `plot_posterior_histograms`, `fisher_diagonals_normalised`,
 `global_information_table` and `coefficient_bounds_table` — so the Fisher and
 GIM tables' CSVs and the heatmaps drawn from them are restricted together, and a bounds table lists the same operators as
 the correlation heatmap beside it. An action argument still overrides it for one figure.

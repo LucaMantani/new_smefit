@@ -93,6 +93,8 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 - `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
+- `plot_posterior_histograms(fits, latex_label, params_to_plot=None, n_bins=30, n_cols=4)`
+  - Plot the marginal posterior of every coefficient, fits overlaid.
 
 ### `smefit.utils_actions`
 

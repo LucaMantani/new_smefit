@@ -36,7 +36,7 @@ def preview_tex(source: str, bibliography: Optional[str] = None) -> str:
     ``\\bibliography`` take them.
     """
     lines = [
-        f"% Written by smefit: a summary table of the datasets in TeX format.",
+        f"% Written by smefit: a preview of {source}.tex.",
         r"\documentclass{article}",
         rf"\usepackage[textwidth={_PREVIEW_TEXTWIDTH}]{{geometry}}",
         r"\usepackage{amsmath,array,booktabs,xltabular}",

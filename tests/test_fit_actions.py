@@ -42,9 +42,11 @@ def _make_mock_result(name):
 def test_single_fit_action(action, fixture_name):
     result = _make_mock_result("OpA")
     out = Path("/output")
-    action(result, out)
+    with patch("smefit.fit_actions._write_input_manifest") as write_manifest:
+        action(result, out)
     result.print_summary.assert_called_once()
     result.write.assert_called_once_with(out)
+    write_manifest.assert_called_once_with(out)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +66,9 @@ def test_single_fit_action(action, fixture_name):
 def test_individual_fits_action(action, tmp_path):
     results = [_make_mock_result("OpA"), _make_mock_result("OpB")]
 
-    with patch("smefit.fit_actions.FitResultGroup") as MockGroup:
+    with patch("smefit.fit_actions.FitResultGroup") as MockGroup, patch(
+        "smefit.fit_actions._write_input_manifest"
+    ) as write_manifest:
         mock_group = MagicMock()
         MockGroup.return_value = mock_group
 
@@ -73,3 +77,32 @@ def test_individual_fits_action(action, tmp_path):
     MockGroup.assert_called_once_with(results)
     mock_group.print_summary.assert_called_once()
     mock_group.write_results.assert_called_once_with(tmp_path)
+    # one manifest for the whole group, at the top of the fit directory
+    write_manifest.assert_called_once_with(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# The input manifest every fit action writes
+# ---------------------------------------------------------------------------
+
+
+def test_write_input_manifest_records_the_copied_runcard(
+    tmp_path, fixtures_data_path, fixtures_theory_path
+):
+    """Built from the runcard reportengine copied into the fit directory."""
+    import yaml
+
+    from smefit.fit_actions import _write_input_manifest
+    from smefit.input_manifest import InputManifest
+
+    runcard = {
+        "data_path": str(fixtures_data_path),
+        "theory_path": str(fixtures_theory_path),
+        "datasets": [{"name": "TESTDATA", "order": "NLO"}],
+    }
+    (tmp_path / "input").mkdir()
+    (tmp_path / "input" / "runcard.yaml").write_text(yaml.dump(runcard))
+
+    _write_input_manifest(tmp_path)
+
+    assert InputManifest.load(tmp_path) == InputManifest.from_runcard(runcard)

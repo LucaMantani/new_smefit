@@ -660,16 +660,33 @@ def test_plot_posterior_histograms_takes_the_union_of_the_fits():
     assert len(panel_a.patches) > len(panel_b.patches)
 
 
-def test_plot_posterior_histograms_shares_bin_edges_between_fits():
+def test_plot_posterior_histograms_can_share_bin_edges_between_fits():
     first = _fit(free=["OpA"], samples={"OpA": _GAUSS}, fit_name="a")
     second = _fit(free=["OpA"], samples={"OpA": _GAUSS + 3.0}, fit_name="b")
-    fig = plot_posterior_histograms([first, second], latex_label=_plain, n_bins=10)
+    fig = plot_posterior_histograms(
+        [first, second], latex_label=_plain, n_bins=10, shared_bins=True
+    )
 
     (ax,) = _visible(fig)
     bars = [p for p in ax.patches if isinstance(p, Rectangle)]
     # ten bars per fit, on the same ten edges
     assert len(bars) == 20
     assert len({round(p.get_x(), 12) for p in bars}) == 10
+
+
+def test_plot_posterior_histograms_bins_each_fit_over_its_own_range_by_default():
+    """A posterior ten times narrower still gets all its bins."""
+    wide = _fit(free=["OpA"], samples={"OpA": _GAUSS}, fit_name="wide")
+    narrow = _fit(free=["OpA"], samples={"OpA": 0.1 * _GAUSS}, fit_name="narrow")
+    fig = plot_posterior_histograms([wide, narrow], latex_label=_plain, n_bins=10)
+
+    (ax,) = _visible(fig)
+    bars = [p for p in ax.patches if isinstance(p, Rectangle)]
+    wide_bars, narrow_bars = bars[:10], bars[10:]
+    assert len(narrow_bars) == 10
+    assert narrow_bars[0].get_width() == pytest.approx(
+        wide_bars[0].get_width() * np.ptp(0.1 * _GAUSS) / np.ptp(_GAUSS)
+    )
 
 
 def test_plot_posterior_histograms_legend_names_each_fit_by_its_label():

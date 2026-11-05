@@ -426,9 +426,12 @@ actions_:
   - report(main=True)
 ```
 
-- `n_bins` (default 30) bins per panel, shared by all fits so the bars line up;
-  `n_cols` (default 4) panels per row; `params_to_plot` picks and orders the
-  panels, on the union of the fits' coefficients.
+- `n_bins` (default 30) bins per fit; `n_cols` (default 4) panels per row;
+  `params_to_plot` picks and orders the panels, on the union of the fits'
+  coefficients.
+- Each fit is binned over its own range, so a narrow posterior beside a wide
+  one keeps all its bins. `shared_bins: true` gives every fit on a panel the
+  same bins instead, so the bars line up.
 - Histograms are normalised, so fits with different numbers of samples
   compare directly. The legend names each fit by its `label`.
 - A coefficient one fit did not sample just has no histogram from it. Fits run

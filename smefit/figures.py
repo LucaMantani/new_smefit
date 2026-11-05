@@ -377,6 +377,7 @@ def plot_posterior_histograms(
     latex_label,
     params_to_plot=None,
     n_bins=30,
+    shared_bins=False,
     n_cols=4,
 ):
     """Plot the marginal posterior of every coefficient, fits overlaid.
@@ -406,8 +407,12 @@ def plot_posterior_histograms(
         and constrained coefficients of all the fits by default, in order of
         first appearance.
     n_bins : int, optional
-        Number of histogram bins per panel, shared by every fit on that panel
-        so their bars line up.
+        Number of histogram bins each fit is drawn with.
+    shared_bins : bool, optional
+        Whether every fit on a panel uses the same bins, spanning all of them,
+        so their bars line up. Off by default: each fit is binned over its own
+        range, so a posterior much narrower than the others on its panel still
+        gets ``n_bins`` bars rather than the few that fall inside it.
     n_cols : int, optional
         Panels per row.
 
@@ -466,15 +471,17 @@ def plot_posterior_histograms(
             for samples, color in zip(per_fit, colors)
             if name in samples
         ]
-        lowest = min(values.min() for values, _ in drawn)
-        highest = max(values.max() for values, _ in drawn)
-        edges = np.linspace(lowest, highest, int(n_bins) + 1)
+        if shared_bins:
+            lowest = min(values.min() for values, _ in drawn)
+            highest = max(values.max() for values, _ in drawn)
+            shared_edges = np.linspace(lowest, highest, int(n_bins) + 1)
 
         for values, color in drawn:
             if np.ptp(values) == 0:
                 # a point mass has no width to bin
                 ax.axvline(values[0], color=color, linewidth=1.5)
                 continue
+            edges = shared_edges if shared_bins else int(n_bins)
             ax.hist(values, bins=edges, density=True, color=color, alpha=0.3)
             ax.hist(
                 values,

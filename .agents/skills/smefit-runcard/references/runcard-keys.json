@@ -89,6 +89,7 @@
     "params_to_plot",
     "round_val",
     "seed",
+    "shared_bins",
     "tol",
     "value_fmt"
   ],
@@ -347,6 +348,7 @@
     "rge",
     "round_val",
     "seed",
+    "shared_bins",
     "template_text",
     "theory_path",
     "tol",

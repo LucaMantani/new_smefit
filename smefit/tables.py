@@ -372,6 +372,45 @@ def coefficient_bounds_comparison_table(
 
 
 @table
+def dataset_table(dataset_info):
+    """The datasets of the runcard, as :func:`write_dataset_table` lists them.
+
+    The report counterpart of the LaTeX table: the same rows in the same
+    order, and the same total, with the references as links labelled with
+    their identifiers, so it needs no INSPIRE lookup.
+    The links are markdown.
+
+    Parameters
+    ----------
+    dataset_info : list of smefit.dataset_info.DatasetInfo
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = dataset names, in the order of ``dataset_info`` (a group's
+        datasets together), then ``Total``, whose only cell is the sum of
+        ``n_dat``. Columns ``Group``, ``Description``, ``n_dat``,
+        ``Luminosity [fb^-1]`` (``--`` when the commondata gives none) and
+        ``References``.
+    """
+    table = pd.DataFrame(
+        {
+            "Group": [info.group or "" for info in dataset_info],
+            "Description": [info.markdown_description() for info in dataset_info],
+            "n_dat": [info.num_data for info in dataset_info],
+            "Luminosity [fb^-1]": [
+                ", ".join(f"{value:g}" for value in info.luminosity) or "--"
+                for info in dataset_info
+            ],
+            "References": [info.markdown_references() for info in dataset_info],
+        },
+        index=[info.name for info in dataset_info],
+    )
+    table.loc["Total"] = ["", "", table["n_dat"].sum(), "", ""]
+    return table
+
+
+@table
 def pca_components(pca, latex_label):
     """Weight of each coefficient in each principal direction.
 

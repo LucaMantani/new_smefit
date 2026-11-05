@@ -464,6 +464,78 @@ def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
     assert code == 0, out
 
 
+def test_runcard_that_only_describes_its_datasets_needs_no_theory_or_coefficients(
+    tmp_path,
+):
+    """The dataset table reads the commondata files and nothing else, so the
+    recipe's runcard (datasets + data_path) is complete."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fetch_bibtex=False,
+        compile_pdf=True,
+        actions_=["write_dataset_table"],
+    )
+    assert code == 0, out
+
+
+def test_report_next_to_the_dataset_table_needs_no_theory_or_coefficients(
+    tmp_path,
+):
+    """A report beside commondata-only actions reports on them, so it does not
+    turn the runcard into one that needs a fit setup."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        template_text="{@dataset_table@}",
+        actions_=["write_dataset_table", "report"],
+    )
+    assert code == 0, out
+    assert "'report' alone" not in out
+
+
+def test_report_alone_still_needs_the_fit_setup(tmp_path):
+    """On its own, 'report' says nothing about what its template runs: the
+    validator does not read the template, so it keeps the fit requirements,
+    and reminds that the report does not write the dataset table."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        coefficients=None,
+        template_text="{@dataset_table@}",
+        actions_=["report"],
+    )
+    assert code == 1, out
+    assert "'theory_path' is required" in out
+    assert "non-empty 'coefficients' mapping" in out
+    assert "'report' alone does not write the dataset table" in out
+    assert "add 'write_dataset_table'" in out
+
+
+def test_report_in_a_fit_runcard_gets_no_dataset_table_hint(tmp_path):
+    code, out = validate(
+        tmp_path, template_text="{@dataset_table@}", actions_=["report"]
+    )
+    assert code == 0, out
+    assert "'report' alone" not in out
+
+
+def test_dataset_table_next_to_a_fit_still_needs_the_fit_setup(tmp_path):
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        coefficients=None,
+        actions_=["write_dataset_table", "run_analytic_fit"],
+    )
+    assert code == 1, out
+    assert "'theory_path' is required" in out
+    assert "non-empty 'coefficients' mapping" in out
+
+
 def test_runcard_listing_fits_and_fitting_too_still_needs_data(tmp_path):
     """Listing 'fits:' is not a licence to skip the requirements: a runcard
     that also declares coefficients is setting up a fit of its own."""

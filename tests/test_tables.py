@@ -15,6 +15,7 @@ import yaml
 
 from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
+from smefit.dataset_info import DatasetInfo
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import default_latex_labels, make_latex_label
 from smefit.pca import PCA
@@ -22,6 +23,7 @@ from smefit.tables import (
     chi2_scan_table,
     coefficient_bounds_comparison_table,
     coefficient_bounds_table,
+    dataset_table,
     fisher_diagonals_normalised,
     global_information_table,
     mass_scan_table,
@@ -350,6 +352,53 @@ def test_coefficient_bounds_table_rejects_empty_interval_types() -> None:
         coefficient_bounds_table(
             _joint_fit({"OtG": _RAMP}), interval_types=[], latex_label=_plain
         )
+
+
+# ---------------------------------------------------------------------------
+# dataset_table
+# ---------------------------------------------------------------------------
+
+
+def test_dataset_table_lists_datasets_in_the_order_given():
+    """dataset_info has already grouped them, as the LaTeX table lists them."""
+    infos = [
+        DatasetInfo(
+            "B",
+            7,
+            description="tt",
+            luminosity=(36.1, 139.0),
+            references=(
+                "arxiv:1511.04716",
+                "recid:1323200",
+                "url:https://repository.cern/records/3rj9z-94994",
+            ),
+            group="Top",
+        ),
+        DatasetInfo("A", 1),
+    ]
+
+    result = dataset_table(infos)
+
+    assert result.index.tolist() == ["B", "A", "Total"]
+    assert result.loc["B"].tolist() == [
+        "Top",
+        "tt",
+        7,
+        "36.1, 139",
+        "[arXiv:1511.04716](https://arxiv.org/abs/1511.04716), "
+        "[INSPIRE:1323200](https://inspirehep.net/literature/1323200), "
+        "[repository.cern](https://repository.cern/records/3rj9z-94994)",
+    ]
+    assert result.loc["A"].tolist() == ["", "", 1, "--", ""]
+
+
+def test_dataset_table_ends_with_the_total_number_of_points():
+    """The LaTeX table's last line, so the two tables agree."""
+    result = dataset_table([DatasetInfo("A", 7), DatasetInfo("B", 15)])
+
+    assert result.index[-1] == "Total"
+    assert result.loc["Total"].tolist() == ["", "", 22, "", ""]
+    assert result["n_dat"].dtype == "int64"
 
 
 # ---------------------------------------------------------------------------

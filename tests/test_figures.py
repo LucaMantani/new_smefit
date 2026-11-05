@@ -754,6 +754,37 @@ def test_plot_posterior_histograms_reads_an_individual_fit():
     assert [ax.get_xlabel() for ax in _visible(fig)] == ["OpA", "OpB"]
 
 
+def test_plot_posterior_histograms_overlays_an_individual_fit_on_a_joint_one():
+    """Only the samples matter: a joint fit and a one-at-a-time fit share
+    panels, and each draws the coefficients it has."""
+    joint = _fit(
+        free=["OpA", "OpB"], samples={"OpA": _GAUSS, "OpB": _GAUSS}, fit_name="joint"
+    )
+    individual = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=["OpA"],
+                    best_fit_point={"OpA": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={"OpA": jnp.array(0.5 * _GAUSS)},
+                )
+            ]
+        ),
+        fit_name="individual",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+    fig = plot_posterior_histograms([joint, individual], latex_label=_plain)
+
+    panel_a, panel_b = _visible(fig)
+    assert [panel_a.get_xlabel(), panel_b.get_xlabel()] == ["OpA", "OpB"]
+    # two fits on OpA, one on OpB: filled bars plus a step outline per fit
+    assert len(panel_a.patches) == 2 * len(panel_b.patches)
+    (legend,) = fig.legends
+    assert [t.get_text() for t in legend.get_texts()] == ["joint", "individual"]
+
+
 def test_plot_posterior_histograms_graph_resolves(tmp_path):
     """The template runcard resolves through reportengine, which checks the
     annotations that calling the provider directly skips."""

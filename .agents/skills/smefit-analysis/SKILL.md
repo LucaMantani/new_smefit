@@ -96,7 +96,10 @@ in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
 the fit's name, without which the report gives no clue which output belongs to
 which fit. `plot_posterior_correlations` is the action, drawing the posterior
 correlations of each fit's free coefficients. Template:
-`posterior_correlations.yaml`.
+`posterior_correlations.yaml`. `plot_posterior_histograms` instead takes the
+whole list at once and overlays every fit's marginal posteriors, one panel per
+free or constrained coefficient. Template:
+`posterior_histograms.yaml`.
 
 `coefficient_bounds_table` is its tabular counterpart: per fit, the
 equal-tailed 68% and 95% bounds of every free coefficient,

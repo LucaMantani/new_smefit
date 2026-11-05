@@ -9,6 +9,8 @@ stored attributes), but that is not something to rely on — anything that
 measures text, `tight_layout()` above all, renders it.
 """
 
+from pathlib import Path
+
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
@@ -16,6 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.collections import PathCollection
+from matplotlib.patches import Rectangle
 
 from smefit import figures as figures_mod
 from smefit.figures import (
@@ -26,6 +29,7 @@ from smefit.figures import (
     plot_pca_components_heatmap,
     plot_pca_spectrum,
     plot_posterior_correlations,
+    plot_posterior_histograms,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import make_latex_label
@@ -603,3 +607,227 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
     assert _bar_sizes(ax) == [2]
     assert not [coll for coll in ax.collections if isinstance(coll, PathCollection)]
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ["constrained"]
+
+
+# ---------------------------------------------------------------------------
+# plot_posterior_histograms
+# ---------------------------------------------------------------------------
+
+_RNG = np.random.default_rng(0)
+_GAUSS = _RNG.normal(size=500)
+
+
+def _visible(fig):
+    return [ax for ax in fig.axes if ax.get_visible()]
+
+
+def test_plot_posterior_histograms_one_panel_per_free_coefficient():
+    fig = plot_posterior_histograms(
+        [_fit(samples={"OpA": _GAUSS, "OpZZ": _GAUSS})], latex_label=_plain
+    )
+
+    assert [ax.get_xlabel() for ax in _visible(fig)] == ["OpA", "OpZZ"]
+
+
+def test_plot_posterior_histograms_includes_constrained_coefficients():
+    """An expr coefficient's posterior is induced by the free ones, and is
+    worth seeing on its own; a fixed one is a constant, and is left out."""
+    fit = _fit(
+        free=["OpA"],
+        samples={"OpA": _GAUSS, "OpSq": _GAUSS**2, "OpFixed": np.ones_like(_GAUSS)},
+    )
+    fit.fit_runcard["coefficients"] = {
+        "OpA": {"free": True},
+        "OpSq": {"free": False, "vars": ["OpA"], "expr": "OpA**2"},
+        "OpFixed": {"free": False, "value": 1.0},
+    }
+    fig = plot_posterior_histograms([fit], latex_label=_plain)
+
+    assert [ax.get_xlabel() for ax in _visible(fig)] == ["OpA", "OpSq"]
+
+
+def test_plot_posterior_histograms_takes_the_union_of_the_fits():
+    """A coefficient one fit lacks still gets a panel, drawn by the other."""
+    first = _fit(free=["OpA"], samples={"OpA": _GAUSS}, fit_name="a")
+    second = _fit(
+        free=["OpA", "OpB"], samples={"OpA": _GAUSS, "OpB": _GAUSS}, fit_name="b"
+    )
+    fig = plot_posterior_histograms([first, second], latex_label=_plain)
+
+    panel_a, panel_b = _visible(fig)
+    assert [panel_a.get_xlabel(), panel_b.get_xlabel()] == ["OpA", "OpB"]
+    # filled bars plus a step outline per fit
+    assert len(panel_a.patches) > len(panel_b.patches)
+
+
+def test_plot_posterior_histograms_can_share_bin_edges_between_fits():
+    first = _fit(free=["OpA"], samples={"OpA": _GAUSS}, fit_name="a")
+    second = _fit(free=["OpA"], samples={"OpA": _GAUSS + 3.0}, fit_name="b")
+    fig = plot_posterior_histograms(
+        [first, second], latex_label=_plain, n_bins=10, shared_bins=True
+    )
+
+    (ax,) = _visible(fig)
+    bars = [p for p in ax.patches if isinstance(p, Rectangle)]
+    # ten bars per fit, on the same ten edges
+    assert len(bars) == 20
+    assert len({round(p.get_x(), 12) for p in bars}) == 10
+
+
+def test_plot_posterior_histograms_bins_each_fit_over_its_own_range_by_default():
+    """A posterior ten times narrower still gets all its bins."""
+    wide = _fit(free=["OpA"], samples={"OpA": _GAUSS}, fit_name="wide")
+    narrow = _fit(free=["OpA"], samples={"OpA": 0.1 * _GAUSS}, fit_name="narrow")
+    fig = plot_posterior_histograms([wide, narrow], latex_label=_plain, n_bins=10)
+
+    (ax,) = _visible(fig)
+    bars = [p for p in ax.patches if isinstance(p, Rectangle)]
+    wide_bars, narrow_bars = bars[:10], bars[10:]
+    assert len(narrow_bars) == 10
+    assert narrow_bars[0].get_width() == pytest.approx(
+        wide_bars[0].get_width() * np.ptp(0.1 * _GAUSS) / np.ptp(_GAUSS)
+    )
+
+
+def test_plot_posterior_histograms_legend_names_each_fit_by_its_label():
+    fits = [
+        _fit(samples={"OpA": _GAUSS, "OpZZ": _GAUSS}, fit_name="a", label="$A$"),
+        _fit(samples={"OpA": _GAUSS, "OpZZ": _GAUSS}, fit_name="b"),
+    ]
+    fig = plot_posterior_histograms(fits, latex_label=_plain)
+
+    (legend,) = fig.legends
+    assert [t.get_text() for t in legend.get_texts()] == ["$A$", "b"]
+
+
+def test_plot_posterior_histograms_rejects_no_fits():
+    with pytest.raises(ValueError, match="fits is empty"):
+        plot_posterior_histograms([], latex_label=_plain)
+
+
+def test_plot_posterior_histograms_rejects_a_fit_without_samples():
+    fit = _fit()
+    fit.fit_results.samples = None
+    with pytest.raises(ValueError, match="my_fit"):
+        plot_posterior_histograms([fit], latex_label=_plain)
+
+
+def test_plot_posterior_histograms_restricts_to_params_to_plot():
+    fig = plot_posterior_histograms(
+        [
+            _fit(
+                free=["OpA", "OpB", "OpZZ"],
+                samples=dict.fromkeys(["OpA", "OpB", "OpZZ"], _GAUSS),
+            )
+        ],
+        latex_label=_plain,
+        params_to_plot=["OpZZ", "OpA"],
+    )
+
+    assert [ax.get_xlabel() for ax in _visible(fig)] == ["OpZZ", "OpA"]
+
+
+def test_plot_posterior_histograms_lays_panels_out_n_cols_wide():
+    names = [f"Op{i}" for i in range(5)]
+    fig = plot_posterior_histograms(
+        [_fit(free=names, samples=dict.fromkeys(names, _GAUSS))],
+        latex_label=_plain,
+        n_cols=2,
+    )
+
+    assert len(fig.axes) == 6
+    assert len(_visible(fig)) == 5
+
+
+def test_plot_posterior_histograms_marks_a_point_mass_with_a_line():
+    fig = plot_posterior_histograms(
+        [_fit(free=["OpA"], samples={"OpA": np.zeros(10)})], latex_label=_plain
+    )
+
+    (line,) = _visible(fig)[0].get_lines()
+    assert list(line.get_xdata()) == [0.0, 0.0]
+
+
+def test_plot_posterior_histograms_reads_an_individual_fit():
+    """Unlike correlations, marginals exist for one-at-a-time fits."""
+    fit = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=[name],
+                    best_fit_point={name: 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={name: jnp.array(_GAUSS)},
+                )
+                for name in ["OpA", "OpB"]
+            ]
+        ),
+        fit_name="my_individual_fit",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+    fig = plot_posterior_histograms([fit], latex_label=_plain)
+
+    assert [ax.get_xlabel() for ax in _visible(fig)] == ["OpA", "OpB"]
+
+
+def test_plot_posterior_histograms_overlays_an_individual_fit_on_a_joint_one():
+    """Only the samples matter: a joint fit and a one-at-a-time fit share
+    panels, and each draws the coefficients it has."""
+    joint = _fit(
+        free=["OpA", "OpB"], samples={"OpA": _GAUSS, "OpB": _GAUSS}, fit_name="joint"
+    )
+    individual = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=["OpA"],
+                    best_fit_point={"OpA": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={"OpA": jnp.array(0.5 * _GAUSS)},
+                )
+            ]
+        ),
+        fit_name="individual",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+    fig = plot_posterior_histograms([joint, individual], latex_label=_plain)
+
+    panel_a, panel_b = _visible(fig)
+    assert [panel_a.get_xlabel(), panel_b.get_xlabel()] == ["OpA", "OpB"]
+    # two fits on OpA, one on OpB: filled bars plus a step outline per fit
+    assert len(panel_a.patches) == 2 * len(panel_b.patches)
+    (legend,) = fig.legends
+    assert [t.get_text() for t in legend.get_texts()] == ["joint", "individual"]
+
+
+def test_plot_posterior_histograms_graph_resolves(tmp_path):
+    """The template runcard resolves through reportengine, which checks the
+    annotations that calling the provider directly skips."""
+    import yaml
+    from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
+
+    from smefit.api import smefitAPI
+
+    template = Path(__file__).parents[1] / "template_runcards/posterior_histograms.yaml"
+    runcard = yaml.safe_load(template.read_text())
+    assert "{@plot_posterior_histograms@}" in runcard.pop("template_text")
+    for entry in runcard["fits"]:
+        folder = tmp_path / entry["name"]
+        _fit(samples={"OpA": _GAUSS, "OpZZ": _GAUSS}).fit_results.write(folder)
+        (folder / "input").mkdir()
+        (folder / "input" / "runcard.yaml").write_text(
+            yaml.safe_dump({"actions_": ["run_analytic_fit"]})
+        )
+        entry["path"] = str(tmp_path)
+
+    config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget("plot_posterior_histograms", (), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()

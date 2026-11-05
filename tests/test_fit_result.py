@@ -533,6 +533,29 @@ def test_use_quad_comes_from_the_runcard(tmp_path, use_quad):
     assert Fit.from_folder(out).use_quad is use_quad
 
 
+def test_fixed_coefficients_are_those_held_at_a_value():
+    """Only a constant value counts; an expr coefficient has a distribution."""
+    fit = Fit(
+        fit_results=_make_written_result(),
+        fit_name="my_fit",
+        fit_runcard={
+            "coefficients": {
+                "OpA": {"free": True, "prior": {"dist": "uniform"}},
+                "OpB": {"free": False, "vars": ["OpA"], "expr": "OpA**2"},
+                "OpC": {"free": False, "value": 0.0},
+            }
+        },
+    )
+
+    assert fit.fixed_coefficients == ["OpC"]
+
+
+def test_fixed_coefficients_is_empty_without_a_runcard():
+    assert (
+        Fit(fit_results=_make_written_result(), fit_name="f").fixed_coefficients == []
+    )
+
+
 def test_use_quad_ignores_a_stale_payload_entry(tmp_path):
     """Fits written when use_quad was serialised must not be believed."""
     out = _write_runcard(tmp_path / "my_fit", use_quad=True)

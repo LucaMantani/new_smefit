@@ -399,6 +399,9 @@ def test_dataset_table_ends_with_the_total_number_of_points():
     assert result.index[-1] == "Total"
     assert result.loc["Total"].tolist() == ["", "", 22, "", ""]
     assert result["n_dat"].dtype == "int64"
+
+
+# ---------------------------------------------------------------------------
 # coefficient_bounds_comparison_table
 # ---------------------------------------------------------------------------
 

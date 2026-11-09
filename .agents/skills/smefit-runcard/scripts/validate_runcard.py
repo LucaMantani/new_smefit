@@ -631,7 +631,7 @@ def main():
             "to actions_ to write dataset_table.tex from datasets and data_path only"
         )
 
-    if "datasets" in runcard:
+    if "datasets" in runcard and not reads_fits_only:
         required = (
             ("data_path",) if reads_commondata_only else ("data_path", "theory_path")
         )

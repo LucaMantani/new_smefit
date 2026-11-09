@@ -1546,7 +1546,7 @@ _FIT_RUNCARD = {
 }
 
 
-def _runcards_seen(monkeypatch, fit_runcard, datasets):
+def _runcards_seen(monkeypatch, fit_runcard, datasets, fit_path=None):
     """Run produce_fit_model with smefitAPI stubbed; return the runcards it was
     built from, one per resource asked for, and the FitModel."""
     from smefit import api
@@ -1561,7 +1561,12 @@ def _runcards_seen(monkeypatch, fit_runcard, datasets):
     monkeypatch.setattr(api.smefitAPI, "eft_model", resource, raising=False)
     monkeypatch.setattr(api.smefitAPI, "fit_covmat", resource, raising=False)
     monkeypatch.setattr("smefit.config.build_datasets_chi2", MagicMock())
-    fit = Fit(fit_results=MagicMock(), fit_name="my_fit", fit_runcard=fit_runcard)
+    fit = Fit(
+        fit_results=MagicMock(),
+        fit_name="my_fit",
+        fit_runcard=fit_runcard,
+        path=fit_path,
+    )
     model = smefitConfig.produce_fit_model(MagicMock(), fit, datasets)
     return seen, model
 
@@ -1583,8 +1588,8 @@ _TWO_DATASET_FIT = {
 
 
 def test_produce_fit_model_covers_only_the_listed_datasets(monkeypatch):
-    """Only the listed datasets, in listed order: one the fit included keeps
-    the fit's entry, one it did not is taken as listed."""
+    """Only the listed datasets, in listed order and exactly as listed, whether
+    or not the fit included them."""
     datasets = [
         {"name": "DS_NEW", "order": "NLO", "theory_cov": "conservative"},
         {"name": "DS_A", "order": "LO"},
@@ -1592,7 +1597,7 @@ def test_produce_fit_model_covers_only_the_listed_datasets(monkeypatch):
     seen, _ = _runcards_seen(monkeypatch, _TWO_DATASET_FIT, datasets)
     fit_datasets = _TWO_DATASET_FIT["datasets"]
     for runcard in seen:
-        assert runcard["datasets"] == [datasets[0], fit_datasets[0]]
+        assert runcard["datasets"] == datasets
         # the rest of the model is still the fit's
         assert {k: v for k, v in runcard.items() if k != "datasets"} == {
             k: v for k, v in _TWO_DATASET_FIT.items() if k != "datasets"
@@ -1601,26 +1606,23 @@ def test_produce_fit_model_covers_only_the_listed_datasets(monkeypatch):
     assert len(fit_datasets) == 2
 
 
-def test_produce_fit_model_drops_an_rge_cache_that_no_longer_resolves(
-    monkeypatch, tmp_path
-):
-    """The fit's rg_matrix is a cache: if the file is gone, the matrix is
-    computed from the same rge settings rather than failing."""
-    rge = {"init_scale": 1000.0, "rg_matrix": str(tmp_path / "gone.pkl")}
-    seen, _ = _runcards_seen(
-        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"]
-    )
-    assert all(runcard["rge"] == {"init_scale": 1000.0} for runcard in seen)
+def test_produce_fit_model_reuses_the_fit_s_rge_matrices(monkeypatch, tmp_path):
+    """The fit is rebuilt through Fit.rebuild_runcard, so its own
+    rge_matrix.pkl replaces whatever rg_matrix its runcard named."""
+    from smefit.rge import RGEMatrix
 
-
-def test_produce_fit_model_keeps_an_rge_cache_that_exists(monkeypatch, tmp_path):
-    cache = tmp_path / "rge_matrix.pkl"
+    cache = tmp_path / RGEMatrix.FILENAME
     cache.write_bytes(b"")
-    rge = {"init_scale": 1000.0, "rg_matrix": str(cache)}
+    rge = {"init_scale": 1000.0, "rg_matrix": "elsewhere.pkl"}
     seen, _ = _runcards_seen(
-        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"]
+        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"], tmp_path
     )
-    assert all(runcard["rge"] == rge for runcard in seen)
+    assert all(
+        runcard["rge"] == {"init_scale": 1000.0, "rg_matrix": str(cache)}
+        for runcard in seen
+    )
+    # the fit's own runcard is left alone
+    assert rge["rg_matrix"] == "elsewhere.pkl"
 
 
 def test_produce_eft_model_carries_use_theory_covmat(theory_a):

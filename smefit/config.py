@@ -387,31 +387,21 @@ class smefitConfig(Config):
     def produce_fit_model(self, fit, datasets):
         """The model ``fit`` was run with, to draw predictions at its posterior.
 
-        Rebuilt from the fit's own runcard, as the Bayesian update rebuilds a
-        previous fit's chi2: ``use_quad``, ``rge``, ``use_t0``,
-        ``use_theory_covmat`` and the coefficients are the fit's, whatever this
-        runcard says.
+        Rebuilt from :meth:`~smefit.fit_result.Fit.rebuild_runcard`, as the
+        Bayesian update rebuilds a previous fit's chi2: ``use_quad``, ``rge``
+        (with the fit's own RGE matrices), ``use_t0``, ``use_theory_covmat``
+        and the coefficients are the fit's, whatever this runcard says.
 
-        It covers only the datasets listed under ``datasets``, in that order,
-        whether or not the fit included them. A listed dataset
-        the fit included is taken with the fit's own entry (its ``order`` and
-        ``theory_cov``), whatever the listing says; one it did not include is
-        taken as listed, read from the fit's ``data_path`` and ``theory_path``.
+        It covers only the datasets listed under ``datasets``, in that order
+        and exactly as listed (``order``, ``theory_cov``), whether or not the
+        fit included them, read from the fit's ``data_path`` and
+        ``theory_path``.
         """
         # local import: smefit.api imports this module
         from smefit.api import smefitAPI
 
-        fitted = {ds["name"]: ds for ds in fit.setting("datasets", None) or []}
-        runcard = dict(fit.fit_runcard)
-        runcard["datasets"] = [fitted.get(ds["name"], ds) for ds in datasets]
-        rge = runcard.get("rge")
-        if rge and "rg_matrix" in rge:
-            # The fit's RGE matrix cache is an optimisation, and a path that no
-            # longer resolves from here is no reason to fail: the matrix is
-            # computed from the same rge settings instead.
-            path = pathlib.Path(resolve_path(str(rge["rg_matrix"])))
-            if not path.exists():
-                runcard["rge"] = {k: v for k, v in rge.items() if k != "rg_matrix"}
+        runcard = fit.rebuild_runcard()
+        runcard["datasets"] = datasets
 
         data = smefitAPI.data(**runcard)
         eft_model = smefitAPI.eft_model(**runcard)

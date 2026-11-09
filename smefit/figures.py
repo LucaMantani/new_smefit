@@ -373,24 +373,13 @@ def plot_posterior_correlations(
     )
 
 
-def _tex_escape(text):
-    """Escape the characters LaTeX treats specially in text mode.
-
-    Dataset names are plain identifiers full of underscores, and the figures
-    render text through usetex, where a bare ``_`` is a math-mode error.
-    """
-    for char in ("\\", "_", "%", "&", "#", "$"):
-        text = text.replace(char, "\\" + char)
-    return text
-
-
 def _stairs_band(axis, low, high, edges, **kwargs):
     """Fill between *low* and *high*, constant across each bin."""
     return axis.stairs(high, edges, baseline=low, fill=True, linewidth=0, **kwargs)
 
 
 @figuregen
-def plot_data_theory_comparison(fit, fit_model):
+def plot_data_theory_comparison(fit, fit_model, latex_label):
     """Compare the data with the SM and with the EFT at a fit's posterior.
 
     Yields one ``(figure, dataset_name)`` per dataset listed under the
@@ -426,6 +415,9 @@ def plot_data_theory_comparison(fit, fit_model):
         :math:`\\chi^2` follows ``use_t0`` and ``use_theory_covmat`` as the
         fit did, with correlations across datasets ignored. Evaluated at the
         best fit for the EFT and at zero for the SM.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource); titles each
+        figure with its dataset.
 
     Raises
     ------
@@ -559,7 +551,7 @@ def plot_data_theory_comparison(fit, fit_model):
         ]
         ax.legend(*zip(*handles_labels), fontsize=12)
 
-        ax.set_title(rf"$\mathrm{{{_tex_escape(name)}}}$", fontsize=18)
+        ax.set_title(latex_label(name), fontsize=18)
         ax.set_ylabel(r"$\mathrm{Observable}$", fontsize=16)
         ax_ratio.axhline(1.0, color="black", linewidth=0.8, linestyle="--")
         ax_ratio.set_ylabel(r"$\mathrm{Ratio\ to\ SM}$", fontsize=16)

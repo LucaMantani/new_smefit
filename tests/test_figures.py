@@ -22,7 +22,6 @@ from smefit.chi2 import Chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.figures import (
     _plot_heatmap,
-    _tex_escape,
     plot_chi2_scan,
     plot_data_theory_comparison,
     plot_fisher_diagonals_heatmap,
@@ -648,6 +647,7 @@ def _plot_comparison(
     coefficients,
     datasets_chi2,
     use_theory_covmat=False,
+    latex_label=None,
 ):
     """plot_data_theory_comparison on the FitModel these pieces make up.
 
@@ -659,7 +659,9 @@ def _plot_comparison(
             theory, coefficients, eft_model.use_quad, use_theory_covmat=True
         )
     return plot_data_theory_comparison(
-        fit, FitModel(data=data, eft_model=eft_model, datasets_chi2=datasets_chi2)
+        fit,
+        FitModel(data=data, eft_model=eft_model, datasets_chi2=datasets_chi2),
+        latex_label or make_latex_label(),
     )
 
 
@@ -929,7 +931,7 @@ def test_plot_data_theory_comparison_leaves_no_figure_open_in_pyplot(
 
 def test_plot_chi2_scan_leaves_no_figure_open_in_pyplot():
     scans = [{f"Op{i}": {"points": [0.0, 1.0], "chi2": [1.0, 0.0]}} for i in range(3)]
-    assert len(list(plot_chi2_scan(scans))) == 3
+    assert len(list(plot_chi2_scan(scans, latex_label=_plain))) == 3
     assert plt.get_fignums() == []
 
 
@@ -942,8 +944,15 @@ def test_plot_data_theory_comparison_title_escapes_the_dataset_name(
     assert fig.axes[0].get_title() == r"$\mathrm{ATLAS\_tt\_13TeV}$"
 
 
-def test_tex_escape_escapes_underscores():
-    assert _tex_escape("ATLAS_tt_13TeV") == r"ATLAS\_tt\_13TeV"
+def test_plot_data_theory_comparison_title_takes_a_latex_labels_override(
+    comparison_setup,
+):
+    ((fig, _),) = _plot_comparison(
+        _comparison_fit(),
+        **comparison_setup,
+        latex_label=make_latex_label({"TESTDATA": r"$t\bar{t}$"}),
+    )
+    assert fig.axes[0].get_title() == r"$t\bar{t}$"
 
 
 def test_plot_data_theory_comparison_graph_resolves(

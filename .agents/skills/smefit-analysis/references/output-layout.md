@@ -33,6 +33,11 @@
                           #  reusable via rge.rg_matrix in later runcards
   pseudodata/             # written by the write_pseudodata action
     <dataset>.yaml        # projected commondata (+ theory JSON copies for _proj sets)
+  dataset_table.tex       # write_dataset_table: LaTeX xltabular of the datasets
+  dataset_table.bib       #  and the INSPIRE BibTeX it cites (only with
+                          #  fetch_bibtex: true)
+  dataset_table_preview.tex  # compile_pdf: true — the table as a PDF document,
+  dataset_table_preview.pdf  #  compiled with pdflatex (no auxiliaries kept)
   index.html              # report action output, alongside the index.md it was
   index.md                #  rendered from, plus report.css / report.template
 ```
@@ -67,6 +72,22 @@ fit comes back with how it was configured — `use_quad`, `fit_type`,
 `individual_fit` — alongside its numbers, under `.fit_results`.
 `FitResult.from_json("<output>")` reads this file alone, and plain `json.load`
 does for quick lookups.
+
+What the fit was *computed from* — its `eft_model`, `theory`, `chi2` — is not
+stored; rebuild it through the API from the loaded fit:
+
+```python
+from smefit.api import smefitAPI
+from smefit.fit_result import Fit
+
+fit = Fit.from_folder("<output>")
+model = smefitAPI.eft_model(**fit.rebuild_runcard())
+```
+
+`rebuild_runcard()` is the fit's runcard with its own `rge_matrix.pkl` as
+`rge.rg_matrix`, so the RGE is not rerun. It needs the fit's database present
+locally. The matrices themselves are `fit.rge_cache` (an `RGECache`, loaded on
+first use).
 
 ## fit_results.json schema (individual fits)
 

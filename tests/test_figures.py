@@ -32,10 +32,15 @@ from smefit.figures import (
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
+from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel, FitModel
-from smefit.op_to_latex import coeff_info_latex
 from smefit.pca import PCA
+
+
+def _plain(name):
+    """A ``latex_label`` for tests that are not about labels: names stay readable."""
+    return name
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +51,7 @@ def _no_latex(monkeypatch):
     The rcParam is then forced off as well, so the invariant the suite needs —
     "no LaTeX is invoked" — is asserted directly rather than inferred from
     nobody having turned it on; that inference is exactly what broke when
-    `smefit.op_to_latex` used to do it at import time.
+    `smefit.latex_labels` used to do it at import time.
     """
     monkeypatch.setattr(figures_mod, "set_plot_style", lambda: None)
     monkeypatch.setitem(matplotlib.rcParams, "text.usetex", False)
@@ -63,13 +68,14 @@ def test_plot_heatmap_axis_labels():
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
 
 
-def test_plot_heatmap_uses_latex_label_when_known():
-    """Coefficient names present in coeff_info_latex are relabelled on the y-axis."""
+def test_plot_heatmap_draws_labels_as_given():
+    """The callers have already turned names into labels, so the heatmap does
+    not look them up again — that would bypass the runcard's latex_labels."""
     matrix = np.array([[1.0]])
     fig = _plot_heatmap(matrix, ["OQQ1"], ["DS_A"], vmin=0, vmax=10)
 
     ax = fig.axes[0]
-    assert ax.get_yticklabels()[0].get_text() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
+    assert ax.get_yticklabels()[0].get_text() == "OQQ1"
 
 
 def test_plot_heatmap_skips_zero_cells():
@@ -213,7 +219,7 @@ def test_plot_chi2_scan_yields_one_figure_per_coefficient():
         {"OpZZ": {"points": [-2.0, 2.0], "chi2": [1.0, 1.0]}},
     ]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=_plain)
 
     assert [name for _, name in result] == ["OpA", "OpZZ"]
     for fig, _ in result:
@@ -224,7 +230,7 @@ def test_plot_chi2_scan_yields_one_figure_per_coefficient():
 def test_plot_chi2_scan_plots_points_against_chi2():
     scans = [{"OpA": {"points": [-1.0, 0.0, 1.0], "chi2": [4.0, 0.0, 4.0]}}]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=_plain)
 
     fig, name = result[0]
     assert name == "OpA"
@@ -236,10 +242,20 @@ def test_plot_chi2_scan_plots_points_against_chi2():
 def test_plot_chi2_scan_uses_latex_label_when_known():
     scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
 
-    result = plot_chi2_scan(scans)
+    result = plot_chi2_scan(scans, latex_label=make_latex_label())
 
     fig, _ = result[0]
     assert fig.axes[0].get_xlabel() == r"$c_{QQ}^{\scriptscriptstyle 1}$"
+
+
+def test_plot_chi2_scan_applies_latex_labels():
+    scans = [{"OQQ1": {"points": [0.0, 1.0], "chi2": [0.0, 1.0]}}]
+
+    result = plot_chi2_scan(scans, latex_label=make_latex_label({"OQQ1": "$c_1$"}))
+
+    fig, name = result[0]
+    assert fig.axes[0].get_xlabel() == "$c_1$"
+    assert name == "OQQ1"
 
 
 def test_plot_fisher_diagonals_heatmap_presentation_is_overridable():
@@ -305,11 +321,23 @@ def test_plot_posterior_correlations_labels_both_axes_with_the_coefficients():
         _fit(
             free=["OQQ1", "NotARealOp"],
             samples={"OQQ1": [0.0, 1.0, 2.0], "NotARealOp": [2.0, 0.0, 1.0]},
-        )
+        ),
+        latex_label=make_latex_label(),
     )
 
     ax = fig.axes[0]
-    labels = [r"$c_{QQ}^{\scriptscriptstyle 1}$", "NotARealOp"]
+    labels = [r"$c_{QQ}^{\scriptscriptstyle 1}$", r"$\mathrm{NotARealOp}$"]
+    assert [t.get_text() for t in ax.get_xticklabels()] == labels
+    assert [t.get_text() for t in ax.get_yticklabels()] == labels
+
+
+def test_plot_posterior_correlations_applies_latex_labels():
+    fig = plot_posterior_correlations(
+        _fit(), latex_label=make_latex_label({"OpA": "$c_A$"})
+    )
+
+    ax = fig.axes[0]
+    labels = ["$c_A$", make_latex_label()("OpZZ")]
     assert [t.get_text() for t in ax.get_xticklabels()] == labels
     assert [t.get_text() for t in ax.get_yticklabels()] == labels
 
@@ -325,7 +353,8 @@ def test_plot_posterior_correlations_covers_the_free_coefficients_only():
                 "OpZZ": [0.0, -1.0, -2.0, -3.0],
                 "OpDerived": [0.0, 1.0, 4.0, 9.0],
             },
-        )
+        ),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -340,8 +369,12 @@ def test_plot_posterior_correlations_covers_the_free_coefficients_only():
 
 def test_plot_posterior_correlations_is_headed_by_the_fit_it_is_drawn_from():
     """Several fits produce several heatmaps; each has to say which it is."""
-    labelled = plot_posterior_correlations(_fit(label=r"$\mathrm{Analytic}$"))
-    unlabelled = plot_posterior_correlations(_fit(fit_name="my_fit"))
+    labelled = plot_posterior_correlations(
+        _fit(label=r"$\mathrm{Analytic}$"), latex_label=_plain
+    )
+    unlabelled = plot_posterior_correlations(
+        _fit(fit_name="my_fit"), latex_label=_plain
+    )
 
     assert labelled.axes[0].get_xlabel() == r"$\mathrm{Analytic}$"
     assert unlabelled.axes[0].get_xlabel() == "my_fit"
@@ -357,6 +390,7 @@ def test_plot_posterior_correlations_presentation_is_overridable():
         cmap="PuOr",
         value_fmt="{:.3f}",
         colorbar=False,
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -378,7 +412,8 @@ def test_plot_posterior_correlations_annotates_uncorrelated_pairs_too():
     """An uncorrelated pair is a result, not a gap: zero cells are drawn and
     annotated rather than blanked as they are in the Fisher heatmap."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [1.0, -1.0, 1.0, -1.0], "OpZZ": [1.0, 1.0, -1.0, -1.0]})
+        _fit(samples={"OpA": [1.0, -1.0, 1.0, -1.0], "OpZZ": [1.0, 1.0, -1.0, -1.0]}),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -388,7 +423,8 @@ def test_plot_posterior_correlations_annotates_uncorrelated_pairs_too():
 def test_plot_posterior_correlations_blanks_a_frozen_coefficient():
     """A coefficient whose samples never moved correlates with nothing."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [0.0, 1.0, 2.0], "OpZZ": [1.0, 1.0, 1.0]})
+        _fit(samples={"OpA": [0.0, 1.0, 2.0], "OpZZ": [1.0, 1.0, 1.0]}),
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -399,7 +435,8 @@ def test_plot_posterior_correlations_is_drawn_on_a_fixed_scale():
     """The colour scale spans the full range of a correlation whatever the
     matrix happens to contain, so two fits' heatmaps can be compared by eye."""
     fig = plot_posterior_correlations(
-        _fit(samples={"OpA": [0.0, 1.0, 2.0, 5.0], "OpZZ": [2.0, 0.0, 1.0, 1.5]})
+        _fit(samples={"OpA": [0.0, 1.0, 2.0, 5.0], "OpZZ": [2.0, 0.0, 1.0, 1.5]}),
+        latex_label=_plain,
     )
 
     image = fig.axes[0].images[0]
@@ -425,7 +462,7 @@ def test_plot_posterior_correlations_rejects_an_individual_fit():
     )
 
     with pytest.raises(ValueError, match="my_individual_fit"):
-        plot_posterior_correlations(fit)
+        plot_posterior_correlations(fit, latex_label=_plain)
 
 
 def test_plot_posterior_correlations_restricts_to_params_to_plot():
@@ -442,6 +479,7 @@ def test_plot_posterior_correlations_restricts_to_params_to_plot():
             },
         ),
         params_to_plot=["OpZZ", "OpA"],
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -461,7 +499,9 @@ def test_plot_posterior_correlations_skips_a_coefficient_this_fit_lacks():
     given fit never fitted drops out of that fit's heatmap rather than
     stopping the report."""
     fig = plot_posterior_correlations(
-        _fit(free=["OpA", "OpZZ"]), params_to_plot=["OpA", "OpNotInThisFit"]
+        _fit(free=["OpA", "OpZZ"]),
+        params_to_plot=["OpA", "OpNotInThisFit"],
+        latex_label=_plain,
     )
 
     ax = fig.axes[0]
@@ -487,9 +527,7 @@ def test_plot_pca_components_heatmap_axis_labels():
 
     ax = fig.axes[0]
     assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
-    assert [t.get_text() for t in ax.get_yticklabels()] == [
-        coeff_info_latex.get(name, name) for name in ["OpA", "OpB", "OpC"]
-    ]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpB", "OpC"]
 
 
 def test_plot_pca_components_heatmap_keeps_zero_cells():
@@ -509,11 +547,22 @@ def test_plot_pca_components_heatmap_uses_a_symmetric_scale():
 
 
 def test_plot_pca_spectrum_axis_and_threshold():
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     assert ax.get_yscale() == "log"
     assert [t.get_text() for t in ax.get_xticklabels()] == ["PC1", "PC2", "PC3"]
+
+
+def test_plot_pca_spectrum_labels_the_components():
+    fig = plot_pca_spectrum(_pca(), latex_label=make_latex_label({"PC2": "$v_2$"}))
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == [
+        r"$\mathrm{PC1}$",
+        "$v_2$",
+        r"$\mathrm{PC3}$",
+    ]
     # the dashed line sits at the flat-direction threshold
     thresholds = [
         line.get_ydata()[0] for line in ax.lines if line.get_linestyle() == "--"
@@ -527,7 +576,7 @@ def _bar_sizes(ax):
 
 def test_plot_pca_spectrum_separates_flat_from_constrained():
     """The flat direction is drawn as its own, labelled, set of bars."""
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     assert _bar_sizes(ax) == [2, 1]
@@ -539,7 +588,7 @@ def test_plot_pca_spectrum_separates_flat_from_constrained():
 
 def test_plot_pca_spectrum_marks_the_exactly_flat_direction():
     """A zero eigenvalue leaves a bar of no length, so it gets a marker too."""
-    fig = plot_pca_spectrum(_pca())
+    fig = plot_pca_spectrum(_pca(), latex_label=_plain)
 
     ax = fig.axes[0]
     markers = [coll for coll in ax.collections if isinstance(coll, PathCollection)]
@@ -554,7 +603,7 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
         threshold=1.0e-3,
         min_weight=0.01,
     )
-    fig = plot_pca_spectrum(pca_obj)
+    fig = plot_pca_spectrum(pca_obj, latex_label=_plain)
 
     ax = fig.axes[0]
     assert _bar_sizes(ax) == [2]

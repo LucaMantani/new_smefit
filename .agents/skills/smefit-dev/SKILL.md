@@ -353,7 +353,7 @@ that depend on each other):
    `parse_data_path`. A path the parser only forwards — an `external_chi2` entry
    passes every key but `path` straight to a user-authored constructor — cannot
    be resolved by name at this layer; resolve it in whatever loads the file, as
-   `RGEMatrix.read_cache` does for `rg_matrix`.
+   `RGEMatrix.read_cache` does for `rg_matrix` (through `RGEMatrix.locate`).
 
 **Unknown keys warn rather than raise** — that is a deliberate
 backwards-compatibility choice, and the reason `validate_runcard.py` exists.
@@ -366,7 +366,12 @@ protection against misspelling it.
    for "run a fit and write it", `smefit/utils_actions.py` for other
    side-effecting actions, `smefit/tables.py` / `smefit/figures.py` for report
    output. Keep actions thin: compute in a `produce_`/provider node, and let
-   the action print and write (`run_ultranest_fit` is the model).
+   the action print and write (`run_ultranest_fit` is the model). Machinery
+   that is neither a node nor tied to one module's nodes — running an
+   external tool, a format other outputs could share — goes in a helper module
+   outside `smefit_providers`, which the action imports: `write_dataset_table`
+   compiles its preview through `smefit/latex_preview.py`, as `tables.py` and
+   `figures.py` use `smefit/plot_utils.py`.
 2. If the module is new, add it to `smefit_providers` in `smefit/app.py`.
 3. Take `output_path` as a parameter if you write files — never construct
    output paths yourself. An action may require it; a `produce_`/`parse_` that

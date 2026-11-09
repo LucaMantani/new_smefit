@@ -7,6 +7,10 @@
     "vars",
     "baseline_value"
   ],
+  "commondata_actions": [
+    "dataset_table",
+    "write_dataset_table"
+  ],
   "dataset_entry_keys": [
     "name",
     "order",
@@ -34,6 +38,7 @@
     "individual_mass_scales",
     "individual_prior",
     "init_scale",
+    "latex_label",
     "optimizer",
     "prior",
     "pseudodata",
@@ -42,6 +47,7 @@
     "whitening_transformation"
   ],
   "fit_reading_actions": [
+    "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
     "plot_data_theory_comparison",
     "plot_posterior_correlations",
@@ -72,6 +78,10 @@
     "bounds_levels",
     "cmap",
     "colorbar",
+    "compile_pdf",
+    "dataset_table_caption",
+    "dataset_table_label",
+    "fetch_bibtex",
     "n_eval",
     "n_samples",
     "n_steps",
@@ -220,6 +230,10 @@
       "defaults": {},
       "known_keys": null
     },
+    "latex_labels": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -258,6 +272,7 @@
     "rge": {
       "defaults": {
         "obs_scale": "'dynamic'",
+        "rg_matrix": "(no default)",
         "smeft_accuracy": "'integrate'",
         "yukawa": "'top'"
       },
@@ -314,14 +329,19 @@
     "cmap",
     "coefficients",
     "colorbar",
+    "compile_pdf",
     "data_path",
+    "dataset_table_caption",
+    "dataset_table_label",
     "datasets",
     "external_chi2",
     "fit",
+    "fetch_bibtex",
     "fits",
     "gradient_descent_settings",
     "hessian_settings",
     "interval_types",
+    "latex_labels",
     "meta",
     "n_eval",
     "n_samples",

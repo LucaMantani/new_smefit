@@ -44,6 +44,10 @@ ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
 # there; this is the fallback.
 FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
 
+# Actions that read only the commondata files, so a runcard running only these
+# needs no theory_path or coefficients. Same source and fallback rule as above.
+COMMONDATA_ACTIONS = {"dataset_table", "write_dataset_table"}
+
 
 def action_name(action):
     """The bare action name of an `actions_:` entry.
@@ -441,19 +445,54 @@ def check_blackjax_algorithm(runcard, rep):
         )
 
 
-def check_rg_matrix(value, label, resolver, rep):
-    """Check an rg_matrix path. Missing files under smefit_results/ are only a
-    warning: smefit auto-downloads the fit from the server before failing."""
-    resolved = resolver.resolve(value, rep, label)
-    if resolved is None or Path(resolved).exists():
-        return
+RGE_MATRIX_FILENAME = "rge_matrix.pkl"  # smefit.rge.RGEMatrix.FILENAME
+
+
+def _check_fetchable(value, resolved, label, resolver, rep, what="file"):
+    """Report a missing path. Under smefit_results/ that is only a warning:
+    smefit auto-downloads the fit from the server before failing."""
+    if Path(resolved).exists():
+        return True
     if resolver.has_prefix(str(value), "smefit_results"):
         rep.warn(
             f"{label}: {resolved} not found locally — smefit will try to "
             "download the fit from the server at run time"
         )
     else:
-        rep.error(f"{label}: file not found: {resolved}")
+        rep.error(f"{label}: {what} not found: {resolved}")
+    return False
+
+
+def check_rg_matrix(value, label, resolver, rep):
+    """Check an external chi2 module's rg_matrix: a plain path to the file,
+    forwarded verbatim by smefit."""
+    resolved = resolver.resolve(value, rep, label)
+    if resolved is not None:
+        _check_fetchable(value, resolved, label, resolver, rep)
+
+
+def check_rge_rg_matrix(value, label, resolver, rep):
+    """Check `rge.rg_matrix`, mirroring smefit.rge.RGEMatrix.locate.
+
+    Three forms, told apart by their shape: a `.pkl` path is the file itself;
+    a bare name (no '/') is a fit name, looked up in smefit_results/fits/; any
+    other path is a directory holding rge_matrix.pkl.
+    """
+    value = str(value)
+    if value.endswith(".pkl"):
+        check_rg_matrix(value, label, resolver, rep)
+        return
+    # A fit name is looked up exactly like a `fits:` entry.
+    ref = f"smefit_results/fits/{value}" if "/" not in value else value
+    resolved = resolver.resolve(ref, rep, label)
+    if resolved is None:
+        return
+    what = "fit" if "/" not in value else "directory"
+    if not _check_fetchable(ref, resolved, label, resolver, rep, what=what):
+        return
+    pickle = Path(resolved) / RGE_MATRIX_FILENAME
+    if not pickle.is_file():
+        rep.error(f"{label}: {RGE_MATRIX_FILENAME} not found in {resolved}")
 
 
 def check_actions(runcard, rep, nonlinear_exprs=()):
@@ -569,15 +608,41 @@ def main():
         and "external_chi2" not in runcard
     ):
         rep.error("runcard needs 'datasets' and/or 'external_chi2' — no data to fit")
-    if "datasets" in runcard and not reads_fits_only:
-        for key in ("data_path", "theory_path"):
+    # A runcard that only describes its datasets (the dataset table of a
+    # paper) reads their commondata files and nothing else. A 'report' next to
+    # such actions is taken to report on them ({@dataset_table@}); on its own
+    # it says nothing about what the runcard does, so it does not count.
+    commondata = set((keys or {}).get("commondata_actions") or COMMONDATA_ACTIONS)
+    describing = action_names - {"report"}
+    reads_commondata_only = (
+        "datasets" in runcard and bool(describing) and describing <= commondata
+    )
+    # The likely intent behind a report-only runcard that shows the table: a
+    # hint, so it is never escalated by --strict.
+    if (
+        "datasets" in runcard
+        and action_names == {"report"}
+        and "dataset_table" in str(runcard.get("template_text") or "")
+        and not ("theory_path" in runcard and runcard.get("coefficients"))
+    ):
+        rep.warnings.append(
+            "actions_: 'report' alone does not write the dataset table, so this "
+            "runcard is held to the fit requirements — add 'write_dataset_table' "
+            "to actions_ to write dataset_table.tex from datasets and data_path only"
+        )
+
+    if "datasets" in runcard:
+        required = (
+            ("data_path",) if reads_commondata_only else ("data_path", "theory_path")
+        )
+        for key in required:
             if key not in runcard:
                 rep.error(f"'{key}' is required when 'datasets' is present")
 
     coefficients = runcard.get("coefficients")
     nonlinear_exprs = []
     if not coefficients:
-        if not reads_fits_only:
+        if not (reads_fits_only or reads_commondata_only):
             rep.error("runcard needs a non-empty 'coefficients' mapping")
     elif isinstance(coefficients, dict):
         prior_dists = keys["prior_dists"] if keys else {}
@@ -615,8 +680,8 @@ def main():
             obs_scale = rge.get("obs_scale", "dynamic")
             if not isinstance(obs_scale, (int, float)) and obs_scale != "dynamic":
                 rep.error("rge.obs_scale must be a number or 'dynamic'")
-            if "rg_matrix" in rge:
-                check_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
+            if rge.get("rg_matrix"):
+                check_rge_rg_matrix(rge["rg_matrix"], "rge.rg_matrix", resolver, rep)
 
     external = runcard.get("external_chi2")
     if external is not None:

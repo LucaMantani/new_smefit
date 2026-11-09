@@ -1,10 +1,21 @@
 """
-smefit.op_to_latex.py
+smefit.latex_labels.py
 
-LaTeX labels for the Wilson coefficients, used by the report tables and figures.
+How a report writes a name in LaTeX. :func:`make_latex_label` holds the whole
+policy: a runcard's ``latex_labels`` entry wins, then the built-in Wilson
+coefficient label, and any other name is typeset as it stands. It backs the
+``latex_label`` resource (``smefitConfig.produce_latex_label``), which is what
+report tables and figures take.
 """
 
-coeff_info_latex = {
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+default_latex_labels = {
     # --------------------------
     # 4H sector
     # --------------------------
@@ -173,3 +184,56 @@ coeff_info_latex = {
     "Olu": r"$c_{l u}$",
     "Old": r"$c_{l d}$",
 }
+
+# What a plain name cannot contain inside \mathrm. set_plot_style turns usetex on,
+# where a raw &, #, ^ or $ stops the whole figure compiling; the others compile
+# but print wrongly in math mode (_ as a subscript, - as a minus sign, spaces
+# dropped, % ending the label).
+_LATEX_ESCAPES = str.maketrans(
+    {
+        "\\": r"\mbox{\textbackslash}",
+        "_": r"\_",
+        "-": r"\mbox{-}",
+        "&": r"\&",
+        "%": r"\%",
+        "#": r"\#",
+        "$": r"\$",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\mbox{\textasciitilde}",
+        "^": r"\mbox{\textasciicircum}",
+        " ": r"\ ",
+    }
+)
+
+
+def _escaped_fallback(name: str) -> str:
+    """Typeset a name that has no label of its own exactly as it is written."""
+    return rf"$\mathrm{{{name.translate(_LATEX_ESCAPES)}}}$"
+
+
+def make_latex_label(
+    overrides: Mapping[str, str] | None = None,
+) -> Callable[[str], str]:
+    """Build the function that writes a name in LaTeX for a report.
+
+    Data groups and datasets are named in the runcard, so no list of defaults
+    could cover them: they reach the fallback, which is why it has to be safe.
+
+    Parameters
+    ----------
+    overrides : Mapping[str, str], optional
+        The parsed ``latex_labels`` runcard key. Takes precedence over
+        :data:`default_latex_labels`.
+
+    Returns
+    -------
+    Callable[[str], str]
+        Maps a plain name (a coefficient, a data group, ...) to its label.
+    """
+    labels = {**default_latex_labels, **(overrides or {})}
+
+    def latex_label(name: str) -> str:
+        return labels[name] if name in labels else _escaped_fallback(name)
+
+    return latex_label

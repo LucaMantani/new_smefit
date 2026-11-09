@@ -19,18 +19,22 @@ rge:
 ```
 
 - Computing the RGE matrix can be slow; it is saved automatically under the
-  run's output directory. To reuse one across runs, point `rg_matrix:` at the
-  saved pickle — preferably via the `smefit_results` prefix:
-  `rg_matrix: smefit_results/fits/<fit_name>/rge_matrix.pkl`. If the fit is not
+  run's output directory. To reuse one across runs, name the fit that saved it:
+  `rg_matrix: <fit_name>` (looked up in `smefit_results/fits/` like a `fits:`
+  entry). A directory holding an `rge_matrix.pkl`, or the pickle itself
+  (`smefit_results/fits/<fit_name>/rge_matrix.pkl`), works too; a local
+  directory with a bare name must be written `./name`. If the fit is not
   present locally, smefit automatically tries to download it from the server
   before failing.
+- A `bayesian_update:` reuses the previous fit's own `rge_matrix.pkl` when it
+  rebuilds that fit's likelihood; nothing to configure.
 - To compute and save the matrix without running a fit, put
   `rge_matrix` under `actions_:` (the runcard still needs `datasets`,
   `coefficients` and this `rge:` block). Any fit action writes it as well.
 - `rge_matrix` only covers `datasets`. Each `external_chi2` likelihood (e.g. the
   Drell-Yan ones) builds its own RGE matrix when it is loaded during a fit, and
   saves it only if its entry sets `save_rge_path`; reuse it through that
-  entry's own `rg_matrix` key.
+  entry's own `rg_matrix` key, which takes the same three forms.
 - Drop the whole block only when coefficients are defined directly at the
   observable scale.
 
@@ -180,7 +184,8 @@ external_chi2:
 
 `path` and `rg_matrix` entries are prefix-resolved like all runcard paths
 (`new_smefit/...`, `smefit_database/...`, `smefit_results/...`); an `rg_matrix`
-under `smefit_results/` is auto-downloaded from the server when missing.
+may also be a fit name or a directory, and one under `smefit_results/` is
+auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,
@@ -271,6 +276,62 @@ actions_:
 Writes projected datasets to `<output>/pseudodata/*.yaml` (plus theory JSON
 copies for `_proj` datasets), ready to be used as `data_path` in a future-
 collider fit.
+
+## Dataset table for a paper
+
+```yaml
+data_path: smefit_database/commondata
+datasets:                        # the fit's own list; `group:` sections the table
+  - {name: ATLAS_tt_8TeV_ljets_Mtt, order: NLO_QCD, group: LHC-top}
+  - {name: LEP_eeWW_182GeV, order: LO, group: LEP}
+fetch_bibtex: True               # optional (default False): cite via INSPIRE
+compile_pdf: True                # optional (default False): also a PDF preview
+dataset_table_caption: "Datasets included in the fit."  # optional, LaTeX as is
+dataset_table_label: tab:datasets                       # optional, for \ref
+actions_:
+  - write_dataset_table
+```
+
+Writes `<output>/dataset_table.tex`, an `xltabular` (a `longtable` as wide as
+the line, so it fits any text width) with one row per dataset
+(name, commondata `description`, `n_dat`, luminosity, reference) and the total
+number of points. Only `datasets` and `data_path` are read, so a fit runcard
+can run it as is, with no theory tables or coefficients involved. A group's
+datasets are listed together, under one heading, in runcard order: groups
+come in order of first appearance, so an interleaved runcard is regrouped.
+
+- The references come from the commondata `arxiv` field. By default each is
+  written as an `\href` to arXiv/INSPIRE, which needs no network and no `.bib`.
+  A URL there that is not an INSPIRE record (a CERN repository record, a
+  talk) is always linked, labelled with its site. A file with no `arxiv`
+  field cites the arXiv numbers its `description` mentions, with a warning
+  per dataset since that is a guess. The datasets left with no reference at
+  all are named together in a single warning.
+- `fetch_bibtex: True` looks them up on INSPIRE instead: the table `\cite`s
+  them with INSPIRE keys, and `<output>/dataset_table.bib` holds their BibTeX.
+  A reference INSPIRE cannot resolve (or all of them, when it is unreachable)
+  falls back to its link, with a warning. A paper is written to the `.bib`
+  once, however many datasets cite it.
+- Each `.bib` entry links to its paper: through the `doi` INSPIRE writes (to
+  the journal), or, for a paper with no DOI, a `url` to its INSPIRE record.
+  Whether the bibliography shows them as links is up to its style: `JHEP.bst`,
+  `utphys.bst` and revtex's `apsrev4-2` do; with `unsrtnat`, define
+  `\newcommand{\doi}[1]{\href{https://doi.org/#1}{doi:#1}}` first.
+- A URL inside a description becomes a short link labelled with its site
+  (`HEPData`, `Indico`, ...), so it cannot run out of its column.
+- The paper needs `\usepackage{array,booktabs,xltabular,hyperref}`, and
+  `amsmath` for the INSPIRE titles.
+- `compile_pdf: True` also writes `<output>/dataset_table_preview.tex`, a
+  document holding the table (and its bibliography) at a 483pt text width, and
+  compiles it into `dataset_table_preview.pdf` with pdflatex (+ bibtex),
+  rerunning until LaTeX stops asking. The auxiliary files stay in a scratch
+  folder. Without pdflatex, or on a LaTeX error, it warns and writes no PDF
+  (keeping `dataset_table_preview.log` on an error); the table is written
+  either way.
+- `{@dataset_table@}` in a report shows the same rows in the same order, and
+  the total, without the lookup. Its references, and the URLs of its
+  descriptions, are short links labelled as in the LaTeX table; they are
+  markdown, so `tables/dataset_table.csv` holds them as `[label](url)`.
 
 ## Reports and Fisher information
 
@@ -381,6 +442,32 @@ template_text: |
 - `round_val` sets the decimals of every cell (default `3`). It is separate
   from the heatmaps' `value_fmt`.
 - `params_to_plot` restricts and orders the rows, as for the heatmaps below.
+
+#### One table for all the fits
+
+`coefficient_bounds_comparison_table` puts the fits side by side instead: one
+table for the whole `fits:` list, the columns of each fit's own bounds table
+grouped under that fit. It goes **outside** the `{@with fits@}` loop:
+
+```yaml
+template_text: |
+  # Coefficient bounds
+  {@coefficient_bounds_comparison_table@}
+```
+
+- Each fit is headed by the `label` of its `fits` entry, or by its directory
+  name when there is none; two fits resolving to the same heading raise.
+- Rows are the union of the fits' coefficients, in order of first appearance;
+  a coefficient a fit did not sample is `nan` in its columns.
+- It takes `bounds_levels`, `interval_types`, `params_to_plot` and `round_val`
+  itself, as a top-level key or as an action argument, with the same meaning
+  and defaults as `coefficient_bounds_table`. With `bounds_levels: 95` and the
+  default interval type the table has exactly one column per fit.
+- `params_to_plot` selects from the union, so its order holds whichever fit has
+  which coefficient, and a fit with none of them keeps its columns, all `nan`.
+  A list that selects nothing from any fit raises.
+- Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
+  are only written if the report also asks for `coefficient_bounds_table`.
 
 ### Configuring an action
 

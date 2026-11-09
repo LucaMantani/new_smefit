@@ -15,6 +15,7 @@ along a direction is ``sigma_i = 1 / sqrt(lambda_i)``.
 import json
 import logging
 import pathlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import List
 
@@ -137,14 +138,25 @@ class PCA:
             self.eigenvectors, index=self.coeff_names, columns=self.component_names
         )
 
-    def describe(self, i: int) -> str:
+    def describe(self, i: int, label: Callable[[str], str] | None = None) -> str:
         """Render principal direction *i* as a linear combination.
 
         Terms are ordered by decreasing weight and those below ``min_weight``
         are dropped, so the string names what the direction is *about* rather
         than reproducing the column. The leading term is always kept, however
         small, so a direction is never described as nothing.
+
+        Parameters
+        ----------
+        i : int
+            Index of the direction, strongest first.
+        label : Callable[[str], str], optional
+            How to write each coefficient name. Plain names by default, which
+            is what the console summary and ``pca.json`` want; a report passes
+            its ``latex_label``.
         """
+        if label is None:
+            label = str
         v = self.eigenvectors[:, i]
         order = np.argsort(np.abs(v))[::-1]
         kept = [j for j in order if abs(v[j]) >= self.min_weight] or [order[0]]
@@ -152,7 +164,7 @@ class PCA:
         terms = []
         for pos, j in enumerate(kept):
             sign = "-" if v[j] < 0 else ("+" if pos else "")
-            terms.append(f"{sign} {abs(v[j]):.2f} {self.coeff_names[j]}".strip())
+            terms.append(f"{sign} {abs(v[j]):.2f} {label(self.coeff_names[j])}".strip())
         return " ".join(terms)
 
     # ------------------------------------------------------------------

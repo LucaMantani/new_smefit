@@ -186,6 +186,13 @@ def test_describe_orders_by_weight_and_signs_the_terms():
     assert _two_direction_pca().describe(1) == "0.80 OpB - 0.60 OpA"
 
 
+def test_describe_writes_names_with_the_given_label():
+    pca = _two_direction_pca()
+
+    assert pca.describe(0, label=lambda name: f"<{name}>") == "0.80 <OpA> + 0.60 <OpB>"
+    assert pca.describe(0) == "0.80 OpA + 0.60 OpB"  # plain names by default
+
+
 def test_describe_drops_components_below_min_weight():
     assert _two_direction_pca(min_weight=0.7).describe(0) == "0.80 OpA"
 

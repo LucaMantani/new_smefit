@@ -1,8 +1,17 @@
-"""The on-disk data model: :class:`RGEMatrix`.
+"""The RGE data model: :class:`RGEMatrix` and :class:`RGECache`.
 
 Owns both directions of the ``rge_matrix.pkl`` payload layout —
-:meth:`RGEMatrix.write` produces it, :meth:`RGEMatrix.read_cache`
-consumes it — so the format is described in exactly one module.
+:meth:`RGEMatrix.write` produces it, :meth:`RGECache.load` consumes it — so
+the format is described in exactly one module.
+
+The two classes are the two shapes the same matrices take. An
+:class:`RGEMatrix` is what a run computes: one matrix per *data point*, ready to
+contract with the theory tables. An :class:`RGECache` is what the file holds:
+one matrix per *unique scale*, with no record of which data point sits at which
+scale — what makes it reusable by a later run over different data, and why it
+cannot be turned back into an :class:`RGEMatrix` on its own. Rebuilding one goes
+through :func:`smefit.rge.build_rge_matrix` with the file as its ``rg_matrix``,
+which finds every scale already there.
 """
 
 import logging
@@ -17,7 +26,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from smefit.paths import fetch_fit_if_missing, resolve_path
+from smefit.paths import fetch_fit_if_missing, resolve_fit_dir, resolve_path
 
 _logger = logging.getLogger(__name__)
 
@@ -46,10 +55,11 @@ class RGEMatrix:
 
     Notes
     -----
-    The file :meth:`write` produces is a *scale-keyed cache*: one frame per
-    unique scale, with no record of which data point sits at which scale. That
-    is what makes it reusable by a later runcard over different data (see
-    :meth:`read_cache` and :func:`smefit.rge.build.resolve_rge_matrices`).
+    The file :meth:`write` produces is a *scale-keyed cache*, read back as an
+    :class:`RGECache`: one frame per unique scale, with no record of which data
+    point sits at which scale. That is what makes it reusable by a later
+    runcard over different data (see :meth:`read_cache` and
+    :func:`smefit.rge.build.resolve_rge_matrices`).
     """
 
     stacked_mats: jnp.ndarray
@@ -103,8 +113,169 @@ class RGEMatrix:
         _logger.info("RGE matrix written to %s.", out_file)
 
     @staticmethod
+    def locate(ref: str | pathlib.Path) -> pathlib.Path:
+        """Turn an ``rg_matrix`` reference into the path of the pickle it names.
+
+        Three forms are accepted, told apart by their shape::
+
+            rg_matrix: my_fit                                     # a fit name
+            rg_matrix: smefit_results/fits/my_fit/CMS_DYMee_13TeV # a directory
+            rg_matrix: smefit_results/fits/my_fit/rge_matrix.pkl  # the file itself
+
+        A bare name (no ``/``, no ``.pkl``) is a fit name, looked up like a
+        ``fits:`` entry through :func:`smefit.paths.resolve_fit_dir` — in
+        ``smefit_results/fits/`` and downloaded from the server if missing. A
+        local directory with a bare name must therefore be written ``./name``.
+        Any other path is prefix-resolved, and fetched from the server when it
+        lies under ``smefit_results/{fits,reports}/<name>/``; a directory then
+        stands for the :attr:`FILENAME` inside it.
+
+        Only builds the path: reading it is :meth:`read_cache`'s job.
+
+        Parameters
+        ----------
+        ref : str or pathlib.Path
+            The ``rg_matrix`` value, as written in a runcard.
+
+        Returns
+        -------
+        pathlib.Path
+            The existing pickle file.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the fit, directory or file does not exist and could not be
+            downloaded, or a directory holds no :attr:`FILENAME`.
+        """
+        ref_str = str(ref)
+        if ref_str.endswith(".pkl"):
+            path = pathlib.Path(resolve_path(ref_str))
+            fetch_fit_if_missing(path)
+        else:
+            if "/" not in ref_str:
+                fit_dir = resolve_fit_dir(ref_str)
+            else:
+                fit_dir = pathlib.Path(resolve_path(ref_str))
+                fetch_fit_if_missing(fit_dir)
+            path = fit_dir / RGEMatrix.FILENAME
+
+        if not path.exists():
+            # Name both forms: an unknown prefix is returned unchanged by
+            # resolve_path, so the two differing tells the user which it was.
+            raise FileNotFoundError(
+                f"RGE matrix '{ref}' not found (resolved to '{path}')."
+            )
+        return path
+
+    @staticmethod
+    def read_cache(
+        path_to_rge_mat: str | pathlib.Path, rge_settings: Mapping[str, Any]
+    ) -> dict[float, pd.DataFrame]:
+        """Load the cached matrices *path_to_rge_mat* names, checked against *rge_settings*.
+
+        What every consumer of a precomputed RGE matrix calls — the dataset
+        pipeline through :func:`smefit.rge.build_rge_matrix`, and external chi2
+        modules directly. It stays on :class:`RGEMatrix`, where external chi2
+        modules call it.
+
+        Parameters
+        ----------
+        path_to_rge_mat : str or pathlib.Path
+            A fit name, a directory or the pickle file itself, loaded through
+            :meth:`RGECache.load` — so a prefix-relative path works, and a fit
+            missing locally is downloaded from the server.
+        rge_settings : Mapping[str, Any]
+            The settings the caller runs with, as returned by
+            :attr:`smefit.rge.runner.RGE.settings`; the cache must have been
+            computed with exactly these.
+
+        Returns
+        -------
+        dict[float, pandas.DataFrame]
+            Cached RGE matrices keyed by scale in GeV.
+
+        Raises
+        ------
+        FileNotFoundError
+            If *path_to_rge_mat* names nothing that exists or could be
+            downloaded.
+        ValueError
+            If the file is not an RGE matrix cache, or was computed with
+            settings other than `rge_settings`.
+        """
+        cache = RGECache.load(path_to_rge_mat)
+        if dict(rge_settings) != cache.settings:
+            raise ValueError(
+                "RGE settings do not match RGE matrix precomputed settings."
+            )
+        return cache.frames
+
+
+@dataclass
+class RGECache:
+    """The contents of an ``rge_matrix.pkl``: matrices keyed by scale.
+
+    The read-side counterpart of :class:`RGEMatrix` — see the module docstring
+    for why the two differ. Loaded from a file with :meth:`load`, which is
+    what :meth:`RGEMatrix.read_cache` does before checking it against the
+    reader's settings, and what a loaded fit holds as
+    :attr:`smefit.fit_result.Fit.rge_cache`. The pipeline itself only ever
+    takes a reference to the file (``rg_matrix``), never one of these.
+
+    Attributes
+    ----------
+    settings : dict[str, Any]
+        The running configuration the matrices were computed with, as
+        :attr:`smefit.rge.runner.RGE.settings` returns it.
+    frames : dict[float, pandas.DataFrame]
+        One matrix per scale in GeV: observable-basis operators as rows,
+        initial coefficients as columns.
+    source : pathlib.Path or None
+        The file it was loaded from, for messages; None when built in memory.
+    """
+
+    settings: dict[str, Any]
+    frames: dict[float, pd.DataFrame]
+    source: pathlib.Path | None = None
+
+    @classmethod
+    def load(cls, ref: str | pathlib.Path) -> "RGECache":
+        """Load the cache *ref* names, after checking it is one.
+
+        Parameters
+        ----------
+        ref : str or pathlib.Path
+            A fit name, a directory or the pickle file itself, resolved through
+            :meth:`RGEMatrix.locate` — so a prefix-relative path works, and a
+            fit missing locally is downloaded from the server.
+
+        Raises
+        ------
+        FileNotFoundError
+            If *ref* names nothing that exists or could be downloaded.
+        ValueError
+            If the file is not a readable pickle or does not have the layout
+            :meth:`RGEMatrix.to_dump_dict` writes.
+        """
+        path = RGEMatrix.locate(ref)
+        try:
+            with open(path, "rb") as f:
+                payload = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError, AttributeError, ImportError) as e:
+            raise ValueError(f"'{path}' is not a readable pickle: {e}") from e
+
+        cls._validate_payload(payload, path)
+        _logger.info("Loaded precomputed RGE matrix from %s.", path)
+        return cls(
+            settings=payload["rge_settings"],
+            frames={k: v for k, v in payload.items() if k != "rge_settings"},
+            source=path,
+        )
+
+    @staticmethod
     def _validate_payload(payload: Any, path: pathlib.Path) -> None:
-        """Check an unpickled object against the layout :meth:`to_dump_dict` writes.
+        """Check an unpickled object against the layout :meth:`RGEMatrix.to_dump_dict` writes.
 
         Anything can be pickled, and `rg_matrix` is a user-supplied path, so a
         wrong file (a fit result, someone else's pickle, a truncated download)
@@ -152,76 +323,3 @@ class RGEMatrix:
                     f"{prefix}: the entry for scale {scale} must be a DataFrame, "
                     f"got {type(payload[scale]).__name__}."
                 )
-
-    @staticmethod
-    def read_cache(
-        path_to_rge_mat: str | pathlib.Path, rge_settings: Mapping[str, Any]
-    ) -> dict[float, pd.DataFrame]:
-        """
-        Read a precomputed RGE matrix pickle and validate its settings.
-
-        The read counterpart of :meth:`to_dump_dict`, and with it the sole
-        owner of the payload layout: every key other than ``'rge_settings'`` is a
-        scale. Keeping that rule in one place matters because the flat float-keyed
-        format is a compatibility contract — :func:`smefit.rge.build._find_cached_scale`
-        does arithmetic on those keys, so a stray non-numeric one would break every
-        reader, including older smefit installs reading a matrix shared through the
-        server.
-
-        A ``staticmethod`` rather than a constructor: the pickle keys frames by
-        *unique* scale, so it cannot rebuild the per-data-point
-        :attr:`stacked_mats` and therefore cannot return an ``RGEMatrix``. It
-        lives on the class anyway so that both directions of the format sit
-        together.
-
-        Parameters
-        ----------
-        path_to_rge_mat : str or pathlib.Path
-            Path to the pickle file containing the precomputed RGE matrices.
-            Prefix-relative form (``smefit_results/fits/my_fit/rge_matrix.pkl``)
-            is resolved here through :func:`smefit.paths.resolve_path`, and a
-            file missing under ``smefit_results/{fits,reports}/<name>/`` is
-            downloaded from the server.
-        rge_settings : Mapping[str, Any]
-            Expected RGE settings to validate against the stored file, as returned
-            by :attr:`smefit.rge.runner.RGE.settings`.
-
-        Returns
-        -------
-        dict[float, pandas.DataFrame]
-            Cached RGE matrices keyed by scale in GeV, excluding the
-            ``'rge_settings'`` entry.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the (resolved) file does not exist and could not be downloaded.
-        ValueError
-            If the file is not a readable pickle, does not have the layout
-            :meth:`to_dump_dict` writes, or its stored settings do not match
-            `rge_settings`.
-        """
-        path = pathlib.Path(resolve_path(str(path_to_rge_mat)))
-        fetch_fit_if_missing(path)
-        if not path.exists():
-            # Name both forms: an unknown prefix is returned unchanged by
-            # resolve_path, so the two differing tells the user which it was.
-            raise FileNotFoundError(
-                f"RGE matrix '{path_to_rge_mat}' not found (resolved to '{path}')."
-            )
-
-        try:
-            with open(path, "rb") as f:
-                payload = pickle.load(f)
-        except (pickle.UnpicklingError, EOFError, AttributeError, ImportError) as e:
-            raise ValueError(f"'{path}' is not a readable pickle: {e}") from e
-
-        RGEMatrix._validate_payload(payload, path)
-
-        if rge_settings != payload["rge_settings"]:
-            raise ValueError(
-                "RGE settings do not match RGE matrix precomputed settings."
-            )
-
-        _logger.info("Loaded precomputed RGE matrix from %s.", path)
-        return {k: v for k, v in payload.items() if k != "rge_settings"}

@@ -60,24 +60,28 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.tables`
 
-- `chi2_scan_table(individual_chi2_scans)`
+- `chi2_scan_table(individual_chi2_scans, latex_label)`
   - Per-coefficient 1D chi2 scan results as a table.
-- `coefficient_bounds_table(fit, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
+- `coefficient_bounds_comparison_table(fits, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
+  - Tabulate the confidence bounds of several fits side by side.
+- `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
-- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, params_to_plot=None)`
+- `dataset_table(dataset_info)`
+  - The datasets of the runcard, as :func:`write_dataset_table` lists them.
+- `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
-- `global_information_table(global_information_matrix, params_to_plot=None)`
+- `global_information_table(global_information_matrix, latex_label, params_to_plot=None)`
   - Share of each coefficient's variance contributed by each source.
-- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points)`
+- `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_label)`
   - Mass scan results as a table.
-- `pca_components(pca)`
+- `pca_components(pca, latex_label)`
   - Weight of each coefficient in each principal direction.
-- `pca_spectrum(pca)`
+- `pca_spectrum(pca, latex_label)`
   - One row per principal direction, strongest first.
 
 ### `smefit.figures`
 
-- `plot_chi2_scan(individual_chi2_scans)`
+- `plot_chi2_scan(individual_chi2_scans, latex_label)`
   - Plot the 1D chi2 scan for each free coefficient.
 - `plot_data_theory_comparison(fit, fit_model)`
   - Compare the data with the SM and with the EFT at a fit's posterior.
@@ -87,15 +91,17 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the global information matrix as a heatmap.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
-- `plot_pca_spectrum(pca)`
+- `plot_pca_spectrum(pca, latex_label)`
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
-- `plot_posterior_correlations(fit, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
+- `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
 
 ### `smefit.utils_actions`
 
 - `run_pca(pca, output_path)`
   - Print the principal-component analysis and save it.
+- `write_dataset_table(dataset_table_tex, dataset_bibliography, output_path, compile_pdf=False)`
+  - Write the LaTeX table of the runcard's datasets, for a paper's appendix.
 - `write_pseudodata(pseudodata, theory_path, output_path)`
   - Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 
@@ -178,3 +184,12 @@ names in tracebacks. They are resolved for you.
 
 - `pca(total_fisher_information_matrix, pca_settings) -> smefit.pca.PCA`
   - Diagonalise the total Fisher matrix.
+
+### `smefit.dataset_info`
+
+- `dataset_bibliography(dataset_info, fetch_bibtex=False) -> smefit.dataset_info.Bibliography`
+  - Resolve the references of the datasets on INSPIRE, when asked to.
+- `dataset_info(datasets, data_path) -> List[smefit.dataset_info.DatasetInfo]`
+  - The provenance of each dataset of the runcard, a group's datasets together: groups in order of first appearance, runcard order within one. Reads only the commondata files, a runcard with ``datasets`` and ``data_path`` is enough.
+- `dataset_table_tex(dataset_info, dataset_bibliography, dataset_table_caption='Datasets included in the fit.', dataset_table_label='tab:datasets') -> str`
+  - The datasets as a LaTeX ``xltabular``, one section per ``group``.

@@ -316,6 +316,71 @@ def test_operator_cross_check_skipped_with_rge(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# validate_runcard.py — rge.rg_matrix (mirrors smefit.rge.RGEMatrix.locate)
+# ---------------------------------------------------------------------------
+
+
+def _validate_rg_matrix(tmp_path, rg_matrix):
+    """Validate with `rge.rg_matrix` set, from a work dir whose
+    .config/paths.yaml points smefit_results at tmp_path/results."""
+    results = tmp_path / "results"
+    (tmp_path / ".config").mkdir(exist_ok=True)
+    (tmp_path / ".config" / "paths.yaml").write_text(
+        yaml.safe_dump({"smefit_results": str(results)})
+    )
+    runcard = write_runcard(
+        tmp_path,
+        rge={"init_scale": 1000.0, "rg_matrix": rg_matrix},
+        actions_=["run_ultranest_fit"],
+    )
+    return run_script(VALIDATOR, runcard, cwd=tmp_path)
+
+
+def _fit_with_rge_matrix(tmp_path, name="my_fit"):
+    fit_dir = tmp_path / "results" / "fits" / name
+    fit_dir.mkdir(parents=True)
+    (fit_dir / "rge_matrix.pkl").write_bytes(b"")
+    return fit_dir
+
+
+@pytest.mark.parametrize(
+    "form",
+    ["fit_name", "results_dir", "results_file", "absolute_dir", "absolute_file"],
+)
+def test_rg_matrix_accepts_every_form(tmp_path, form):
+    fit_dir = _fit_with_rge_matrix(tmp_path)
+    rg_matrix = {
+        "fit_name": "my_fit",
+        "results_dir": "smefit_results/fits/my_fit",
+        "results_file": "smefit_results/fits/my_fit/rge_matrix.pkl",
+        "absolute_dir": str(fit_dir),
+        "absolute_file": str(fit_dir / "rge_matrix.pkl"),
+    }[form]
+    code, out = _validate_rg_matrix(tmp_path, rg_matrix)
+    assert code == 0, out
+    assert "rge.rg_matrix" not in out
+
+
+def test_rg_matrix_missing_fit_name_warns_about_download(tmp_path):
+    code, out = _validate_rg_matrix(tmp_path, "no_such_fit")
+    assert code == 0, out
+    assert "rge.rg_matrix" in out and "download" in out
+
+
+def test_rg_matrix_fit_without_pickle_errors(tmp_path):
+    (tmp_path / "results" / "fits" / "my_fit").mkdir(parents=True)
+    code, out = _validate_rg_matrix(tmp_path, "my_fit")
+    assert code == 1, out
+    assert "rge_matrix.pkl not found" in out
+
+
+def test_rg_matrix_missing_local_directory_errors(tmp_path):
+    code, out = _validate_rg_matrix(tmp_path, str(tmp_path / "nowhere"))
+    assert code == 1, out
+    assert "directory not found" in out
+
+
+# ---------------------------------------------------------------------------
 # validate_runcard.py — actions, datasets, structure
 # ---------------------------------------------------------------------------
 
@@ -397,6 +462,78 @@ def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):
         actions_=["fits plot_posterior_correlations"],
     )
     assert code == 0, out
+
+
+def test_runcard_that_only_describes_its_datasets_needs_no_theory_or_coefficients(
+    tmp_path,
+):
+    """The dataset table reads the commondata files and nothing else, so the
+    recipe's runcard (datasets + data_path) is complete."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        fetch_bibtex=False,
+        compile_pdf=True,
+        actions_=["write_dataset_table"],
+    )
+    assert code == 0, out
+
+
+def test_report_next_to_the_dataset_table_needs_no_theory_or_coefficients(
+    tmp_path,
+):
+    """A report beside commondata-only actions reports on them, so it does not
+    turn the runcard into one that needs a fit setup."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        use_quad=None,
+        coefficients=None,
+        template_text="{@dataset_table@}",
+        actions_=["write_dataset_table", "report"],
+    )
+    assert code == 0, out
+    assert "'report' alone" not in out
+
+
+def test_report_alone_still_needs_the_fit_setup(tmp_path):
+    """On its own, 'report' says nothing about what its template runs: the
+    validator does not read the template, so it keeps the fit requirements,
+    and reminds that the report does not write the dataset table."""
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        coefficients=None,
+        template_text="{@dataset_table@}",
+        actions_=["report"],
+    )
+    assert code == 1, out
+    assert "'theory_path' is required" in out
+    assert "non-empty 'coefficients' mapping" in out
+    assert "'report' alone does not write the dataset table" in out
+    assert "add 'write_dataset_table'" in out
+
+
+def test_report_in_a_fit_runcard_gets_no_dataset_table_hint(tmp_path):
+    code, out = validate(
+        tmp_path, template_text="{@dataset_table@}", actions_=["report"]
+    )
+    assert code == 0, out
+    assert "'report' alone" not in out
+
+
+def test_dataset_table_next_to_a_fit_still_needs_the_fit_setup(tmp_path):
+    code, out = validate(
+        tmp_path,
+        theory_path=None,
+        coefficients=None,
+        actions_=["write_dataset_table", "run_analytic_fit"],
+    )
+    assert code == 1, out
+    assert "'theory_path' is required" in out
+    assert "non-empty 'coefficients' mapping" in out
 
 
 def test_runcard_that_only_reads_fits_may_list_datasets_without_paths(tmp_path):

@@ -89,18 +89,26 @@ class smefitConfig(Config):
         log.info(f"Using theory path: {theory_path}")
         return theory_path
 
+    def _cached(self, resource, key, build):
+        """``build()``, computed once per ``resource`` and ``key``.
+
+        The heavy inputs of a likelihood (data, theory, covariance, RGE matrix)
+        are built once however many namespaces ask for them. The key is what
+        they are built from, so that each fit of ``fits::fitcontext`` still gets
+        its own: one value per resource would hand the first fit's to all.
+        """
+        cache = self.__dict__.setdefault("_resource_cache", {})
+        if (resource, key) not in cache:
+            cache[(resource, key)] = build()
+        return cache[(resource, key)]
+
     def produce_data(self, datasets, data_path):
         """Produce data group object."""
-        if hasattr(self, "_cached_data_group"):
-            return self._cached_data_group
-
-        parsed_datasets = []
-        for ds in datasets:
-            dataset = load_dataset(data_path, ds)
-            parsed_datasets.append(dataset)
-
-        self._cached_data_group = DataGroup(parsed_datasets)
-        return self._cached_data_group
+        return self._cached(
+            "data",
+            (str(data_path), repr(datasets)),
+            lambda: DataGroup([load_dataset(data_path, ds) for ds in datasets]),
+        )
 
     def produce_data_groups(self, datasets=None, external_chi2=None):
         """Build data_groups from inline group: keys on datasets and external chi2s.
@@ -268,11 +276,16 @@ class smefitConfig(Config):
         if rge is None:
             return None
 
-        if hasattr(self, "_cached_rge_matrix"):
-            return self._cached_rge_matrix
-
         coeff_list = sorted(coefficients.names)
+        return self._cached(
+            "rge_matrix",
+            (repr(rge), tuple(coeff_list), id(theory)),
+            lambda: self._build_rge_matrix(rge, coeff_list, theory, output_path),
+        )
 
+    @staticmethod
+    def _build_rge_matrix(rge, coeff_list, theory, output_path):
+        """The worker of :meth:`produce_rge_matrix`."""
         rge_matrix = build_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
@@ -286,24 +299,27 @@ class smefitConfig(Config):
         # Write RGE matrix to disk for future reuse
         if output_path is not None:
             rge_matrix.write(output_path)
-        self._cached_rge_matrix = rge_matrix
         return rge_matrix
 
     def produce_theory(self, datasets, theory_path):
         """Produce theory group object."""
-        if hasattr(self, "_cached_theory_group"):
-            return self._cached_theory_group
-
-        parsed_theories = [load_theory(theory_path, ds) for ds in datasets]
-
-        self._cached_theory_group = TheoryGroup(parsed_theories)
-        return self._cached_theory_group
+        return self._cached(
+            "theory",
+            (str(theory_path), repr(datasets)),
+            lambda: TheoryGroup([load_theory(theory_path, ds) for ds in datasets]),
+        )
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
-        if hasattr(self, "_cached_fit_covmat"):
-            return self._cached_fit_covmat
+        return self._cached(
+            "fit_covmat",
+            (id(data), id(theory), use_t0, use_theory_covmat),
+            lambda: self._build_fit_covmat(data, theory, use_t0, use_theory_covmat),
+        )
 
+    @staticmethod
+    def _build_fit_covmat(data, theory, use_t0, use_theory_covmat):
+        """The worker of :meth:`produce_fit_covmat`."""
         if data.names != theory.names:
             raise ValueError(
                 f"DataGroup and TheoryGroup contain different datasets.\n"
@@ -342,8 +358,6 @@ class smefitConfig(Config):
                 "The covariance matrix block is singular for the following "
                 f"dataset(s): {', '.join(singular_datasets)}."
             )
-
-        self._cached_fit_covmat = covmat
 
         return covmat
 

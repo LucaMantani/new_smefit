@@ -265,6 +265,26 @@ def test_produce_rge_matrix_caching(cfg, theory_a, fake_rge_matrix, monkeypatch)
     assert fake_rge_matrix.write.call_count == 1
 
 
+def test_produce_rge_matrix_cached_per_coefficients(cfg, theory_a, monkeypatch):
+    """Another fit's coefficients get a matrix of their own, not the cached one."""
+    from smefit import config as config_mod
+
+    build = MagicMock(side_effect=lambda **kwargs: MagicMock())
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    rge = {"init_scale": 1000.0}
+    first = cfg.produce_rge_matrix(
+        CoefficientGroup([Coefficient(name="OpA", free=True)]), theory, rge
+    )
+    second = cfg.produce_rge_matrix(
+        CoefficientGroup([Coefficient(name="OpB", free=True)]), theory, rge
+    )
+
+    assert first is not second
+    assert build.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # produce_rge_matrix / rge_matrix as a required dependency
 #
@@ -487,6 +507,54 @@ def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
+# produce_data / produce_theory caching
+# ---------------------------------------------------------------------------
+
+_TESTDATA = [{"name": "TESTDATA", "order": "NLO"}]
+
+
+def test_produce_data_caching(cfg, fixtures_data_path):
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    second = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    assert first is second
+
+
+def test_produce_data_cached_per_data_path(cfg, fixtures_data_path, tmp_path):
+    """Another data_path gets a DataGroup of its own, not the cached one."""
+    shifted = tmp_path / "commondata"
+    shifted.mkdir()
+    dataset = yaml.safe_load((fixtures_data_path / "TESTDATA.yaml").read_text())
+    dataset["data_central"] = [3.0, 1.0, 5.0]
+    (shifted / "TESTDATA.yaml").write_text(yaml.dump(dataset))
+
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    second = cfg.produce_data(_TESTDATA, shifted)
+
+    assert first is not second
+    assert not jnp.allclose(first.cv, second.cv)
+
+
+def test_produce_theory_caching(cfg, fixtures_theory_path):
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    second = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    assert first is second
+
+
+def test_produce_theory_cached_per_theory_path(cfg, fixtures_theory_path, tmp_path):
+    """Another theory_path gets a TheoryGroup of its own, not the cached one."""
+    other = tmp_path / "theory"
+    other.mkdir()
+    (other / "TESTDATA.json").write_text(
+        (fixtures_theory_path / "TESTDATA.json").read_text()
+    )
+
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    second = cfg.produce_theory(_TESTDATA, other)
+
+    assert first is not second
+
+
+# ---------------------------------------------------------------------------
 # produce_fit_covmat
 # ---------------------------------------------------------------------------
 
@@ -502,9 +570,8 @@ def test_produce_fit_covmat_with_theory_covmat(cfg, dataset_a, theory_a):
     data = DataGroup([dataset_a])
     theory = TheoryGroup([theory_a])
     covmat_no_th = cfg.produce_fit_covmat(data, theory, use_theory_covmat=False)
-    # use a fresh cfg to bypass the cache
-    cfg2 = smefitConfig.__new__(smefitConfig)
-    covmat_with_th = cfg2.produce_fit_covmat(data, theory, use_theory_covmat=True)
+    # the same config: the cache is keyed on the flags too
+    covmat_with_th = cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
     # adding sm_covmat makes entries larger
     assert jnp.all(covmat_with_th >= covmat_no_th)
 
@@ -515,6 +582,15 @@ def test_produce_fit_covmat_caching(cfg, dataset_a, theory_a):
     result1 = cfg.produce_fit_covmat(data, theory)
     result2 = cfg.produce_fit_covmat(data, theory)
     assert result1 is result2
+
+
+def test_produce_fit_covmat_cached_per_data(
+    cfg, dataset_a, dataset_b, theory_a, theory_b
+):
+    """Another fit's datasets get a covariance of their own, not the cached one."""
+    first = cfg.produce_fit_covmat(DataGroup([dataset_a]), TheoryGroup([theory_a]))
+    second = cfg.produce_fit_covmat(DataGroup([dataset_b]), TheoryGroup([theory_b]))
+    assert first is not second
 
 
 def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):

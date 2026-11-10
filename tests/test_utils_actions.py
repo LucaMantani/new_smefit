@@ -154,16 +154,6 @@ def test_run_pca_delegates_to_the_pca_object():
     result.write.assert_called_once_with(out)
 
 
-def test_run_pca_per_fit_gives_each_fit_its_own_folder():
-    """Under ``- fits run_pca`` they would otherwise share one pca.json."""
-    result = MagicMock(spec=PCA)
-    fit = MagicMock(fit_name="my_fit")
-
-    run_pca(result, Path("/output"), fit=fit)
-
-    result.write.assert_called_once_with(Path("/output/my_fit"))
-
-
 def test_rge_matrix_graph_resolves(fixtures_data_path, fixtures_theory_path, tmp_path):
     """The action resolves through reportengine on a fit-free runcard.
 

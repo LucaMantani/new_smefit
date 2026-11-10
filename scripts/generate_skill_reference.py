@@ -644,19 +644,15 @@ def collect_fit_reading_actions(action_modules):
     is whatever each was fitted with. Every other action builds a chi2 and
     needs the full setup — which is what validate_runcard.py uses this for.
 
-    An action qualifies by requiring the `fit`/`fits` resource. One that only
-    takes it optionally, like `run_pca(..., fit=None)` naming its output folder
-    after the fit, still builds a chi2 from the setup, which outside
-    `fitcontext` is the runcard's own. `report` is added by hand: it comes
-    from reportengine, and its real actions are the `{@…@}` tags of the
-    template.
+    An action qualifies by taking the `fit`/`fits` resource. `report` is added
+    by hand: it comes from reportengine, and its real actions are the `{@…@}`
+    tags of the template.
     """
     names = {"report"}
     for mod in action_modules:
         for fn in mod["functions"]:
-            required = set(fn["params"]) - set(fn["optional_params"])
             if is_runnable_action(mod["module"], fn["name"]) and (
-                {"fit", "fits"} & required
+                {"fit", "fits"} & set(fn["params"])
             ):
                 names.add(fn["name"])
     return sorted(names)

@@ -461,7 +461,7 @@ _FITS_ONLY = dict(
     [
         "fits::fitcontext global_information_table",
         "fits::fitcontext plot_fisher_diagonals_heatmap(cmap='Reds')",
-        "fits::fitcontext run_pca",
+        "fits::fitcontext pca_spectrum",
     ],
 )
 def test_actions_under_fitcontext_need_no_setup_of_their_own(tmp_path, action):
@@ -490,8 +490,7 @@ def test_fitcontext_also_takes_a_single_fit(tmp_path):
     "action",
     [
         "fits global_information_table",
-        # takes `fit` only to name its output folder: not a fit-reading action
-        "fits run_pca",
+        "fits pca_spectrum",
     ],
 )
 def test_a_setup_action_outside_fitcontext_still_needs_setup(tmp_path, action):

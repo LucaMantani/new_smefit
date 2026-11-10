@@ -431,8 +431,8 @@ actions_:
   - report(main=True)
 ```
 
-- Under `actions_:` the same is `- fits::fitcontext run_pca`; with a single
-  `fit:` key it is `fitcontext` alone.
+- Under `actions_:` the same is `- fits::fitcontext pca_spectrum`; with a
+  single `fit:` key it is `fitcontext` alone.
 - Taken from each fit: `datasets` (with their `group:` labels), `coefficients`,
   `data_path`, `theory_path`, `use_quad`, `use_t0`, `use_theory_covmat`, `rge`,
   `external_chi2`, `bayesian_update`. Everything else — `params_to_plot`,
@@ -454,8 +454,12 @@ actions_:
   only the data of the update and not the previous fit.
 - The PCA actions need a `pca_settings:` block in this runcard, which may be empty
   and applies to every fit. PCA also refuses negative curvature, and the error
-  stops the whole run, not just that fit's section. `- fits::fitcontext run_pca`
-  writes `<fit_name>/pca.json` for each fit.
+  stops the whole run, not just that fit's section.
+- For one output per fit use the table and figure actions —
+  `- fits::fitcontext pca_spectrum`, `pca_components`, `plot_pca_spectrum` —
+  which reportengine names after the namespace
+  (`tables/<fit_name>_fitcontext_pca_spectrum.csv`). `run_pca` writes a single
+  `pca.json`, so it is for one fit only.
 
 ### Coefficient bounds table
 

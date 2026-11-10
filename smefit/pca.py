@@ -242,7 +242,7 @@ class PCA:
             json.dump(self.to_dict(), f, indent=2)
 
 
-def pca(total_fisher_information_matrix, pca_settings, fit=None) -> PCA:
+def pca(total_fisher_information_matrix, pca_settings) -> PCA:
     """Diagonalise the total Fisher matrix.
 
     Parameters
@@ -255,9 +255,6 @@ def pca(total_fisher_information_matrix, pca_settings, fit=None) -> PCA:
         no default of its own: the parser is the single place the defaults are
         written down, so a runcard running a PCA action has to carry the
         ``pca_settings:`` block, empty if it wants nothing but the defaults.
-    fit : Fit, optional
-        The fit in scope, if any: the Fisher matrix was then evaluated at its
-        stored best-fit point. Only read to say so in an error.
 
     Returns
     -------
@@ -294,13 +291,9 @@ def pca(total_fisher_information_matrix, pca_settings, fit=None) -> PCA:
         raise ValueError(
             f"PCA: the Fisher matrix has a negative eigenvalue "
             f"({eigenvalues[-1]:.3e}), so the point it was evaluated at is not a "
-            f"minimum of the chi2. "
-            + (
-                "Evaluate it at the fitted minimum instead."
-                if fit is None
-                else f"That point is the stored best fit of '{fit.fit_name}', which "
-                "for a sampler fit is its best sample, not the exact minimum."
-            )
+            f"minimum of the chi2. Check that the gradient descent converged or, "
+            f"under fitcontext, note that a sampler fit's stored best fit is its "
+            f"best sample, not the exact minimum."
         )
 
     result = PCA(

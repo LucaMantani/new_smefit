@@ -52,7 +52,7 @@ COMMONDATA_ACTIONS = {"dataset_table", "write_dataset_table"}
 def in_fitcontext(action):
     """Whether an `actions_:` entry runs under the `fitcontext` namespace.
 
-    `fits::fitcontext run_pca` takes the datasets, coefficients and the rest of
+    `fits::fitcontext pca_spectrum` takes the datasets, coefficients and the rest of
     the setup from each fit, so any action runs there with none of its own.
     """
     if not isinstance(action, str):

@@ -402,12 +402,12 @@ def test_pca_needs_no_setup_of_its_own(
     np.testing.assert_allclose(np.sort(result.eigenvalues), np.linalg.eigvalsh(fisher))
 
 
-def test_pca_off_the_minimum_names_the_fit(
+def test_pca_off_the_minimum_explains_a_stored_best_fit(
     tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
 ) -> None:
-    """Advice to evaluate elsewhere is no use when the point is the stored one."""
+    """The stored best fit of a sampler fit need not be a minimum: say so."""
     runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
     fits = [_write_fit(tmp_path / "my_fit", runcard)]
 
-    with pytest.raises(ValueError, match="stored best fit of 'my_fit'"):
+    with pytest.raises(ValueError, match="stored best fit is its best sample"):
         _in_fitcontext("pca", fits, pca_settings={})

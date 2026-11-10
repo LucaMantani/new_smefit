@@ -404,7 +404,7 @@ protection against misspelling it.
 already run (`_FIT_SETUP_KEYS`: datasets, coefficients, paths, covariance
 flags, `rge`, `external_chi2`, `bayesian_update`), parsed, plus its stored
 best-fit point as `best_fit_point`. A runcard uses it as a namespace —
-`- fits::fitcontext run_pca`, `{@with fits::fitcontext@}` — and reportengine
+`- fits::fitcontext pca_spectrum`, `{@with fits::fitcontext@}` — and reportengine
 looks a name up in the namespace before building it, so every node under it
 rebuilds `chi2`, `datasets_chi2`, `data_groups`, … from the fit's setup.
 

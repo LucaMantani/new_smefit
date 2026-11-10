@@ -96,7 +96,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 ### `smefit.utils_actions`
 
-- `run_pca(pca, output_path, fit=None)`
+- `run_pca(pca, output_path)`
   - Print the principal-component analysis and save it.
 - `write_dataset_table(dataset_table_tex, dataset_bibliography, output_path, compile_pdf=False)`
   - Write the LaTeX table of the runcard's datasets, for a paper's appendix.
@@ -182,7 +182,7 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.pca`
 
-- `pca(total_fisher_information_matrix, pca_settings, fit=None) -> smefit.pca.PCA`
+- `pca(total_fisher_information_matrix, pca_settings) -> smefit.pca.PCA`
   - Diagonalise the total Fisher matrix.
 
 ### `smefit.dataset_info`

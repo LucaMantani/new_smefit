@@ -6,22 +6,12 @@
 # the `datasets`, `coefficients` (especially any `expr` constraints) and
 # `external_chi2` entries are illustrative and must be replaced with ones
 # chosen for the analysis at hand — do not carry them over verbatim.
-# Data against theory, in the SM and in the EFT, for a fit that has already
-# been run: no fit is run here. One figure per dataset and per fit listed under
-# `fits`, with the measurements, the SM prediction with its theory uncertainty
-# and the EFT prediction at the fit's best-fit point, banded over its posterior.
-#
-# The predictions are those of the model the fit was run with, rebuilt from the
-# fit's own runcard: its use_quad, rge, use_t0, use_theory_covmat and
-# coefficients, so nothing of the setup is repeated here.
-#
 # Only the datasets listed under `datasets` are drawn, exactly as listed
-# (order, theory_cov), whether or not the fit included them. They are read from
-# the fit's data_path and theory_path.
+# (order, theory_cov), whether or not the fit included them.
 datasets:
   - {name: LEP1_EWPOs_2006, order: LO}
   - {name: LEP_Bhabha_2013, order: LO}
-
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
 

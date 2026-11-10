@@ -27,12 +27,6 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
-from smefit.fisher import (
-    _aggregate_fisher_from_fit,
-    _aggregate_fisher_from_runcard,
-    _total_fisher_from_fit,
-    _total_fisher_from_runcard,
-)
 from smefit.fit_result import Fit
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
@@ -52,6 +46,22 @@ from smefit.whitening import (
 )
 
 log = logging.getLogger(__name__)
+
+# The runcard keys saying what a fit was fitted on, as opposed to how it was
+# fitted (optimizer, sampler, whitening) or reported: what produce_fitcontext
+# takes over from a fit.
+_FIT_SETUP_KEYS = (
+    "data_path",
+    "theory_path",
+    "datasets",
+    "coefficients",
+    "external_chi2",
+    "rge",
+    "use_quad",
+    "use_t0",
+    "use_theory_covmat",
+    "bayesian_update",
+)
 
 
 class smefitConfig(Config):
@@ -125,48 +135,6 @@ class smefitConfig(Config):
             if group is not None:
                 groups.setdefault(group, []).append(name)
         return groups if groups else None
-
-    @explicit_node
-    def produce_aggregate_fisher_information_matrices(self, fit=None):
-        """Dispatch to the worker computing the per-source Fisher matrices.
-
-        Must stay an ExplicitNode because the two sources have different
-        dependencies. A fit in scope (``fit:``, or ``fits`` as a namespace) needs
-        nothing else, as it is rebuilt from its own runcard; otherwise the
-        runcard has to supply ``datasets_chi2`` and ``gd_best_fit``.
-        """
-        if fit is None:
-            return _aggregate_fisher_from_runcard
-        self._refuse_individual_fit(fit)
-        return _aggregate_fisher_from_fit
-
-    @explicit_node
-    def produce_total_fisher_information_matrix(self, fit=None):
-        """Dispatch to the worker computing the Fisher matrix of the full likelihood.
-
-        An ExplicitNode for the same reason as
-        :meth:`produce_aggregate_fisher_information_matrices`: without a fit in
-        scope the runcard has to supply ``chi2`` and ``gd_best_fit``, with one it
-        supplies neither.
-        """
-        if fit is None:
-            return _total_fisher_from_runcard
-        self._refuse_individual_fit(fit)
-        return _total_fisher_from_fit
-
-    @staticmethod
-    def _refuse_individual_fit(fit):
-        """Refuse a fit whose best-fit values are not a point of the joint chi2.
-
-        Each coefficient of an individual fit was fitted with the others at their
-        baseline. Raised while the graph is built, before anything runs.
-        """
-        if fit.individual_fit:
-            raise ConfigError(
-                f"Cannot compute Fisher information matrices of '{fit.fit_name}': it "
-                "is a set of individual fits, whose best-fit values are not a joint "
-                "point of the likelihood."
-            )
 
     def parse_latex_labels(self, latex_labels):
         r"""Parse the optional map from a displayed name to its LaTeX label.
@@ -1049,6 +1017,56 @@ class smefitConfig(Config):
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
             ) from e
+
+    def produce_fitcontext(self, fit):
+        """The setup of a fit already run, as a namespace: ``fits::fitcontext``.
+
+        Under it, any node reads the fit's own setup keys — datasets,
+        coefficients, paths, covariance flags, RGE, external likelihoods — in
+        place of the runcard's, so it rebuilds whatever it needs (``chi2``,
+        ``datasets_chi2``, ``data_groups``, ``dataset_info``, …) exactly as the
+        fit was run, with no code of its own for fits.
+
+        The keys are taken from :meth:`Fit.rebuild_runcard` and parsed here, by a
+        config of their own sharing this run's environment: values found in a
+        namespace are not parsed again. Only the setup keys are taken, so the
+        runcard keeps the choices of the report itself (``params_to_plot``,
+        ``pca_settings``, …). A setup key the fit does not have is refused when
+        the runcard sets one, as the runcard's would otherwise stand in for it.
+        """
+        if fit.individual_fit:
+            raise ConfigError(
+                f"Cannot rebuild the context of '{fit.fit_name}': it is a set of "
+                "individual fits, whose best-fit values are not a joint point of "
+                "the likelihood."
+            )
+        if fit.setting("bayesian_update") is not None:
+            log.warning(
+                "'%s' is a Bayesian update: the likelihood rebuilt from it covers "
+                "only the data of this update, not the previous fit it used as a "
+                "prior.",
+                fit.fit_name,
+            )
+
+        runcard = fit.rebuild_runcard()
+        setup = {key: runcard[key] for key in _FIT_SETUP_KEYS if key in runcard}
+        missing = [key for key in _FIT_SETUP_KEYS if key not in setup]
+        overridden = [key for key in missing if key in self.input_params]
+        if overridden:
+            raise ConfigError(
+                f"Fit '{fit.fit_name}' has no {', '.join(overridden)} of its own, "
+                "so under 'fitcontext' the runcard's would be used in its place. "
+                "Remove them from the runcard."
+            )
+
+        context = dict(
+            type(self)(setup, environment=self.environment).process_all_params()
+        )
+        best_fit_point = fit.fit_results.best_fit_point
+        context["gd_best_fit"] = jnp.array(
+            [best_fit_point[name] for name in context["coefficients"].free_names]
+        )
+        return context
 
     def parse_interval_types(self, interval_types: str | list) -> list:
         """The credible intervals a report's bounds quote.

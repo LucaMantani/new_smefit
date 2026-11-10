@@ -11,7 +11,7 @@ pca_settings: {}
 
 # `fits::fitcontext` puts each fit's own setup (datasets, coefficients, paths,
 # covariance flags, RGE, external chi2) in scope, and its stored best-fit point
-# as `gd_best_fit`: the likelihood is rebuilt as the fit was run, and evaluated
+# as `best_fit_point`: the likelihood is rebuilt as the fit was run, and evaluated
 # at its best fit. Sources are the datasets of each fit, or its `group:` labels
 # when it has them. Without it these actions read the setup from this runcard
 # instead: see report.yaml for that form.

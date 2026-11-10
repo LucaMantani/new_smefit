@@ -106,7 +106,7 @@ FIT_TYPE_MAP = [
     (
         "Report (Fisher information, tables, plots)",
         "report",
-        "template_text + optimizer_settings/gradient_descent_settings (Fisher needs gd_best_fit)",
+        "template_text + optimizer_settings/gradient_descent_settings (Fisher needs best_fit_point, i.e. gd_best_fit)",
     ),
 ]
 

@@ -22,8 +22,9 @@ coefficients:
     free: True
     prior: {dist: uniform, low: -0.5, high: 0.5}
 
-# The Fisher matrix is evaluated at the gd_best_fit point. `sm_solution: true`
-# skips the minimisation and uses the coefficients' baseline values instead, so
+# The Fisher matrix is evaluated at best_fit_point, here the gd_best_fit point.
+# `sm_solution: true` skips the minimisation and uses the coefficients' baseline
+# values instead, so
 # the PCA costs a single Hessian evaluation and needs no fit — that is the usual
 # way to ask "what would this dataset constrain?" before running anything.
 gradient_descent_settings:

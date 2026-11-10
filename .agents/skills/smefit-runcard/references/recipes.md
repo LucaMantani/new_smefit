@@ -441,7 +441,7 @@ actions_:
   stand in for the fit's default.
 - Without `fitcontext`, as in `report.yaml`, the actions read this runcard's own
   setup.
-- The fit's stored `best_fit_point` is the `gd_best_fit` of the context, so
+- The fit's stored best fit is the `best_fit_point` of the context, so
   `gradient_descent_settings` has no effect. For a sampler fit that point is the
   best sample rather than the exact minimum. With quadratic corrections it can
   have negative curvature, which the global information matrix refuses.

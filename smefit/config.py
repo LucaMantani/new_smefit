@@ -1063,7 +1063,8 @@ class smefitConfig(Config):
             type(self)(setup, environment=self.environment).process_all_params()
         )
         best_fit_point = fit.fit_results.best_fit_point
-        context["gd_best_fit"] = jnp.array(
+        # stands in for the gradient descent of the nodes evaluated at a best fit
+        context["best_fit_point"] = jnp.array(
             [best_fit_point[name] for name in context["coefficients"].free_names]
         )
         return context

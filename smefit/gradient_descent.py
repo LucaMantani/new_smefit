@@ -13,6 +13,19 @@ import optax
 log = logging.getLogger(__name__)
 
 
+def best_fit_point(gd_best_fit):
+    """The point at which nodes evaluate the likelihood around its best fit.
+
+    The Fisher information matrices, and through them the PCA, are evaluated
+    here. Outside a ``fitcontext`` it is the gradient-descent result. Under
+    ``fits::fitcontext`` the namespace supplies a fit's stored best-fit point
+    instead (see ``produce_fitcontext``), so no gradient descent is run, while
+    the nodes needing an actual descent (``hessian_fit``, whitening with
+    ``shift: gradient_descent``) keep reading ``gd_best_fit``.
+    """
+    return gd_best_fit
+
+
 def gd_best_fit(chi2, optimizer, gradient_descent_settings):
     """Determine the best-fit coefficient vector via gradient descent.
 

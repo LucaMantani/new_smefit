@@ -176,6 +176,43 @@ def test_the_fit_runcard_record_is_untouched(
     assert Fit.from_folder(tmp_path / "my_fit").fit_runcard == runcard
 
 
+def test_best_fit_point_is_the_stored_one(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_fit(tmp_path / "my_fit", runcard)]
+
+    [result] = _in_fitcontext("best_fit_point", fits)
+
+    np.testing.assert_allclose(result, list(_BEST_FIT.values()))
+
+
+def test_gd_best_fit_is_left_to_the_gradient_descent(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """Nodes that need an actual descent are not handed the stored point."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_fit(tmp_path / "my_fit", runcard)]
+
+    [result] = _in_fitcontext(
+        "gd_best_fit", fits, gradient_descent_settings={"sm_solution": True}
+    )
+
+    np.testing.assert_allclose(result, [0.0, 0.0])
+
+
+def test_without_fitcontext_best_fit_point_is_gd_best_fit(
+    fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    settings = {"gradient_descent_settings": {}}
+
+    np.testing.assert_allclose(
+        smefitAPI.best_fit_point(**runcard, **settings),
+        smefitAPI.gd_best_fit(**runcard, **settings),
+    )
+
+
 # ---------------------------------------------------------------------------
 # The runcard's own keys
 # ---------------------------------------------------------------------------

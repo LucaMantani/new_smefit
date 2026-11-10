@@ -403,7 +403,7 @@ protection against misspelling it.
 `produce_fitcontext` (`smefit/config.py`) returns the setup keys of a fit
 already run (`_FIT_SETUP_KEYS`: datasets, coefficients, paths, covariance
 flags, `rge`, `external_chi2`, `bayesian_update`), parsed, plus its stored
-best-fit point as `gd_best_fit`. A runcard uses it as a namespace —
+best-fit point as `best_fit_point`. A runcard uses it as a namespace —
 `- fits::fitcontext run_pca`, `{@with fits::fitcontext@}` — and reportengine
 looks a name up in the namespace before building it, so every node under it
 rebuilds `chi2`, `datasets_chi2`, `data_groups`, … from the fit's setup.
@@ -419,6 +419,10 @@ keys like any other node. Two rules keep that true:
   value: a value kept on `self` is the first fit's, handed to all the others.
   The setup keys are parsed by a config of their own, so state a `parse_`
   keeps on `self` never reaches this one at all.
+- **A node evaluated at the best fit takes `best_fit_point`**, not
+  `gd_best_fit`. Outside `fitcontext` the first is the second; under it, it is
+  the fit's stored point and no descent runs. Take `gd_best_fit` only when the
+  node needs an actual gradient descent, as `hessian_fit` does.
 - **A new setup key goes into `_FIT_SETUP_KEYS`**, or under `fitcontext` the
   runcard's value (or the provider default) stands in for the fit's. A key
   saying how to fit (sampler, optimizer, whitening settings) or how to report

@@ -13,11 +13,11 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 
-def fisher_information_matrices(datasets_chi2, gd_best_fit):
+def fisher_information_matrices(datasets_chi2, best_fit_point):
     """Compute per-dataset Fisher information matrices at the best-fit point.
 
     For each source (data-based dataset or external chi2), the Fisher matrix is
-    F = 0.5 * H where H is the Hessian of the chi2 evaluated at ``gd_best_fit``.
+    F = 0.5 * H where H is the Hessian of the chi2 evaluated at ``best_fit_point``.
     To evaluate at the coefficient baseline values, set ``sm_solution: true`` in the
     ``gradient_descent_settings`` runcard block.
 
@@ -25,9 +25,9 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
     ----------
     datasets_chi2 : list of Chi2
         Per-dataset chi2 objects (including any external chi2 contributions).
-    gd_best_fit : jnp.ndarray
-        Best-fit coefficient vector of shape ``(n_free,)`` produced by the
-        ``gd_best_fit`` node.
+    best_fit_point : jnp.ndarray
+        Best-fit coefficient vector of shape ``(n_free,)``: the gradient-descent
+        result, or a fit's stored best fit under ``fitcontext``.
 
     Returns
     -------
@@ -36,7 +36,7 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
         coeff_names as both index and columns.
     """
     coeff_names = datasets_chi2[0].param_names
-    c0 = gd_best_fit
+    c0 = best_fit_point
     log.info(
         "Computing Fisher information matrices for %d sources, %d free coefficients.",
         len(datasets_chi2),
@@ -51,7 +51,7 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
     return result
 
 
-def total_fisher_information_matrix(chi2, gd_best_fit):
+def total_fisher_information_matrix(chi2, best_fit_point):
     """Fisher information matrix of the full likelihood at the best-fit point.
 
     ``F = 0.5 * H``, with ``H`` the Hessian of the total chi2.
@@ -63,7 +63,7 @@ def total_fisher_information_matrix(chi2, gd_best_fit):
     ----------
     chi2 : Chi2
         The total chi2 (data and any external contributions).
-    gd_best_fit : jnp.ndarray
+    best_fit_point : jnp.ndarray
         Best-fit coefficient vector of shape ``(n_free,)``.
 
     Returns
@@ -71,7 +71,7 @@ def total_fisher_information_matrix(chi2, gd_best_fit):
     pd.DataFrame
         Square, with coeff_names as both index and columns.
     """
-    F = np.array(0.5 * jax.hessian(chi2)(gd_best_fit))
+    F = np.array(0.5 * jax.hessian(chi2)(best_fit_point))
     return pd.DataFrame(F, index=chi2.param_names, columns=chi2.param_names)
 
 

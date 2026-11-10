@@ -7,7 +7,6 @@ This module contains functions for computing Fisher information matrices.
 import logging
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
@@ -52,11 +51,8 @@ def fisher_information_matrices(datasets_chi2, gd_best_fit):
     return result
 
 
-def _total_fisher_from_runcard(chi2, gd_best_fit):
+def total_fisher_information_matrix(chi2, gd_best_fit):
     """Fisher information matrix of the full likelihood at the best-fit point.
-
-    The worker of ``total_fisher_information_matrix`` when no fit is in scope:
-    see ``produce_total_fisher_information_matrix`` in ``smefit.config``.
 
     ``F = 0.5 * H``, with ``H`` the Hessian of the total chi2.
 
@@ -77,46 +73,6 @@ def _total_fisher_from_runcard(chi2, gd_best_fit):
     """
     F = np.array(0.5 * jax.hessian(chi2)(gd_best_fit))
     return pd.DataFrame(F, index=chi2.param_names, columns=chi2.param_names)
-
-
-def _warn_if_bayesian_update(fit):
-    """Warn that the chi2 rebuilt from ``fit`` leaves out the previous fit."""
-    if fit.setting("bayesian_update") is not None:
-        log.warning(
-            "'%s' is a Bayesian update: its Fisher information matrices cover only "
-            "the data of this update, not the previous fit it used as a prior.",
-            fit.fit_name,
-        )
-
-
-def _best_fit_of(fit, param_names):
-    """The stored best-fit point of ``fit``, as a vector ordered by ``param_names``."""
-    best_fit_point = fit.fit_results.best_fit_point
-    return jnp.array([best_fit_point[name] for name in param_names])
-
-
-def _total_fisher_from_fit(fit):
-    """Fisher information matrix of the full likelihood of a fit already run.
-
-    The worker of ``total_fisher_information_matrix`` when a fit is in scope:
-    see ``produce_total_fisher_information_matrix`` in ``smefit.config``. The
-    chi2 is rebuilt from the fit's own runcard, and the Hessian is evaluated at
-    its stored best-fit point.
-
-    Parameters
-    ----------
-    fit : Fit
-
-    Returns
-    -------
-    pd.DataFrame
-    """
-    # Local import to avoid circular dependency
-    from smefit.api import smefitAPI
-
-    _warn_if_bayesian_update(fit)
-    chi2 = smefitAPI.chi2(**fit.rebuild_runcard())
-    return _total_fisher_from_runcard(chi2, _best_fit_of(fit, chi2.param_names))
 
 
 def _resolve_groups(source_names, data_groups):
@@ -150,12 +106,10 @@ def _resolve_groups(source_names, data_groups):
     return groups
 
 
-def _aggregate_fisher_from_runcard(fisher_information_matrices, data_groups=None):
+def aggregate_fisher_information_matrices(
+    fisher_information_matrices, data_groups=None
+):
     """Aggregate Fisher matrices by summing within each group.
-
-    The worker of ``aggregate_fisher_information_matrices`` when no fit is in
-    scope: see ``produce_aggregate_fisher_information_matrices`` in
-    ``smefit.config``.
 
     Parameters
     ----------
@@ -179,35 +133,6 @@ def _aggregate_fisher_from_runcard(fisher_information_matrices, data_groups=None
         group_name: sum(fim[source_names[i]] for i in indices)
         for group_name, indices in groups
     }
-
-
-def _aggregate_fisher_from_fit(fit):
-    """Aggregate Fisher matrices of a fit that has already been run.
-
-    The worker of ``aggregate_fisher_information_matrices`` when a fit is in
-    scope: see ``produce_aggregate_fisher_information_matrices`` in
-    ``smefit.config``. The chi2s and the groups are rebuilt from the fit's own
-    runcard, and the Hessians are evaluated at its stored best-fit point.
-
-    Parameters
-    ----------
-    fit : Fit
-
-    Returns
-    -------
-    dict[str, pd.DataFrame]
-    """
-    # Local import to avoid circular dependency
-    from smefit.api import smefitAPI
-
-    _warn_if_bayesian_update(fit)
-    runcard = fit.rebuild_runcard()
-    datasets_chi2 = smefitAPI.datasets_chi2(**runcard)
-    c0 = _best_fit_of(fit, datasets_chi2[0].param_names)
-    return _aggregate_fisher_from_runcard(
-        fisher_information_matrices(datasets_chi2, c0),
-        smefitAPI.data_groups(**runcard),
-    )
 
 
 ############################

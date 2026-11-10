@@ -112,11 +112,8 @@ fixed: whatever its own signature names, always. An `@explicit_node`-decorated
 from *that* function — resolving its parameters as further graph requirements.
 The dependency set is therefore chosen at graph-build time, from the runcard.
 
-There are three instances in smefit. `produce_aggregate_fisher_information_matrices`
-and `produce_total_fisher_information_matrix` pick between a fit in scope and the
-runcard's own setup.
-`produce_whitening_transformation` (`smefit/config.py`), shown here, dispatches to
-the workers in `smefit/whitening.py`:
+The one instance in smefit is `produce_whitening_transformation`
+(`smefit/config.py`), dispatching to the workers in `smefit/whitening.py`:
 
 ```python
 @explicit_node
@@ -392,10 +389,35 @@ protection against misspelling it.
 6. **An action that reports on finished fits** takes the `fit` (or `fits`)
    resource, which is how you would write it anyway. `collect_fit_reading_actions`
    (`scripts/generate_skill_reference.py`) reads that parameter name to build
-   the `fit_reading_actions` list in `runcard-keys.json`, following providers
-   down to a `produce_` that takes a `fit`: it is what tells
+   the `fit_reading_actions` list in `runcard-keys.json`: it is what tells
    `validate_runcard.py` that a `fits:`-only runcard running this action needs
    no `datasets`/`coefficients` of its own.
+
+## A fit's setup as a namespace: `fitcontext`
+
+`produce_fitcontext` (`smefit/config.py`) returns the setup keys of a fit
+already run (`_FIT_SETUP_KEYS`: datasets, coefficients, paths, covariance
+flags, `rge`, `external_chi2`, `bayesian_update`), parsed, plus its stored
+best-fit point as `gd_best_fit`. A runcard uses it as a namespace —
+`- fits::fitcontext run_pca`, `{@with fits::fitcontext@}` — and reportengine
+looks a name up in the namespace before building it, so every node under it
+rebuilds `chi2`, `datasets_chi2`, `data_groups`, … from the fit's setup.
+
+So a node that should also work on a finished fit needs **no code for it**: do
+not give it a `fit` parameter or a fit/runcard dispatch, write it on the setup
+keys like any other node. Two rules keep that true:
+
+- **No state on the config outside the namespace.** Under `fits::fitcontext`
+  one `smefitConfig` builds the nodes of every fit. A `produce_` caching its
+  result on `self` must key the cache on its inputs (`self._cached(resource,
+  key, build)`), and a `parse_` must put everything it reads into its return
+  value: a value kept on `self` is the first fit's, handed to all the others.
+  The setup keys are parsed by a config of their own, so state a `parse_`
+  keeps on `self` never reaches this one at all.
+- **A new setup key goes into `_FIT_SETUP_KEYS`**, or under `fitcontext` the
+  runcard's value (or the provider default) stands in for the fit's. A key
+  saying how to fit (sampler, optimizer, whitening settings) or how to report
+  is not a setup key.
 
 ## Coefficients, priors, external chi2
 

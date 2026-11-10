@@ -42,19 +42,19 @@ ULTRANEST_ACTIONS = ("run_ultranest_fit", "run_individual_ultranest_fits")
 # Actions that report on fits read back off disk, so a runcard running only
 # these needs no fit setup of its own. Taken from runcard-keys.json when it is
 # there; this is the fallback.
-FIT_READING_ACTIONS = {
-    "report",
-    "plot_posterior_correlations",
-    "fisher_diagonals_normalised",
-    "plot_fisher_diagonals_heatmap",
-    "global_information_table",
-    "plot_global_information_heatmap",
-    "run_pca",
-    "pca_spectrum",
-    "pca_components",
-    "plot_pca_spectrum",
-    "plot_pca_components_heatmap",
-}
+FIT_READING_ACTIONS = {"report", "plot_posterior_correlations"}
+
+
+def in_fitcontext(action):
+    """Whether an `actions_:` entry runs under the `fitcontext` namespace.
+
+    `fits::fitcontext run_pca` takes the datasets, coefficients and the rest of
+    the setup from each fit, so any action runs there with none of its own.
+    """
+    if not isinstance(action, str):
+        return False
+    head = action.split("(", 1)[0].split()
+    return len(head) > 1 and "fitcontext" in head[0].split("::")
 
 
 def action_name(action):
@@ -595,21 +595,21 @@ def main():
     # it reports on are whatever each fit was run with. Its actions have to
     # agree — 'fits:' next to a fit action means the runcard *does* fit
     # something, and it is a fit runcard like any other, held to the
-    # requirements below. Only actions_ is read; an action that a report
+    # requirements below — unless it runs under 'fitcontext', which takes the
+    # whole setup from each fit. Only actions_ is read; an action that a report
     # template calls is not seen here.
     fit_reading = set((keys or {}).get("fit_reading_actions") or FIT_READING_ACTIONS)
     raw_actions = runcard.get("actions_")
-    action_names = {
-        action_name(a) for a in (raw_actions if isinstance(raw_actions, list) else [])
-    }
+    actions = raw_actions if isinstance(raw_actions, list) else []
+    action_names = {action_name(a) for a in actions}
     reads_fits_only = (
-        bool(runcard.get("fits"))
+        bool(runcard.get("fits") or runcard.get("fit"))
         and not (
             "datasets" in runcard
             or "external_chi2" in runcard
             or "coefficients" in runcard
         )
-        and action_names <= fit_reading
+        and all(in_fitcontext(a) or action_name(a) in fit_reading for a in actions)
     )
 
     if (

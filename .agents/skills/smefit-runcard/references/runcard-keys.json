@@ -14,7 +14,6 @@
     "group"
   ],
   "derived_keys": [
-    "aggregate_fisher_information_matrices",
     "chi2",
     "data",
     "data_groups",
@@ -22,6 +21,7 @@
     "eft_model",
     "ext_chi2_func",
     "fit_covmat",
+    "fitcontext",
     "individual_chi2",
     "individual_coefficients",
     "individual_eft_model",
@@ -40,19 +40,10 @@
     "pseudodata",
     "rge_matrix",
     "theory",
-    "total_fisher_information_matrix",
     "whitening_transformation"
   ],
   "fit_reading_actions": [
     "coefficient_bounds_table",
-    "fisher_diagonals_normalised",
-    "global_information_table",
-    "pca_components",
-    "pca_spectrum",
-    "plot_fisher_diagonals_heatmap",
-    "plot_global_information_heatmap",
-    "plot_pca_components_heatmap",
-    "plot_pca_spectrum",
     "plot_posterior_correlations",
     "report",
     "run_pca"
@@ -102,10 +93,9 @@
       ]
     },
     "fit": {
-      "default": "None",
+      "default": null,
       "used_by": [
-        "aggregate_fisher_information_matrices",
-        "total_fisher_information_matrix"
+        "fitcontext"
       ]
     },
     "use_quad": {
@@ -187,9 +177,7 @@
       "known_keys": null
     },
     "external_chi2": {
-      "defaults": {
-        "group": "(no default)"
-      },
+      "defaults": {},
       "known_keys": null
     },
     "fits": {

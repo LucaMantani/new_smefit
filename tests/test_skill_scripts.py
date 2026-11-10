@@ -447,54 +447,55 @@ def test_runcard_without_any_data_is_rejected(tmp_path):
     assert "no data to fit" in out
 
 
-@pytest.mark.parametrize(
-    "action",
-    [
-        "fisher_diagonals_normalised",
-        "plot_fisher_diagonals_heatmap",
-        "global_information_table",
-        "plot_global_information_heatmap",
-    ],
+_FITS_ONLY = dict(
+    datasets=None,
+    data_path=None,
+    theory_path=None,
+    use_quad=None,
+    coefficients=None,
 )
-def test_fisher_actions_can_read_only_fits(tmp_path, action):
-    """They reach the fit through a node, not through a parameter of their own."""
-    code, out = validate(
-        tmp_path,
-        datasets=None,
-        data_path=None,
-        theory_path=None,
-        use_quad=None,
-        coefficients=None,
-        fits=[{"name": "my_fit", "path": "."}],
-        actions_=[f"fits {action}"],
-    )
-    assert code == 0, out
 
 
 @pytest.mark.parametrize(
     "action",
     [
-        "run_pca",
-        "pca_spectrum",
-        "pca_components",
-        "plot_pca_spectrum",
-        "plot_pca_components_heatmap",
+        "fits::fitcontext global_information_table",
+        "fits::fitcontext plot_fisher_diagonals_heatmap(cmap='Reds')",
+        "fits::fitcontext run_pca",
     ],
 )
-def test_pca_actions_can_read_only_fits(tmp_path, action):
-    """They reach the fit through a node, and still carry pca_settings."""
+def test_actions_under_fitcontext_need_no_setup_of_their_own(tmp_path, action):
+    """fitcontext takes the datasets and coefficients from each fit."""
     code, out = validate(
         tmp_path,
-        datasets=None,
-        data_path=None,
-        theory_path=None,
-        use_quad=None,
-        coefficients=None,
+        **_FITS_ONLY,
         fits=[{"name": "my_fit", "path": "."}],
         pca_settings={},
-        actions_=[f"fits {action}"],
+        actions_=[action],
     )
     assert code == 0, out
+
+
+def test_fitcontext_also_takes_a_single_fit(tmp_path):
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fit={"name": "my_fit", "path": "."},
+        actions_=["fitcontext global_information_table"],
+    )
+    assert code == 0, out
+
+
+def test_a_setup_action_outside_fitcontext_still_needs_setup(tmp_path):
+    """Without fitcontext the Fisher actions read the runcard's own datasets."""
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fits=[{"name": "my_fit", "path": "."}],
+        actions_=["fits global_information_table"],
+    )
+    assert code != 0
+    assert "no data to fit" in out
 
 
 def test_runcard_that_only_reads_fits_needs_no_data_or_coefficients(tmp_path):

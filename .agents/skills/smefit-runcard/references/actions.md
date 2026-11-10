@@ -163,10 +163,14 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.fisher`
 
+- `aggregate_fisher_information_matrices(fisher_information_matrices, data_groups=None)`
+  - Aggregate Fisher matrices by summing within each group.
 - `fisher_information_matrices(datasets_chi2, gd_best_fit)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
 - `global_information_matrix(aggregate_fisher_information_matrices)`
   - Compute the constraining power of each source on each coefficient.
+- `total_fisher_information_matrix(chi2, gd_best_fit)`
+  - Fisher information matrix of the full likelihood at the best-fit point.
 
 ### `smefit.pca`
 

@@ -636,7 +636,7 @@ def collect_provider_arg_keys(action_modules, surface):
     return sorted(keys - resources)
 
 
-def collect_fit_reading_actions(action_modules, produce_entries):
+def collect_fit_reading_actions(action_modules):
     """Actions whose input is a fit that has already been run.
 
     A runcard that only runs these needs no `datasets`/`coefficients` of its
@@ -644,37 +644,17 @@ def collect_fit_reading_actions(action_modules, produce_entries):
     is whatever each was fitted with. Every other action builds a chi2 and
     needs the full setup — which is what validate_runcard.py uses this for.
 
-    An action qualifies by taking the `fit`/`fits` resource, or by depending,
-    through other providers, on a `produce_` that takes it: that is how the
-    Fisher actions read a fit. `report` is added by hand: it comes from
-    reportengine, and its real actions are the `{@…@}` tags of the template.
+    An action qualifies by taking the `fit`/`fits` resource. `report` is added
+    by hand: it comes from reportengine, and its real actions are the `{@…@}`
+    tags of the template.
     """
-    reads_a_fit = {"fit", "fits"}
-    reads_a_fit |= {
-        entry["key"]
-        for entry in produce_entries
-        if reads_a_fit & {name for name, _ in entry["params"]}
-    }
-    functions = [
-        (mod["module"], fn) for mod in action_modules for fn in mod["functions"]
-    ]
-    # to a fixed point: a figure takes a table, which takes the node reading a fit
-    while True:
-        found = {
-            fn["name"]
-            for _, fn in functions
-            if fn["name"] not in reads_a_fit and reads_a_fit & set(fn["params"])
-        }
-        if not found:
-            break
-        reads_a_fit |= found
-
     names = {"report"}
-    names.update(
-        fn["name"]
-        for module, fn in functions
-        if fn["name"] in reads_a_fit and is_runnable_action(module, fn["name"])
-    )
+    for mod in action_modules:
+        for fn in mod["functions"]:
+            if is_runnable_action(mod["module"], fn["name"]) and (
+                {"fit", "fits"} & set(fn["params"])
+            ):
+                names.add(fn["name"])
     return sorted(names)
 
 
@@ -695,9 +675,7 @@ def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_k
     )
     return {
         "top_level_keys": top_level,
-        "fit_reading_actions": collect_fit_reading_actions(
-            action_modules, surface["produce"]
-        ),
+        "fit_reading_actions": collect_fit_reading_actions(action_modules),
         "settings_blocks": settings_blocks,
         "raw_keys": surface["raw"],
         "derived_keys": sorted(e["key"] for e in surface["produce"]),

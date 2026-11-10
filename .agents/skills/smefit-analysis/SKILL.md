@@ -129,6 +129,11 @@ stored prior is the previous posterior, not the base prior) has one. Template:
 `Fit.from_folder(path).confidence_bounds(95, "hdi")` →
 `{coeff: [(low, high), ...]}` (always one interval for `eti`;
 several pieces, joined by `∪` in the table, for a multimodal `hdi` region).
+`coefficient_bounds_comparison_table` is the same for all the fits at once:
+one table, the bounds columns of each fit grouped under its `label` (or its
+directory name), rows the union of their coefficients. It sits outside the
+`{@with fits@}` loop and is written to
+`tables/coefficient_bounds_comparison_table.csv`.
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

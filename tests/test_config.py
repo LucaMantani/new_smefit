@@ -354,6 +354,25 @@ def test_produce_rge_matrix_saves_with_output_path(
     fake_rge_matrix.write.assert_called_once_with(tmp_path)
 
 
+def test_produce_rge_matrix_not_saved_with_a_fit_in_scope(
+    cfg, tmp_path, fake_rge_matrix, monkeypatch
+):
+    """Under fitcontext the matrix is the fit's own: no copy in the report."""
+    from smefit import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
+    )
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    result = cfg.produce_rge_matrix(
+        MagicMock(), MagicMock(), rge=rge, output_path=tmp_path, fit=MagicMock()
+    )
+
+    assert result is fake_rge_matrix
+    fake_rge_matrix.write.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # parse_ultranest_settings
 # ---------------------------------------------------------------------------

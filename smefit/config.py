@@ -230,7 +230,9 @@ class smefitConfig(Config):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
+    def produce_rge_matrix(
+        self, coefficients, theory, rge=None, output_path=None, fit=None
+    ):
         """Produce the stacked RGE matrix for all data points.
 
         Returns ``None`` when the runcard has no ``rge:`` block.
@@ -239,6 +241,11 @@ class smefitConfig(Config):
         optional: under the `smefit` API there is no output folder (it is a
         reportengine environment attribute, supplied by the CLI's ``-o`` flag)
         and the matrix is simply not cached.
+
+        Nor is it with a ``fit`` in scope, as under ``fits::fitcontext``: the
+        matrix is then the fit's own, read from its ``rge_matrix.pkl`` (see
+        :meth:`Fit.rebuild_runcard`), and each fit would overwrite the copy of
+        the one before in the report folder.
         """
         if rge is None:
             return None
@@ -247,7 +254,9 @@ class smefitConfig(Config):
         return self._cached(
             "rge_matrix",
             (repr(rge), tuple(coeff_list), id(theory)),
-            lambda: self._build_rge_matrix(rge, coeff_list, theory, output_path),
+            lambda: self._build_rge_matrix(
+                rge, coeff_list, theory, output_path if fit is None else None
+            ),
         )
 
     @staticmethod

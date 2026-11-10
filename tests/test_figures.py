@@ -18,7 +18,6 @@ import pytest
 from matplotlib.collections import PathCollection
 
 from smefit import figures as figures_mod
-from smefit.chi2 import Chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.figures import (
     _plot_heatmap,
@@ -629,7 +628,7 @@ def comparison_setup(fixtures_data_path, fixtures_theory_path):
         "theory": theory,
         "eft_model": model,
         "coefficients": coefficients,
-        "datasets_chi2": build_datasets_chi2(model, data, data.exp_covmat),
+        "fit_covmat": data.exp_covmat,
     }
 
 
@@ -645,7 +644,7 @@ def _plot_comparison(
     theory,
     eft_model,
     coefficients,
-    datasets_chi2,
+    fit_covmat,
     use_theory_covmat=False,
     latex_label=None,
 ):
@@ -660,7 +659,7 @@ def _plot_comparison(
         )
     return plot_data_theory_comparison(
         fit,
-        FitModel(data=data, eft_model=eft_model, datasets_chi2=datasets_chi2),
+        FitModel(data=data, eft_model=eft_model, fit_covmat=fit_covmat),
         latex_label or make_latex_label(),
     )
 
@@ -804,9 +803,6 @@ def test_plot_data_theory_comparison_eft_band_follows_quadratic_corrections(
     theory = comparison_setup["theory"]
     model = EFTModel(theory, comparison_setup["coefficients"], use_quad=True)
     comparison_setup["eft_model"] = model
-    comparison_setup["datasets_chi2"] = build_datasets_chi2(
-        model, comparison_setup["data"], comparison_setup["data"].exp_covmat
-    )
     opa = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
     fit = _comparison_fit(samples={"OpA": list(opa), "OpB": [0.0] * len(opa)})
     ((fig, _),) = _plot_comparison(fit, **comparison_setup)
@@ -873,36 +869,40 @@ def test_plot_data_theory_comparison_reports_the_chi2_per_point(comparison_setup
         assert shown == pytest.approx(expected, rel=1e-2)
 
 
-def test_plot_data_theory_comparison_chi2_is_datasets_chi2(comparison_setup):
-    """Doubling the covariance of datasets_chi2 halves the chi2 shown: it is
-    the likelihood's, not one rebuilt from exp_covmat."""
+def test_plot_data_theory_comparison_chi2_follows_fit_covmat(comparison_setup):
+    """Doubling the fit's covariance halves the chi2 shown: it is the
+    likelihood's, not one rebuilt from exp_covmat."""
     fit = _comparison_fit()
     ((fig, _),) = _plot_comparison(fit, **comparison_setup)
     baseline = _legend_chi2(fig.axes[0])
 
-    data = comparison_setup["data"]
-    comparison_setup["datasets_chi2"] = build_datasets_chi2(
-        comparison_setup["eft_model"], data, 2 * data.exp_covmat
-    )
+    comparison_setup["fit_covmat"] = 2 * comparison_setup["data"].exp_covmat
     ((fig, _),) = _plot_comparison(fit, **comparison_setup)
     np.testing.assert_allclose(
         _legend_chi2(fig.axes[0]), np.array(baseline) / 2, rtol=1e-2
     )
 
 
-def test_plot_data_theory_comparison_skips_external_chi2(comparison_setup):
-    """External chi2 entries follow the datasets in datasets_chi2 and have no
-    data to plot: they add no figure and leave the legend alone."""
-    fit = _comparison_fit()
+def test_plot_data_theory_comparison_sm_chi2_is_that_of_the_sm_drawn(
+    comparison_setup,
+):
+    """A fixed nonzero coefficient shifts every EFT prediction, the one at
+    zero free coefficients included, but not the SM: the SM chi2 is that of
+    the SM line, not of the model with its free coefficients at zero."""
+    coefficients = CoefficientGroup(
+        [Coefficient("OpA"), Coefficient("OpB", free=False, value=1.0)]
+    )
+    comparison_setup["coefficients"] = coefficients
+    comparison_setup["eft_model"] = EFTModel(
+        comparison_setup["theory"], coefficients, use_quad=False
+    )
+    fit = _comparison_fit(free=("OpA",), samples={"OpA": [0.0, 1.0, 2.0]})
     ((fig, _),) = _plot_comparison(fit, **comparison_setup)
-    baseline = _legend_chi2(fig.axes[0])
 
-    comparison_setup["datasets_chi2"] = comparison_setup["datasets_chi2"] + [
-        Chi2(lambda c: 1e6, ["OpA", "OpB"], 1, name="external")
-    ]
-    figs = list(_plot_comparison(fit, **comparison_setup))
-    assert [name for _, name in figs] == ["TESTDATA"]
-    assert _legend_chi2(figs[0][0].axes[0]) == baseline
+    covmat = np.asarray(comparison_setup["data"].exp_covmat)
+    residuals = np.array([1.0, 2.0, 3.0]) - _SM
+    expected = residuals @ np.linalg.inv(covmat) @ residuals / 3
+    assert _legend_chi2(fig.axes[0])[0] == pytest.approx(expected, rel=1e-2)
 
 
 def test_plot_data_theory_comparison_rejects_an_individual_fit(comparison_setup):

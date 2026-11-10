@@ -247,11 +247,11 @@ class FitModel:
     data : smefit.core.DataGroup
     eft_model : EFTModel
         Its ``theory`` is the datasets' theory, in ``data`` order.
-    datasets_chi2 : list of smefit.chi2.Chi2
-        One per dataset, in ``data`` order, from the dataset's diagonal block
-        of the fit's covariance.
+    fit_covmat : jnp.ndarray, shape (n_data, n_data)
+        The fit's covariance over ``data``, so a dataset's :math:`\\chi^2`
+        follows ``use_t0`` and ``use_theory_covmat`` as the fit did.
     """
 
     data: object
     eft_model: EFTModel
-    datasets_chi2: list
+    fit_covmat: object

@@ -1560,7 +1560,6 @@ def _runcards_seen(monkeypatch, fit_runcard, datasets, fit_path=None):
     monkeypatch.setattr(api.smefitAPI, "data", resource, raising=False)
     monkeypatch.setattr(api.smefitAPI, "eft_model", resource, raising=False)
     monkeypatch.setattr(api.smefitAPI, "fit_covmat", resource, raising=False)
-    monkeypatch.setattr("smefit.config.build_datasets_chi2", MagicMock())
     fit = Fit(
         fit_results=MagicMock(),
         fit_name="my_fit",

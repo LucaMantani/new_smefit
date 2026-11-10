@@ -405,11 +405,10 @@ class smefitConfig(Config):
 
         data = smefitAPI.data(**runcard)
         eft_model = smefitAPI.eft_model(**runcard)
-        fit_covmat = smefitAPI.fit_covmat(**runcard)
         return FitModel(
             data=data,
             eft_model=eft_model,
-            datasets_chi2=build_datasets_chi2(eft_model, data, fit_covmat),
+            fit_covmat=smefitAPI.fit_covmat(**runcard),
         )
 
     def parse_external_chi2(self, external_chi2):

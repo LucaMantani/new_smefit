@@ -411,10 +411,11 @@ def plot_data_theory_comparison(fit, fit_model, latex_label):
     fit : smefit.fit_result.Fit
         A previously run joint fit, loaded from disk.
     fit_model : smefit.model.FitModel
-        Its model, data and per-dataset :math:`\\chi^2`, so the
-        :math:`\\chi^2` follows ``use_t0`` and ``use_theory_covmat`` as the
-        fit did, with correlations across datasets ignored. Evaluated at the
-        best fit for the EFT and at zero for the SM.
+        Its model, data and covariance. Each dataset's :math:`\\chi^2` is
+        taken over its diagonal block of the fit's covariance, so it follows
+        ``use_t0`` and ``use_theory_covmat`` as the fit did, with correlations
+        across datasets ignored. It is evaluated on the predictions drawn: the
+        EFT at the best fit and the SM prediction itself.
     latex_label : Callable[[str], str]
         Writes a name in LaTeX (the ``latex_label`` resource); titles each
         figure with its dataset.
@@ -452,17 +453,20 @@ def plot_data_theory_comparison(fit, fit_model, latex_label):
     sm_err = np.sqrt(np.diag(np.asarray(theory.sm_covmat)))
     cv = np.asarray(data.cv)
     exp_err = np.sqrt(np.diag(np.asarray(data.exp_covmat)))
-    sm_point = jnp.zeros_like(best_point)
+    fit_covmat = np.asarray(fit_model.fit_covmat)
+
+    def chi2_label(prediction, idx, ndata):
+        residuals = cv[idx] - prediction[idx]
+        chi2 = residuals @ np.linalg.solve(fit_covmat[idx, idx], residuals)
+        return r"\chi^2/N_{{\rm dat}} = {:.2f}".format(chi2 / ndata)
 
     offset = 0
-    for name, ndata, chi2 in zip(data.names, data.ndata_list, fit_model.datasets_chi2):
+    for name, ndata in zip(data.names, data.ndata_list):
         idx = slice(offset, offset + ndata)
         offset += ndata
         x = np.arange(1, ndata + 1)
-        sm_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(float(chi2(sm_point)) / ndata)
-        eft_chi2 = r"\chi^2/N_{{\rm dat}} = {:.2f}".format(
-            float(chi2(best_point)) / ndata
-        )
+        sm_chi2 = chi2_label(sm, idx, ndata)
+        eft_chi2 = chi2_label(eft_best, idx, ndata)
         has_th_err = bool(sm_err[idx].any())
 
         # a bare Figure, not plt.subplots: see plot_chi2_scan

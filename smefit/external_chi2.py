@@ -52,7 +52,10 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
 
         my_chi2_class = getattr(chi2_module, class_name)
 
-        extra_keys = {key: value for key, value in module.items() if key != "path"}
+        # `group` only says how reports aggregate it: see produce_data_groups
+        extra_keys = {
+            key: value for key, value in module.items() if key not in ("path", "group")
+        }
 
         chi2_ext = my_chi2_class(
             coefficients=coefficients, rge_dict=copy.deepcopy(rge_dict), **extra_keys

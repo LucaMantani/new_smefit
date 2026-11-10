@@ -114,17 +114,16 @@ class smefitConfig(Config):
         """Build data_groups from inline group: keys on datasets and external chi2s.
 
         Both keys are optional, as a runcard may have only one of them.
-        ``external_chi2`` is taken for its parser, which sets aside the groups it
-        strips from the entries: without the dependency they would be there only
-        if another node happened to parse the key first.
         """
         groups: dict = {}
         for ds in datasets or []:
             group = ds.get("group")
             if group is not None:
                 groups.setdefault(group, []).append(ds["name"])
-        for name, group in getattr(self, "_ext_chi2_groups", {}).items():
-            groups.setdefault(group, []).append(name)
+        for name, entry in (external_chi2 or {}).items():
+            group = entry.get("group")
+            if group is not None:
+                groups.setdefault(group, []).append(name)
         return groups if groups else None
 
     @explicit_node
@@ -448,19 +447,15 @@ class smefitConfig(Config):
         class constructor, which must also accept `coefficients=` and
         `rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
 
-        `group` is the one exception: it is stripped here and kept aside for
-        report/Fisher aggregation rather than forwarded.
+        `group` is the one exception: it is read by `data_groups` for the
+        report/Fisher aggregation, and `load_external_chi2` does not forward it.
 
         A runcard may define `external_chi2` with no `datasets:` at all, in
         which case the fit runs on the external likelihoods alone.
         """
-        self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
-            group = cfg.get("group")
-            if group is not None:
-                self._ext_chi2_groups[name] = group
-            entry = {k: v for k, v in cfg.items() if k != "group"}
+            entry = dict(cfg)
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
             cleaned[name] = entry

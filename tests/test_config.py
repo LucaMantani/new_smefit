@@ -1188,24 +1188,31 @@ def test_produce_data_groups_preserves_insertion_order(cfg):
 
 
 def test_produce_data_groups_merges_ext_chi2_groups(cfg):
-    cfg._ext_chi2_groups = {"EXT_DS": "G2"}
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
-    result = cfg.produce_data_groups(datasets)
+    external_chi2 = {"EXT_DS": {"path": "/ext.py", "group": "G2"}}
+    result = cfg.produce_data_groups(datasets, external_chi2)
     assert result == {"G1": ["DS_A"], "G2": ["EXT_DS"]}
 
 
-def test_produce_data_groups_no_ext_chi2_attr(cfg):
-    """Works correctly when _ext_chi2_groups was never set (no external_chi2 in runcard)."""
+def test_produce_data_groups_without_external_chi2(cfg):
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
     result = cfg.produce_data_groups(datasets)
     assert result == {"G1": ["DS_A"]}
 
 
 def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
-    cfg._ext_chi2_groups = {"EXT_DS": "G1"}
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
-    result = cfg.produce_data_groups(datasets)
+    external_chi2 = {"EXT_DS": {"path": "/ext.py", "group": "G1"}}
+    result = cfg.produce_data_groups(datasets, external_chi2)
     assert result == {"G1": ["DS_A", "EXT_DS"]}
+
+
+def test_produce_data_groups_external_chi2_only(cfg):
+    external_chi2 = {
+        "ExtA": {"path": "/a.py", "group": "G1"},
+        "ExtB": {"path": "/b.py"},
+    }
+    assert cfg.produce_data_groups(external_chi2=external_chi2) == {"G1": ["ExtA"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1213,41 +1220,26 @@ def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
 # ---------------------------------------------------------------------------
 
 
-def test_parse_external_chi2_strips_group(cfg):
-    raw = {
-        "MyExt": {"path": "/some/path.py", "group": "G1", "use_quad": True},
-    }
-    result = cfg.parse_external_chi2(raw)
-    assert "group" not in result["MyExt"]
-    assert result["MyExt"]["path"] == "/some/path.py"
-    assert result["MyExt"]["use_quad"] is True
-
-
-def test_parse_external_chi2_caches_groups(cfg):
-    raw = {
-        "ExtA": {"path": "/a.py", "group": "G1"},
-        "ExtB": {"path": "/b.py", "group": "G2"},
-    }
-    cfg.parse_external_chi2(raw)
-    assert cfg._ext_chi2_groups == {"ExtA": "G1", "ExtB": "G2"}
-
-
 def test_parse_external_chi2_no_group_key(cfg):
     raw = {"MyExt": {"path": "/some/path.py", "use_quad": False}}
     result = cfg.parse_external_chi2(raw)
     assert result == {"MyExt": {"path": "/some/path.py", "use_quad": False}}
-    assert cfg._ext_chi2_groups == {}
 
 
-def test_parse_external_chi2_mixed_group_and_no_group(cfg):
+def test_parse_external_chi2_keeps_group(cfg):
+    """The group stays on its entry, where data_groups reads it."""
     raw = {
-        "ExtA": {"path": "/a.py", "group": "G1"},
-        "ExtB": {"path": "/b.py"},
+        "MyExt": {"path": "/some/path.py", "group": "G1", "use_quad": True},
     }
     result = cfg.parse_external_chi2(raw)
-    assert "group" not in result["ExtA"]
-    assert result["ExtB"] == {"path": "/b.py"}
-    assert cfg._ext_chi2_groups == {"ExtA": "G1"}
+    assert result["MyExt"] == {"path": "/some/path.py", "group": "G1", "use_quad": True}
+
+
+def test_parse_external_chi2_keeps_no_state(cfg):
+    """Everything is in the returned value: data_groups needs no other node to
+    have parsed the key, and one config's parsing leaves another unaffected."""
+    cfg.parse_external_chi2({"ExtA": {"path": "/a.py", "group": "G1"}})
+    assert not hasattr(cfg, "_ext_chi2_groups")
 
 
 def test_parse_external_chi2_resolves_prefix_path(cfg):

@@ -50,8 +50,7 @@
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
     "plot_posterior_correlations",
-    "report",
-    "run_pca"
+    "report"
   ],
   "path_prefixes": [
     "new_smefit",

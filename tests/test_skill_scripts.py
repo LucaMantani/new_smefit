@@ -486,13 +486,22 @@ def test_fitcontext_also_takes_a_single_fit(tmp_path):
     assert code == 0, out
 
 
-def test_a_setup_action_outside_fitcontext_still_needs_setup(tmp_path):
+@pytest.mark.parametrize(
+    "action",
+    [
+        "fits global_information_table",
+        # takes `fit` only to name its output folder: not a fit-reading action
+        "fits run_pca",
+    ],
+)
+def test_a_setup_action_outside_fitcontext_still_needs_setup(tmp_path, action):
     """Without fitcontext the Fisher actions read the runcard's own datasets."""
     code, out = validate(
         tmp_path,
         **_FITS_ONLY,
         fits=[{"name": "my_fit", "path": "."}],
-        actions_=["fits global_information_table"],
+        pca_settings={},
+        actions_=[action],
     )
     assert code != 0
     assert "no data to fit" in out

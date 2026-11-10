@@ -98,6 +98,36 @@ def test_std_with_samples():
 
 
 # ---------------------------------------------------------------------------
+# posterior_array
+# ---------------------------------------------------------------------------
+
+
+def test_posterior_array_has_a_row_per_sample_and_a_column_per_name():
+    samples = {
+        "OpA": jnp.array([0.0, 1.0, 2.0]),
+        "OpB": jnp.array([5.0, 6.0, 7.0]),
+    }
+    fr = _make_result(free=["OpB", "OpA"], samples=samples)
+
+    np.testing.assert_array_equal(
+        fr.posterior_array(), [[5.0, 0.0], [6.0, 1.0], [7.0, 2.0]]
+    )
+    np.testing.assert_array_equal(fr.posterior_array(["OpA"]), [[0.0], [1.0], [2.0]])
+
+
+def test_posterior_array_no_samples():
+    fr = _make_result(samples=None)
+    with pytest.raises(ValueError, match="no posterior samples"):
+        fr.posterior_array()
+
+
+def test_posterior_array_names_the_missing_coefficients():
+    fr = _make_result(free=["OpA"], samples={"OpA": jnp.array([0.0, 1.0])})
+    with pytest.raises(ValueError, match=r"posterior samples for \['OpZ'\]"):
+        fr.posterior_array(["OpA", "OpZ"])
+
+
+# ---------------------------------------------------------------------------
 # correlations property
 # ---------------------------------------------------------------------------
 

@@ -24,6 +24,7 @@ from smefit.core import (
     Theory,
     TheoryGroup,
 )
+from smefit.fit_result import Fit
 from smefit.latex_labels import default_latex_labels
 from smefit.model import EFTModel
 from smefit.priors import Prior
@@ -1529,3 +1530,103 @@ def test_parse_fit_loads_a_single_fit(cfg, tmp_path):
     fit = cfg.parse_fit({"name": "fit_a", "path": str(tmp_path)})
 
     assert fit.fit_name == "fit_a"
+
+
+# ---------------------------------------------------------------------------
+# produce_fit_model: the model a loaded fit was run with
+# ---------------------------------------------------------------------------
+
+_FIT_RUNCARD = {
+    "data_path": "/data",
+    "theory_path": "/theory",
+    "use_quad": True,
+    "use_theory_covmat": True,
+    "datasets": [{"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"}],
+    "coefficients": {"OpA": {"free": True}},
+}
+
+
+def _runcards_seen(monkeypatch, fit_runcard, datasets, fit_path=None):
+    """Run produce_fit_model with smefitAPI stubbed; return the runcards it was
+    built from, one per resource asked for, and the FitModel."""
+    from smefit import api
+
+    seen = []
+
+    def resource(**runcard):
+        seen.append(runcard)
+        return MagicMock()
+
+    monkeypatch.setattr(api.smefitAPI, "data", resource, raising=False)
+    monkeypatch.setattr(api.smefitAPI, "eft_model", resource, raising=False)
+    monkeypatch.setattr(api.smefitAPI, "fit_covmat", resource, raising=False)
+    fit = Fit(
+        fit_results=MagicMock(),
+        fit_name="my_fit",
+        fit_runcard=fit_runcard,
+        path=fit_path,
+    )
+    model = smefitConfig.produce_fit_model(MagicMock(), fit, datasets)
+    return seen, model
+
+
+def test_produce_fit_model_is_built_from_the_fit_s_runcard(monkeypatch):
+    """Listing the fit's own datasets, every resource is the fit's."""
+    seen, _ = _runcards_seen(monkeypatch, _FIT_RUNCARD, _FIT_RUNCARD["datasets"])
+    assert len(seen) == 3
+    assert all(runcard == _FIT_RUNCARD for runcard in seen)
+
+
+_TWO_DATASET_FIT = {
+    **_FIT_RUNCARD,
+    "datasets": [
+        {"name": "DS_A", "order": "NLO", "theory_cov": "aggressive"},
+        {"name": "DS_B", "order": "NLO"},
+    ],
+}
+
+
+def test_produce_fit_model_covers_only_the_listed_datasets(monkeypatch):
+    """Only the listed datasets, in listed order and exactly as listed, whether
+    or not the fit included them."""
+    datasets = [
+        {"name": "DS_NEW", "order": "NLO", "theory_cov": "conservative"},
+        {"name": "DS_A", "order": "LO"},
+    ]
+    seen, _ = _runcards_seen(monkeypatch, _TWO_DATASET_FIT, datasets)
+    fit_datasets = _TWO_DATASET_FIT["datasets"]
+    for runcard in seen:
+        assert runcard["datasets"] == datasets
+        # the rest of the model is still the fit's
+        assert {k: v for k, v in runcard.items() if k != "datasets"} == {
+            k: v for k, v in _TWO_DATASET_FIT.items() if k != "datasets"
+        }
+    # the fit's own runcard is left alone
+    assert len(fit_datasets) == 2
+
+
+def test_produce_fit_model_reuses_the_fit_s_rge_matrices(monkeypatch, tmp_path):
+    """The fit is rebuilt through Fit.rebuild_runcard, so its own
+    rge_matrix.pkl replaces whatever rg_matrix its runcard named."""
+    from smefit.rge import RGEMatrix
+
+    cache = tmp_path / RGEMatrix.FILENAME
+    cache.write_bytes(b"")
+    rge = {"init_scale": 1000.0, "rg_matrix": "elsewhere.pkl"}
+    seen, _ = _runcards_seen(
+        monkeypatch, {**_FIT_RUNCARD, "rge": rge}, _FIT_RUNCARD["datasets"], tmp_path
+    )
+    assert all(
+        runcard["rge"] == {"init_scale": 1000.0, "rg_matrix": str(cache)}
+        for runcard in seen
+    )
+    # the fit's own runcard is left alone
+    assert rge["rg_matrix"] == "elsewhere.pkl"
+
+
+def test_produce_eft_model_carries_use_theory_covmat(theory_a):
+    cg = CoefficientGroup([Coefficient(name="OpA", free=True)])
+    model = smefitConfig.produce_eft_model(
+        MagicMock(), TheoryGroup([theory_a]), cg, None, use_theory_covmat=True
+    )
+    assert model.use_theory_covmat

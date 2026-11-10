@@ -6,6 +6,7 @@ Model module of smefit, where the prediction model is defined.
 
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
@@ -44,12 +45,27 @@ class BaseModel(ABC):
 
 
 class EFTModel(BaseModel):
-    """EFT model mapping Wilson coefficients to theory predictions."""
+    """EFT model mapping Wilson coefficients to theory predictions.
 
-    def __init__(self, theory, coefficients, use_quad=False, rge_matrix=None):
+    ``use_theory_covmat`` says whether the theory uncertainty
+    (``theory.sm_covmat``) is part of the model, as it is part of the
+    likelihood of a fit run with it. ``forward_map`` is the central
+    prediction either way; :meth:`posterior_predictive` samples the
+    uncertainty in when it is on.
+    """
+
+    def __init__(
+        self,
+        theory,
+        coefficients,
+        use_quad=False,
+        rge_matrix=None,
+        use_theory_covmat=False,
+    ):
         self.theory = theory
         self.coefficients = coefficients
         self.use_quad = use_quad
+        self.use_theory_covmat = use_theory_covmat
 
         if rge_matrix is not None:
             self._apply_rge(theory, rge_matrix)
@@ -172,3 +188,70 @@ class EFTModel(BaseModel):
         if self.use_quad:
             predictions += jnp.einsum("ijk,j,k->i", self.quad_corr, active, active)
         return predictions
+
+    def posterior_predictive(
+        self, posterior: jnp.ndarray, seed: int = 0, batch_size: int = 256
+    ) -> jnp.ndarray:
+        """The model's prediction at every posterior sample.
+
+        Each sample gives ``forward_map(c)``, plus a draw from
+        :math:`N(0, C_{\\rm th})` (``theory.sm_covmat``) when
+        ``use_theory_covmat`` is on.
+
+        Parameters
+        ----------
+        posterior : jnp.ndarray, shape (n_samples, n_free)
+            One sample per row, in ``coefficients.free_names`` order.
+        seed : int, optional
+            Seed of the theory-uncertainty draws.
+        batch_size : int, optional
+            Samples evaluated at once, to bound memory.
+
+        Returns
+        -------
+        jnp.ndarray, shape (n_samples, n_data)
+        """
+        predictions = jax.lax.map(self.forward_map, posterior, batch_size=batch_size)
+        if self.use_theory_covmat:
+            predictions = predictions + gaussian_draws(
+                self.theory.sm_covmat, len(predictions), jax.random.PRNGKey(seed)
+            )
+        return predictions
+
+
+def gaussian_draws(covmat, n_draws, key):
+    """*n_draws* draws of :math:`N(0, C)`, shape ``(n_draws, len(C))``.
+
+    Negative eigenvalues of *covmat* are set to zero, which makes it the
+    nearest positive-semidefinite matrix. Theory covmats in the database are
+    not all exactly PSD — rounding at 1e-15 is common, and a few carry
+    negative eigenvalues near 1e-4 of the largest, from rounded correlations —
+    and a Gaussian with a negative variance has no draws to give.
+    """
+    eigvals, eigvecs = jnp.linalg.eigh(jnp.asarray(covmat))
+    root = eigvecs * jnp.sqrt(jnp.clip(eigvals, 0.0, None))
+    return jax.random.normal(key, (n_draws, len(eigvals))) @ root.T
+
+
+@dataclass(eq=False)
+class FitModel:
+    """The model a fit was run with, over the datasets to draw at it.
+
+    Built by ``smefitConfig.produce_fit_model`` from the fit's own runcard, so
+    ``use_quad``, ``rge``, ``use_t0``, ``use_theory_covmat``, the coefficients
+    and their constraints are the fit's. The datasets are those the report
+    lists.
+
+    Attributes
+    ----------
+    data : smefit.core.DataGroup
+    eft_model : EFTModel
+        Its ``theory`` is the datasets' theory, in ``data`` order.
+    fit_covmat : jnp.ndarray, shape (n_data, n_data)
+        The fit's covariance over ``data``, so a dataset's :math:`\\chi^2`
+        follows ``use_t0`` and ``use_theory_covmat`` as the fit did.
+    """
+
+    data: object
+    eft_model: EFTModel
+    fit_covmat: object

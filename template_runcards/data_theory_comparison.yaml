@@ -1,0 +1,20 @@
+# Only the datasets listed under `datasets` are drawn, exactly as listed
+# (order, theory_cov), whether or not the fit included them.
+datasets:
+  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP_Bhabha_2013, order: LO}
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+
+template_text: |
+    Data-theory comparison
+    ======================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_data_theory_comparison@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

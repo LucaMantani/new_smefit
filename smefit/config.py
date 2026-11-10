@@ -30,7 +30,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.fit_result import Fit
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
-from smefit.model import EFTModel
+from smefit.model import EFTModel, FitModel
 from smefit.paths import resolve_fit_dir, resolve_path
 from smefit.priors import JointPrior, Prior
 from smefit.projections import Projection
@@ -361,7 +361,14 @@ class smefitConfig(Config):
         log.info("Whitening: centering on the coefficients' baseline point.")
         return _whitening_baseline_shift
 
-    def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+    def produce_eft_model(
+        self,
+        theory,
+        coefficients,
+        rge_matrix,
+        use_quad=False,
+        use_theory_covmat=False,
+    ):
         """Produce EFT model mapping coefficients to theory predictions.
 
         ``rge_matrix`` is deliberately required: giving it a ``None`` default
@@ -369,7 +376,40 @@ class smefitConfig(Config):
         ``KeyError`` and substitutes the default) and hand back a model with no
         RGE running, silently.
         """
-        return EFTModel(theory, coefficients, use_quad, rge_matrix)
+        return EFTModel(
+            theory,
+            coefficients,
+            use_quad,
+            rge_matrix,
+            use_theory_covmat=use_theory_covmat,
+        )
+
+    def produce_fit_model(self, fit, datasets):
+        """The model ``fit`` was run with, to draw predictions at its posterior.
+
+        Rebuilt from :meth:`~smefit.fit_result.Fit.rebuild_runcard`, as the
+        Bayesian update rebuilds a previous fit's chi2: ``use_quad``, ``rge``
+        (with the fit's own RGE matrices), ``use_t0``, ``use_theory_covmat``
+        and the coefficients are the fit's, whatever this runcard says.
+
+        It covers only the datasets listed under ``datasets``, in that order
+        and exactly as listed (``order``, ``theory_cov``), whether or not the
+        fit included them, read from the fit's ``data_path`` and
+        ``theory_path``.
+        """
+        # local import: smefit.api imports this module
+        from smefit.api import smefitAPI
+
+        runcard = fit.rebuild_runcard()
+        runcard["datasets"] = datasets
+
+        data = smefitAPI.data(**runcard)
+        eft_model = smefitAPI.eft_model(**runcard)
+        return FitModel(
+            data=data,
+            eft_model=eft_model,
+            fit_covmat=smefitAPI.fit_covmat(**runcard),
+        )
 
     def parse_external_chi2(self, external_chi2):
         """Parse the `external_chi2:` mapping of custom likelihood modules.

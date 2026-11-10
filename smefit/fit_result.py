@@ -270,6 +270,35 @@ class FitResult:
             return {}
         return {name: float(jnp.std(vals)) for name, vals in self.samples.items()}
 
+    def posterior_array(self, names: Optional[List[str]] = None) -> jnp.ndarray:
+        """The posterior samples of *names* as one array, a column each.
+
+        Parameters
+        ----------
+        names : list[str], optional
+            Coefficients to gather; defaults to :attr:`free_parameters`. Order
+            them as the consumer expects, e.g. a runcard's
+            ``coefficients.free_names`` for its ``forward_map``.
+
+        Returns
+        -------
+        jnp.ndarray, shape (n_samples, len(names))
+            One row per posterior sample, so a row is a point in coefficient
+            space.
+
+        Raises
+        ------
+        ValueError
+            If the fit stored no posterior samples, or none for any of *names*.
+        """
+        if self.samples is None:
+            raise ValueError("This fit stored no posterior samples.")
+        names = self.free_parameters if names is None else names
+        missing = [name for name in names if name not in self.samples]
+        if missing:
+            raise ValueError(f"This fit has no posterior samples for {missing}.")
+        return jnp.stack([jnp.asarray(self.samples[name]) for name in names], axis=1)
+
     @property
     def correlations(self) -> pd.DataFrame:
         """Pearson correlations of the posterior samples, as a square frame.
@@ -282,12 +311,7 @@ class FitResult:
         and gets a row and a column of ``nan`` rather than an error — a fit that
         left one parameter unexplored is still worth looking at.
         """
-        if self.samples is None:
-            raise ValueError(
-                "This fit stored no posterior samples, so it has no "
-                "correlations to report."
-            )
-        posterior = jnp.stack([self.samples[name] for name in self.free_parameters])
+        posterior = self.posterior_array().T
         return pd.DataFrame(
             # A single free parameter correlates only with itself, and corrcoef
             # returns that as a scalar rather than as the 1x1 matrix it is.

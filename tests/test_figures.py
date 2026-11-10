@@ -18,9 +18,11 @@ import pytest
 from matplotlib.collections import PathCollection
 
 from smefit import figures as figures_mod
+from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.figures import (
     _plot_heatmap,
     plot_chi2_scan,
+    plot_data_theory_comparison,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
@@ -29,6 +31,8 @@ from smefit.figures import (
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import make_latex_label
+from smefit.loader import load_dataset, load_theory
+from smefit.model import EFTModel, FitModel
 from smefit.pca import PCA
 
 
@@ -603,3 +607,395 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
     assert _bar_sizes(ax) == [2]
     assert not [coll for coll in ax.collections if isinstance(coll, PathCollection)]
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ["constrained"]
+
+
+# ---------------------------------------------------------------------------
+# plot_data_theory_comparison
+# ---------------------------------------------------------------------------
+
+_TESTDATA = {"name": "TESTDATA", "order": "NLO"}
+
+
+@pytest.fixture
+def comparison_setup(fixtures_data_path, fixtures_theory_path):
+    """The fixture dataset, its theory and a linear model in OpA and OpB."""
+    data = DataGroup([load_dataset(fixtures_data_path, _TESTDATA)])
+    theory = TheoryGroup([load_theory(fixtures_theory_path, _TESTDATA)])
+    coefficients = CoefficientGroup([Coefficient("OpA"), Coefficient("OpB")])
+    model = EFTModel(theory, coefficients, use_quad=False)
+    return {
+        "data": data,
+        "theory": theory,
+        "eft_model": model,
+        "coefficients": coefficients,
+        "fit_covmat": data.exp_covmat,
+    }
+
+
+def _comparison_fit(**kwargs):
+    kwargs.setdefault("free", ("OpA", "OpB"))
+    kwargs.setdefault("samples", {"OpA": [0.0, 1.0, 2.0], "OpB": [0.0, 0.0, 0.0]})
+    return _fit(**kwargs)
+
+
+def _plot_comparison(
+    fit,
+    data,
+    theory,
+    eft_model,
+    coefficients,
+    fit_covmat,
+    use_theory_covmat=False,
+    latex_label=None,
+):
+    """plot_data_theory_comparison on the FitModel these pieces make up.
+
+    *use_theory_covmat* rebuilds the model with the theory uncertainty in it,
+    as produce_fit_model does for a fit run with it.
+    """
+    if use_theory_covmat:
+        eft_model = EFTModel(
+            theory, coefficients, eft_model.use_quad, use_theory_covmat=True
+        )
+    return plot_data_theory_comparison(
+        fit,
+        FitModel(data=data, eft_model=eft_model, fit_covmat=fit_covmat),
+        latex_label or make_latex_label(),
+    )
+
+
+def test_plot_data_theory_comparison_yields_one_figure_per_dataset(comparison_setup):
+    figs = list(_plot_comparison(_comparison_fit(), **comparison_setup))
+
+    assert [name for _, name in figs] == ["TESTDATA"]
+    fig = figs[0][0]
+    assert len(fig.axes) == 2
+    assert fig.axes[0].get_title() == r"$\mathrm{TESTDATA}$"
+
+
+def test_plot_data_theory_comparison_draws_data_sm_and_eft(comparison_setup):
+    fit = _comparison_fit(label="My fit")
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+
+    ax, ax_ratio = fig.axes
+    assert _legend_texts(ax) == [
+        r"$\mathrm{SM},\ \chi^2/N_{\rm dat} = 5912.41$",
+        r"$\mathrm{EFT}$: My fit, $\chi^2/N_{\rm dat} = 5912.41$",
+        r"$\mathrm{Data,\ stat.} + \mathrm{syst.}$",
+    ]
+
+    np.testing.assert_allclose(_stairs(ax, "sm").values, [10.0, 20.0, 30.0])
+    # best-fit point is OpA = OpB = 0, where the EFT is the SM
+    np.testing.assert_allclose(_stairs(ax, "eft").values, [10.0, 20.0, 30.0])
+    np.testing.assert_allclose(_data_points(ax), [1.0, 2.0, 3.0])
+    # the ratio panel is normalised to the SM
+    np.testing.assert_allclose(_stairs(ax_ratio, "sm").values, 1.0)
+
+
+def test_plot_data_theory_comparison_spans_every_bin_edge_to_edge(comparison_setup):
+    """The predictions are drawn across the whole of each bin, the outermost
+    ones included, and the axis ends where the bins do."""
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    ax = fig.axes[0]
+    for gid in ("sm", "sm_band", "eft", "eft_band"):
+        np.testing.assert_allclose(_stairs(ax, gid).edges, [0.5, 1.5, 2.5, 3.5])
+    assert ax.get_xlim() == (0.5, 3.5)
+    # the central lines do not drop to zero at the ends of the axis
+    for gid in ("sm", "eft"):
+        assert _stairs(ax, gid).baseline is None
+
+
+def test_plot_data_theory_comparison_evaluates_the_best_fit_point(comparison_setup):
+    fit = _comparison_fit()
+    fit.fit_results.best_fit_point["OpA"] = 1.0
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+
+    # SM + OpA * lin(OpA), with lin(OpA) = [1, 2, 3]
+    np.testing.assert_allclose(_stairs(fig.axes[0], "eft").values, [11.0, 22.0, 33.0])
+
+
+def _stairs(ax, gid):
+    """The data (values, edges, baseline) of the stairs artist tagged *gid*."""
+    (patch,) = (p for p in ax.patches if p.get_gid() == gid)
+    return patch.get_data()
+
+
+def _data_errorbar(ax):
+    (container,) = (c for c in ax.containers if hasattr(c, "has_yerr"))
+    return container
+
+
+def _data_points(ax):
+    return _data_errorbar(ax).lines[0].get_ydata()
+
+
+def _data_errors(ax):
+    """Half the height of each data error bar."""
+    segments = _data_errorbar(ax).lines[2][0].get_segments()
+    return [abs(seg[1][1] - seg[0][1]) / 2 for seg in segments]
+
+
+def _legend_texts(ax):
+    return [text.get_text() for text in ax.get_legend().get_texts()]
+
+
+def _legend_chi2(ax):
+    """The chi2/N_dat values in the SM and EFT legend entries, in that order."""
+    return [float(label.split("=")[1].strip(" $")) for label in _legend_texts(ax)[:2]]
+
+
+def test_plot_data_theory_comparison_error_bar_is_the_total_experimental_error(
+    comparison_setup,
+):
+    """One error bar per point: statistical and systematic in quadrature."""
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    np.testing.assert_allclose(
+        _data_errors(fig.axes[0]),
+        np.sqrt(np.diag(np.asarray(comparison_setup["data"].exp_covmat))),
+        rtol=1e-6,
+    )
+
+
+def test_plot_data_theory_comparison_draws_the_ratio_to_a_negative_sm(
+    comparison_setup,
+):
+    """Dividing by a negative SM flips the ratio, not the sign of the error."""
+    theory = comparison_setup["theory"]
+    theory.sm_pred = -theory.sm_pred
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    ratio = fig.axes[1]
+    np.testing.assert_allclose(_stairs(ratio, "sm").values, 1.0)
+    exp_err = np.sqrt(np.diag(np.asarray(comparison_setup["data"].exp_covmat)))
+    np.testing.assert_allclose(
+        _data_errors(ratio), exp_err / [10.0, 20.0, 30.0], rtol=1e-6
+    )
+
+
+def test_plot_data_theory_comparison_drops_an_absent_theory_error(comparison_setup):
+    theory = comparison_setup["theory"]
+    theory.sm_covmat = jnp.zeros_like(theory.sm_covmat)
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    # no SM band to draw
+    assert not [p for p in fig.axes[0].patches if p.get_gid() == "sm_band"]
+
+
+_LIN = np.array([1.0, 2.0, 3.0])  # linear OpA correction in the fixture
+_SM = np.array([10.0, 20.0, 30.0])
+
+
+def test_plot_data_theory_comparison_eft_band_spans_the_posterior(comparison_setup):
+    """Without the theory uncertainty the band is the 16th-84th percentiles of
+    the predictions over the posterior, the theory covmat notwithstanding."""
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    band = _stairs(fig.axes[0], "eft_band")
+
+    # OpA samples [0, 1, 2], OpB 0: percentiles at OpA = 0.32 and 1.68
+    np.testing.assert_allclose(band.baseline, _SM + 0.32 * _LIN, rtol=1e-5)
+    np.testing.assert_allclose(band.values, _SM + 1.68 * _LIN, rtol=1e-5)
+
+
+def test_plot_data_theory_comparison_eft_band_follows_quadratic_corrections(
+    comparison_setup,
+):
+    """With quadratic corrections the band is the percentiles of the full
+    predictions, so a posterior symmetric about zero gives a band that is not
+    symmetric about the best fit."""
+    theory = comparison_setup["theory"]
+    model = EFTModel(theory, comparison_setup["coefficients"], use_quad=True)
+    comparison_setup["eft_model"] = model
+    opa = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+    fit = _comparison_fit(samples={"OpA": list(opa), "OpB": [0.0] * len(opa)})
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+    band = _stairs(fig.axes[0], "eft_band")
+
+    quad = np.array([0.1, 0.2, 0.3])  # OpA*OpA in the fixture
+    predictions = _SM + np.outer(opa, _LIN) + np.outer(opa**2, quad)
+    low, high = np.percentile(predictions, [16, 84], axis=0)
+    np.testing.assert_allclose(band.baseline, low, rtol=1e-5)
+    np.testing.assert_allclose(band.values, high, rtol=1e-5)
+    # best fit OpA = 0 is the SM; the quadratic term only pushes upwards
+    assert np.all(band.values - _SM > _SM - band.baseline)
+
+
+def test_plot_data_theory_comparison_eft_band_samples_the_theory_error(
+    comparison_setup,
+):
+    """With use_theory_covmat each sample gets a draw of the theory error: on
+    a posterior pinned at the SM, the band is the SM theory uncertainty."""
+    fit = _comparison_fit(samples={"OpA": [0.0] * 20000, "OpB": [0.0] * 20000})
+    ((fig, _),) = _plot_comparison(fit, use_theory_covmat=True, **comparison_setup)
+    band = _stairs(fig.axes[0], "eft_band")
+
+    th = np.array([0.1, 0.2, 0.3])  # sqrt of the fixture theory covmat diagonal
+    z = 0.9945  # the 84th percentile of a standard normal
+    np.testing.assert_allclose(band.values - _SM, z * th, rtol=0.05)
+    np.testing.assert_allclose(_SM - band.baseline, z * th, rtol=0.05)
+
+
+def test_plot_data_theory_comparison_eft_band_is_reproducible(comparison_setup):
+    fit = _comparison_fit()
+    bands = [
+        _stairs(fig.axes[0], "eft_band")
+        for ((fig, _),) in (
+            _plot_comparison(fit, use_theory_covmat=True, **comparison_setup)
+            for _ in range(2)
+        )
+    ]
+    np.testing.assert_array_equal(bands[0].values, bands[1].values)
+    np.testing.assert_array_equal(bands[0].baseline, bands[1].baseline)
+
+
+def test_plot_data_theory_comparison_rejects_a_fit_without_samples(
+    comparison_setup,
+):
+    fit = _comparison_fit()
+    fit.fit_results.samples = None
+    with pytest.raises(ValueError, match="posterior samples"):
+        list(_plot_comparison(fit, **comparison_setup))
+
+
+def test_plot_data_theory_comparison_reports_the_chi2_per_point(comparison_setup):
+    fit = _comparison_fit()
+    fit.fit_results.best_fit_point["OpA"] = 1.0
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+
+    covmat = np.asarray(comparison_setup["data"].exp_covmat)
+    cv = np.array([1.0, 2.0, 3.0])
+    for prediction, shown in zip(
+        ([10.0, 20.0, 30.0], [11.0, 22.0, 33.0]), _legend_chi2(fig.axes[0])
+    ):
+        residuals = cv - np.array(prediction)
+        expected = residuals @ np.linalg.inv(covmat) @ residuals / 3
+        assert shown == pytest.approx(expected, rel=1e-2)
+
+
+def test_plot_data_theory_comparison_chi2_follows_fit_covmat(comparison_setup):
+    """Doubling the fit's covariance halves the chi2 shown: it is the
+    likelihood's, not one rebuilt from exp_covmat."""
+    fit = _comparison_fit()
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+    baseline = _legend_chi2(fig.axes[0])
+
+    comparison_setup["fit_covmat"] = 2 * comparison_setup["data"].exp_covmat
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+    np.testing.assert_allclose(
+        _legend_chi2(fig.axes[0]), np.array(baseline) / 2, rtol=1e-2
+    )
+
+
+def test_plot_data_theory_comparison_sm_chi2_is_that_of_the_sm_drawn(
+    comparison_setup,
+):
+    """A fixed nonzero coefficient shifts every EFT prediction, the one at
+    zero free coefficients included, but not the SM: the SM chi2 is that of
+    the SM line, not of the model with its free coefficients at zero."""
+    coefficients = CoefficientGroup(
+        [Coefficient("OpA"), Coefficient("OpB", free=False, value=1.0)]
+    )
+    comparison_setup["coefficients"] = coefficients
+    comparison_setup["eft_model"] = EFTModel(
+        comparison_setup["theory"], coefficients, use_quad=False
+    )
+    fit = _comparison_fit(free=("OpA",), samples={"OpA": [0.0, 1.0, 2.0]})
+    ((fig, _),) = _plot_comparison(fit, **comparison_setup)
+
+    covmat = np.asarray(comparison_setup["data"].exp_covmat)
+    residuals = np.array([1.0, 2.0, 3.0]) - _SM
+    expected = residuals @ np.linalg.inv(covmat) @ residuals / 3
+    assert _legend_chi2(fig.axes[0])[0] == pytest.approx(expected, rel=1e-2)
+
+
+def test_plot_data_theory_comparison_rejects_an_individual_fit(comparison_setup):
+    fit = _comparison_fit(action="run_individual_analytic_fits")
+    with pytest.raises(ValueError, match="one coefficient at a time"):
+        list(_plot_comparison(fit, **comparison_setup))
+
+
+def test_plot_data_theory_comparison_rejects_a_fit_lacking_a_coefficient(
+    comparison_setup,
+):
+    fit = _comparison_fit(free=("OpA",), samples={"OpA": [0.0, 1.0]})
+    with pytest.raises(ValueError, match="OpB"):
+        list(_plot_comparison(fit, **comparison_setup))
+
+
+def test_plot_data_theory_comparison_leaves_no_figure_open_in_pyplot(
+    comparison_setup,
+):
+    """reportengine never closes the figures a @figuregen yields, so they must
+    not be registered with pyplot, or a report with many datasets warns about
+    (and holds on to) more than 20 open figures."""
+    list(_plot_comparison(_comparison_fit(), **comparison_setup))
+    assert plt.get_fignums() == []
+
+
+def test_plot_chi2_scan_leaves_no_figure_open_in_pyplot():
+    scans = [{f"Op{i}": {"points": [0.0, 1.0], "chi2": [1.0, 0.0]}} for i in range(3)]
+    assert len(list(plot_chi2_scan(scans, latex_label=_plain))) == 3
+    assert plt.get_fignums() == []
+
+
+def test_plot_data_theory_comparison_title_escapes_the_dataset_name(
+    comparison_setup,
+):
+    for group in ("data", "theory"):
+        comparison_setup[group].names = ["ATLAS_tt_13TeV"]
+    ((fig, _),) = _plot_comparison(_comparison_fit(), **comparison_setup)
+    assert fig.axes[0].get_title() == r"$\mathrm{ATLAS\_tt\_13TeV}$"
+
+
+def test_plot_data_theory_comparison_title_takes_a_latex_labels_override(
+    comparison_setup,
+):
+    ((fig, _),) = _plot_comparison(
+        _comparison_fit(),
+        **comparison_setup,
+        latex_label=make_latex_label({"TESTDATA": r"$t\bar{t}$"}),
+    )
+    assert fig.axes[0].get_title() == r"$t\bar{t}$"
+
+
+def test_plot_data_theory_comparison_graph_resolves(
+    tmp_path, fixtures_data_path, fixtures_theory_path
+):
+    """The action's graph resolves through reportengine, fan-out over fits included.
+
+    Calling the provider directly skips check_types and the name resolution of
+    its parameters; resolving the target without executing it does not.
+    """
+    import yaml
+    from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
+
+    from smefit.api import smefitAPI
+
+    prior = {"dist": "uniform", "low": -1.0, "high": 1.0}
+    fit_runcard = {
+        "data_path": str(fixtures_data_path),
+        "theory_path": str(fixtures_theory_path),
+        "datasets": [_TESTDATA],
+        "coefficients": {
+            "OpA": {"free": True, "prior": prior},
+            "OpB": {"free": True, "prior": prior},
+        },
+        "actions_": ["run_analytic_fit"],
+    }
+    fit_dir = tmp_path / "my_fit"
+    _comparison_fit().fit_results.write(fit_dir)
+    (fit_dir / "input").mkdir()
+    (fit_dir / "input" / "runcard.yaml").write_text(yaml.safe_dump(fit_runcard))
+
+    # the model is the fit's: the comparison runcard need only name it and
+    # the datasets to draw
+    runcard = {
+        "fits": [{"name": "my_fit", "path": str(tmp_path)}],
+        "datasets": [_TESTDATA],
+    }
+    config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget("plot_data_theory_comparison", ("fits",), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()

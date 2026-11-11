@@ -103,8 +103,7 @@
     "fit": {
       "default": null,
       "used_by": [
-        "fitcontext",
-        "rge_matrix"
+        "fitcontext"
       ]
     },
     "use_quad": {

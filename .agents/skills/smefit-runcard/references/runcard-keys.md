@@ -44,7 +44,7 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
-- `fit` (consumed by `fitcontext`, `rge_matrix`)
+- `fit` (consumed by `fitcontext`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -463,6 +463,6 @@ which runcard keys each action ultimately needs.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
-- `rge_matrix`(coefficients, theory, rge, output_path, fit) — Produce the stacked RGE matrix for all data points.
+- `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `theory`(datasets, theory_path) — Produce theory group object.
 - `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

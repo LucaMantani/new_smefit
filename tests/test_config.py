@@ -262,7 +262,6 @@ def test_produce_rge_matrix_caching(cfg, theory_a, fake_rge_matrix, monkeypatch)
 
     assert first is second
     assert build.call_count == 1
-    assert fake_rge_matrix.write.call_count == 1
 
 
 def test_produce_rge_matrix_cached_per_coefficients(cfg, theory_a, monkeypatch):
@@ -354,23 +353,23 @@ def test_produce_rge_matrix_saves_with_output_path(
     fake_rge_matrix.write.assert_called_once_with(tmp_path)
 
 
-def test_produce_rge_matrix_not_saved_with_a_fit_in_scope(
+def test_produce_rge_matrix_save_does_not_depend_on_request_order(
     cfg, tmp_path, fake_rge_matrix, monkeypatch
 ):
-    """Under fitcontext the matrix is the fit's own: no copy in the report."""
+    """A request without an output folder that builds the matrix first does
+    not stop a later one with a folder from writing it."""
     from smefit import config as config_mod
 
-    monkeypatch.setattr(
-        config_mod, "build_rge_matrix", MagicMock(return_value=fake_rge_matrix)
-    )
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+    coefficients, theory = MagicMock(), MagicMock()
     rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
 
-    result = cfg.produce_rge_matrix(
-        MagicMock(), MagicMock(), rge=rge, output_path=tmp_path, fit=MagicMock()
-    )
+    cfg.produce_rge_matrix(coefficients, theory, rge=rge, output_path=None)
+    cfg.produce_rge_matrix(coefficients, theory, rge=rge, output_path=tmp_path)
 
-    assert result is fake_rge_matrix
-    fake_rge_matrix.write.assert_not_called()
+    assert build.call_count == 1
+    fake_rge_matrix.write.assert_called_once_with(tmp_path)
 
 
 # ---------------------------------------------------------------------------

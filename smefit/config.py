@@ -230,9 +230,7 @@ class smefitConfig(Config):
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(
-        self, coefficients, theory, rge=None, output_path=None, fit=None
-    ):
+    def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
         """Produce the stacked RGE matrix for all data points.
 
         Returns ``None`` when the runcard has no ``rge:`` block.
@@ -242,25 +240,25 @@ class smefitConfig(Config):
         reportengine environment attribute, supplied by the CLI's ``-o`` flag)
         and the matrix is simply not cached.
 
-        Nor is it with a ``fit`` in scope, as under ``fits::fitcontext``: the
-        matrix is then the fit's own, read from its ``rge_matrix.pkl`` (see
-        :meth:`Fit.rebuild_runcard`), and each fit would overwrite the copy of
-        the one before in the report folder.
+        The write is outside :meth:`_cached`, so that every request with an
+        output folder writes, not just the one that happened to build it.
         """
         if rge is None:
             return None
 
         coeff_list = sorted(coefficients.names)
-        return self._cached(
+        rge_matrix = self._cached(
             "rge_matrix",
             (repr(rge), tuple(coeff_list), id(theory)),
-            lambda: self._build_rge_matrix(
-                rge, coeff_list, theory, output_path if fit is None else None
-            ),
+            lambda: self._build_rge_matrix(rge, coeff_list, theory),
         )
+        # Write RGE matrix to disk for future reuse
+        if output_path is not None:
+            rge_matrix.write(output_path)
+        return rge_matrix
 
     @staticmethod
-    def _build_rge_matrix(rge, coeff_list, theory, output_path):
+    def _build_rge_matrix(rge, coeff_list, theory):
         """The worker of :meth:`produce_rge_matrix`."""
         rge_matrix = build_rge_matrix(
             rge_dict=rge,
@@ -272,9 +270,6 @@ class smefitConfig(Config):
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
-        # Write RGE matrix to disk for future reuse
-        if output_path is not None:
-            rge_matrix.write(output_path)
         return rge_matrix
 
     def produce_theory(self, datasets, theory_path):

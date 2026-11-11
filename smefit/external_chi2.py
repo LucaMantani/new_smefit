@@ -8,6 +8,11 @@ from smefit.chi2 import Chi2
 
 log = logging.getLogger(__name__)
 
+# Keys of an `external_chi2` entry that smefit reads itself and does not forward
+# to the chi2 class: `path` locates its module, `group` is how reports aggregate
+# it (read by produce_data_groups). Every other key is a constructor argument.
+_EXT_CHI2_RESERVED_KEYS = frozenset({"path", "group"})
+
 
 def load_external_chi2(external_chi2, coefficients, rge_dict):
     """
@@ -52,9 +57,10 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
 
         my_chi2_class = getattr(chi2_module, class_name)
 
-        # `group` only says how reports aggregate it: see produce_data_groups
         extra_keys = {
-            key: value for key, value in module.items() if key not in ("path", "group")
+            key: value
+            for key, value in module.items()
+            if key not in _EXT_CHI2_RESERVED_KEYS
         }
 
         chi2_ext = my_chi2_class(

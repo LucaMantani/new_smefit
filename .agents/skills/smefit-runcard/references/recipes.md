@@ -166,6 +166,13 @@ directory must contain `fit_results.json` and `input/runcard.yaml` (both are
 written automatically by every fit run). Datasets already used in the previous
 fit must NOT be repeated in this runcard, or they are double-counted.
 
+The previous fit's likelihood is rebuilt from its runcard, so the run stops if
+any of its commondata/theory files or external chi2 modules changed since it ran
+(checked against its `input/manifest.json`). There is no override: the prior
+pairs the previous fit's samples with its rebuilt likelihood, and with other
+files the update would be biased. Restore the files, or rerun the previous fit
+on the new ones.
+
 ## External chi2 modules
 
 For likelihoods that cannot be expressed as commondata+theory files

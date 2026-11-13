@@ -1,15 +1,22 @@
 """Unit tests for smefit.fit_result — FitResult, FitResultGroup and Fit."""
 
+from __future__ import annotations
+
 import json
 import math
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
 from smefit import credible_intervals
 from smefit.fit_result import Fit, FitResult, FitResultGroup
+
+if TYPE_CHECKING:
+    from smefit.pca import PCA
 
 
 def _make_result(
@@ -1129,3 +1136,183 @@ def test_hdi_bounds_of_a_positivity_bound_coefficient_start_at_zero():
 
     assert low == 0.0
     assert high == pytest.approx(1.96, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Fit.in_pca_basis: the posterior rotated into the principal components
+# ---------------------------------------------------------------------------
+
+
+def _pca_over(fisher: np.ndarray, names: list[str]) -> PCA:
+    """The PCA node run on a hand-built Fisher matrix."""
+    from smefit.pca import pca
+
+    frame = pd.DataFrame(np.asarray(fisher, dtype=float), index=names, columns=names)
+    return pca(frame, {"threshold": 1.0e-12, "min_weight": 0.01})
+
+
+def _gaussian_fit(fisher: np.ndarray, names: list[str], n_samples: int = 20000) -> Fit:
+    """A fit whose samples are drawn from the Gaussian of covariance F^-1 / 2.
+
+    That is the posterior of chi2 = c^T H c with H = 2F, so its principal
+    components are uncorrelated with variance 1 / (2 lambda_i).
+    """
+    rng = np.random.default_rng(0)
+    cov = 0.5 * np.linalg.inv(np.asarray(fisher, dtype=float))
+    draws = rng.multivariate_normal(np.zeros(len(names)), cov, size=n_samples)
+    result = FitResult(
+        free_parameters=list(names),
+        best_fit_point={name: 0.0 for name in names},
+        max_loglikelihood=-3.0,
+        num_data=8,
+        logz=-1.5,
+        samples={name: jnp.array(draws[:, i]) for i, name in enumerate(names)},
+    )
+    return Fit(fit_results=result, fit_name="gaussian", label="$G$")
+
+
+_FISHER: np.ndarray = np.array([[4.0, 1.5], [1.5, 1.0]])
+
+
+def test_in_pca_basis_names_the_components() -> None:
+    fit = _gaussian_fit(_FISHER, ["OpA", "OpB"])
+    rotated = fit.in_pca_basis(_pca_over(_FISHER, ["OpA", "OpB"]))
+
+    assert rotated.fit_results.free_parameters == ["PC1", "PC2"]
+    assert set(rotated.fit_results.samples) == {"PC1", "PC2"}
+    assert set(rotated.fit_results.best_fit_point) == {"PC1", "PC2"}
+
+
+def test_in_pca_basis_decorrelates_a_gaussian_posterior() -> None:
+    """For a Gaussian whose curvature is the Fisher matrix, the PCs are the
+    axes of the ellipse: uncorrelated, with variance 1 / (2 lambda_i)."""
+    names = ["OpA", "OpB"]
+    decomposition = _pca_over(_FISHER, names)
+    rotated = _gaussian_fit(_FISHER, names).in_pca_basis(decomposition)
+
+    corr = rotated.fit_results.correlations
+    assert abs(corr.loc["PC1", "PC2"]) < 0.02
+    variances = [
+        float(jnp.var(rotated.fit_results.samples[pc])) for pc in ["PC1", "PC2"]
+    ]
+    np.testing.assert_allclose(variances, 0.5 / decomposition.eigenvalues, rtol=0.03)
+
+
+def test_in_pca_basis_is_a_rotation() -> None:
+    """Not centred: each sample keeps its norm, and the samples are V^T c."""
+    names = ["OpA", "OpB"]
+    decomposition = _pca_over(_FISHER, names)
+    fit = _gaussian_fit(_FISHER, names, n_samples=50)
+    rotated = fit.in_pca_basis(decomposition)
+
+    c = np.stack([np.asarray(fit.fit_results.samples[n]) for n in names], axis=1)
+    p = np.stack(
+        [np.asarray(rotated.fit_results.samples[pc]) for pc in ["PC1", "PC2"]], axis=1
+    )
+    # samples are held as jnp arrays, float32 unless x64 is enabled
+    np.testing.assert_allclose(p, c @ decomposition.eigenvectors, rtol=1e-5)
+    np.testing.assert_allclose(
+        np.linalg.norm(p, axis=1), np.linalg.norm(c, axis=1), rtol=1e-5
+    )
+
+
+def test_in_pca_basis_rotates_the_best_fit_point() -> None:
+    names = ["OpA", "OpB"]
+    decomposition = _pca_over(_FISHER, names)
+    fit = _gaussian_fit(_FISHER, names, n_samples=10)
+    fit.fit_results.best_fit_point = {"OpA": 1.0, "OpB": -2.0, "OpExpr": 5.0}
+
+    best = fit.in_pca_basis(decomposition).fit_results.best_fit_point
+
+    expected = np.array([1.0, -2.0]) @ decomposition.eigenvectors
+    assert [best["PC1"], best["PC2"]] == pytest.approx(list(expected))
+
+
+def test_in_pca_basis_matches_coefficients_by_name_not_position() -> None:
+    """A PCA listing the coefficients in another order rotates the same way."""
+    fit = _gaussian_fit(_FISHER, ["OpA", "OpB"], n_samples=50)
+    swapped = _FISHER[::-1, ::-1]
+
+    straight = fit.in_pca_basis(_pca_over(_FISHER, ["OpA", "OpB"]))
+    reordered = fit.in_pca_basis(_pca_over(swapped, ["OpB", "OpA"]))
+
+    for pc in ["PC1", "PC2"]:
+        np.testing.assert_allclose(
+            reordered.fit_results.samples[pc], straight.fit_results.samples[pc]
+        )
+
+
+def test_in_pca_basis_drops_constrained_samples_and_priors() -> None:
+    names = ["OpA", "OpB"]
+    fit = _gaussian_fit(_FISHER, names, n_samples=10)
+    fit.fit_results.samples["OpExpr"] = fit.fit_results.samples["OpA"] ** 2
+    fit.fit_results.prior_specs = {
+        n: {"dist": "uniform", "low": 0.0, "high": 1.0} for n in names
+    }
+
+    rotated = fit.in_pca_basis(_pca_over(_FISHER, names)).fit_results
+
+    assert set(rotated.samples) == {"PC1", "PC2"}
+    assert rotated.prior_specs is None
+    assert rotated.whitening_transformation is None
+
+
+def test_in_pca_basis_keeps_the_fit_metadata_and_leaves_the_original() -> None:
+    names = ["OpA", "OpB"]
+    fit = _gaussian_fit(_FISHER, names, n_samples=10)
+    fit.fit_runcard = {"use_quad": True}
+
+    rotated = fit.in_pca_basis(_pca_over(_FISHER, names))
+
+    assert rotated is not fit
+    assert (rotated.fit_name, rotated.plot_label, rotated.use_quad) == (
+        "gaussian",
+        "$G$",
+        True,
+    )
+    assert rotated.fit_results.max_loglikelihood == -3.0
+    assert rotated.fit_results.num_data == 8
+    assert rotated.fit_results.logz == -1.5
+    assert fit.fit_results.free_parameters == names
+
+
+def test_in_pca_basis_feeds_confidence_bounds() -> None:
+    """The point of the rotation: posterior routines read PCs unchanged."""
+    names = ["OpA", "OpB"]
+    decomposition = _pca_over(_FISHER, names)
+    rotated = _gaussian_fit(_FISHER, names).in_pca_basis(decomposition)
+
+    bounds = rotated.confidence_bounds(95)
+
+    assert list(bounds) == ["PC1", "PC2"]
+    for i, pc in enumerate(["PC1", "PC2"]):
+        [(low, high)] = bounds[pc]
+        sigma = np.sqrt(0.5 / decomposition.eigenvalues[i])
+        assert (high - low) / 2 == pytest.approx(1.96 * sigma, rel=0.05)
+
+
+def test_in_pca_basis_refuses_a_pca_over_other_coefficients() -> None:
+    fit = _gaussian_fit(_FISHER, ["OpA", "OpB"], n_samples=10)
+
+    with pytest.raises(ValueError, match="same coefficients"):
+        fit.in_pca_basis(_pca_over(_FISHER, ["OpA", "OpC"]))
+
+
+def test_in_pca_basis_refuses_a_fit_without_samples() -> None:
+    fit = Fit(fit_results=_make_result(free=("OpA", "OpB")), fit_name="empty")
+
+    with pytest.raises(ValueError, match="no posterior samples"):
+        fit.in_pca_basis(_pca_over(_FISHER, ["OpA", "OpB"]))
+
+
+def test_in_pca_basis_refuses_individual_fits() -> None:
+    group = FitResultGroup(
+        [
+            _make_individual_result("OpA", best_val=0.0, samples_vals=[0.0, 1.0]),
+            _make_individual_result("OpB", best_val=0.0, samples_vals=[0.0, 1.0]),
+        ]
+    )
+    fit = Fit(fit_results=group, fit_name="individual")
+
+    with pytest.raises(ValueError, match="one coefficient at a time"):
+        fit.in_pca_basis(_pca_over(_FISHER, ["OpA", "OpB"]))

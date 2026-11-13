@@ -1,7 +1,6 @@
-# Marginal posteriors of the free coefficients of fits that have already been
-# run: no fit is run here, the posterior samples are read back from each fit's
-# fit_results.json. One figure, one panel per coefficient, every fit listed
-# under `fits` overlaid in its own colour (a single fit works too).
+# Marginal posteriors of the free and expr-constrained coefficients of fits that
+# have already been run: no fit is run here, the posterior samples are read back
+# from each fit's fit_results.json. One panel per coefficient.
 fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
@@ -15,16 +14,28 @@ fits:
 #
 # histogram bins each fit is drawn with
 n_bins: 30
-# true: every fit on a panel uses the same bins, so their bars line up;
-# false: each fit is binned over its own range (better for a narrow posterior)
+# comparison only — true: every fit on a panel uses the same bins, so their
+# bars line up; false: each fit is binned over its own range (better for a
+# narrow posterior beside a wide one)
 shared_bins: false
 # panels per row
 n_cols: 4
 
+# The comparison overlays every fit in one figure, a fit's colour each; a
+# coefficient a fit did not sample has no histogram from it.
+# `with fits` opens a section per fit, each with its own figure.
 template_text: |
-    Marginal posteriors
-    ===================
+    Marginal posteriors comparison
+    ==============================
+    {@plot_posterior_histograms_comparison@}
+
+    Marginal posteriors per fit
+    ===========================
+    {@with fits@}
+    {@fit@}
+    ---------
     {@plot_posterior_histograms@}
+    {@endwith@}
 
 actions_:
   - report(main=True)

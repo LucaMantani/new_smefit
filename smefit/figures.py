@@ -371,56 +371,14 @@ def plot_posterior_correlations(
     )
 
 
-@figure
-def plot_posterior_histograms(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    n_bins=30,
-    shared_bins=False,
-    n_cols=4,
+def _posterior_histograms(
+    fits, latex_label, params_to_plot, n_bins, shared_bins, n_cols
 ):
-    """Plot the marginal posterior of every coefficient, fits overlaid.
+    """The shared core of :func:`plot_posterior_histograms` and
+    :func:`plot_posterior_histograms_comparison`.
 
-    One panel per coefficient, on a grid ``n_cols`` wide; each fit listed under
-    ``fits:`` is drawn in its own colour on every panel, so a single fit gives
-    its marginals and several give their comparison. A coefficient one fit did
-    not sample is simply missing from that fit's histograms. The histograms
-    are normalised, so fits with different numbers of samples compare
-    directly.
-
-    Free and ``expr``-constrained coefficients both get a panel: a constrained
-    one has a posterior of its own, induced by the free ones it depends on.
-    Coefficients fixed to a ``value`` do not, and are left out.
-
-    Fits run one coefficient at a time are fine here: their marginals are what
-    each individual fit sampled.
-
-    Parameters
-    ----------
-    fits : list of smefit.fit_result.Fit
-        Previously run fits, loaded from disk.
-    latex_label : Callable[[str], str]
-        Writes a name in LaTeX (the ``latex_label`` resource).
-    params_to_plot : list of str, optional
-        Restrict the panels to these coefficients, in this order. All the free
-        and constrained coefficients of all the fits by default, in order of
-        first appearance.
-    n_bins : int, optional
-        Number of histogram bins each fit is drawn with.
-    shared_bins : bool, optional
-        Whether every fit on a panel uses the same bins, spanning all of them,
-        so their bars line up. Off by default: each fit is binned over its own
-        range, so a posterior much narrower than the others on its panel still
-        gets ``n_bins`` bars rather than the few that fall inside it.
-    n_cols : int, optional
-        Panels per row.
-
-    Raises
-    ------
-    ValueError
-        If ``fits`` is empty, a fit stored no samples, or ``params_to_plot``
-        selects nothing any fit has.
+    One panel per coefficient, on a grid ``n_cols`` wide, every fit drawn in
+    its own colour on every panel it has samples for.
     """
     set_plot_style()
 
@@ -510,6 +468,92 @@ def plot_posterior_histograms(
         frameon=False,
     )
     return fig
+
+
+@figure
+def plot_posterior_histograms(
+    fit,
+    latex_label,
+    params_to_plot=None,
+    n_bins=30,
+    n_cols=4,
+):
+    """Plot the marginal posterior of every coefficient of one fit.
+
+    One panel per coefficient, on a grid ``n_cols`` wide. The histograms are
+    normalised densities.
+
+    Free and ``expr``-constrained coefficients both get a panel: a constrained
+    one has a posterior of its own, induced by the free ones it depends on.
+    Coefficients fixed to a ``value`` do not, and are left out.
+
+    Fits run one coefficient at a time are fine here: their marginals are what
+    each individual fit sampled.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    params_to_plot : list of str, optional
+        Restrict the panels to these coefficients, in this order. All the free
+        and constrained coefficients by default.
+    n_bins : int, optional
+        Number of histogram bins.
+    n_cols : int, optional
+        Panels per row.
+
+    Raises
+    ------
+    ValueError
+        If the fit stored no samples, or ``params_to_plot`` selects nothing it
+        has.
+    """
+    return _posterior_histograms(
+        [fit], latex_label, params_to_plot, n_bins, False, n_cols
+    )
+
+
+@figure
+def plot_posterior_histograms_comparison(
+    fits,
+    latex_label,
+    params_to_plot=None,
+    n_bins=30,
+    shared_bins=False,
+    n_cols=4,
+):
+    """Overlay the marginal posteriors of several fits, one panel per coefficient.
+
+    One figure for the whole ``fits`` list, every fit in its own colour and
+    legend-labelled with the ``label`` of its ``fits`` entry (its name
+    otherwise). The panels are the union of the fits' coefficients, in order of
+    first appearance; one a fit did not sample just has no histogram from it.
+    The histograms are normalised, so fits with different numbers of samples
+    compare directly, and a one-at-a-time fit overlays a joint one.
+
+    The other parameters are those of :func:`plot_posterior_histograms`.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+        Previously run fits, loaded from disk.
+    shared_bins : bool, optional
+        Whether every fit on a panel uses the same bins, spanning all of them,
+        so their bars line up. Off by default: each fit is binned over its own
+        range, so a posterior much narrower than the others on its panel still
+        gets ``n_bins`` bars rather than the few that fall inside it.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty, or for any reason
+        :func:`plot_posterior_histograms` raises.
+    """
+    return _posterior_histograms(
+        fits, latex_label, params_to_plot, n_bins, shared_bins, n_cols
+    )
 
 
 @figure

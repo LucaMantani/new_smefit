@@ -51,6 +51,7 @@
     "coefficient_bounds_table",
     "plot_posterior_correlations",
     "plot_posterior_histograms",
+    "plot_posterior_histograms_comparison",
     "report"
   ],
   "path_prefixes": [

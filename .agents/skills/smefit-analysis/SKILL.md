@@ -96,7 +96,11 @@ in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
 the fit's name, without which the report gives no clue which output belongs to
 which fit. `plot_posterior_correlations` is the action, drawing the posterior
 correlations of each fit's free coefficients. Template:
-`posterior_correlations.yaml`.
+`posterior_correlations.yaml`. `plot_posterior_histograms` draws one fit's
+marginal posteriors the same way, one panel per free or constrained
+coefficient, and `plot_posterior_histograms_comparison` takes the whole list at
+once and overlays every fit's — called plainly, outside `{@with fits@}`. One
+runcard can do both. Template: `posterior_histograms.yaml`.
 
 Any action that would otherwise need the fit's setup — Fisher and global
 information, PCA, … — runs on finished fits under the `fitcontext` namespace:

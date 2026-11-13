@@ -415,6 +415,42 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Marginal posterior histograms
+
+`plot_posterior_histograms` draws the marginal posterior of every free and
+`expr`-constrained coefficient of one fit (fixed ones are left out), one panel
+each, so it goes inside `{@with fits@}`. `plot_posterior_histograms_comparison`
+overlays **every fit under `fits:`** in its own colour — one figure for the
+whole list, so it is called plainly. One runcard can do both.
+Template: `posterior_histograms.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+template_text: |
+  {@plot_posterior_histograms_comparison@}
+  {@with fits@}
+  ## {@fit@}
+  {@plot_posterior_histograms@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- `n_bins` (default 30) bins per fit; `n_cols` (default 4) panels per row;
+  `params_to_plot` picks and orders the panels — in the comparison, on the
+  union of the fits' coefficients.
+- In the comparison each fit is binned over its own range, so a narrow
+  posterior beside a wide one keeps all its bins. `shared_bins: true` gives
+  every fit on a panel the same bins instead, so the bars line up. The
+  single-fit plot does not take it.
+- Histograms are normalised, so fits with different numbers of samples
+  compare directly. The legend names each fit by its `label`.
+- A coefficient one fit did not sample just has no histogram from it. Fits run
+  with `run_individual_*_fits` are accepted by both: the marginals are what
+  each sampled.
+
 ### Any action on a finished fit: `fitcontext`
 
 `fitcontext` puts a fit's own setup in scope, so an action that builds a
@@ -578,7 +614,7 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised`,
+Taken today by `plot_posterior_correlations`, `plot_posterior_histograms(_comparison)`, `fisher_diagonals_normalised`,
 `global_information_table` and `coefficient_bounds_table` — so the Fisher and
 GIM tables' CSVs and the heatmaps drawn from them are restricted together, and a bounds table lists the same operators as
 the correlation heatmap beside it. An action argument still overrides it for one figure.

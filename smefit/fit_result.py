@@ -687,6 +687,21 @@ class Fit:
         return self.fit_runcard.get(key, default)
 
     @property
+    def fixed_coefficients(self) -> List[str]:
+        """The coefficients the fit held at a constant ``value``.
+
+        Their posterior samples are that constant repeated, unlike those of an
+        ``expr``-constrained coefficient, which carry a distribution derived
+        from the free ones.
+        """
+        coefficients = self.setting("coefficients") or {}
+        return [
+            name
+            for name, spec in coefficients.items()
+            if not spec.get("free", True) and spec.get("value") is not None
+        ]
+
+    @property
     def use_quad(self) -> bool:
         """Whether the fit included quadratic EFT corrections.
 

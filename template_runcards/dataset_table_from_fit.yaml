@@ -1,0 +1,17 @@
+# LaTeX table of the datasets of a fit that has already been run.
+#
+# Run ultranest_fit.yaml first, from this directory.
+#
+# `fitcontext` takes the datasets (and their `group:` labels) and the data path
+# from the fit's own runcard, so this runcard lists none. Without it,
+# write_dataset_table reads `datasets` and `data_path` from this runcard instead.
+#
+# One fit only: every fit would write the same <output>/dataset_table.tex.
+fits:
+  - {name: ultranest_fit, path: '.'}
+
+fetch_bibtex: False   # True: cite through INSPIRE and write dataset_table.bib
+compile_pdf: False    # True: also compile dataset_table_preview.pdf (needs pdflatex)
+
+actions_:
+  - fits::fitcontext write_dataset_table

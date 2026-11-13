@@ -42,6 +42,7 @@ from rich.console import Console
 from rich.table import Table
 
 from smefit.credible_intervals import _INTERVAL_TYPES, Bounds
+from smefit.input_manifest import InputManifest
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
@@ -768,7 +769,7 @@ class Fit:
     # Rebuilding what the fit was computed from
     # ------------------------------------------------------------------
 
-    def rebuild_runcard(self) -> Dict:
+    def rebuild_runcard(self, allow_changed_inputs: bool = False) -> Dict:
         """The runcard to rebuild this fit's resources from, through the API.
 
         Anything the fit was computed from — its ``chi2``, ``eft_model``,
@@ -792,13 +793,57 @@ class Fit:
         into the dicts they are given. Rebuilding needs the fit's database (data, theory,
         external likelihood modules) present locally, under the prefix paths
         its runcard names.
+
+        Those inputs are checked against the fit's ``input/manifest.json``
+        (:class:`smefit.input_manifest.InputManifest`). An input file whose
+        content changed since the fit ran means the rebuilt likelihood is not
+        the fit's, so it raises unless ``allow_changed_inputs`` is set, in
+        which case it is only warned about. A missing input file and a
+        different smefit are always only warned about. A fit with no manifest
+        is not checked.
+
+        Raises
+        ------
+        ValueError
+            If an input file changed since the fit ran and
+            ``allow_changed_inputs`` is False.
         """
         runcard = copy.deepcopy(self.fit_runcard)
         rge_file = self._rge_matrix_file
         if runcard.get("rge") and rge_file is not None:
             log.info("Reusing the RGE matrix of '%s' from %s.", self.fit_name, rge_file)
             runcard["rge"]["rg_matrix"] = str(rge_file)
+        self._check_input_manifest(runcard, allow_changed_inputs)
         return runcard
+
+    def _check_input_manifest(
+        self, runcard: Mapping, allow_changed_inputs: bool
+    ) -> None:
+        """Check the input files *runcard* names against the fit's manifest."""
+        recorded = InputManifest.load(self.path) if self.path is not None else None
+        if recorded is None:
+            log.info(
+                "'%s' has no input manifest: a rebuild cannot be checked against "
+                "the inputs it ran with.",
+                self.fit_name,
+            )
+            return
+
+        changed, notes = recorded.differences(InputManifest.from_runcard(runcard))
+        lines = "\n  ".join(changed + notes)
+        if changed and not allow_changed_inputs:
+            raise ValueError(
+                f"Rebuilding '{self.fit_name}' would not reproduce the inputs it "
+                f"ran with:\n  {lines}\nRestore those files (the database commit "
+                "the fit ran with is in its input/manifest.json), or rerun the fit "
+                "on the current ones."
+            )
+        if lines:
+            log.warning(
+                "Rebuilding '%s' from inputs that differ from those it ran with:\n  %s",
+                self.fit_name,
+                lines,
+            )
 
     @cached_property
     def _fit_action(self) -> Dict:

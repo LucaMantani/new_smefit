@@ -5,7 +5,7 @@ import optax
 import pytest
 
 from smefit.chi2 import Chi2
-from smefit.gradient_descent import gd_best_fit, gd_minimize
+from smefit.gradient_descent import best_fit_point, gd_best_fit, gd_minimize
 
 
 def _quadratic(c):
@@ -91,3 +91,13 @@ def test_gd_best_fit_starts_from_baseline():
         chi2, optax.adam(1e-2), {"sm_solution": False, "n_steps": 5000, "tol": 1e-6}
     )
     assert float(result[0]) == pytest.approx(2.0, abs=1e-2)
+
+
+# ---------------------------------------------------------------------------
+# best_fit_point — the gradient-descent result, outside a fitcontext
+# ---------------------------------------------------------------------------
+
+
+def test_best_fit_point_is_the_gradient_descent_result():
+    point = jnp.array([0.1, -0.2])
+    assert best_fit_point(point) is point

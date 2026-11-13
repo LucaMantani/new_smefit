@@ -47,6 +47,22 @@ from smefit.whitening import (
 
 log = logging.getLogger(__name__)
 
+# The runcard keys saying what a fit was fitted on, as opposed to how it was
+# fitted (optimizer, sampler, whitening) or reported: what produce_fitcontext
+# takes over from a fit.
+_FIT_SETUP_KEYS = (
+    "data_path",
+    "theory_path",
+    "datasets",
+    "coefficients",
+    "external_chi2",
+    "rge",
+    "use_quad",
+    "use_t0",
+    "use_theory_covmat",
+    "bayesian_update",
+)
+
 
 class smefitConfig(Config):
     """smefit Config class."""
@@ -83,28 +99,47 @@ class smefitConfig(Config):
         log.info(f"Using theory path: {theory_path}")
         return theory_path
 
+    def _cached(self, resource, key, build, by_identity=()):
+        """``build()``, computed once per ``resource`` and ``key``.
+
+        The heavy inputs of a likelihood (data, theory, covariance, RGE matrix)
+        are built once however many namespaces ask for them. The key is what
+        they are built from, so that each fit of ``fits::fitcontext`` still gets
+        its own: one value per resource would hand the first fit's to all.
+
+        Inputs too heavy to key on by value (a ``DataGroup``, a ``TheoryGroup``)
+        go in ``by_identity`` instead: they are keyed on their ``id`` and kept
+        alive by the entry, since an ``id`` is only unique while its object
+        lives and a freed one may be handed to a new object.
+        """
+        cache = self.__dict__.setdefault("_resource_cache", {})
+        full_key = (resource, key, tuple(id(obj) for obj in by_identity))
+        if full_key not in cache:
+            cache[full_key] = (build(), tuple(by_identity))
+        return cache[full_key][0]
+
     def produce_data(self, datasets, data_path):
         """Produce data group object."""
-        if hasattr(self, "_cached_data_group"):
-            return self._cached_data_group
+        return self._cached(
+            "data",
+            (str(data_path), repr(datasets)),
+            lambda: DataGroup([load_dataset(data_path, ds) for ds in datasets]),
+        )
 
-        parsed_datasets = []
-        for ds in datasets:
-            dataset = load_dataset(data_path, ds)
-            parsed_datasets.append(dataset)
+    def produce_data_groups(self, datasets=None, external_chi2=None):
+        """Build data_groups from inline group: keys on datasets and external chi2s.
 
-        self._cached_data_group = DataGroup(parsed_datasets)
-        return self._cached_data_group
-
-    def produce_data_groups(self, datasets):
-        """Build data_groups from inline group: keys on each dataset entry."""
+        Both keys are optional, as a runcard may have only one of them.
+        """
         groups: dict = {}
-        for ds in datasets:
+        for ds in datasets or []:
             group = ds.get("group")
             if group is not None:
                 groups.setdefault(group, []).append(ds["name"])
-        for name, group in getattr(self, "_ext_chi2_groups", {}).items():
-            groups.setdefault(group, []).append(name)
+        for name, entry in (external_chi2 or {}).items():
+            group = entry.get("group")
+            if group is not None:
+                groups.setdefault(group, []).append(name)
         return groups if groups else None
 
     def parse_latex_labels(self, latex_labels):
@@ -210,15 +245,28 @@ class smefitConfig(Config):
         optional: under the `smefit` API there is no output folder (it is a
         reportengine environment attribute, supplied by the CLI's ``-o`` flag)
         and the matrix is simply not cached.
+
+        The write is outside :meth:`_cached`, so that every request with an
+        output folder writes, not just the one that happened to build it.
         """
         if rge is None:
             return None
 
-        if hasattr(self, "_cached_rge_matrix"):
-            return self._cached_rge_matrix
-
         coeff_list = sorted(coefficients.names)
+        rge_matrix = self._cached(
+            "rge_matrix",
+            (repr(rge), tuple(coeff_list)),
+            lambda: self._build_rge_matrix(rge, coeff_list, theory),
+            by_identity=(theory,),
+        )
+        # Write RGE matrix to disk for future reuse
+        if output_path is not None:
+            rge_matrix.write(output_path)
+        return rge_matrix
 
+    @staticmethod
+    def _build_rge_matrix(rge, coeff_list, theory):
+        """The worker of :meth:`produce_rge_matrix`."""
         rge_matrix = build_rge_matrix(
             rge_dict=rge,
             coeff_list=coeff_list,
@@ -229,27 +277,28 @@ class smefitConfig(Config):
             rge_matrix.stacked_mats.shape,
             rge_matrix.obs_operators,
         )
-        # Write RGE matrix to disk for future reuse
-        if output_path is not None:
-            rge_matrix.write(output_path)
-        self._cached_rge_matrix = rge_matrix
         return rge_matrix
 
     def produce_theory(self, datasets, theory_path):
         """Produce theory group object."""
-        if hasattr(self, "_cached_theory_group"):
-            return self._cached_theory_group
-
-        parsed_theories = [load_theory(theory_path, ds) for ds in datasets]
-
-        self._cached_theory_group = TheoryGroup(parsed_theories)
-        return self._cached_theory_group
+        return self._cached(
+            "theory",
+            (str(theory_path), repr(datasets)),
+            lambda: TheoryGroup([load_theory(theory_path, ds) for ds in datasets]),
+        )
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
         """Produce the covariance matrix to be used in the fit."""
-        if hasattr(self, "_cached_fit_covmat"):
-            return self._cached_fit_covmat
+        return self._cached(
+            "fit_covmat",
+            (use_t0, use_theory_covmat),
+            lambda: self._build_fit_covmat(data, theory, use_t0, use_theory_covmat),
+            by_identity=(data, theory),
+        )
 
+    @staticmethod
+    def _build_fit_covmat(data, theory, use_t0, use_theory_covmat):
+        """The worker of :meth:`produce_fit_covmat`."""
         if data.names != theory.names:
             raise ValueError(
                 f"DataGroup and TheoryGroup contain different datasets.\n"
@@ -288,8 +337,6 @@ class smefitConfig(Config):
                 "The covariance matrix block is singular for the following "
                 f"dataset(s): {', '.join(singular_datasets)}."
             )
-
-        self._cached_fit_covmat = covmat
 
         return covmat
 
@@ -380,19 +427,15 @@ class smefitConfig(Config):
         class constructor, which must also accept `coefficients=` and
         `rge_dict=` and expose `compute_chi2`, `num_data` and `param_names`.
 
-        `group` is the one exception: it is stripped here and kept aside for
-        report/Fisher aggregation rather than forwarded.
+        `group` is the one exception: it is read by `data_groups` for the
+        report/Fisher aggregation, and `load_external_chi2` does not forward it.
 
         A runcard may define `external_chi2` with no `datasets:` at all, in
         which case the fit runs on the external likelihoods alone.
         """
-        self._ext_chi2_groups = {}
         cleaned = {}
         for name, cfg in external_chi2.items():
-            group = cfg.get("group")
-            if group is not None:
-                self._ext_chi2_groups[name] = group
-            entry = {k: v for k, v in cfg.items() if k != "group"}
+            entry = dict(cfg)
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
             cleaned[name] = entry
@@ -986,6 +1029,57 @@ class smefitConfig(Config):
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
             ) from e
+
+    def produce_fitcontext(self, fit):
+        """The setup of a fit already run, as a namespace: ``fits::fitcontext``.
+
+        Under it, any node reads the fit's own setup keys — datasets,
+        coefficients, paths, covariance flags, RGE, external likelihoods — in
+        place of the runcard's, so it rebuilds whatever it needs (``chi2``,
+        ``datasets_chi2``, ``data_groups``, ``dataset_info``, …) exactly as the
+        fit was run, with no code of its own for fits.
+
+        The keys are taken from :meth:`Fit.rebuild_runcard` and parsed here, by a
+        config of their own sharing this run's environment: values found in a
+        namespace are not parsed again. Only the setup keys are taken, so the
+        runcard keeps the choices of the report itself (``params_to_plot``,
+        ``pca_settings``, …). A setup key the fit does not have is refused when
+        the runcard sets one, as the runcard's would otherwise stand in for it.
+        """
+        if fit.individual_fit:
+            raise ConfigError(
+                f"Cannot rebuild the context of '{fit.fit_name}': it is a set of "
+                "individual fits, whose best-fit values are not a joint point of "
+                "the likelihood."
+            )
+        if fit.setting("bayesian_update") is not None:
+            log.warning(
+                "'%s' is a Bayesian update: the likelihood rebuilt from it covers "
+                "only the data of this update, not the previous fit it used as a "
+                "prior.",
+                fit.fit_name,
+            )
+
+        runcard = fit.rebuild_runcard()
+        setup = {key: runcard[key] for key in _FIT_SETUP_KEYS if key in runcard}
+        missing = [key for key in _FIT_SETUP_KEYS if key not in setup]
+        overridden = [key for key in missing if key in self.input_params]
+        if overridden:
+            raise ConfigError(
+                f"Fit '{fit.fit_name}' has no {', '.join(overridden)} of its own, "
+                "so under 'fitcontext' the runcard's would be used in its place. "
+                "Remove them from the runcard."
+            )
+
+        context = dict(
+            type(self)(setup, environment=self.environment).process_all_params()
+        )
+        best_fit_point = fit.fit_results.best_fit_point
+        # stands in for the gradient descent of the nodes evaluated at a best fit
+        context["best_fit_point"] = jnp.array(
+            [best_fit_point[name] for name in context["coefficients"].free_names]
+        )
+        return context
 
     def parse_interval_types(self, interval_types: str | list) -> list:
         """The credible intervals a report's bounds quote.

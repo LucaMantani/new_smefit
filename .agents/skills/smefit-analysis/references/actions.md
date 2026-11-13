@@ -28,7 +28,7 @@ reportengine (see runcard-keys.md for what each resource needs).
 | Mass scan (one free mass parameter, others constrained to it) | `mass_scan_table` | chi2_scan_settings (+ `rge`, re-run per scan point) |
 | Pseudodata / projections | `write_pseudodata` | pseudodata_settings |
 | Likelihood timing benchmark | `chi2_timing` | none |
-| Report (Fisher information, tables, plots) | `report` | template_text + optimizer_settings/gradient_descent_settings (Fisher needs gd_best_fit) |
+| Report (Fisher information, tables, plots) | `report` | template_text + optimizer_settings/gradient_descent_settings (Fisher needs best_fit_point, i.e. gd_best_fit) |
 
 ## Actions — valid under `actions_:`
 
@@ -129,6 +129,8 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.gradient_descent`
 
+- `best_fit_point(gd_best_fit)`
+  - The point at which nodes evaluate the likelihood around its best fit.
 - `gd_best_fit(chi2, optimizer, gradient_descent_settings)`
   - Determine the best-fit coefficient vector via gradient descent.
 - `gd_minimize(chi2, optimizer, start, n_steps=2000, tol=1e-08)`
@@ -173,11 +175,11 @@ names in tracebacks. They are resolved for you.
 
 - `aggregate_fisher_information_matrices(fisher_information_matrices, data_groups=None)`
   - Aggregate Fisher matrices by summing within each group.
-- `fisher_information_matrices(datasets_chi2, gd_best_fit)`
+- `fisher_information_matrices(datasets_chi2, best_fit_point)`
   - Compute per-dataset Fisher information matrices at the best-fit point.
 - `global_information_matrix(aggregate_fisher_information_matrices)`
   - Compute the constraining power of each source on each coefficient.
-- `total_fisher_information_matrix(chi2, gd_best_fit)`
+- `total_fisher_information_matrix(chi2, best_fit_point)`
   - Fisher information matrix of the full likelihood at the best-fit point.
 
 ### `smefit.pca`

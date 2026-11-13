@@ -166,6 +166,13 @@ directory must contain `fit_results.json` and `input/runcard.yaml` (both are
 written automatically by every fit run). Datasets already used in the previous
 fit must NOT be repeated in this runcard, or they are double-counted.
 
+The previous fit's likelihood is rebuilt from its runcard, so the run stops if
+any of its commondata/theory files or external chi2 modules changed since it ran
+(checked against its `input/manifest.json`). There is no override: the prior
+pairs the previous fit's samples with its rebuilt likelihood, and with other
+files the update would be biased. Restore the files, or rerun the previous fit
+on the new ones.
+
 ## External chi2 modules
 
 For likelihoods that cannot be expressed as commondata+theory files
@@ -437,6 +444,59 @@ actions_:
 - A coefficient one fit did not sample just has no histogram from it. Fits run
   with `run_individual_*_fits` are accepted: the marginals are what each
   sampled.
+
+### Any action on a finished fit: `fitcontext`
+
+`fitcontext` puts a fit's own setup in scope, so an action that builds a
+likelihood runs on a fit already run, with no `datasets`/`coefficients` in this
+runcard. The Fisher, global information and PCA actions are the usual ones.
+Template: `report_from_fit.yaml`.
+
+```yaml
+fits:
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+template_text: |
+  {@with fits::fitcontext@}
+  ## {@fit@}
+  {@fisher_diagonals_normalised@}
+  {@plot_fisher_diagonals_heatmap@}
+  {@global_information_table@}
+  {@plot_global_information_heatmap@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- Under `actions_:` the same is `- fits::fitcontext pca_spectrum`; with a
+  single `fit:` key it is `fitcontext` alone.
+- Taken from each fit: `datasets` (with their `group:` labels), `coefficients`,
+  `data_path`, `theory_path`, `use_quad`, `use_t0`, `use_theory_covmat`, `rge`,
+  `external_chi2`, `bayesian_update`. Everything else — `params_to_plot`,
+  `latex_labels`, `pca_settings`, … — is this runcard's. A setup key the fit does
+  not set must not be set here either: it is refused, as it would otherwise
+  stand in for the fit's default.
+- Without `fitcontext`, as in `report.yaml`, the actions read this runcard's own
+  setup.
+- The fit's stored best fit is the `best_fit_point` of the context, so
+  `gradient_descent_settings` has no effect. For a sampler fit that point is the
+  best sample rather than the exact minimum. With quadratic corrections it can
+  have negative curvature, which the global information matrix refuses.
+- The fit's database must be available locally, and so must the previous fit of
+  a `bayesian_update` (downloaded if missing). Its RGE matrix is reused, but an
+  external likelihood is rebuilt as its entry says, so it reruns its RGE unless
+  the entry names an `rg_matrix`.
+- A `run_individual_*_fits` fit is rejected: its best-fit values are not a joint
+  point. A `bayesian_update` fit logs a warning, as the rebuilt likelihood covers
+  only the data of the update and not the previous fit.
+- The PCA actions need a `pca_settings:` block in this runcard, which may be empty
+  and applies to every fit. PCA also refuses negative curvature, and the error
+  stops the whole run, not just that fit's section.
+- For one output per fit use the table and figure actions —
+  `- fits::fitcontext pca_spectrum`, `pca_components`, `plot_pca_spectrum` —
+  which reportengine names after the namespace
+  (`tables/<fit_name>_fitcontext_pca_spectrum.csv`). `run_pca` writes a single
+  `pca.json`, so it is for one fit only.
 
 ### Coefficient bounds table
 

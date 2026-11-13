@@ -24,6 +24,7 @@ of the actual exceptions raised by the code.
 | `fit_results.json not found at <path>` / `input/runcard.yaml not found` | The `bayesian_update` fit must be a *completed* smefit output directory. |
 | reportengine `ConfigError` about an unknown action | Action name not in `references/actions.md` (typo, or the runcard predates a rename). |
 | `whitening is not compatible with bayesian_update` | Exactly that — remove one of the two. |
+| `Rebuilding '<fit>' would not reproduce the inputs it ran with: ... changed` | A commondata/theory file or external chi2 module of a fit being rebuilt (e.g. the `bayesian_update` fit) differs from the one recorded in its `input/manifest.json`. Restore the files (the manifest records the database commit), or rerun that fit on the current ones. In Python, `rebuild_runcard(allow_changed_inputs=True)` rebuilds from them anyway. |
 | `Global information matrix: the total Fisher matrix has N flat or negative-curvature direction(s)` | Some coefficient or combination (named in the message) is unconstrained by the data at the evaluation point, so its variance is undefined. Fix or remove those coefficients, or add data; a PCA (`pca.yaml` template) shows the spectrum. |
 | `mass_scan requires exactly one free coefficient, got N: [...]` | `mass_scan_table` scans a single mass parameter; every Wilson coefficient must be tied to it with `expr:`/`vars:`, i.e. `free: False`. |
 

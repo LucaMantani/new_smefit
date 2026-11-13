@@ -521,6 +521,133 @@ def test_rebuild_runcard_adds_no_rge_block_to_a_fit_without_one(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Checking a rebuild against the fit's input manifest
+# ---------------------------------------------------------------------------
+
+
+def _fit_on_database(tmp_path, fixtures_data_path, fixtures_theory_path):
+    """A fit run on a writable copy of the fixture database, with its input_manifest."""
+    import shutil
+
+    from smefit.input_manifest import InputManifest
+
+    data, theory = tmp_path / "commondata", tmp_path / "theory"
+    shutil.copytree(fixtures_data_path, data)
+    shutil.copytree(fixtures_theory_path, theory)
+    datasets = [{"name": "TESTDATA", "order": "NLO"}]
+
+    out = tmp_path / "my_fit"
+    (out / "input").mkdir(parents=True)
+    runcard = {
+        "data_path": str(data),
+        "theory_path": str(theory),
+        "datasets": datasets,
+        "actions_": ["run_analytic_fit"],
+    }
+    (out / "input" / "runcard.yaml").write_text(yaml.dump(runcard))
+    _make_written_result().write(out)
+    InputManifest.from_runcard(runcard).write(out)
+    return Fit.from_folder(out), data, theory
+
+
+def test_rebuild_from_unchanged_inputs_does_not_warn(
+    tmp_path, caplog, fixtures_data_path, fixtures_theory_path
+):
+    fit, _, _ = _fit_on_database(tmp_path, fixtures_data_path, fixtures_theory_path)
+
+    with caplog.at_level("WARNING", logger="smefit.fit_result"):
+        fit.rebuild_runcard()
+
+    assert caplog.records == []
+
+
+def test_rebuild_from_changed_inputs_raises_naming_them(
+    tmp_path, fixtures_data_path, fixtures_theory_path
+):
+    fit, _, theory = _fit_on_database(
+        tmp_path, fixtures_data_path, fixtures_theory_path
+    )
+    with open(theory / "TESTDATA.json", "a") as f:
+        f.write("\n")
+
+    with pytest.raises(ValueError, match="theory/TESTDATA.json: changed"):
+        fit.rebuild_runcard()
+
+
+def test_rebuild_from_changed_inputs_can_be_allowed(
+    tmp_path, caplog, fixtures_data_path, fixtures_theory_path
+):
+    fit, _, theory = _fit_on_database(
+        tmp_path, fixtures_data_path, fixtures_theory_path
+    )
+    with open(theory / "TESTDATA.json", "a") as f:
+        f.write("\n")
+
+    with caplog.at_level("WARNING", logger="smefit.fit_result"):
+        runcard = fit.rebuild_runcard(allow_changed_inputs=True)
+
+    assert "theory/TESTDATA.json: changed" in caplog.text
+    assert runcard == fit.fit_runcard
+
+
+def test_rebuild_with_a_missing_input_only_warns(
+    tmp_path, caplog, fixtures_data_path, fixtures_theory_path
+):
+    """A rebuild that needs the file fails loading it; one that does not is fine."""
+    fit, data, _ = _fit_on_database(tmp_path, fixtures_data_path, fixtures_theory_path)
+    (data / "TESTDATA.yaml").unlink()
+
+    with caplog.at_level("WARNING", logger="smefit.fit_result"):
+        runcard = fit.rebuild_runcard()
+
+    assert "commondata/TESTDATA.yaml: missing" in caplog.text
+    assert runcard == fit.fit_runcard
+
+
+def test_rebuild_with_a_different_smefit_only_warns(
+    tmp_path, caplog, fixtures_data_path, fixtures_theory_path
+):
+    import json
+
+    fit, _, _ = _fit_on_database(tmp_path, fixtures_data_path, fixtures_theory_path)
+    manifest = fit.path / "input" / "manifest.json"
+    payload = json.loads(manifest.read_text())
+    payload["smefit_commit"] = "old-commit"
+    manifest.write_text(json.dumps(payload))
+    fit = Fit.from_folder(fit.path)
+
+    with caplog.at_level("WARNING", logger="smefit.fit_result"):
+        fit.rebuild_runcard()
+
+    assert "smefit commit: old-commit ->" in caplog.text
+
+
+def test_rebuild_of_a_fit_without_a_manifest_is_unchecked(tmp_path, caplog):
+    fit = _fit_with(tmp_path)
+
+    with caplog.at_level("INFO", logger="smefit.fit_result"):
+        fit.rebuild_runcard()
+
+    assert "has no input manifest" in caplog.text
+
+
+def test_rebuild_without_a_database_directory_only_warns(
+    tmp_path, caplog, fixtures_data_path, fixtures_theory_path
+):
+    """An absent commondata directory must not block e.g. a theory-only rebuild."""
+    import shutil
+
+    fit, data, _ = _fit_on_database(tmp_path, fixtures_data_path, fixtures_theory_path)
+    shutil.rmtree(data)
+
+    with caplog.at_level("WARNING", logger="smefit.fit_result"):
+        runcard = fit.rebuild_runcard()
+
+    assert "commondata/TESTDATA.yaml: missing" in caplog.text
+    assert runcard == fit.fit_runcard
+
+
+# ---------------------------------------------------------------------------
 # Fit metadata: read from the runcard, never from the payload
 # ---------------------------------------------------------------------------
 

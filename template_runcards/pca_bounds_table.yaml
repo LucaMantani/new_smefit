@@ -1,0 +1,19 @@
+# Bounds of a fit along the principal components of its own Fisher matrix.
+#
+# Run analytical_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.'}
+
+pca_settings: {}
+
+template_text: |
+    PCA bounds
+    ==========
+    {@with fits::fitcontext@}
+    {@fit@}
+    ---------
+    {@pca_bounds_table@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

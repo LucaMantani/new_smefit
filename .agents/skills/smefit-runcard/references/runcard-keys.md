@@ -44,7 +44,6 @@ and then use them in runcards the same way:
 ## Keys consumed directly from the runcard (no dedicated parser)
 
 - `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
-- `fit` (consumed by `fitcontext`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -205,7 +204,7 @@ report/Fisher aggregation, and `load_external_chi2` does not forward it.
 A runcard may define `external_chi2` with no `datasets:` at all, in
 which case the fit runs on the external likelihoods alone.
 
-### `fits`
+### `fits` / `fit`
 
 Load one previously run fit from disk into a :class:`Fit`.
 

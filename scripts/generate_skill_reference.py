@@ -249,9 +249,13 @@ def collect_config_surface():
         # An @element_of parser is written in the singular (parse_fit) while the
         # runcard key is the plural it generates (fits). The generated method
         # has no source-level def, so it is skipped above and this is the only
-        # place the key can come from.
+        # place the key can come from. The singular is a runcard key too (a
+        # provider taking `fit` reads a top-level `fit:`), parsed by the same
+        # method, so it is kept as the entry's `element`.
+        plural = getattr(method, "_element_of", None)
         entry = {
-            "key": getattr(method, "_element_of", None) or name.split("_", 1)[1],
+            "key": plural or name.split("_", 1)[1],
+            "element": name.split("_", 1)[1] if plural else None,
             "doc": doc,
             "known_keys": _extract_known_keys(fn_ast),
             "defaults": _extract_get_defaults(fn_ast),
@@ -261,6 +265,8 @@ def collect_config_surface():
         if name.startswith("parse_"):
             parse_entries.append(entry)
             parse_keys.add(entry["key"])
+            if entry["element"]:
+                parse_keys.add(entry["element"])
         else:
             sig = inspect.signature(method)
             entry["params"] = [
@@ -393,7 +399,10 @@ def collect_priors():
 
 
 def _render_settings_block(entry):
-    lines = [f"### `{entry['key']}`", ""]
+    heading = f"`{entry['key']}`"
+    if entry["element"]:
+        heading += f" / `{entry['element']}`"
+    lines = [f"### {heading}", ""]
     if entry["doc"]:
         lines += [entry["doc"], ""]
     if entry["known_keys"]:
@@ -624,6 +633,7 @@ def collect_provider_arg_keys(action_modules, surface):
     """
     resources = (
         {e["key"] for e in surface["parse"]}
+        | {e["element"] for e in surface["parse"] if e["element"]}
         | {e["key"] for e in surface["produce"]}
         | set(surface["raw"])
         | {"output_path"}
@@ -693,10 +703,15 @@ def build_runcard_keys_json(surface, priors, paths_info, action_modules, coeff_k
     """Machine-readable key list consumed by validate_runcard.py."""
     settings_blocks = {}
     for entry in surface["parse"]:
-        settings_blocks[entry["key"]] = {
+        block = {
             "known_keys": entry["known_keys"],
             "defaults": entry["defaults"],
         }
+        settings_blocks[entry["key"]] = block
+        # The singular of an @element_of key takes one entry of the plural's
+        # list, so a dict-form `fit:` has the sub-keys of a `fits:` entry.
+        if entry["element"]:
+            settings_blocks[entry["element"]] = block
     provider_args = collect_provider_arg_keys(action_modules, surface)
     top_level = sorted(
         set(surface["raw"])

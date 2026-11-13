@@ -100,12 +100,6 @@
         "theory"
       ]
     },
-    "fit": {
-      "default": null,
-      "used_by": [
-        "fitcontext"
-      ]
-    },
     "use_quad": {
       "default": "False",
       "used_by": [
@@ -187,6 +181,17 @@
     "external_chi2": {
       "defaults": {},
       "known_keys": null
+    },
+    "fit": {
+      "defaults": {
+        "label": "(no default)",
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "label",
+        "name",
+        "path"
+      ]
     },
     "fits": {
       "defaults": {

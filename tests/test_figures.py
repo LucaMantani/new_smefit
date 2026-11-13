@@ -9,18 +9,22 @@ stored attributes), but that is not something to rely on — anything that
 measures text, `tight_layout()` above all, renders it.
 """
 
+from __future__ import annotations
+
 import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.collections import PathCollection
+from matplotlib.collections import LineCollection, PathCollection
 
 from smefit import figures as figures_mod
 from smefit.figures import (
     _plot_heatmap,
     plot_chi2_scan,
+    plot_coefficient_bounds,
+    plot_coefficient_bounds_comparison,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
@@ -603,3 +607,170 @@ def test_plot_pca_spectrum_without_flat_directions_draws_one_set():
     assert _bar_sizes(ax) == [2]
     assert not [coll for coll in ax.collections if isinstance(coll, PathCollection)]
     assert [t.get_text() for t in ax.get_legend().get_texts()] == ["constrained"]
+
+
+# ---------------------------------------------------------------------------
+# plot_coefficient_bounds / plot_coefficient_bounds_comparison
+# ---------------------------------------------------------------------------
+
+
+def _bounds_fit(
+    samples: dict[str, list[float]] | None = None,
+    fit_name: str = "my_fit",
+    label: str | None = None,
+) -> Fit:
+    """A joint fit whose posterior is uniform on [0, 1] for every coefficient,
+    so its equal-tailed intervals are known by heart."""
+    if samples is None:
+        grid = list(np.linspace(0.0, 1.0, 1001))
+        samples = {"OpA": grid, "OpZZ": grid}
+    return _fit(free=list(samples), samples=samples, fit_name=fit_name, label=label)
+
+
+def _bars(ax: matplotlib.axes.Axes) -> list[tuple[float, float, float, float]]:
+    """Every bar drawn, as ``(y, low, high, linewidth)``."""
+    bars = []
+    for coll in ax.collections:
+        if not isinstance(coll, LineCollection):
+            continue
+        for seg, width in zip(coll.get_segments(), coll.get_linewidths()):
+            (low, y), (high, _) = seg
+            bars.append((float(y), float(low), float(high), float(width)))
+    return bars
+
+
+def test_plot_coefficient_bounds_draws_one_row_per_coefficient_top_to_bottom() -> None:
+    fig = plot_coefficient_bounds(
+        _bounds_fit(), latex_label=make_latex_label({"OpA": "$c_A$"})
+    )
+
+    ax = fig.axes[0]
+    ticks = dict(zip([t.get_text() for t in ax.get_yticklabels()], ax.get_yticks()))
+    assert list(ticks) == ["$c_A$", r"$\mathrm{OpZZ}$"]
+    assert ticks["$c_A$"] > ticks[r"$\mathrm{OpZZ}$"]
+
+
+def test_plot_coefficient_bounds_draws_every_level_widest_thinnest() -> None:
+    """The bars are the fit's own bounds, and the narrower interval is drawn
+    thicker so it reads on top of the wider one."""
+    fit = _bounds_fit()
+    fig = plot_coefficient_bounds(
+        fit, latex_label=_plain, params_to_plot="OpA", bounds_levels=[68, 95]
+    )
+
+    bars = sorted(_bars(fig.axes[0]), key=lambda bar: bar[3])
+    expected = [fit.confidence_bounds(level)["OpA"][0] for level in (95.0, 68.0)]
+    assert [(low, high) for _, low, high, _ in bars] == pytest.approx(expected)
+    assert bars[0][3] < bars[1][3]
+
+
+def test_plot_coefficient_bounds_keeps_params_to_plot_in_its_order() -> None:
+    fig = plot_coefficient_bounds(
+        _bounds_fit(), latex_label=_plain, params_to_plot=["OpZZ", "OpA"]
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpZZ", "OpA"]
+
+
+def test_plot_coefficient_bounds_draws_every_piece_of_a_split_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A multimodal posterior has a credible region in several pieces; each is
+    a bar on the coefficient's row, and nothing spans the gap between them."""
+    fit = _bounds_fit(samples={"OpA": [0.0, 1.0]})
+    pieces = [(-2.0, -1.0), (1.0, 2.0)]
+    monkeypatch.setattr(
+        fit, "confidence_bounds", lambda level, interval_type: {"OpA": pieces}
+    )
+
+    fig = plot_coefficient_bounds(fit, latex_label=_plain, bounds_levels=95)
+
+    bars = _bars(fig.axes[0])
+    assert sorted((low, high) for _, low, high, _ in bars) == pieces
+    assert len({y for y, *_ in bars}) == 1
+
+
+def test_plot_coefficient_bounds_passes_the_interval_type_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fit = _bounds_fit(samples={"OpA": [0.0, 1.0]})
+    asked = []
+
+    def bounds(level: float, interval_type: str) -> dict:
+        asked.append(interval_type)
+        return {"OpA": [(0.0, 1.0)]}
+
+    monkeypatch.setattr(fit, "confidence_bounds", bounds)
+    fig = plot_coefficient_bounds(fit, latex_label=_plain, interval_type="hdi")
+
+    assert set(asked) == {"hdi"}
+    legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert any("HDI" in text for text in legend)
+
+
+def test_plot_coefficient_bounds_reads_an_individual_fit() -> None:
+    """A bound is about one coefficient at a time, which is what a
+    one-at-a-time fit has."""
+    fit = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=[name],
+                    best_fit_point={name: 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={name: jnp.linspace(0.0, 1.0, 101)},
+                )
+                for name in ("OpA", "OpZZ")
+            ]
+        ),
+        fit_name="my_individual_fit",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+
+    fig = plot_coefficient_bounds(fit, latex_label=_plain, bounds_levels=95)
+
+    assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["OpA", "OpZZ"]
+    assert len(_bars(fig.axes[0])) == 2
+
+
+def test_plot_coefficient_bounds_symlog_axis_and_limits() -> None:
+    fig = plot_coefficient_bounds(
+        _bounds_fit(), latex_label=_plain, x_log=True, x_min=-5.0, x_max=5.0
+    )
+
+    ax = fig.axes[0]
+    assert ax.get_xscale() == "symlog"
+    assert ax.get_xlim() == (-5.0, 5.0)
+
+
+def test_plot_coefficient_bounds_rejects_empty_levels() -> None:
+    with pytest.raises(ValueError, match="bounds_levels"):
+        plot_coefficient_bounds(_bounds_fit(), latex_label=_plain, bounds_levels=[])
+
+
+def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> None:
+    """A coefficient one fit did not sample is a gap for that fit, not an
+    error, and each fit sits on its own offset within the row."""
+    grid = list(np.linspace(0.0, 1.0, 101))
+    both = _bounds_fit(fit_name="both", label="$\\mathrm{Both}$")
+    only_b = _bounds_fit(samples={"OpB": grid}, fit_name="only_b")
+
+    fig = plot_coefficient_bounds_comparison(
+        [both, only_b], latex_label=_plain, bounds_levels=95
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ", "OpB"]
+    bars = _bars(ax)
+    assert len(bars) == 3
+    colors = [tuple(c) for coll in ax.collections for c in coll.get_colors()]
+    assert len(set(colors)) == 2
+    legend = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert legend[:2] == ["$\\mathrm{Both}$", "only_b"]
+
+
+def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
+    with pytest.raises(ValueError, match="fits is empty"):
+        plot_coefficient_bounds_comparison([], latex_label=_plain)

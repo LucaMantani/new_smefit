@@ -8,6 +8,7 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 from reportengine.figure import figure, figuregen
 
 from smefit.plot_utils import select_params, set_plot_style
@@ -366,6 +367,190 @@ def plot_posterior_correlations(
         value_fmt=value_fmt,
         colorbar=colorbar,
         title=fit.plot_label,
+    )
+
+
+def _coefficient_bounds(
+    fits,
+    latex_label,
+    params_to_plot,
+    bounds_levels,
+    interval_type,
+    x_log,
+    lin_thr,
+    x_min,
+    x_max,
+):
+    """The shared core of :func:`plot_coefficient_bounds` and
+    :func:`plot_coefficient_bounds_comparison`.
+
+    One row per coefficient, top to bottom; every fit on its own offset within
+    the row, one colour each; every level as a bar of its own width, the
+    widest interval thinnest so the narrower ones read on top of it.
+    """
+    if not fits:
+        raise ValueError("fits is empty: list at least one fit under 'fits:'.")
+    if bounds_levels is None:
+        bounds_levels = [68.0, 95.0]
+    elif isinstance(bounds_levels, (int, float)):
+        bounds_levels = [bounds_levels]
+    if not bounds_levels:
+        raise ValueError("bounds_levels is empty: give at least one level.")
+    # widest first: drawn first and thinnest, under the narrower ones
+    levels = sorted({float(level) for level in bounds_levels}, reverse=True)
+
+    bounds = [
+        {level: fit.confidence_bounds(level, interval_type) for level in levels}
+        for fit in fits
+    ]
+    # the union over the fits, in order of first appearance: a coefficient one
+    # fit did not sample is a gap in its row, not an error
+    names = list(
+        dict.fromkeys(name for per_fit in bounds for name in per_fit[levels[0]])
+    )
+    context = ", ".join(fit.fit_name for fit in fits)
+    names = select_params(names, params_to_plot, context=context)
+
+    set_plot_style()
+    fig, ax = plt.subplots(figsize=(10, max(3.0, len(names) * (0.5 + 0.2 * len(fits)))))
+
+    rows = np.arange(len(names))[::-1]
+    # the fits of one row fill at most 60% of it, so the gap between two
+    # coefficients stays wider than the gap between two fits of the same one
+    spread = 0.6 * (len(fits) - 1) / len(fits)
+    shifts = np.linspace(spread / 2, -spread / 2, len(fits))
+    widths = np.linspace(1.0, 4.0, len(levels)) if len(levels) > 1 else [2.0]
+
+    for fit_idx, per_fit in enumerate(bounds):
+        color = f"C{fit_idx}"
+        for row, name in zip(rows, names):
+            y = row + shifts[fit_idx]
+            for level, width in zip(levels, widths):
+                # every piece of the region on the same row: a multimodal
+                # posterior is drawn as the disjoint intervals it has
+                for low, high in per_fit[level].get(name, []):
+                    ax.hlines(y, low, high, color=color, lw=width)
+
+    ax.axvline(0.0, ls="dashed", color="black", alpha=0.7)
+    ax.set_yticks(rows, [latex_label(name) for name in names])
+    ax.set_ylim(-0.75, len(names) - 0.25)
+    if x_log:
+        # bounds run either side of zero, which a plain log scale cannot show
+        ax.set_xscale("symlog", linthresh=lin_thr)
+    ax.set_xlim(x_min, x_max)
+    ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
+    ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
+
+    handles = [Line2D([], [], color=f"C{i}", lw=3) for i in range(len(fits))]
+    labels = [fit.plot_label for fit in fits]
+    handles.append(Line2D([], [], color="black", ls="dashed", alpha=0.7))
+    labels.append(r"$\mathrm{SM}$")
+    for level, width in zip(levels, widths):
+        handles.append(Line2D([], [], color="grey", lw=width))
+        labels.append(
+            rf"${level:.10g}\%\ \mathrm{{CL}}\ (\mathrm{{{interval_type.upper()}}})$"
+        )
+    ax.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0, 1.02, 1.0, 0.05),
+        frameon=False,
+        fontsize=14,
+        ncol=2,
+    )
+    return fig
+
+
+@figure
+def plot_coefficient_bounds(
+    fit,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    interval_type="eti",
+    x_log=False,
+    lin_thr=1e-2,
+    x_min=None,
+    x_max=None,
+):
+    """Plot the confidence bounds of one fit, one coefficient per row.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    params_to_plot : list of str, optional
+        Restrict the rows to these coefficients, in this order, top to bottom.
+        All of them by default.
+    bounds_levels : float or list of float, optional
+        The confidence levels drawn, in percent, 68 and 95 by default — the
+        same key the bounds tables read. Each is a bar of its own width, the
+        widest interval thinnest.
+    interval_type : str, optional
+        The credible interval drawn, among those
+        :meth:`Fit.confidence_bounds` accepts: ``eti`` (the default) or
+        ``hdi``. A region in several pieces is drawn as all of them.
+    x_log : bool, optional
+        Draw the x-axis on a symmetric log scale, off by default.
+    lin_thr : float, optional
+        Half-width of the linear region of that scale, ``1e-2`` by default.
+        Ignored unless ``x_log``.
+    x_min, x_max : float, optional
+        Axis limits, chosen from the intervals drawn by default.
+
+    """
+    return _coefficient_bounds(
+        [fit],
+        latex_label,
+        params_to_plot,
+        bounds_levels,
+        interval_type,
+        x_log,
+        lin_thr,
+        x_min,
+        x_max,
+    )
+
+
+@figure
+def plot_coefficient_bounds_comparison(
+    fits,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    interval_type="eti",
+    x_log=False,
+    lin_thr=1e-2,
+    x_min=None,
+    x_max=None,
+):
+    """Overlay the confidence bounds of several fits, one coefficient per row.
+
+    One figure for the whole ``fits`` list, every fit on its own offset within
+    a row and legend-labelled with the ``label`` of its ``fits`` entry (its
+    name otherwise). The rows are the union of the fits' coefficients; one a
+    fit did not sample is a gap for that fit. The parameters are those of
+    :func:`plot_coefficient_bounds`.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty, or for any reason :func:`plot_coefficient_bounds`
+        raises.
+    """
+    return _coefficient_bounds(
+        fits,
+        latex_label,
+        params_to_plot,
+        bounds_levels,
+        interval_type,
+        x_log,
+        lin_thr,
+        x_min,
+        x_max,
     )
 
 

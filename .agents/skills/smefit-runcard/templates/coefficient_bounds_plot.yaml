@@ -1,0 +1,50 @@
+# AUTO-COPIED from template_runcards/coefficient_bounds_plot.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# 1D confidence bounds of fits that have already been run: no fit is run here,
+# the posterior samples are read back from each fit's fit_results.json. One row
+# per coefficient, every level a bar of its own width, the widest thinnest.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# confidence levels drawn, in percent (default: 68 and 95) — the same key the
+# bounds tables read, so a report quoting both keeps them in agreement
+bounds_levels: [68, 95]
+# credible interval drawn: eti (default) or hdi. A single type, unlike the
+# tables' `interval_types` list: a plot shows one construction at a time
+interval_type: hdi
+
+# restrict the rows to these coefficients, in this order, top to bottom
+# params_to_plot: [OpD, OpWB]
+
+# x-axis: a symmetric log scale for bounds spanning several decades, and
+# explicit limits (chosen from the intervals by default)
+# x_log: true
+# lin_thr: 1.0e-2
+# x_min: -0.15
+# x_max: 0.05
+
+# The comparison overlays every fit in one figure, a fit's colour and offset
+# within each row; a coefficient a fit did not sample is a gap for that fit.
+# `with fits` opens a section per fit, each with its own figure.
+template_text: |
+    Coefficient bounds comparison
+    =============================
+    {@plot_coefficient_bounds_comparison@}
+
+    Coefficient bounds per fit
+    ==========================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_coefficient_bounds@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

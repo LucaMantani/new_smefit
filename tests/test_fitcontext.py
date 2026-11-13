@@ -411,3 +411,51 @@ def test_pca_off_the_minimum_explains_a_stored_best_fit(
 
     with pytest.raises(ValueError, match="stored best fit is its best sample"):
         _in_fitcontext("pca", fits, pca_settings={})
+
+
+# ---------------------------------------------------------------------------
+# The posterior in the PCA basis of the fit's own Fisher matrix
+# ---------------------------------------------------------------------------
+
+
+def _write_sampled_fit(
+    fit_dir: Path, runcard: dict[str, Any], point: dict[str, float]
+) -> dict[str, str]:
+    """A fit at ``point``, with posterior samples scattered around it."""
+    entry = _write_fit(fit_dir, runcard, point)
+    rng = np.random.default_rng(0)
+    FitResult(
+        free_parameters=list(point),
+        best_fit_point=point,
+        max_loglikelihood=-1.0,
+        num_data=3,
+        samples={
+            name: jnp.array(value + 0.01 * rng.standard_normal(200))
+            for name, value in point.items()
+        },
+    ).write(fit_dir)
+    return entry
+
+
+def _minimum(runcard: dict[str, Any]) -> dict[str, float]:
+    """The chi2 minimum: the PCA refuses negative curvature."""
+    minimum = smefitAPI.gd_best_fit(**runcard, gradient_descent_settings={})
+    return dict(zip(_BEST_FIT, map(float, minimum)))
+
+
+def test_pca_bounds_table_rotates_by_the_fit_own_pca(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_sampled_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
+
+    [table] = _in_fitcontext("pca_bounds_table", fits, pca_settings={})
+    [decomposition] = _in_fitcontext("pca", fits, pca_settings={})
+    [fit] = smefitConfig(
+        {"fits": fits}, environment=smefitAPI.loadedenv
+    ).process_all_params()["fits"]
+
+    assert table.index.tolist() == ["$\\mathrm{PC1}$", "$\\mathrm{PC2}$"]
+    rotated = fit.in_pca_basis(decomposition).confidence_bounds(68)
+    [(low, high)] = rotated["PC1"]
+    assert table.iloc[0, 0] == f"[{low:.3f}, {high:.3f}]"

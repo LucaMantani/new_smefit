@@ -27,6 +27,7 @@ from smefit.tables import (
     fisher_diagonals_normalised,
     global_information_table,
     mass_scan_table,
+    pca_bounds_table,
     pca_components,
     pca_spectrum,
 )
@@ -851,3 +852,76 @@ def test_mass_scan_table_uses_first_free_coefficient_name():
     result = mass_scan_table(coefficients, [1.0], [5.0], latex_label=_plain)
 
     assert result.columns.tolist() == ["OpM", "chi2"]
+
+
+# ---------------------------------------------------------------------------
+# pca_bounds_table: the bounds of the fit rotated into its principal components
+# ---------------------------------------------------------------------------
+
+_ROOT_HALF: float = 0.5**0.5
+
+
+def _rotation_pca() -> PCA:
+    """PCA whose directions are OpA + OpB and OpA - OpB, normalised."""
+    return PCA(
+        eigenvalues=np.array([2.0, 1.0]),
+        eigenvectors=np.array([[1.0, 1.0], [1.0, -1.0]]) * _ROOT_HALF,
+        coeff_names=["OpA", "OpB"],
+        threshold=1.0e-3,
+        min_weight=0.01,
+    )
+
+
+def test_pca_bounds_table_bounds_the_principal_combinations() -> None:
+    """OpA = OpB on every sample: PC1 = sqrt(2) OpA, PC2 = 0."""
+    table = pca_bounds_table(
+        _joint_fit({"OpA": _RAMP, "OpB": _RAMP}), _rotation_pca(), _plain
+    )
+
+    assert table.index.tolist() == ["PC1", "PC2"]
+    assert table.columns.tolist() == ["68% CL (ETI)", "95% CL (ETI)"]
+    low, high = 160.0 / _ROOT_HALF, 840.0 / _ROOT_HALF
+    assert table.loc["PC1", "68% CL (ETI)"] == f"[{low:.3f}, {high:.3f}]"
+    assert table.loc["PC2", "68% CL (ETI)"] == "[0.000, 0.000]"
+
+
+def test_pca_bounds_table_labels_the_components() -> None:
+    table = pca_bounds_table(
+        _joint_fit({"OpA": _RAMP, "OpB": _RAMP}),
+        _rotation_pca(),
+        make_latex_label({"PC1": "$v_1$"}),
+    )
+
+    assert table.index.tolist() == ["$v_1$", make_latex_label()("PC2")]
+
+
+def test_pca_bounds_table_keeps_components_to_plot_in_its_order() -> None:
+    table = pca_bounds_table(
+        _joint_fit({"OpA": _RAMP, "OpB": _RAMP}),
+        _rotation_pca(),
+        _plain,
+        components_to_plot=["PC2", "PC1"],
+    )
+
+    assert table.index.tolist() == ["PC2", "PC1"]
+
+
+def test_pca_bounds_table_forwards_its_arguments() -> None:
+    table = pca_bounds_table(
+        _joint_fit({"OpA": _RAMP, "OpB": _RAMP}),
+        _rotation_pca(),
+        _plain,
+        round_val=1,
+        bounds_levels=95,
+        interval_types=["eti", "hdi"],
+    )
+
+    assert table.columns.tolist() == ["95% CL (ETI)", "95% CL (HDI)"]
+    assert table.loc["PC2", "95% CL (ETI)"] == "[0.0, 0.0]"
+
+
+def test_pca_bounds_table_refuses_an_individual_fit() -> None:
+    with pytest.raises(ValueError, match="one coefficient at a time"):
+        pca_bounds_table(
+            _individual_fit({"OpA": _RAMP, "OpB": _RAMP}), _rotation_pca(), _plain
+        )

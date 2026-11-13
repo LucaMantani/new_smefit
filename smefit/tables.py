@@ -279,6 +279,65 @@ def coefficient_bounds_table(
     )
 
 
+@table
+def pca_bounds_table(
+    fit,
+    pca,
+    latex_label,
+    components_to_plot=None,
+    round_val=3,
+    bounds_levels=None,
+    interval_types=None,
+) -> pd.DataFrame:
+    """Tabulate the confidence bounds of one fit along its principal components.
+
+    :func:`coefficient_bounds_table` of the fit rotated by
+    :meth:`Fit.in_pca_basis`: one row per principal component of ``pca``, the
+    bounds being those of that linear combination of coefficients. Set beside
+    ``pca_spectrum``, which quotes the width the Fisher matrix alone allows.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk, sampled jointly.
+    pca : smefit.pca.PCA
+        A PCA over exactly the fit's free coefficients; under
+        ``fits::fitcontext`` it is the fit's own, at its best-fit point.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    components_to_plot : list of str, optional
+        Restrict the rows to these components (``PC1``, ...), in this order.
+        All of them by default. A key of its own rather than
+        ``params_to_plot``, which names coefficients for the whole report.
+    round_val : int, optional
+        Number of decimals every cell is written with.
+    bounds_levels : float or list of float, optional
+        The confidence levels quoted, in percent. 68 and 95 by default.
+    interval_types : str or list of str, optional
+        The credible intervals quoted. ``eti`` alone by default.
+
+    Returns
+    -------
+    pd.DataFrame
+        As :func:`coefficient_bounds_table`, with one row per component.
+
+    Raises
+    ------
+    ValueError
+        As :meth:`Fit.in_pca_basis` and :func:`coefficient_bounds_table`.
+    """
+    # parameters unannotated: reportengine isinstance-checks every annotated
+    # one, which fails on the string annotations of `from __future__`
+    return _coefficient_bounds_table(
+        fit.in_pca_basis(pca),
+        latex_label,
+        components_to_plot,
+        round_val,
+        bounds_levels,
+        interval_types,
+    )
+
+
 def _coefficient_bounds_comparison_table(
     fits: Sequence[Fit],
     latex_label: Callable[[str], str],

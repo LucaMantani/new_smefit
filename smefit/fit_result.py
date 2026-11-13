@@ -25,6 +25,7 @@ numerical record and own the ``fit_results.json`` schemas on their own.
 """
 
 import copy
+import dataclasses
 import json
 import logging
 import pathlib
@@ -47,6 +48,7 @@ from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
 if TYPE_CHECKING:
+    from smefit.pca import PCA
     from smefit.rge import RGECache
 
 log = logging.getLogger(__name__)
@@ -898,6 +900,82 @@ class Fit:
             values = np.asarray(samples[name], dtype=float)
             bounds[name] = interval(values, confidence_level, prior_bounds.get(name))
         return bounds
+
+    def in_pca_basis(self, pca: "PCA") -> "Fit":
+        """This fit, with its posterior expressed in the principal components of *pca*.
+
+        Every sample is rotated as ``p = V^T c``, where the columns of ``V`` are
+        the principal directions. The rotation is not centred: a PC value is the
+        value of that linear combination of coefficients, so the SM point stays
+        at zero. The free parameters become ``PC1 ... PCn``, so any routine
+        reading a fit's posterior (bounds, correlations, ...) reads it in the
+        PCA basis unchanged.
+
+        Only the free coefficients are rotated; the samples of the
+        ``expr``-constrained ones are dropped, as they are not coordinates of
+        the space *pca* spans. The prior specs are dropped as well: a prior on
+        the coefficients bounds no single principal component, so none can cut
+        a PC interval. Everything describing how the fit was run, and its
+        likelihood numbers, are kept.
+
+        Parameters
+        ----------
+        pca : smefit.pca.PCA
+            Decomposition of a Fisher matrix over exactly this fit's free
+            coefficients, in any order.
+
+        Raises
+        ------
+        ValueError
+            If the fit was run one coefficient at a time (there is no joint
+            posterior to rotate), stored no samples, or its free coefficients
+            are not those *pca* was built over.
+        """
+        result = self.fit_results
+        if isinstance(result, FitResultGroup):
+            raise ValueError(
+                f"Fit '{self.fit_name}' was run one coefficient at a time, so its "
+                "coefficients were never sampled together and there is no joint "
+                "posterior to rotate into the PCA basis."
+            )
+        if not result.samples:
+            raise ValueError(
+                f"The fit '{self.fit_name}' stored no posterior samples, so it has "
+                "no posterior to rotate into the PCA basis."
+            )
+        if set(pca.coeff_names) != set(result.free_parameters):
+            raise ValueError(
+                f"The PCA is over {sorted(pca.coeff_names)}, but the free "
+                f"coefficients of '{self.fit_name}' are "
+                f"{sorted(result.free_parameters)}: the posterior can only be "
+                "rotated by a PCA of the same coefficients."
+            )
+
+        # Stack in the PCA's row order, so a fit listing its coefficients in a
+        # different order is rotated by the right weights.
+        vectors = np.asarray(pca.eigenvectors, dtype=float)
+        posterior = np.stack(
+            [np.asarray(result.samples[name], dtype=float) for name in pca.coeff_names],
+            axis=1,
+        )
+        best = np.array([result.best_fit_point[name] for name in pca.coeff_names])
+
+        components = pca.component_names
+        rotated = posterior @ vectors
+        best_rotated = best @ vectors
+        pca_result = FitResult(
+            free_parameters=list(components),
+            best_fit_point={
+                name: float(best_rotated[i]) for i, name in enumerate(components)
+            },
+            max_loglikelihood=result.max_loglikelihood,
+            num_data=result.num_data,
+            logz=result.logz,
+            samples={
+                name: jnp.asarray(rotated[:, i]) for i, name in enumerate(components)
+            },
+        )
+        return dataclasses.replace(self, fit_results=pca_result)
 
     # ------------------------------------------------------------------
     # I/O

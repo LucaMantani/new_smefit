@@ -49,6 +49,7 @@
   "fit_reading_actions": [
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
+    "pca_bounds_table",
     "plot_posterior_correlations",
     "report"
   ],
@@ -78,6 +79,7 @@
     "cmap",
     "colorbar",
     "compile_pdf",
+    "components_to_plot",
     "dataset_table_caption",
     "dataset_table_label",
     "fetch_bibtex",
@@ -330,6 +332,7 @@
     "coefficients",
     "colorbar",
     "compile_pdf",
+    "components_to_plot",
     "data_path",
     "dataset_table_caption",
     "dataset_table_label",

@@ -18,7 +18,7 @@ fits:
 bounds_levels: [68, 95]
 # credible interval drawn: eti (default) or hdi. A single type, unlike the
 # tables' `interval_types` list: a plot shows one construction at a time
-interval_type: hdi
+interval_types: [eti, hdi]
 
 # restrict the rows to these coefficients, in this order, top to bottom
 # params_to_plot: [OpD, OpWB]

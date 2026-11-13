@@ -83,9 +83,9 @@ reportengine (see runcard-keys.md for what each resource needs).
 
 - `plot_chi2_scan(individual_chi2_scans, latex_label)`
   - Plot the 1D chi2 scan for each free coefficient.
-- `plot_coefficient_bounds(fit, latex_label, params_to_plot=None, bounds_levels=None, interval_type='eti', x_log=False, lin_thr=0.01, x_min=None, x_max=None)`
+- `plot_coefficient_bounds(fit, latex_label, params_to_plot=None, bounds_levels=None, interval_types=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None)`
   - Plot the confidence bounds of one fit, one coefficient per row.
-- `plot_coefficient_bounds_comparison(fits, latex_label, params_to_plot=None, bounds_levels=None, interval_type='eti', x_log=False, lin_thr=0.01, x_min=None, x_max=None)`
+- `plot_coefficient_bounds_comparison(fits, latex_label, params_to_plot=None, bounds_levels=None, interval_types=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None)`
   - Overlay the confidence bounds of several fits, one coefficient per row.
 - `plot_fisher_diagonals_heatmap(fisher_diagonals_normalised, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the Fisher diagonals matrix as a heatmap.

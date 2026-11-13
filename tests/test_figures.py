@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 from matplotlib.collections import LineCollection, PathCollection
 
+from smefit import credible_intervals
 from smefit import figures as figures_mod
 from smefit.figures import (
     _plot_heatmap,
@@ -639,9 +640,17 @@ def _bars(ax: matplotlib.axes.Axes) -> list[tuple[float, float, float, float]]:
     return bars
 
 
+def _one_figure(action, *args, **kwargs) -> matplotlib.figure.Figure:
+    """The only figure a bounds action yields: one interval type asked for."""
+    [(fig, _)] = list(action(*args, **kwargs))
+    return fig
+
+
 def test_plot_coefficient_bounds_draws_one_row_per_coefficient_top_to_bottom() -> None:
-    fig = plot_coefficient_bounds(
-        _bounds_fit(), latex_label=make_latex_label({"OpA": "$c_A$"})
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        _bounds_fit(),
+        latex_label=make_latex_label({"OpA": "$c_A$"}),
     )
 
     ax = fig.axes[0]
@@ -654,8 +663,12 @@ def test_plot_coefficient_bounds_draws_every_level_widest_thinnest() -> None:
     """The bars are the fit's own bounds, and the narrower interval is drawn
     thicker so it reads on top of the wider one."""
     fit = _bounds_fit()
-    fig = plot_coefficient_bounds(
-        fit, latex_label=_plain, params_to_plot="OpA", bounds_levels=[68, 95]
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        fit,
+        latex_label=_plain,
+        params_to_plot="OpA",
+        bounds_levels=[68, 95],
     )
 
     bars = sorted(_bars(fig.axes[0]), key=lambda bar: bar[3])
@@ -672,8 +685,11 @@ def test_plot_coefficient_bounds_draws_every_level_widest_thinnest() -> None:
 
 
 def test_plot_coefficient_bounds_keeps_params_to_plot_in_its_order() -> None:
-    fig = plot_coefficient_bounds(
-        _bounds_fit(), latex_label=_plain, params_to_plot=["OpZZ", "OpA"]
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        _bounds_fit(),
+        latex_label=_plain,
+        params_to_plot=["OpZZ", "OpA"],
     )
 
     ax = fig.axes[0]
@@ -691,7 +707,9 @@ def test_plot_coefficient_bounds_draws_every_piece_of_a_split_region(
         fit, "confidence_bounds", lambda level, interval_type: {"OpA": pieces}
     )
 
-    fig = plot_coefficient_bounds(fit, latex_label=_plain, bounds_levels=95)
+    fig = _one_figure(
+        plot_coefficient_bounds, fit, latex_label=_plain, bounds_levels=95
+    )
 
     bars = _bars(fig.axes[0])
     assert sorted((low, high) for _, low, high, _ in bars) == pieces
@@ -709,11 +727,57 @@ def test_plot_coefficient_bounds_passes_the_interval_type_on(
         return {"OpA": [(0.0, 1.0)]}
 
     monkeypatch.setattr(fit, "confidence_bounds", bounds)
-    fig = plot_coefficient_bounds(fit, latex_label=_plain, interval_type="hdi")
+    fig = _one_figure(
+        plot_coefficient_bounds, fit, latex_label=_plain, interval_types="hdi"
+    )
 
     assert set(asked) == {"hdi"}
     legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
     assert any("HDI" in text for text in legend)
+
+
+@pytest.mark.parametrize("comparison", [False, True])
+def test_plot_coefficient_bounds_yields_one_figure_per_interval_type(
+    monkeypatch: pytest.MonkeyPatch, comparison: bool
+) -> None:
+    """``interval_types`` is the tables' key: a list of types is one figure
+    each, in the order given and suffixed with the type, so the plots of a
+    report show the very intervals its tables quote."""
+    monkeypatch.setitem(
+        credible_intervals._INTERVAL_TYPES, "fake", lambda _v, _l, _b: [(-1.0, 1.0)]
+    )
+    action, fits = (
+        (plot_coefficient_bounds_comparison, [_bounds_fit()])
+        if comparison
+        else (plot_coefficient_bounds, _bounds_fit())
+    )
+
+    result = list(action(fits, latex_label=_plain, interval_types=["eti", "fake"]))
+
+    assert [suffix for _, suffix in result] == ["eti", "fake"]
+    legends = [
+        " ".join(t.get_text() for t in fig.axes[0].get_legend().get_texts())
+        for fig, _ in result
+    ]
+    assert "ETI" in legends[0] and "FAKE" not in legends[0]
+    assert "FAKE" in legends[1] and "ETI" not in legends[1]
+    assert {(low, high) for _, low, high, _ in _bars(result[1][0].axes[0])} == {
+        (-1.0, 1.0)
+    }
+
+
+def test_plot_coefficient_bounds_defaults_to_one_eti_figure() -> None:
+    [(_, suffix)] = list(plot_coefficient_bounds(_bounds_fit(), latex_label=_plain))
+    assert suffix == "eti"
+
+
+def test_plot_coefficient_bounds_rejects_empty_interval_types() -> None:
+    with pytest.raises(ValueError, match="interval_types is empty"):
+        list(
+            plot_coefficient_bounds(
+                _bounds_fit(), latex_label=_plain, interval_types=[]
+            )
+        )
 
 
 def test_plot_coefficient_bounds_reads_an_individual_fit() -> None:
@@ -736,15 +800,22 @@ def test_plot_coefficient_bounds_reads_an_individual_fit() -> None:
         fit_runcard={"actions_": ["run_individual_analytic_fits"]},
     )
 
-    fig = plot_coefficient_bounds(fit, latex_label=_plain, bounds_levels=95)
+    fig = _one_figure(
+        plot_coefficient_bounds, fit, latex_label=_plain, bounds_levels=95
+    )
 
     assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["OpA", "OpZZ"]
     assert len(_bars(fig.axes[0])) == 2
 
 
 def test_plot_coefficient_bounds_symlog_axis_and_limits() -> None:
-    fig = plot_coefficient_bounds(
-        _bounds_fit(), latex_label=_plain, x_log=True, x_min=-5.0, x_max=5.0
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        _bounds_fit(),
+        latex_label=_plain,
+        x_log=True,
+        x_min=-5.0,
+        x_max=5.0,
     )
 
     ax = fig.axes[0]
@@ -754,7 +825,9 @@ def test_plot_coefficient_bounds_symlog_axis_and_limits() -> None:
 
 def test_plot_coefficient_bounds_rejects_empty_levels() -> None:
     with pytest.raises(ValueError, match="bounds_levels"):
-        plot_coefficient_bounds(_bounds_fit(), latex_label=_plain, bounds_levels=[])
+        _one_figure(
+            plot_coefficient_bounds, _bounds_fit(), latex_label=_plain, bounds_levels=[]
+        )
 
 
 def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> None:
@@ -764,8 +837,11 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
     both = _bounds_fit(fit_name="both", label="$\\mathrm{Both}$")
     only_b = _bounds_fit(samples={"OpB": grid}, fit_name="only_b")
 
-    fig = plot_coefficient_bounds_comparison(
-        [both, only_b], latex_label=_plain, bounds_levels=95
+    fig = _one_figure(
+        plot_coefficient_bounds_comparison,
+        [both, only_b],
+        latex_label=_plain,
+        bounds_levels=95,
     )
 
     ax = fig.axes[0]
@@ -780,4 +856,4 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
-        plot_coefficient_bounds_comparison([], latex_label=_plain)
+        _one_figure(plot_coefficient_bounds_comparison, [], latex_label=_plain)

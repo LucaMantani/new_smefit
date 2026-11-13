@@ -375,7 +375,7 @@ def _coefficient_bounds(
     latex_label,
     params_to_plot,
     bounds_levels,
-    interval_type,
+    interval_types,
     x_log,
     lin_thr,
     x_min,
@@ -384,9 +384,11 @@ def _coefficient_bounds(
     """The shared core of :func:`plot_coefficient_bounds` and
     :func:`plot_coefficient_bounds_comparison`.
 
-    One row per coefficient, top to bottom; every fit on its own offset within
-    the row, one colour each; every level as a bar of its own width, the
-    widest interval thinnest so the narrower ones read on top of it.
+    One figure per interval type, yielded as ``(figure, interval_type)`` so
+    each is saved under its own suffix. One row per coefficient, top to
+    bottom; every fit on its own offset within the row, one colour each; every
+    level as a bar of its own width, the widest interval thinnest so the
+    narrower ones read on top of it.
     """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
@@ -399,76 +401,86 @@ def _coefficient_bounds(
     # widest first: drawn first and thinnest, under the narrower ones
     levels = sorted({float(level) for level in bounds_levels}, reverse=True)
 
-    bounds = [
-        {level: fit.confidence_bounds(level, interval_type) for level in levels}
-        for fit in fits
-    ]
-    # the union over the fits, in order of first appearance: a coefficient one
-    # fit did not sample is a gap in its row, not an error
-    names = list(
-        dict.fromkeys(name for per_fit in bounds for name in per_fit[levels[0]])
-    )
-    context = ", ".join(fit.fit_name for fit in fits)
-    names = select_params(names, params_to_plot, context=context)
+    if interval_types is None:
+        interval_types = ["eti"]
+    elif isinstance(interval_types, str):
+        interval_types = [interval_types]
+    if not interval_types:
+        raise ValueError("interval_types is empty: give at least one type.")
 
-    set_plot_style()
-    fig, ax = plt.subplots(figsize=(10, max(3.0, len(names) * (0.5 + 0.2 * len(fits)))))
-
-    rows = np.arange(len(names))[::-1]
-    # the fits of one row fill at most 60% of it, so the gap between two
-    # coefficients stays wider than the gap between two fits of the same one
-    spread = 0.6 * (len(fits) - 1) / len(fits)
-    shifts = np.linspace(spread / 2, -spread / 2, len(fits))
-    widths = np.linspace(1.0, 4.0, len(levels)) if len(levels) > 1 else [2.0]
-
-    for fit_idx, per_fit in enumerate(bounds):
-        color = f"C{fit_idx}"
-        for row, name in zip(rows, names):
-            y = row + shifts[fit_idx]
-            for level, width in zip(levels, widths):
-                # every piece of the region on the same row: a multimodal
-                # posterior is drawn as the disjoint intervals it has
-                for low, high in per_fit[level].get(name, []):
-                    ax.hlines(y, low, high, color=color, lw=width)
-
-    ax.axvline(0.0, ls="dashed", color="black", alpha=0.7)
-    ax.set_yticks(rows, [latex_label(name) for name in names])
-    ax.set_ylim(-0.75, len(names) - 0.25)
-    if x_log:
-        # bounds run either side of zero, which a plain log scale cannot show
-        ax.set_xscale("symlog", linthresh=lin_thr)
-    ax.set_xlim(x_min, x_max)
-    ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
-    ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
-
-    handles = [Line2D([], [], color=f"C{i}", lw=3) for i in range(len(fits))]
-    labels = [fit.plot_label for fit in fits]
-    handles.append(Line2D([], [], color="black", ls="dashed", alpha=0.7))
-    labels.append(r"$\mathrm{SM}$")
-    for level, width in zip(levels, widths):
-        handles.append(Line2D([], [], color="grey", lw=width))
-        labels.append(
-            rf"${level:.10g}\%\ \mathrm{{CL}}\ (\mathrm{{{interval_type.upper()}}})$"
+    for interval_type in interval_types:
+        bounds = [
+            {level: fit.confidence_bounds(level, interval_type) for level in levels}
+            for fit in fits
+        ]
+        # the union over the fits, in order of first appearance: a coefficient one
+        # fit did not sample is a gap in its row, not an error
+        names = list(
+            dict.fromkeys(name for per_fit in bounds for name in per_fit[levels[0]])
         )
-    ax.legend(
-        handles,
-        labels,
-        loc="lower center",
-        bbox_to_anchor=(0, 1.02, 1.0, 0.05),
-        frameon=False,
-        fontsize=14,
-        ncol=2,
-    )
-    return fig
+        context = ", ".join(fit.fit_name for fit in fits)
+        names = select_params(names, params_to_plot, context=context)
+
+        set_plot_style()
+        fig, ax = plt.subplots(
+            figsize=(10, max(3.0, len(names) * (0.5 + 0.2 * len(fits))))
+        )
+
+        rows = np.arange(len(names))[::-1]
+        # the fits of one row fill at most 60% of it, so the gap between two
+        # coefficients stays wider than the gap between two fits of the same one
+        spread = 0.6 * (len(fits) - 1) / len(fits)
+        shifts = np.linspace(spread / 2, -spread / 2, len(fits))
+        widths = np.linspace(1.0, 4.0, len(levels)) if len(levels) > 1 else [2.0]
+
+        for fit_idx, per_fit in enumerate(bounds):
+            color = f"C{fit_idx}"
+            for row, name in zip(rows, names):
+                y = row + shifts[fit_idx]
+                for level, width in zip(levels, widths):
+                    # every piece of the region on the same row: a multimodal
+                    # posterior is drawn as the disjoint intervals it has
+                    for low, high in per_fit[level].get(name, []):
+                        ax.hlines(y, low, high, color=color, lw=width)
+
+        ax.axvline(0.0, ls="dashed", color="black", alpha=0.7)
+        ax.set_yticks(rows, [latex_label(name) for name in names])
+        ax.set_ylim(-0.75, len(names) - 0.25)
+        if x_log:
+            # bounds run either side of zero, which a plain log scale cannot show
+            ax.set_xscale("symlog", linthresh=lin_thr)
+        ax.set_xlim(x_min, x_max)
+        ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
+        ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
+
+        handles = [Line2D([], [], color=f"C{i}", lw=3) for i in range(len(fits))]
+        labels = [fit.plot_label for fit in fits]
+        handles.append(Line2D([], [], color="black", ls="dashed", alpha=0.7))
+        labels.append(r"$\mathrm{SM}$")
+        for level, width in zip(levels, widths):
+            handles.append(Line2D([], [], color="grey", lw=width))
+            labels.append(
+                rf"${level:.10g}\%\ \mathrm{{CL}}\ (\mathrm{{{interval_type.upper()}}})$"
+            )
+        ax.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0, 1.02, 1.0, 0.05),
+            frameon=False,
+            fontsize=14,
+            ncol=2,
+        )
+        yield fig, interval_type
 
 
-@figure
+@figuregen
 def plot_coefficient_bounds(
     fit,
     latex_label,
     params_to_plot=None,
     bounds_levels=None,
-    interval_type="eti",
+    interval_types=None,
     x_log=False,
     lin_thr=1e-2,
     x_min=None,
@@ -489,10 +501,13 @@ def plot_coefficient_bounds(
         The confidence levels drawn, in percent, 68 and 95 by default — the
         same key the bounds tables read. Each is a bar of its own width, the
         widest interval thinnest.
-    interval_type : str, optional
-        The credible interval drawn, among those
+    interval_types : str or list of str, optional
+        The credible intervals drawn, among those
         :meth:`Fit.confidence_bounds` accepts: ``eti`` (the default) or
-        ``hdi``. A region in several pieces is drawn as all of them.
+        ``hdi`` — the same key the bounds tables read, so a report quoting
+        both shows the same intervals. One figure per type, each yielded
+        with the type as its suffix. A region in several pieces is drawn as
+        all of them.
     x_log : bool, optional
         Draw the x-axis on a symmetric log scale, off by default.
     lin_thr : float, optional
@@ -507,7 +522,7 @@ def plot_coefficient_bounds(
         latex_label,
         params_to_plot,
         bounds_levels,
-        interval_type,
+        interval_types,
         x_log,
         lin_thr,
         x_min,
@@ -515,13 +530,13 @@ def plot_coefficient_bounds(
     )
 
 
-@figure
+@figuregen
 def plot_coefficient_bounds_comparison(
     fits,
     latex_label,
     params_to_plot=None,
     bounds_levels=None,
-    interval_type="eti",
+    interval_types=None,
     x_log=False,
     lin_thr=1e-2,
     x_min=None,
@@ -546,7 +561,7 @@ def plot_coefficient_bounds_comparison(
         latex_label,
         params_to_plot,
         bounds_levels,
-        interval_type,
+        interval_types,
         x_log,
         lin_thr,
         x_min,

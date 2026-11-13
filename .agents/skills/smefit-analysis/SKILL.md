@@ -98,6 +98,17 @@ which fit. `plot_posterior_correlations` is the action, drawing the posterior
 correlations of each fit's free coefficients. Template:
 `posterior_correlations.yaml`.
 
+Any action that would otherwise need the fit's setup — Fisher and global
+information, PCA, … — runs on finished fits under the `fitcontext` namespace:
+`{@with fits::fitcontext@}` in a template, `- fits::fitcontext <action>` under
+`actions_:`. Each fit's datasets, coefficients, paths, covariance flags, RGE and
+external chi2 are taken from its own runcard, with its `group:` labels, and its
+stored best-fit point stands in for a gradient descent. So the fit's database
+must be available locally. Individual fits are rejected; a `bayesian_update` fit
+logs a warning, since the rebuilt likelihood leaves out the previous fit.
+Template: `report_from_fit.yaml`. Details are in the smefit-runcard skill's
+`recipes.md`.
+
 `coefficient_bounds_table` is its tabular counterpart: per fit, the
 equal-tailed 68% and 95% bounds of every free coefficient,
 also written to `tables/<fit_name>_coefficient_bounds_table.csv`. It reads

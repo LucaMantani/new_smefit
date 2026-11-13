@@ -291,7 +291,9 @@ def pca(total_fisher_information_matrix, pca_settings) -> PCA:
         raise ValueError(
             f"PCA: the Fisher matrix has a negative eigenvalue "
             f"({eigenvalues[-1]:.3e}), so the point it was evaluated at is not a "
-            f"minimum of the chi2. Evaluate it at the fitted minimum instead."
+            f"minimum of the chi2. Check that the gradient descent converged or, "
+            f"under fitcontext, note that a sampler fit's stored best fit is its "
+            f"best sample, not the exact minimum."
         )
 
     result = PCA(

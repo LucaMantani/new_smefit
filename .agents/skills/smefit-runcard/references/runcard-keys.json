@@ -25,6 +25,7 @@
     "eft_model",
     "ext_chi2_func",
     "fit_covmat",
+    "fitcontext",
     "individual_chi2",
     "individual_coefficients",
     "individual_eft_model",
@@ -178,10 +179,19 @@
       "known_keys": null
     },
     "external_chi2": {
-      "defaults": {
-        "group": "(no default)"
-      },
+      "defaults": {},
       "known_keys": null
+    },
+    "fit": {
+      "defaults": {
+        "label": "(no default)",
+        "path": "(no default)"
+      },
+      "known_keys": [
+        "label",
+        "name",
+        "path"
+      ]
     },
     "fits": {
       "defaults": {
@@ -326,6 +336,7 @@
     "datasets",
     "external_chi2",
     "fetch_bibtex",
+    "fit",
     "fits",
     "gradient_descent_settings",
     "hessian_settings",

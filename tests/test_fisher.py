@@ -325,8 +325,8 @@ def _make_quadratic_chi2(name):
     return Chi2(fn, param_names=["OpA"], num_data=1, name=name)
 
 
-def test_fisher_uses_gd_best_fit_point():
-    """Fisher is evaluated at the point given by gd_best_fit.
+def test_fisher_uses_best_fit_point():
+    """Fisher is evaluated at the point given by best_fit_point.
 
     chi2(c) = (c[0] + c[0]^2)^2
     Hessian at c=0 → F = 1.0

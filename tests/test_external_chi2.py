@@ -111,6 +111,17 @@ def test_extra_kwargs_forwarded(tmp_path, coeff_group):
     assert result[0].num_data == 3
 
 
+def test_group_is_not_forwarded(tmp_path, coeff_group):
+    """`group` is for report aggregation: a class not taking it still loads."""
+    module = tmp_path / "kwarg_chi2_grouped.py"
+    module.write_text(FAKE_CHI2_WITH_KWARG)
+
+    external_chi2 = {"KwargChi2": {"path": str(module), "scale": 2.0, "group": "G"}}
+    result = load_external_chi2(external_chi2, coeff_group, {})
+
+    assert result[0].num_data == 3
+
+
 # ---------------------------------------------------------------------------
 # A forwarded kwarg holding a prefix-relative path
 # ---------------------------------------------------------------------------

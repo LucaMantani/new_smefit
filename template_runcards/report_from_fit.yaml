@@ -1,0 +1,41 @@
+# Fisher matrices, global information matrices and PCA of fits that have already
+# been run.
+#
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# Required by the PCA actions, and applies to every fit. Every sub-key is optional.
+pca_settings: {}
+
+# `fits::fitcontext` puts each fit's own setup (datasets, coefficients, paths,
+# covariance flags, RGE, external chi2) in scope, and its stored best-fit point
+# as `best_fit_point`: the likelihood is rebuilt as the fit was run, and evaluated
+# at its best fit. Sources are the datasets of each fit, or its `group:` labels
+# when it has them. Without it these actions read the setup from this runcard
+# instead: see report.yaml for that form.
+template_text: |
+    Fisher, global information and PCA
+    ==================================
+    {@with fits::fitcontext@}
+    {@fit@}
+    ---------
+    Fisher table
+    {@fisher_diagonals_normalised@}
+    Fisher heatmap
+    {@plot_fisher_diagonals_heatmap@}
+    Global information table
+    {@global_information_table@}
+    Global information heatmap
+    {@plot_global_information_heatmap@}
+    PCA spectrum
+    {@pca_spectrum@}
+    {@plot_pca_spectrum@}
+    PCA components
+    {@pca_components@}
+    {@plot_pca_components_heatmap@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

@@ -262,7 +262,26 @@ def test_produce_rge_matrix_caching(cfg, theory_a, fake_rge_matrix, monkeypatch)
 
     assert first is second
     assert build.call_count == 1
-    assert fake_rge_matrix.write.call_count == 1
+
+
+def test_produce_rge_matrix_cached_per_coefficients(cfg, theory_a, monkeypatch):
+    """Another fit's coefficients get a matrix of their own, not the cached one."""
+    from smefit import config as config_mod
+
+    build = MagicMock(side_effect=lambda **kwargs: MagicMock())
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+
+    theory = TheoryGroup([theory_a])
+    rge = {"init_scale": 1000.0}
+    first = cfg.produce_rge_matrix(
+        CoefficientGroup([Coefficient(name="OpA", free=True)]), theory, rge
+    )
+    second = cfg.produce_rge_matrix(
+        CoefficientGroup([Coefficient(name="OpB", free=True)]), theory, rge
+    )
+
+    assert first is not second
+    assert build.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +350,25 @@ def test_produce_rge_matrix_saves_with_output_path(
 
     cfg.produce_rge_matrix(MagicMock(), MagicMock(), rge=rge, output_path=tmp_path)
 
+    fake_rge_matrix.write.assert_called_once_with(tmp_path)
+
+
+def test_produce_rge_matrix_save_does_not_depend_on_request_order(
+    cfg, tmp_path, fake_rge_matrix, monkeypatch
+):
+    """A request without an output folder that builds the matrix first does
+    not stop a later one with a folder from writing it."""
+    from smefit import config as config_mod
+
+    build = MagicMock(return_value=fake_rge_matrix)
+    monkeypatch.setattr(config_mod, "build_rge_matrix", build)
+    coefficients, theory = MagicMock(), MagicMock()
+    rge = {"init_scale": 1000.0, "obs_scale": "dynamic"}
+
+    cfg.produce_rge_matrix(coefficients, theory, rge=rge, output_path=None)
+    cfg.produce_rge_matrix(coefficients, theory, rge=rge, output_path=tmp_path)
+
+    assert build.call_count == 1
     fake_rge_matrix.write.assert_called_once_with(tmp_path)
 
 
@@ -487,6 +525,54 @@ def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
 
 
 # ---------------------------------------------------------------------------
+# produce_data / produce_theory caching
+# ---------------------------------------------------------------------------
+
+_TESTDATA = [{"name": "TESTDATA", "order": "NLO"}]
+
+
+def test_produce_data_caching(cfg, fixtures_data_path):
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    second = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    assert first is second
+
+
+def test_produce_data_cached_per_data_path(cfg, fixtures_data_path, tmp_path):
+    """Another data_path gets a DataGroup of its own, not the cached one."""
+    shifted = tmp_path / "commondata"
+    shifted.mkdir()
+    dataset = yaml.safe_load((fixtures_data_path / "TESTDATA.yaml").read_text())
+    dataset["data_central"] = [3.0, 1.0, 5.0]
+    (shifted / "TESTDATA.yaml").write_text(yaml.dump(dataset))
+
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    second = cfg.produce_data(_TESTDATA, shifted)
+
+    assert first is not second
+    assert not jnp.allclose(first.cv, second.cv)
+
+
+def test_produce_theory_caching(cfg, fixtures_theory_path):
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    second = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    assert first is second
+
+
+def test_produce_theory_cached_per_theory_path(cfg, fixtures_theory_path, tmp_path):
+    """Another theory_path gets a TheoryGroup of its own, not the cached one."""
+    other = tmp_path / "theory"
+    other.mkdir()
+    (other / "TESTDATA.json").write_text(
+        (fixtures_theory_path / "TESTDATA.json").read_text()
+    )
+
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    second = cfg.produce_theory(_TESTDATA, other)
+
+    assert first is not second
+
+
+# ---------------------------------------------------------------------------
 # produce_fit_covmat
 # ---------------------------------------------------------------------------
 
@@ -502,9 +588,8 @@ def test_produce_fit_covmat_with_theory_covmat(cfg, dataset_a, theory_a):
     data = DataGroup([dataset_a])
     theory = TheoryGroup([theory_a])
     covmat_no_th = cfg.produce_fit_covmat(data, theory, use_theory_covmat=False)
-    # use a fresh cfg to bypass the cache
-    cfg2 = smefitConfig.__new__(smefitConfig)
-    covmat_with_th = cfg2.produce_fit_covmat(data, theory, use_theory_covmat=True)
+    # the same config: the cache is keyed on the flags too
+    covmat_with_th = cfg.produce_fit_covmat(data, theory, use_theory_covmat=True)
     # adding sm_covmat makes entries larger
     assert jnp.all(covmat_with_th >= covmat_no_th)
 
@@ -515,6 +600,31 @@ def test_produce_fit_covmat_caching(cfg, dataset_a, theory_a):
     result1 = cfg.produce_fit_covmat(data, theory)
     result2 = cfg.produce_fit_covmat(data, theory)
     assert result1 is result2
+
+
+def test_produce_fit_covmat_cached_per_data(
+    cfg, dataset_a, dataset_b, theory_a, theory_b
+):
+    """Another fit's datasets get a covariance of their own, not the cached one."""
+    first = cfg.produce_fit_covmat(DataGroup([dataset_a]), TheoryGroup([theory_a]))
+    second = cfg.produce_fit_covmat(DataGroup([dataset_b]), TheoryGroup([theory_b]))
+    assert first is not second
+
+
+def test_cached_keeps_identity_keyed_inputs_alive(cfg):
+    """An ``id`` key is only unique while its object lives, so the entry holds it.
+
+    Otherwise a temporary input could be freed and its address reused by the
+    next one, which would then be handed the first one's cached value.
+    """
+    first_input = object()
+    first_id = id(first_input)
+    cfg._cached("resource", (), lambda: "first", by_identity=(first_input,))
+    del first_input
+    # still alive: no new object can take its id
+    assert all(id(object()) != first_id for _ in range(1000))
+    second = cfg._cached("resource", (), lambda: "second", by_identity=(object(),))
+    assert second == "second"
 
 
 def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
@@ -1112,24 +1222,31 @@ def test_produce_data_groups_preserves_insertion_order(cfg):
 
 
 def test_produce_data_groups_merges_ext_chi2_groups(cfg):
-    cfg._ext_chi2_groups = {"EXT_DS": "G2"}
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
-    result = cfg.produce_data_groups(datasets)
+    external_chi2 = {"EXT_DS": {"path": "/ext.py", "group": "G2"}}
+    result = cfg.produce_data_groups(datasets, external_chi2)
     assert result == {"G1": ["DS_A"], "G2": ["EXT_DS"]}
 
 
-def test_produce_data_groups_no_ext_chi2_attr(cfg):
-    """Works correctly when _ext_chi2_groups was never set (no external_chi2 in runcard)."""
+def test_produce_data_groups_without_external_chi2(cfg):
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
     result = cfg.produce_data_groups(datasets)
     assert result == {"G1": ["DS_A"]}
 
 
 def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
-    cfg._ext_chi2_groups = {"EXT_DS": "G1"}
     datasets = [{"name": "DS_A", "order": "LO", "group": "G1"}]
-    result = cfg.produce_data_groups(datasets)
+    external_chi2 = {"EXT_DS": {"path": "/ext.py", "group": "G1"}}
+    result = cfg.produce_data_groups(datasets, external_chi2)
     assert result == {"G1": ["DS_A", "EXT_DS"]}
+
+
+def test_produce_data_groups_external_chi2_only(cfg):
+    external_chi2 = {
+        "ExtA": {"path": "/a.py", "group": "G1"},
+        "ExtB": {"path": "/b.py"},
+    }
+    assert cfg.produce_data_groups(external_chi2=external_chi2) == {"G1": ["ExtA"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1137,41 +1254,26 @@ def test_produce_data_groups_ext_chi2_appended_to_existing_group(cfg):
 # ---------------------------------------------------------------------------
 
 
-def test_parse_external_chi2_strips_group(cfg):
-    raw = {
-        "MyExt": {"path": "/some/path.py", "group": "G1", "use_quad": True},
-    }
-    result = cfg.parse_external_chi2(raw)
-    assert "group" not in result["MyExt"]
-    assert result["MyExt"]["path"] == "/some/path.py"
-    assert result["MyExt"]["use_quad"] is True
-
-
-def test_parse_external_chi2_caches_groups(cfg):
-    raw = {
-        "ExtA": {"path": "/a.py", "group": "G1"},
-        "ExtB": {"path": "/b.py", "group": "G2"},
-    }
-    cfg.parse_external_chi2(raw)
-    assert cfg._ext_chi2_groups == {"ExtA": "G1", "ExtB": "G2"}
-
-
 def test_parse_external_chi2_no_group_key(cfg):
     raw = {"MyExt": {"path": "/some/path.py", "use_quad": False}}
     result = cfg.parse_external_chi2(raw)
     assert result == {"MyExt": {"path": "/some/path.py", "use_quad": False}}
-    assert cfg._ext_chi2_groups == {}
 
 
-def test_parse_external_chi2_mixed_group_and_no_group(cfg):
+def test_parse_external_chi2_keeps_group(cfg):
+    """The group stays on its entry, where data_groups reads it."""
     raw = {
-        "ExtA": {"path": "/a.py", "group": "G1"},
-        "ExtB": {"path": "/b.py"},
+        "MyExt": {"path": "/some/path.py", "group": "G1", "use_quad": True},
     }
     result = cfg.parse_external_chi2(raw)
-    assert "group" not in result["ExtA"]
-    assert result["ExtB"] == {"path": "/b.py"}
-    assert cfg._ext_chi2_groups == {"ExtA": "G1"}
+    assert result["MyExt"] == {"path": "/some/path.py", "group": "G1", "use_quad": True}
+
+
+def test_parse_external_chi2_keeps_no_state(cfg):
+    """Everything is in the returned value: data_groups needs no other node to
+    have parsed the key, and one config's parsing leaves another unaffected."""
+    cfg.parse_external_chi2({"ExtA": {"path": "/a.py", "group": "G1"}})
+    assert not hasattr(cfg, "_ext_chi2_groups")
 
 
 def test_parse_external_chi2_resolves_prefix_path(cfg):

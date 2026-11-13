@@ -18,6 +18,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS = REPO_ROOT / ".agents" / "skills"
 VALIDATOR = SKILLS / "smefit-runcard" / "scripts" / "validate_runcard.py"
+KEYS_JSON = SKILLS / "smefit-runcard" / "references" / "runcard-keys.json"
 SMEFIT_DB = SKILLS / "smefit-datasets" / "scripts" / "smefit_db.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 TEMPLATES = sorted((REPO_ROOT / "template_runcards").glob("*.yaml"))
@@ -444,6 +445,84 @@ def test_unknown_theory_cov_is_rejected(tmp_path):
 def test_runcard_without_any_data_is_rejected(tmp_path):
     code, out = validate(tmp_path, datasets=None, data_path=None, theory_path=None)
     assert code == 1, out
+    assert "no data to fit" in out
+
+
+_FITS_ONLY = dict(
+    datasets=None,
+    data_path=None,
+    theory_path=None,
+    use_quad=None,
+    coefficients=None,
+)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "fits::fitcontext global_information_table",
+        "fits::fitcontext plot_fisher_diagonals_heatmap(cmap='Reds')",
+        "fits::fitcontext pca_spectrum",
+    ],
+)
+def test_actions_under_fitcontext_need_no_setup_of_their_own(tmp_path, action):
+    """fitcontext takes the datasets and coefficients from each fit."""
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fits=[{"name": "my_fit", "path": "."}],
+        pca_settings={},
+        actions_=[action],
+    )
+    assert code == 0, out
+
+
+def test_fitcontext_also_takes_a_single_fit(tmp_path):
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fit={"name": "my_fit", "path": "."},
+        actions_=["fitcontext global_information_table"],
+    )
+    assert code == 0, out
+
+
+def test_single_fit_subkeys_are_checked_like_a_fits_entry(tmp_path):
+    """`fit:` is parsed by `parse_fit`, so it shares a `fits` entry's sub-keys."""
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fit={"name": "my_fit", "path": ".", "lable": "typo"},
+        actions_=["fitcontext global_information_table"],
+    )
+    assert code == 0, out
+    assert "fit: unknown sub-key 'lable'" in out
+
+
+def test_single_fit_is_a_parsed_key_not_a_raw_one():
+    keys = json.loads(KEYS_JSON.read_text())
+    assert "fit" not in keys["raw_keys"]
+    assert "fit" in keys["top_level_keys"]
+    assert keys["settings_blocks"]["fit"] == keys["settings_blocks"]["fits"]
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "fits global_information_table",
+        "fits pca_spectrum",
+    ],
+)
+def test_a_setup_action_outside_fitcontext_still_needs_setup(tmp_path, action):
+    """Without fitcontext the Fisher actions read the runcard's own datasets."""
+    code, out = validate(
+        tmp_path,
+        **_FITS_ONLY,
+        fits=[{"name": "my_fit", "path": "."}],
+        pca_settings={},
+        actions_=[action],
+    )
+    assert code != 0
     assert "no data to fit" in out
 
 

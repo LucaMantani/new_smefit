@@ -410,7 +410,7 @@ rebuilds `chi2`, `datasets_chi2`, `data_groups`, … from the fit's setup.
 
 So a node that should also work on a finished fit needs **no code for it**: do
 not give it a `fit` parameter or a fit/runcard dispatch, write it on the setup
-keys like any other node. Two rules keep that true:
+keys like any other node. Three rules keep that true:
 
 - **No state on the config outside the namespace.** Under `fits::fitcontext`
   one `smefitConfig` builds the nodes of every fit. A `produce_` caching its

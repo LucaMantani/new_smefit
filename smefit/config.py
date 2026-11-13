@@ -99,18 +99,24 @@ class smefitConfig(Config):
         log.info(f"Using theory path: {theory_path}")
         return theory_path
 
-    def _cached(self, resource, key, build):
+    def _cached(self, resource, key, build, by_identity=()):
         """``build()``, computed once per ``resource`` and ``key``.
 
         The heavy inputs of a likelihood (data, theory, covariance, RGE matrix)
         are built once however many namespaces ask for them. The key is what
         they are built from, so that each fit of ``fits::fitcontext`` still gets
         its own: one value per resource would hand the first fit's to all.
+
+        Inputs too heavy to key on by value (a ``DataGroup``, a ``TheoryGroup``)
+        go in ``by_identity`` instead: they are keyed on their ``id`` and kept
+        alive by the entry, since an ``id`` is only unique while its object
+        lives and a freed one may be handed to a new object.
         """
         cache = self.__dict__.setdefault("_resource_cache", {})
-        if (resource, key) not in cache:
-            cache[(resource, key)] = build()
-        return cache[(resource, key)]
+        full_key = (resource, key, tuple(id(obj) for obj in by_identity))
+        if full_key not in cache:
+            cache[full_key] = (build(), tuple(by_identity))
+        return cache[full_key][0]
 
     def produce_data(self, datasets, data_path):
         """Produce data group object."""
@@ -249,8 +255,9 @@ class smefitConfig(Config):
         coeff_list = sorted(coefficients.names)
         rge_matrix = self._cached(
             "rge_matrix",
-            (repr(rge), tuple(coeff_list), id(theory)),
+            (repr(rge), tuple(coeff_list)),
             lambda: self._build_rge_matrix(rge, coeff_list, theory),
+            by_identity=(theory,),
         )
         # Write RGE matrix to disk for future reuse
         if output_path is not None:
@@ -284,8 +291,9 @@ class smefitConfig(Config):
         """Produce the covariance matrix to be used in the fit."""
         return self._cached(
             "fit_covmat",
-            (id(data), id(theory), use_t0, use_theory_covmat),
+            (use_t0, use_theory_covmat),
             lambda: self._build_fit_covmat(data, theory, use_t0, use_theory_covmat),
+            by_identity=(data, theory),
         )
 
     @staticmethod

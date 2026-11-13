@@ -611,6 +611,22 @@ def test_produce_fit_covmat_cached_per_data(
     assert first is not second
 
 
+def test_cached_keeps_identity_keyed_inputs_alive(cfg):
+    """An ``id`` key is only unique while its object lives, so the entry holds it.
+
+    Otherwise a temporary input could be freed and its address reused by the
+    next one, which would then be handed the first one's cached value.
+    """
+    first_input = object()
+    first_id = id(first_input)
+    cfg._cached("resource", (), lambda: "first", by_identity=(first_input,))
+    del first_input
+    # still alive: no new object can take its id
+    assert all(id(object()) != first_id for _ in range(1000))
+    second = cfg._cached("resource", (), lambda: "second", by_identity=(object(),))
+    assert second == "second"
+
+
 def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
     data = DataGroup([dataset_a])
     theory = TheoryGroup([theory_b])

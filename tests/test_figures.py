@@ -659,8 +659,15 @@ def test_plot_coefficient_bounds_draws_every_level_widest_thinnest() -> None:
     )
 
     bars = sorted(_bars(fig.axes[0]), key=lambda bar: bar[3])
-    expected = [fit.confidence_bounds(level)["OpA"][0] for level in (95.0, 68.0)]
-    assert [(low, high) for _, low, high, _ in bars] == pytest.approx(expected)
+    # flat on both sides: pytest.approx does not compare nested sequences
+    expected = [
+        edge
+        for level in (95.0, 68.0)
+        for edge in fit.confidence_bounds(level)["OpA"][0]
+    ]
+    assert [edge for _, low, high, _ in bars for edge in (low, high)] == (
+        pytest.approx(expected)
+    )
     assert bars[0][3] < bars[1][3]
 
 

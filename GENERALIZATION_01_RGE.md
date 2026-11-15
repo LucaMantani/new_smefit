@@ -83,6 +83,9 @@ analysis).
 `_patches` before doing anything else. `config.py` imports `SMEFTRunner`, so
 the patches are in effect in every smefit run, exactly as today.
 
+`smefit/models/` holds helpers, not DAG nodes, so it is not added to
+`smefit_providers` in `app.py`. The same holds for `blackjax_samplers/`.
+
 ### The runner interface
 
 ```python
@@ -159,8 +162,9 @@ OPTIONS = {
 }
 ```
 
-`from_rge_dict` reads its defaults from `OPTIONS`. Today the same defaults are
-written twice, once in `from_rge_dict` and once in `parse_rge`.
+`from_rge_dict` reads its defaults from `OPTIONS`. In this PR, `parse_rge`
+keeps its own copy of the defaults (see `config.py` below). PR 2 removes that
+duplication, once the reference generator can document `OPTIONS`.
 
 ### `build.py`
 
@@ -186,12 +190,21 @@ versions.
 
 ### `config.py`
 
-- **`parse_rge`** keeps its `known_keys` literal, because
-  `scripts/generate_skill_reference.py` reads that literal to document the
-  runcard keys. The hand-written checks of `smeft_accuracy` and `yukawa` become
-  a loop over `SMEFTRunner.OPTIONS`. The loop raises the same `ConfigError`,
-  with the same alternatives. `ConfigError` stays in `config.py`, so runners do
-  not depend on reportengine.
+- **`parse_rge` keeps its validation as it is.** Only the import of
+  `ALLOWED_SMEFT_ACCURACY` and `ALLOWED_YUKAWA` changes, to
+  `smefit.models.smeft.rge`. Its shape is load-bearing:
+  `scripts/generate_skill_reference.py` builds the `rge` section of
+  `runcard-keys.md` from three things in it:
+  - the `known_keys` literal;
+  - the `rge.get("<key>", default)` calls with literal keys;
+  - the literal messages of `raise ConfigError(...)`.
+
+  A loop over `SMEFTRunner.OPTIONS` would silently drop from the reference the
+  defaults of `smeft_accuracy` and `yukawa` and their "Invalid …" errors. CI
+  would not notice, since it only checks that the committed reference matches
+  a fresh run of the generator. Validating through `OPTIONS` therefore moves to
+  PR 2, together with a generator change that documents each runner's
+  `OPTIONS`.
 - **`_build_rge_matrix`** (behind `produce_rge_matrix`) and
   **`produce_individual_mass_rge_matrix`** pass `runner_cls=SMEFTRunner`.
 - These are the last EFT-specific choices on the RGE path. PR 2 replaces them
@@ -209,7 +222,15 @@ There are no shims for `smefit.rge.runner` internals, `smefit.rge._patches`,
 
 ## Commits
 
-Each commit leaves `pytest -m "not slow"` green.
+Every commit:
+
+- leaves `pytest -m "not slow"` green;
+- updates the docs that it makes stale, in the same commit, as the
+  `smefit-dev` skill requires for hand-written skill files;
+- leaves `python scripts/generate_skill_reference.py` producing no diff. This
+  PR does not change the runcard surface, so any diff in the generated
+  reference is a regression;
+- passes `pre-commit run --all-files`.
 
 ### 1. Move the SMEFT code into `smefit/models/smeft/`
 
@@ -223,10 +244,22 @@ This commit only moves files and fixes imports. Behaviour does not change.
 - `smefit/models/smeft/rge.py` imports `_patches` at the top.
 - For now, `smefit/rge/__init__.py` and `build.py` import `RGE` from
   `smefit.models.smeft.rge`. Commit 2 removes that dependency.
-- Update the import paths and the logger names checked by `caplog`
-  (`smefit.rge.runner` → `smefit.models.smeft.rge`, `smefit.wcxf` →
-  `smefit.models.smeft.wcxf`) in these tests: `test_rge.py`, `test_rge_patches.py`,
-  `test_wcxf.py`, `test_constants.py`.
+- Tests:
+  - Rename the tests of the moved modules, following the convention for
+    modules in a subpackage (`test_blackjax_nuts.py` tests
+    `blackjax_samplers/nuts.py`): `test_rge_patches.py` →
+    `test_smeft_patches.py`, `test_wcxf.py` → `test_smeft_wcxf.py`,
+    `test_constants.py` → `test_smeft_constants.py`.
+  - Update the import paths and the logger names checked by `caplog`
+    (`smefit.rge.runner` → `smefit.models.smeft.rge`, `smefit.wcxf` →
+    `smefit.models.smeft.wcxf`) in `test_rge.py` and in the renamed files.
+- Docs:
+  - In the module list of `AGENTS.md`, replace the `rge/`, `wcxf.py` and
+    `constants.py` entries with `rge/` (generic running) and `models/smeft/`
+    (SMEFT code).
+  - Search the docs and skills for `smefit.rge.runner`, `smefit/rge/runner.py`,
+    `smefit.wcxf`, `smefit/wcxf.py` and `smefit.constants`, and update every
+    hit.
 
 ### 2. Introduce `RGERunner` and make the generic layer independent of `wilson`
 
@@ -238,19 +271,24 @@ This commit only moves files and fixes imports. Behaviour does not change.
   longer imports anything from `smefit.models.smeft`.
 - Tests: split `test_rge.py` (see the Tests section), and add the new generic
   tests.
+- Docs: add a short "Adding an RGE runner" section to the `smefit-dev` skill.
+  It covers the runner contract above and the tests a new runner needs.
 
-### 3. Use the runner interface in `config.py`
+### 3. Pass the runner to `build_rge_matrix` in `config.py`
 
-- `parse_rge` validates through the loop over `SMEFTRunner.OPTIONS`.
 - `produce_rge_matrix` and `produce_individual_mass_rge_matrix` pass
   `runner_cls=SMEFTRunner`.
-- Tests: two `test_config.py` tests assert the arguments `build_rge_matrix` is
-  called with, so add `runner_cls=SMEFTRunner` to
-  `test_produce_rge_matrix_builds_writes_and_returns` and
-  `test_produce_individual_mass_rge_matrix_overrides_init_scale`. Add a test
-  that `parse_rge` accepts every key of `SMEFTRunner.OPTIONS` without the
-  "Unknown key" warning, so the `known_keys` literal cannot fall behind the
-  runner.
+- `parse_rge` is unchanged apart from where it imports `ALLOWED_*` from (see
+  `config.py` above).
+- Tests:
+  - Two `test_config.py` tests assert the arguments `build_rge_matrix` is
+    called with. Add `runner_cls=SMEFTRunner` to
+    `test_produce_rge_matrix_builds_writes_and_returns` and
+    `test_produce_individual_mass_rge_matrix_overrides_init_scale`.
+  - Add a test that `parse_rge` accepts every key of `SMEFTRunner.OPTIONS`
+    without the "Unknown key" warning, and rejects a value outside each allowed
+    set. This keeps the hand-written checks in step with the runner until PR 2
+    removes them.
 
 ### 4. Update the callers
 
@@ -265,28 +303,15 @@ This commit only moves files and fixes imports. Behaviour does not change.
   imports them in the test suite today, so a wrong import path would go
   unnoticed.
 
-### 5. Update the docs
-
-- `AGENTS.md`: in the module list, replace the `rge/`, `wcxf.py` and
-  `constants.py` entries with `rge/` (generic running) and `models/smeft/`
-  (SMEFT code).
-- `smefit-dev` skill: add a short "Adding an RGE runner" section covering the
-  contract above and the tests a new runner needs.
-- Search the docs and skills for `smefit.rge.runner`, `smefit.wcxf` and
-  `smefit.constants`.
-- Regenerate the skill references with
-  `python scripts/generate_skill_reference.py` and run
-  `pre-commit run --all-files`.
-
 ## Tests
 
 | File | Change |
 |---|---|
 | `tests/test_rge.py` | Keeps the generic tests: `_resolve_scales`, `_find_cached_scale`, `resolve_rge_matrices`, the `RGEMatrix` payload, `locate`, `RGECache`. The two precomputed-cache `build_rge_matrix` tests switch from the SMEFT settings to a toy runner. |
 | `tests/test_smeft_rge.py` (new) | Takes the SMEFT tests from `test_rge.py`: Yukawa validation, `evolve_gs`, `_wilson_params`, `RGEbasis`, `map_to_smefit`, `RGEmatrix_dict`, `clone_runner`, `RGEevolve`, and the slow `wilson` tests, with `build_rge_matrix_shape` passing `runner_cls=SMEFTRunner`. |
-| `tests/test_rge_patches.py` | Imports `_patches` from `smefit.models.smeft`, and its docstring says the patches apply on import of `smefit.models.smeft.rge`. |
-| `tests/test_wcxf.py`, `tests/test_constants.py` | New import paths and logger names |
-| `tests/test_config.py` | `runner_cls` in the `build_rge_matrix` call assertions, and the `OPTIONS` key test |
+| `tests/test_rge_patches.py` → `tests/test_smeft_patches.py` | Imports `_patches` from `smefit.models.smeft`, and its docstring says the patches apply on import of `smefit.models.smeft.rge`. |
+| `tests/test_wcxf.py` → `tests/test_smeft_wcxf.py`, `tests/test_constants.py` → `tests/test_smeft_constants.py` | New import paths and logger names |
+| `tests/test_config.py` | `runner_cls` in the `build_rge_matrix` call assertions, and the test keeping `parse_rge` in step with `SMEFTRunner.OPTIONS` |
 | New, generic | **Toy runner, end to end:** a scale-dependent diagonal matrix driving `build_rge_matrix` with a fresh computation and a cached one, without `wilson`. **Contract:** round trip of `from_rge_dict(settings)` and `clone_runner`, for both the toy runner and `SMEFTRunner`. **Isolation:** `import smefit.rge` in a subprocess leaves `wilson` out of `sys.modules`. **Settings guard:** a cache written by one runner is refused by the other. |
 | New, shims | `from smefit.rge import RGE` warns and returns `SMEFTRunner`; `build_rge_matrix` without `runner_cls` warns |
 | New, external modules | Import every `external_chi2/` module. `low_energy/superallowed_beta_decay.py` is marked `xfail`, since it is already broken on `main` (see below). |
@@ -302,8 +327,8 @@ This commit only moves files and fixes imports. Behaviour does not change.
    and compare `fit_results.json`.
 3. **External chi2 smoke run.** Run a scratch runcard with an `rge:` block, one
    Drell-Yan external chi2 and one optimal-observables external chi2.
-4. CI's skills check passes, which means the regenerated references are not
-   stale.
+4. Regenerating the skill references produces no diff, and CI's skills check
+   passes.
 
 ## Not in this PR
 
@@ -312,6 +337,8 @@ This commit only moves files and fixes imports. Behaviour does not change.
   PR 2, and `BaseModel` to `smefit/models/base.py`.
 - **The hardcoded `SMEFTRunner` in `config.py`** is replaced in PR 2, where
   the model declares its runner.
+- **Validating the runner options through `OPTIONS`** moves to PR 2, together
+  with the generator change that documents them.
 - **Neutral names** for `wc_names`, `obs_operators`, `init_operators` and
   `RGEmatrix` go in the naming pass, together with `eft_model` → `model`.
 - **The `rge_dict` argument of the external chi2 contract** is unchanged here

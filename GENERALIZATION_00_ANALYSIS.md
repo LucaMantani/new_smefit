@@ -148,18 +148,32 @@ gets its own plan file before work on it starts.
 
   PR 2 decides how a model contributes them. For SMEFT these are the `rge`
   options and the mass-scan producers.
+- Validating the runner options through the runner's `OPTIONS` moves here
+  from PR 1. It needs a generator change: the generator only documents literal
+  `known_keys`, literal `.get()` defaults and literal `ConfigError` messages in
+  `config.py`, so options declared on a model or runner class would vanish from
+  the reference. The generator has to document each model's and runner's
+  options from the registry, as `collect_priors` does with `_DIST_REGISTRY`.
+- The `smefit-dev` skill is updated. Its main example for the `=None` rule is
+  `produce_eft_model` building `EFTModel(...)`.
 
 **PR 3, neutral names in `Theory` and `load_theory`.** The polynomial layout
 and the database keys (`best_sm`, the order keys, `a*b`) stay. Only the Python
 names change.
 
 **PR 4, external chi2 contract.** Plugins receive the model's settings instead
-of a dedicated `rge_dict`, and existing modules keep working.
+of a dedicated `rge_dict`, and existing modules keep working. The `smefit-dev`
+skill, which states the current contract (`coefficients=`, `rge_dict=`), is
+updated in the same PR.
 
 **PR 5, naming pass.**
 
 - Rename the `eft_model` resource and its `individual_*` variants to `model`.
   `smefitAPI.eft_model(...)` appears in the docs and skills.
+- This is an API change: resources are requested by name, by
+  `smefitAPI.eft_model(...)`, report templates and users' scripts, and an
+  unknown name only fails with "cannot find a way to compute". Keep `eft_model`
+  and its variants as deprecated aliases for a while, or announce the break.
 - Update the argument names in `chi2.py`, `projections.py` and
   `individual_fit.py`.
 - Regenerate the skill references.

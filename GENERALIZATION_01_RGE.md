@@ -343,8 +343,8 @@ This commit only moves files and fixes imports. Behaviour does not change.
   `RGEmatrix` go in the naming pass, together with `eft_model` → `model`.
 - **The `rge_dict` argument of the external chi2 contract** is unchanged here
   and handled in PR 4.
-- **Runcard placement of runner-specific keys.** This only needs deciding once
-  a second runner exists.
+- **Runcard placement of runner-specific keys.** PR 2 settles it: the `rge:`
+  block holds the generic keys plus the options of the chosen model's runner.
 - **`external_chi2/low_energy/superallowed_beta_decay.py`** imports
   `smefit.rge.rge`, which does not exist on `main`. It is already broken and
   should be fixed separately.

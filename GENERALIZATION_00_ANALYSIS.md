@@ -106,56 +106,48 @@ its own package under `smefit/models/`.
   model might also need, such as the SM inputs in `constants.py`, stays in its
   first model's package. It moves to a shared package, such as
   `smefit/models/common/`, once a second model actually needs it.
+- **The master PR only refactors.** It changes how the existing code is
+  organised and adds no new model. Newer models (such as a general polynomial model) is later work.
+- **`EFTModel` is the SMEFT model.** Its limitations, among them predictions at
+  most quadratic in the coefficients, are those of the SMEFT. A general
+  polynomial model, with higher orders or a basis of functions, would be a
+  separate and more general model.
+- **A model declares its RGE runner.** A runcard picks a model, and the model
+  brings its runner, or none. The `rge:` block therefore holds the generic keys
+  plus the options of that model's runner.
+- **The runcard chooses the model in a `model:` block** that holds every model
+  option, for example `model: {name: smeft, use_quad: true}`. Its `name`
+  defaults to `smeft`. A top-level `use_quad` is still accepted as a
+  deprecated shorthand, because stored fits use it, and the deprecation
+  warning is logged once per fit.
+- **The t0 covmat keeps using `theory.sm_pred`.** It is the zeroth-order term
+  of the shared theory layout, so it does not depend on the model.
 
 ## Daughter PRs
 
-Only PR 1 has a detailed plan. The scope of the others is preliminary, and each
-gets its own plan file before work on it starts.
+PRs 1 and 2 have detailed plans. The scope of the others is preliminary, and
+each gets its own plan file before work on it starts.
 
 | # | Topic | Main files | Depends on | Plan |
 |---|---|---|---|---|
 | 1 | Generic RGE runner, SMEFT runner | `rge/`; `wcxf.py` and `constants.py` (moved to `models/smeft/`); `config.py` (RGE part); `external_chi2/` callers | none | [GENERALIZATION_01_RGE.md](GENERALIZATION_01_RGE.md) |
-| 2 | Model interface and selection | `model.py`, `config.py`, `analytic_fit.py`, `fit_result.py` | 1 | to be written |
+| 2 | Model interface and selection | `models/` (from `model.py`), `config.py`, `analytic_fit.py`, `fit_result.py`, the reference generator and `validate_runcard.py`, the template runcards | 1 | [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md) |
 | 3 | Neutral names in `Theory` and `load_theory` | `core.py`, `loader.py`, `projections.py`, `model.py` | 2 | to be written |
 | 4 | External chi2 contract | `external_chi2.py`, `external_chi2/` | 1, 2 | to be written |
 | 5 | `eft_model` → `model` naming pass | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, skills, docs | 2 | to be written |
 
-**PR 2, model interface and selection.**
+**PR 2, model interface and selection.** See
+[GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md). In short:
 
-- `BaseModel` declares everything callers use:
-  - the parameters, today `.coefficients`, used by `chi2.py`,
-    `analytic_fit.py` and `config.py`;
-  - whether the model is linear, which `analytic_fit.py` needs;
-  - the RGE runner class it needs, or None if it has no running.
-- `BaseModel` moves to `smefit/models/base.py`, and `EFTModel` to
-  `smefit/models/smeft/`. `smefit/model.py` is then removed, or kept as a thin
-  re-export for existing imports such as those in the Drell-Yan external chi2
-  modules.
-- `smefit/models/__init__.py` maps runcard names to model classes. The lookup
-  must be lazy, mapping names to module paths, so that loading one model does
-  not import another's dependencies (for SMEFT, `wilson` and its patches).
-  `blackjax_samplers/` imports every algorithm up front, so it is not the
-  pattern to copy here.
-- `config.py` takes the model and its runner from one place. This removes the
-  `SMEFTRunner` that PR 1 leaves hardcoded in `config.py`.
-- The mass-scan producers, which turn the scan point into the RGE
-  `init_scale`, move behind the model.
-- Model-specific runcard keys and reportengine nodes cannot simply live in the
-  model's package:
-  - runcard parsing is one `smefitConfig` class;
-  - the skill-reference generator reads the `known_keys` literals in it;
-  - providers are registered from the fixed list in `app.py`.
-
-  PR 2 decides how a model contributes them. For SMEFT these are the `rge`
-  options and the mass-scan producers.
-- Validating the runner options through the runner's `OPTIONS` moves here
-  from PR 1. It needs a generator change: the generator only documents literal
-  `known_keys`, literal `.get()` defaults and literal `ConfigError` messages in
-  `config.py`, so options declared on a model or runner class would vanish from
-  the reference. The generator has to document each model's and runner's
-  options from the registry, as `collect_priors` does with `_DIST_REGISTRY`.
-- The `smefit-dev` skill is updated. Its main example for the `=None` rule is
-  `produce_eft_model` building `EFTModel(...)`.
+- `BaseModel` gets the full contract that callers rely on: `coefficients`,
+  `is_linear`, the model's options and RGE runner, and the mass-scan scale.
+- `EFTModel` moves to `smefit/models/smeft/` as the SMEFT model.
+- A lazy model lookup in `smefit/models/__init__.py` serves the new `model:`
+  runcard block.
+- `config.py` builds the model, its RGE runner and its options through the
+  lookup, and keeps no SMEFT-specific code.
+- The reference generator documents each model's and runner's options from
+  the lookup.
 
 **PR 3, neutral names in `Theory` and `load_theory`.** The polynomial layout
 and the database keys (`best_sm`, the order keys, `a*b`) stay. Only the Python
@@ -177,20 +169,13 @@ updated in the same PR.
 - Update the argument names in `chi2.py`, `projections.py` and
   `individual_fit.py`.
 - Regenerate the skill references.
-- This could be folded into PR 2 if that PR stays small.
+- PR 2 keeps the resource names, so this stays a separate PR.
 
 ## Open questions
 
-- **Model selection.** How does a runcard select the model, and with it the
-  RGE runner? (PR 2)
-- **Model-specific keys and nodes.** How does a model package contribute its
-  own runcard keys and reportengine nodes? (PR 2)
-- **t0 covmat.** Should it keep using `theory.sm_pred` or use the model's
-  prediction at its baseline? The two differ when a fixed coefficient is
-  non-zero, so switching changes existing fits. (PR 2)
-- **Runner-specific keys.** Today the SMEFT keys (`smeft_accuracy`, `yukawa`,
-  `adm_QCD`) sit directly in `rge:`. Where do another runner's keys go? This
-  only needs an answer once a second runner exists.
+- **Reportengine nodes from a model package.** SMEFT needs none after PR 2.
+  How a model would contribute its own nodes is decided with the first model
+  that needs one.
 - **Parameter naming.** The issue mentions fitted parameters that are not
   Wilson coefficients. Should "coefficients" also become "parameters" in the
   code and the runcard? (PR 5 or later)

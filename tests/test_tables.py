@@ -258,6 +258,37 @@ def test_coefficient_bounds_table_keeps_params_to_plot_in_its_order() -> None:
     assert table.index.tolist() == [r"$\mathrm{OpA}$", r"$c_{tG}$"]
 
 
+@pytest.mark.parametrize("comparison", [False, True])
+def test_coefficient_bounds_tables_only_bound_the_rows_shown(
+    monkeypatch: pytest.MonkeyPatch, comparison: bool
+) -> None:
+    """``params_to_plot`` is applied before any bound is computed, as for the
+    plots: an HDI is a KDE per coefficient, too slow to spend on rows never
+    shown."""
+    bounded = []
+
+    def recording(values: np.ndarray, _level: float, _bounds: object) -> list:
+        bounded.append(float(values[-1]))
+        return [(0.0, 1.0)]
+
+    monkeypatch.setitem(credible_intervals._INTERVAL_TYPES, "recording", recording)
+    # tell the coefficients apart by their last sample
+    fit = _joint_fit({"OtG": [0.0, 1.0], "OpQM": [0.0, 2.0], "OpA": [0.0, 3.0]})
+    kwargs = {
+        "params_to_plot": ["OpA", "OtG"],
+        "bounds_levels": [68, 95],
+        "interval_types": "recording",
+    }
+
+    if comparison:
+        table = _comparison(fit, **kwargs)
+    else:
+        table = coefficient_bounds_table(fit, latex_label=_plain, **kwargs)
+
+    assert sorted(bounded) == [1.0, 1.0, 3.0, 3.0]
+    assert len(table) == 2
+
+
 @pytest.mark.parametrize("params_to_plot", [None, ["OpQM"]])
 def test_coefficient_bounds_table_reads_an_individual_fit_like_a_joint_one(
     params_to_plot: list[str] | None,

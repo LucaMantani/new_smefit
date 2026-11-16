@@ -159,14 +159,18 @@ def _number(value: float, round_val: int) -> str:
 
 def _bounds_by_coefficient(
     fit: Fit,
+    names: list[str],
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
     interval_types: str | Sequence[str] | None,
 ) -> pd.DataFrame:
-    """Every bound of ``fit`` as table cells, indexed by coefficient name.
+    """The bounds of ``fit`` for ``names`` as table cells, indexed by
+    coefficient name, in the fit's order.
 
-    Selecting the rows and relabelling them is left to the caller: the
-    comparison table does both on the union of its fits, not fit by fit. The
+    Only ``names`` is bounded, so the rows a table leaves out cost nothing;
+    those the fit does not have are left out. Choosing ``names``, ordering the
+    rows and relabelling them is left to the caller: the comparison table does
+    all three on the union of its fits, not fit by fit. The
     columns are there even with no rows, so a fit without samples for any of
     its coefficients still has its columns in a comparison.
     """
@@ -175,7 +179,9 @@ def _bounds_by_coefficient(
     # level outer, type inner: the columns of one level sit side by side,
     # which is the comparison a reader makes
     bounds = {
-        (level, interval_type): fit.confidence_bounds(level, interval_type)
+        (level, interval_type): fit.confidence_bounds(
+            level, interval_type, params=names
+        )
         for level in bounds_levels
         for interval_type in interval_types
     }
@@ -209,8 +215,9 @@ def _coefficient_bounds_table(
     interval_types: str | Sequence[str] | None,
 ) -> pd.DataFrame:
     """The typed core of :func:`coefficient_bounds_table`."""
-    table = _bounds_by_coefficient(fit, round_val, bounds_levels, interval_types)
-    table = table.loc[select_params(table.index, params_to_plot, context=fit.fit_name)]
+    names = select_params(fit.bounded_parameters, params_to_plot, context=fit.fit_name)
+    table = _bounds_by_coefficient(fit, names, round_val, bounds_levels, interval_types)
+    table = table.loc[names]
     # relabel only now: as dict keys, two coefficients sharing a label would
     # silently lose one of the rows
     table.index = [latex_label(name) for name in table.index]
@@ -288,24 +295,25 @@ def _coefficient_bounds_comparison_table(
             + ", ".join(repr(label) for label in duplicates)
             + ": give each a distinct 'label' in its fits entry."
         )
-    # outer join on the rows, in order of first appearance: a coefficient one
-    # fit did not sample is a missing cell, not an error
+    # selected once, on the union and before any bound is computed:
+    # ``params_to_plot`` is global, so a fit having none of the coefficients is
+    # an empty column rather than an error, and the order is the requested one
+    # whichever fit has which
+    names = list(dict.fromkeys(name for fit in fits for name in fit.bounded_parameters))
+    context = ", ".join(fit.fit_name for fit in fits)
+    names = select_params(names, params_to_plot, context=context)
+    # outer join on the rows: a coefficient one fit did not sample is a
+    # missing cell, not an error
     comparison = pd.concat(
         [
-            _bounds_by_coefficient(fit, round_val, bounds_levels, interval_types)
+            _bounds_by_coefficient(fit, names, round_val, bounds_levels, interval_types)
             for fit in fits
         ],
         axis=1,
         keys=labels,
         sort=False,
     )
-    # selected once, on the union: ``params_to_plot`` is global, so a fit having
-    # none of the coefficients is an empty column rather than an error, and the
-    # order is the requested one whichever fit has which
-    context = ", ".join(fit.fit_name for fit in fits)
-    comparison = comparison.loc[
-        select_params(comparison.index, params_to_plot, context=context)
-    ]
+    comparison = comparison.loc[names]
     comparison.index = [latex_label(name) for name in comparison.index]
     return comparison
 

@@ -1239,7 +1239,6 @@ def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks(
         ],
         latex_label=_plain,
         kde=False,
-        show_sm=False,
     )
 
     by_cell = {_cell(ax): ax for ax in _panels(fig)}
@@ -1298,18 +1297,3 @@ def test_plot_posterior_contours_comparison_rejects_a_fit_without_samples() -> N
 
     with pytest.raises(ValueError, match="no_samples"):
         plot_posterior_contours_comparison([_contour_fit(), empty], latex_label=_plain)
-
-
-@pytest.mark.parametrize("show_sm", [True, False])
-def test_plot_posterior_contours_mark_the_sm_in_every_panel(show_sm: bool) -> None:
-    fig = plot_posterior_contours(
-        _contour_fit(), latex_label=_plain, kde=False, show_sm=show_sm
-    )
-
-    for ax in _panels(fig):
-        markers = [c for c in ax.collections if isinstance(c, PathCollection)]
-        if show_sm:
-            [marker] = markers
-            assert marker.get_offsets().tolist() == [[0.0, 0.0]]
-        else:
-            assert markers == []

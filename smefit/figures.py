@@ -717,9 +717,7 @@ def _draw_pair(ax, x, y, color, levels, kde, hatch):
     )
 
 
-def _posterior_contours(
-    fits, latex_label, params_to_plot, bounds_levels, kde, show_sm, hatch
-):
+def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, kde, hatch):
     """The shared core of :func:`plot_posterior_contours` and
     :func:`plot_posterior_contours_comparison`.
 
@@ -772,12 +770,10 @@ def _posterior_contours(
     ]
 
     # one range per coefficient, wherever it appears: the pooled samples of
-    # every fit, and the SM point when it is marked, padded by 10%
+    # every fit, padded by 10%
     limits = {}
     for name in names:
         values = np.concatenate([s[name] for s in samples if name in s])
-        if show_sm:
-            values = np.append(values, 0.0)
         low, high = float(values.min()), float(values.max())
         pad = 0.1 * (high - low) if high > low else abs(low) or 1.0
         limits[name] = (low - pad, high + pad)
@@ -812,8 +808,6 @@ def _posterior_contours(
                 kdes[idx],
                 hatches[idx],
             )
-        if show_sm:
-            ax.scatter(0.0, 0.0, color="black", marker="+", s=100, zorder=10)
 
         ax.set_xlim(*limits[x_name])
         ax.set_ylim(*limits[y_name])
@@ -837,11 +831,6 @@ def _posterior_contours(
     drawn = [idx for idx, handle in enumerate(handles) if handle is not None]
     legend_handles = [handles[idx] for idx in drawn]
     legend_labels = [fits[idx].plot_label for idx in drawn]
-    if show_sm:
-        legend_handles.append(
-            Line2D([], [], color="black", marker="+", ls="none", ms=10)
-        )
-        legend_labels.append(r"$\mathrm{SM}$")
 
     level_text = r",\ ".join(f"{level:.10g}" for level in sorted(levels))
     title = rf"$\mathrm{{Marginalised}}\ {level_text}\%\ \mathrm{{CL}}$"
@@ -886,7 +875,6 @@ def plot_posterior_contours(
     params_to_plot=None,
     bounds_levels=None,
     kde=None,
-    show_sm=True,
     hatch=True,
 ):
     """Plot the pairwise 2D posterior contours of one fit, as a corner plot.
@@ -908,14 +896,12 @@ def plot_posterior_contours(
         Draw kernel density contours (True) or Gaussian ellipses (False). By
         default a fit with quadratic corrections gets a KDE, a linear one —
         whose posterior is Gaussian — ellipses.
-    show_sm : bool, optional
-        Mark the SM point, the origin, in every panel. On by default.
     hatch : bool, optional
         Hatch the filled region, one pattern per fit, so it reads in print
         and greyscale. On by default.
     """
     return _posterior_contours(
-        [fit], latex_label, params_to_plot, bounds_levels, kde, show_sm, hatch
+        [fit], latex_label, params_to_plot, bounds_levels, kde, hatch
     )
 
 
@@ -926,7 +912,6 @@ def plot_posterior_contours_comparison(
     params_to_plot=None,
     bounds_levels=None,
     kde=None,
-    show_sm=True,
     hatch=True,
 ):
     """Overlay the pairwise 2D posterior contours of several fits.
@@ -939,7 +924,7 @@ def plot_posterior_contours_comparison(
     :func:`plot_posterior_contours`.
     """
     return _posterior_contours(
-        fits, latex_label, params_to_plot, bounds_levels, kde, show_sm, hatch
+        fits, latex_label, params_to_plot, bounds_levels, kde, hatch
     )
 
 

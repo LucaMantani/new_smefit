@@ -25,9 +25,6 @@ bounds_levels: [68, 95]
 # fit's use_quad, a linear fit's posterior being Gaussian
 # kde: true
 
-# mark the SM, the origin, in every panel (default: true)
-# show_sm: false
-
 # hatch the filled regions, one pattern per fit, so they read in greyscale
 # (default: true)
 # hatch: false

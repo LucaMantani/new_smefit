@@ -49,6 +49,8 @@
   "fit_reading_actions": [
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
+    "plot_coefficient_bounds",
+    "plot_coefficient_bounds_comparison",
     "plot_posterior_correlations",
     "report"
   ],
@@ -81,6 +83,7 @@
     "dataset_table_caption",
     "dataset_table_label",
     "fetch_bibtex",
+    "lin_thr",
     "n_eval",
     "n_samples",
     "n_steps",
@@ -88,7 +91,10 @@
     "round_val",
     "seed",
     "tol",
-    "value_fmt"
+    "value_fmt",
+    "x_log",
+    "x_max",
+    "x_min"
   ],
   "raw_keys": {
     "datasets": {
@@ -342,6 +348,7 @@
     "hessian_settings",
     "interval_types",
     "latex_labels",
+    "lin_thr",
     "meta",
     "n_eval",
     "n_samples",
@@ -361,6 +368,9 @@
     "use_t0",
     "use_theory_covmat",
     "value_fmt",
-    "whitening"
+    "whitening",
+    "x_log",
+    "x_max",
+    "x_min"
   ]
 }

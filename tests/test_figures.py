@@ -19,6 +19,8 @@ import pandas as pd
 import pytest
 import scipy.stats
 from matplotlib.collections import LineCollection, PathCollection
+from matplotlib.contour import ContourSet
+from matplotlib.patches import Ellipse
 
 from smefit import credible_intervals
 from smefit import figures as figures_mod
@@ -34,6 +36,8 @@ from smefit.figures import (
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
     plot_pca_spectrum,
+    plot_posterior_contours,
+    plot_posterior_contours_comparison,
     plot_posterior_correlations,
 )
 from smefit.fit_result import Fit, FitResult, FitResultGroup
@@ -295,6 +299,7 @@ def _fit(
     label=None,
     fit_name="my_fit",
     action="run_analytic_fit",
+    use_quad=False,
 ):
     """A joint fit holding the given posterior samples.
 
@@ -313,7 +318,7 @@ def _fit(
         ),
         fit_name=fit_name,
         label=label,
-        fit_runcard={"actions_": [action]},
+        fit_runcard={"actions_": [action], "use_quad": use_quad},
     )
 
 
@@ -1021,3 +1026,290 @@ def test_confidence_ellipse_is_centred_on_the_median() -> None:
 def test_confidence_ellipse_rejects_mismatched_sizes() -> None:
     with pytest.raises(ValueError, match="same size"):
         _confidence_ellipse(np.zeros(10), np.zeros(9), 95.0)
+
+
+# ---------------------------------------------------------------------------
+# plot_posterior_contours / plot_posterior_contours_comparison
+# ---------------------------------------------------------------------------
+
+
+def _contour_fit(
+    names: tuple[str, ...] = ("OpA", "OpB", "OpC"),
+    fit_name: str = "my_fit",
+    label: str | None = None,
+    use_quad: bool = False,
+    n: int = 400,
+    seed: int = 0,
+) -> Fit:
+    """A joint fit with a correlated Gaussian posterior over ``names``."""
+    rng = np.random.default_rng(seed)
+    cov = 0.5 * np.eye(len(names)) + 0.3
+    draws = rng.multivariate_normal(np.zeros(len(names)), cov, size=n)
+    samples = {name: list(draws[:, k]) for k, name in enumerate(names)}
+    return _fit(
+        free=list(names),
+        samples=samples,
+        fit_name=fit_name,
+        label=label,
+        use_quad=use_quad,
+    )
+
+
+def _panels(fig: matplotlib.figure.Figure) -> list[matplotlib.axes.Axes]:
+    """The contour panels, the legend cell (axis off) left out."""
+    return [ax for ax in fig.axes if ax.axison]
+
+
+def _cell(ax: matplotlib.axes.Axes) -> tuple[int, int]:
+    spec = ax.get_subplotspec()
+    return spec.rowspan.start, spec.colspan.start
+
+
+def _ellipses(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    return [p for p in ax.patches if isinstance(p, Ellipse)]
+
+
+def _filled(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    """The filled region of each fit: the patch drawn at alpha 0.3."""
+    return [p for p in _ellipses(ax) if p.get_alpha() == pytest.approx(0.3)]
+
+
+def _dashed(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    return [p for p in _ellipses(ax) if p.get_linestyle() == "dashed"]
+
+
+def test_plot_posterior_contours_two_coefficients_is_one_panel_with_its_legend() -> (
+    None
+):
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")), latex_label=_plain
+    )
+
+    [ax] = fig.axes
+    assert ax.get_legend() is not None
+    assert fig.get_suptitle()
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("OpA", "OpB")
+
+
+def test_plot_posterior_contours_three_coefficients_fill_the_lower_triangle() -> None:
+    label = make_latex_label({"OpA": "$c_A$"})
+    fig = plot_posterior_contours(_contour_fit(), latex_label=label)
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    # (row j - 1, column i) holds coefficient i against coefficient j
+    assert set(panels) == {(0, 0), (1, 0), (1, 1)}
+    [legend_cell] = [ax for ax in fig.axes if not ax.axison]
+    assert legend_cell.get_legend() is not None
+    assert _cell(legend_cell) == (0, 1)
+
+    # axis labels on the outer panels only
+    assert panels[1, 0].get_xlabel() == "$c_A$"
+    assert panels[1, 1].get_xlabel() == label("OpB")
+    assert panels[0, 0].get_ylabel() == label("OpB")
+    assert panels[1, 0].get_ylabel() == label("OpC")
+    assert panels[0, 0].get_xlabel() == ""
+    assert panels[1, 1].get_ylabel() == ""
+
+
+def test_plot_posterior_contours_follow_the_params_to_plot_order() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(),
+        latex_label=_plain,
+        params_to_plot=["OpC", "NotThere", "OpA", "OpB"],
+    )
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    assert [panels[1, i].get_xlabel() for i in range(2)] == ["OpC", "OpA"]
+    assert [panels[j, 0].get_ylabel() for j in range(2)] == ["OpA", "OpB"]
+
+
+def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
+    with pytest.raises(ValueError, match="at least two coefficients"):
+        plot_posterior_contours(
+            _contour_fit(), latex_label=_plain, params_to_plot=["OpA", "Nope"]
+        )
+
+
+def test_plot_posterior_contours_fill_the_widest_level_and_dash_the_rest() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")), latex_label=_plain, kde=False
+    )
+
+    [ax] = fig.axes
+    [filled] = _filled(ax)
+    [dashed] = _dashed(ax)
+    assert filled.width > dashed.width
+
+
+def test_plot_posterior_contours_dash_every_level_but_the_widest() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")),
+        latex_label=_plain,
+        kde=False,
+        bounds_levels=[68, 95, 99],
+    )
+
+    [ax] = fig.axes
+    [filled] = _filled(ax)
+    dashed = _dashed(ax)
+    assert len(dashed) == 2
+    assert all(filled.width > d.width for d in dashed)
+
+
+def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")),
+        latex_label=_plain,
+        kde=True,
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    sets = [c for c in ax.collections if isinstance(c, ContourSet)]
+    [fill] = [c for c in sets if c.filled]
+    outlines = sorted((c for c in sets if not c.filled), key=lambda c: c.levels[0])
+    # the wider region sits at the lower density: filled, and solid
+    assert len(outlines) == 2
+    assert fill.levels[0] == pytest.approx(outlines[0].levels[0])
+    assert outlines[1].linestyles == "dashed"
+    assert outlines[0].linestyles != "dashed"
+
+
+@pytest.mark.parametrize(
+    ("use_quad", "kde", "expect_kde"),
+    [
+        (True, None, True),
+        (False, None, False),
+        (False, True, True),
+        (True, False, False),
+    ],
+)
+def test_plot_posterior_contours_kde_follows_use_quad_unless_set(
+    monkeypatch: pytest.MonkeyPatch,
+    use_quad: bool,
+    kde: bool | None,
+    expect_kde: bool,
+) -> None:
+    calls: list[int] = []
+    real = figures_mod._kde_grid
+
+    def spy(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, ...]:
+        calls.append(1)
+        return real(x, y)
+
+    monkeypatch.setattr(figures_mod, "_kde_grid", spy)
+
+    fig = plot_posterior_contours(
+        _contour_fit(use_quad=use_quad), latex_label=_plain, kde=kde
+    )
+
+    # one KDE evaluation per panel, shared by both levels
+    assert len(calls) == (3 if expect_kde else 0)
+    has_ellipses = any(_ellipses(ax) for ax in _panels(fig))
+    assert has_ellipses is not expect_kde
+
+
+def test_plot_posterior_contours_hatch_one_pattern_per_fit() -> None:
+    fig = plot_posterior_contours_comparison(
+        [_contour_fit(fit_name="a"), _contour_fit(fit_name="b", seed=1)],
+        latex_label=_plain,
+        kde=False,
+    )
+
+    hatches = {p.get_hatch() for ax in _panels(fig) for p in ax.patches} - {None}
+    assert len(hatches) == 2
+
+
+def test_plot_posterior_contours_without_hatch_draw_no_hatch_layer() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(), latex_label=_plain, kde=False, hatch=False
+    )
+
+    assert all(p.get_hatch() is None for ax in _panels(fig) for p in ax.patches)
+
+
+def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks() -> (
+    None
+):
+    """A coefficient one fit did not sample is a gap for that fit, not an error."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(names=("OpA", "OpB"), fit_name="ab", label="$AB$"),
+            _contour_fit(names=("OpA", "OpC"), fit_name="ac"),
+        ],
+        latex_label=_plain,
+        kde=False,
+        show_sm=False,
+    )
+
+    by_cell = {_cell(ax): ax for ax in _panels(fig)}
+    colors = {
+        cell: {matplotlib.colors.to_hex(p.get_facecolor()) for p in _filled(ax)}
+        for cell, ax in by_cell.items()
+    }
+    c0, c1 = matplotlib.colors.to_hex("C0"), matplotlib.colors.to_hex("C1")
+    # coefficients OpA, OpB, OpC: (OpA, OpB) at (0, 0), (OpA, OpC) at (1, 0),
+    # (OpB, OpC) at (1, 1)
+    assert colors == {(0, 0): {c0}, (1, 0): {c1}, (1, 1): set()}
+    [legend_cell] = [ax for ax in fig.axes if not ax.axison]
+    labels = [t.get_text() for t in legend_cell.get_legend().get_texts()]
+    assert labels == ["$AB$", "ac"]
+
+
+def test_plot_posterior_contours_comparison_rejects_no_fits() -> None:
+    with pytest.raises(ValueError, match="fits is empty"):
+        plot_posterior_contours_comparison([], latex_label=_plain)
+
+
+def test_plot_posterior_contours_comparison_rejects_an_individual_fit() -> None:
+    individual = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=["OpA"],
+                    best_fit_point={"OpA": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={"OpA": jnp.array([0.0, 1.0])},
+                )
+            ]
+        ),
+        fit_name="my_individual_fit",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+
+    with pytest.raises(ValueError, match="my_individual_fit"):
+        plot_posterior_contours_comparison(
+            [_contour_fit(), individual], latex_label=_plain
+        )
+
+
+def test_plot_posterior_contours_comparison_rejects_a_fit_without_samples() -> None:
+    empty = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpB"],
+            best_fit_point={"OpA": 0.0, "OpB": 0.0},
+            max_loglikelihood=-1.0,
+            num_data=10,
+        ),
+        fit_name="no_samples",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no_samples"):
+        plot_posterior_contours_comparison([_contour_fit(), empty], latex_label=_plain)
+
+
+@pytest.mark.parametrize("show_sm", [True, False])
+def test_plot_posterior_contours_mark_the_sm_in_every_panel(show_sm: bool) -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(), latex_label=_plain, kde=False, show_sm=show_sm
+    )
+
+    for ax in _panels(fig):
+        markers = [c for c in ax.collections if isinstance(c, PathCollection)]
+        if show_sm:
+            [marker] = markers
+            assert marker.get_offsets().tolist() == [[0.0, 0.0]]
+        else:
+            assert markers == []

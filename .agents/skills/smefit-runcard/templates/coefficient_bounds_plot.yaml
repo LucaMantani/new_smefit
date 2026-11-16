@@ -16,8 +16,8 @@ fits:
 # confidence levels drawn, in percent (default: 68 and 95) — the same key the
 # bounds tables read, so a report quoting both keeps them in agreement
 bounds_levels: [68, 95]
-# credible interval drawn: eti (default) or hdi. A single type, unlike the
-# tables' `interval_types` list: a plot shows one construction at a time
+# credible intervals drawn: eti (default) and/or hdi — the same key the bounds
+# tables read. One figure per type, saved with the type as its suffix
 interval_types: [eti, hdi]
 
 # restrict the rows to these coefficients, in this order, top to bottom

@@ -651,6 +651,11 @@ class Fit:
     label: Optional[str] = None
     fit_runcard: Dict = field(default_factory=dict)
     path: Optional[pathlib.Path] = None
+    # (confidence_level, interval_type, coefficient) -> the pieces of its region,
+    # filled by confidence_bounds
+    _bounds_cache: Dict[Tuple[float, str, str], List[Tuple[float, float]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def __str__(self) -> str:
         """The fit's name — not cosmetic, it ends up in file names.
@@ -850,8 +855,18 @@ class Fit:
     # What the fit constrained — derived from the posterior samples
     # ------------------------------------------------------------------
 
+    @property
+    def bounded_parameters(self) -> List[str]:
+        """The free coefficients :meth:`confidence_bounds` can bound: those
+        with posterior samples, in the fit's order."""
+        samples = self.fit_results.samples or {}
+        return [name for name in self.fit_results.free_parameters if name in samples]
+
     def confidence_bounds(
-        self, confidence_level: float, interval_type: str = "eti"
+        self,
+        confidence_level: float,
+        interval_type: str = "eti",
+        params: Optional[List[str]] = None,
     ) -> Dict[str, List[Tuple[float, float]]]:
         """The ``confidence_level`` percent bounds of every free coefficient.
 
@@ -864,6 +879,10 @@ class Fit:
             ``confidence_level`` percent of the posterior: ``"eti"``
             (equal-tailed), the default, or ``"hdi"`` (highest-density,
             see :func:`smefit.credible_intervals.highest_density_interval`).
+        params : list of str, optional
+            Bound only these coefficients, skipping the cost of the others —
+            an HDI is a KDE per coefficient. Names the fit does not bound are
+            ignored. Every coefficient by default.
 
         Returns
         -------
@@ -872,6 +891,12 @@ class Fit:
             ``[(low, high), ...]`` of the credible region, in increasing order.
             Multimodal fits can have several intervals for a single
             coefficient. Coefficients with no samples are left out.
+
+        Notes
+        -----
+        Cached per level, interval type and coefficient, so a report drawing
+        the same bounds in a plot, a comparison plot and a table computes each
+        once. The cache assumes the samples do not change after loading.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
@@ -892,14 +917,28 @@ class Fit:
                 "has no bounds to report."
             )
 
-        prior_bounds = _prior_bounds(self.fit_results)
-        bounds = {}
-        for name in self.fit_results.free_parameters:
-            if name not in samples:
-                continue
-            values = np.asarray(samples[name], dtype=float)
-            bounds[name] = interval(values, confidence_level, prior_bounds.get(name))
-        return bounds
+        names = self.bounded_parameters
+        if params is not None:
+            wanted = set(params)
+            names = [name for name in names if name in wanted]
+        level = float(confidence_level)  # 95 and 95.0 share an entry
+        missing = [
+            name
+            for name in names
+            if (level, interval_type, name) not in self._bounds_cache
+        ]
+        if missing:
+            prior_bounds = _prior_bounds(self.fit_results)
+            for name in missing:
+                values = np.asarray(samples[name], dtype=float)
+                self._bounds_cache[(level, interval_type, name)] = interval(
+                    values, level, prior_bounds.get(name)
+                )
+        # a copy per call, so a caller editing the result cannot corrupt the cache
+        return {
+            name: list(self._bounds_cache[(level, interval_type, name)])
+            for name in names
+        }
 
     def in_pca_basis(self, pca: "PCA") -> "Fit":
         """This fit, with its posterior expressed in the principal components of *pca*.

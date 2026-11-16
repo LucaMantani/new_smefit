@@ -34,7 +34,7 @@ threshold at the cut between them are one piece: the cut went through a mode,
 not a dip.
 """
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import arviz as az
 import numpy as np
@@ -217,3 +217,46 @@ _INTERVAL_TYPES: Dict[
     "eti": equal_tailed_interval,
     "hdi": highest_density_interval,
 }
+
+
+# What a report's bounds quote when the runcard does not say: shared by the
+# bounds plots and the bounds tables, so that one report's figures and tables
+# agree on them
+_DEFAULT_BOUNDS_LEVELS: List[float] = [68.0, 95.0]
+_DEFAULT_INTERVAL_TYPES: List[str] = ["eti"]
+
+
+def bounds_settings(
+    bounds_levels: Union[float, Sequence[float], None],
+    interval_types: Union[str, Sequence[str], None],
+) -> Tuple[List[float], List[str]]:
+    """The ``bounds_levels`` and ``interval_types`` a report routine was
+    given, as the lists it quotes.
+
+    Parameters
+    ----------
+    bounds_levels : float or list of float or None
+        Confidence levels in percent; a single one is a one-element list.
+        68 and 95 when None.
+    interval_types : str or list of str or None
+        Keys of :data:`_INTERVAL_TYPES`; a single one is a one-element list.
+        ``eti`` when None.
+
+    Returns
+    -------
+    (list of float, list of str)
+        The levels, as floats, and the interval types, both in the order given.
+    """
+    if bounds_levels is None:
+        bounds_levels = _DEFAULT_BOUNDS_LEVELS
+    elif isinstance(bounds_levels, (int, float)):
+        bounds_levels = [bounds_levels]
+    if not bounds_levels:
+        raise ValueError("bounds_levels is empty: give at least one level.")
+    if interval_types is None:
+        interval_types = _DEFAULT_INTERVAL_TYPES
+    elif isinstance(interval_types, str):
+        interval_types = [interval_types]
+    if not interval_types:
+        raise ValueError("interval_types is empty: give at least one type.")
+    return [float(level) for level in bounds_levels], list(interval_types)

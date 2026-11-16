@@ -8,7 +8,11 @@ import pytest
 from scipy.stats import norm
 
 from smefit import credible_intervals
-from smefit.credible_intervals import equal_tailed_interval, highest_density_interval
+from smefit.credible_intervals import (
+    bounds_settings,
+    equal_tailed_interval,
+    highest_density_interval,
+)
 
 
 @pytest.fixture
@@ -270,3 +274,42 @@ def test_hdi_ignores_nans(gaussian):
     assert highest_density_interval(with_nan, 68) == highest_density_interval(
         gaussian, 68
     )
+
+
+# ---------------------------------------------------------------------------
+# bounds_settings — the bounds plots' and tables' shared defaults
+# ---------------------------------------------------------------------------
+
+
+def test_bounds_settings_default_to_68_and_95_percent_eti() -> None:
+    assert bounds_settings(None, None) == ([68.0, 95.0], ["eti"])
+
+
+def test_bounds_settings_take_a_single_level_and_type() -> None:
+    assert bounds_settings(95, "hdi") == ([95.0], ["hdi"])
+
+
+def test_bounds_settings_keep_the_order_given_as_floats() -> None:
+    levels, types = bounds_settings([95, 68.27], ("hdi", "eti"))
+    assert levels == [95.0, 68.27]
+    assert all(isinstance(level, float) for level in levels)
+    assert types == ["hdi", "eti"]
+
+
+def test_bounds_settings_do_not_hand_out_the_defaults_themselves() -> None:
+    """A caller editing its lists cannot change the next caller's defaults."""
+    levels, types = bounds_settings(None, None)
+    levels.append(99.0)
+    types.append("hdi")
+    assert bounds_settings(None, None) == ([68.0, 95.0], ["eti"])
+
+
+@pytest.mark.parametrize(
+    "levels, types, match",
+    [([], None, "bounds_levels is empty"), (None, [], "interval_types is empty")],
+)
+def test_bounds_settings_reject_an_empty_list(
+    levels: list | None, types: list | None, match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        bounds_settings(levels, types)

@@ -16,6 +16,7 @@ import yaml
 from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.dataset_info import DatasetInfo
+from smefit.figures import plot_coefficient_bounds
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import default_latex_labels, make_latex_label
 from smefit.pca import PCA
@@ -211,6 +212,24 @@ def test_coefficient_bounds_table_quotes_both_intervals() -> None:
     assert table.iloc[0].tolist() == ["[160.000, 840.000]", "[25.000, 975.000]"]
 
 
+def test_bounds_tables_and_plots_share_their_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing a default in credible_intervals changes it for the tables and
+    the plots alike, so one report's figures and tables cannot disagree."""
+    monkeypatch.setattr(credible_intervals, "_DEFAULT_BOUNDS_LEVELS", [99.0])
+    monkeypatch.setattr(credible_intervals, "_DEFAULT_INTERVAL_TYPES", ["hdi"])
+    fit = _joint_fit({"OtG": _RAMP})
+
+    table = coefficient_bounds_table(fit, latex_label=_plain)
+    [(fig, suffix)] = list(plot_coefficient_bounds(fit, latex_label=_plain))
+
+    assert table.columns.tolist() == ["99% CL (HDI)"]
+    assert suffix == "hdi"
+    legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert any("99" in text and "HDI" in text for text in legend)
+
+
 def test_coefficient_bounds_table_rounds_to_round_val_without_a_negative_zero() -> None:
     """-0.0004 at two decimals is written 0.00, not -0.00."""
     table = coefficient_bounds_table(
@@ -238,6 +257,37 @@ def test_coefficient_bounds_table_keeps_params_to_plot_in_its_order() -> None:
     )
 
     assert table.index.tolist() == [r"$\mathrm{OpA}$", r"$c_{tG}$"]
+
+
+@pytest.mark.parametrize("comparison", [False, True])
+def test_coefficient_bounds_tables_only_bound_the_rows_shown(
+    monkeypatch: pytest.MonkeyPatch, comparison: bool
+) -> None:
+    """``params_to_plot`` is applied before any bound is computed, as for the
+    plots: an HDI is a KDE per coefficient, too slow to spend on rows never
+    shown."""
+    bounded = []
+
+    def recording(values: np.ndarray, _level: float, _bounds: object) -> list:
+        bounded.append(float(values[-1]))
+        return [(0.0, 1.0)]
+
+    monkeypatch.setitem(credible_intervals._INTERVAL_TYPES, "recording", recording)
+    # tell the coefficients apart by their last sample
+    fit = _joint_fit({"OtG": [0.0, 1.0], "OpQM": [0.0, 2.0], "OpA": [0.0, 3.0]})
+    kwargs = {
+        "params_to_plot": ["OpA", "OtG"],
+        "bounds_levels": [68, 95],
+        "interval_types": "recording",
+    }
+
+    if comparison:
+        table = _comparison(fit, **kwargs)
+    else:
+        table = coefficient_bounds_table(fit, latex_label=_plain, **kwargs)
+
+    assert sorted(bounded) == [1.0, 1.0, 3.0, 3.0]
+    assert len(table) == 2
 
 
 @pytest.mark.parametrize("params_to_plot", [None, ["OpQM"]])

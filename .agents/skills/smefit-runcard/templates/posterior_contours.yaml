@@ -1,0 +1,52 @@
+# AUTO-COPIED from template_runcards/posterior_contours.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# Pairwise 2D posterior contours of fits that have already been run: no fit is
+# run here, the posterior samples are read back from each fit's
+# fit_results.json. The panels are the lower triangle of the coefficient matrix.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# confidence levels drawn, in percent (default: 68 and 95) — the same key the
+# bounds tables and plots read, so a report quoting them keeps them in
+# agreement. The widest region is filled, every narrower one a dashed outline
+bounds_levels: [68, 95]
+
+# restrict the panels to these coefficients, in this order (at least two)
+# params_to_plot: [OpD, OpWB]
+
+# kernel density contours (true) or Gaussian ellipses (false). Default: each
+# fit's use_quad, a linear fit's posterior being Gaussian
+# kde: true
+
+# mark the SM, the origin, in every panel (default: true)
+# show_sm: false
+
+# hatch the filled regions, one pattern per fit, so they read in greyscale
+# (default: true)
+# hatch: false
+
+# The comparison overlays every fit in one figure, one colour and hatch each; a
+# fit is left out of the panels of a coefficient it did not sample.
+# `with fits` opens a section per fit, each with its own figure.
+template_text: |
+    Posterior contours comparison
+    =============================
+    {@plot_posterior_contours_comparison@}
+
+    Posterior contours per fit
+    ==========================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_posterior_contours@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

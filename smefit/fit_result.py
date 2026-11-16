@@ -649,6 +649,11 @@ class Fit:
     label: Optional[str] = None
     fit_runcard: Dict = field(default_factory=dict)
     path: Optional[pathlib.Path] = None
+    # (confidence_level, interval_type, coefficient) -> the pieces of its region,
+    # filled by confidence_bounds
+    _bounds_cache: Dict[Tuple[float, str, str], List[Tuple[float, float]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def __str__(self) -> str:
         """The fit's name — not cosmetic, it ends up in file names.
@@ -884,6 +889,12 @@ class Fit:
             ``[(low, high), ...]`` of the credible region, in increasing order.
             Multimodal fits can have several intervals for a single
             coefficient. Coefficients with no samples are left out.
+
+        Notes
+        -----
+        Cached per level, interval type and coefficient, so a report drawing
+        the same bounds in a plot, a comparison plot and a table computes each
+        once. The cache assumes the samples do not change after loading.
         """
         if not 1.0 <= confidence_level < 100.0:
             raise ValueError(
@@ -908,12 +919,24 @@ class Fit:
         if params is not None:
             wanted = set(params)
             names = [name for name in names if name in wanted]
-        prior_bounds = _prior_bounds(self.fit_results)
-        bounds = {}
-        for name in names:
-            values = np.asarray(samples[name], dtype=float)
-            bounds[name] = interval(values, confidence_level, prior_bounds.get(name))
-        return bounds
+        level = float(confidence_level)  # 95 and 95.0 share an entry
+        missing = [
+            name
+            for name in names
+            if (level, interval_type, name) not in self._bounds_cache
+        ]
+        if missing:
+            prior_bounds = _prior_bounds(self.fit_results)
+            for name in missing:
+                values = np.asarray(samples[name], dtype=float)
+                self._bounds_cache[(level, interval_type, name)] = interval(
+                    values, level, prior_bounds.get(name)
+                )
+        # a copy per call, so a caller editing the result cannot corrupt the cache
+        return {
+            name: list(self._bounds_cache[(level, interval_type, name)])
+            for name in names
+        }
 
     # ------------------------------------------------------------------
     # I/O

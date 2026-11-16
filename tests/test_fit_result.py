@@ -1037,6 +1037,85 @@ def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
     assert fit.confidence_bounds(68, interval_type="fake")["OtG"] == pieces
 
 
+def test_confidence_bounds_bound_only_the_params_asked_for(joint_fit):
+    """In the fit's order, not the order asked, and a name the fit does not
+    bound is ignored."""
+    assert list(joint_fit.confidence_bounds(68, params=["OpQM", "OtG", "OpNope"])) == [
+        "OtG",
+        "OpQM",
+    ]
+    assert list(joint_fit.confidence_bounds(68, params=["OpQM"])) == ["OpQM"]
+
+
+def _counting_interval(monkeypatch, name="counting"):
+    """Register an interval type that records the first sample of every
+    coefficient it bounds — OtG's samples start at 0, OpQM's at 1."""
+    calls = []
+
+    def counting(values, _level, _bounds):
+        calls.append(float(values[0]))
+        return [(0.0, 1.0)]
+
+    monkeypatch.setitem(credible_intervals._INTERVAL_TYPES, name, counting)
+    return calls
+
+
+def test_confidence_bounds_compute_each_coefficient_once(monkeypatch, joint_fit):
+    """A report draws the same bounds in a plot, a comparison plot and a
+    table: the second call reads the first one's work."""
+    calls = _counting_interval(monkeypatch)
+
+    first = joint_fit.confidence_bounds(68, interval_type="counting")
+    second = joint_fit.confidence_bounds(68, interval_type="counting")
+
+    assert first == second
+    assert calls == [0.0, 1.0]
+
+
+def test_confidence_bounds_compute_only_what_params_left_out(monkeypatch, joint_fit):
+    calls = _counting_interval(monkeypatch)
+
+    joint_fit.confidence_bounds(68, interval_type="counting", params=["OtG"])
+    joint_fit.confidence_bounds(68, interval_type="counting")
+
+    assert calls == [0.0, 1.0]
+
+
+def test_confidence_bounds_cache_by_level_value_and_interval_type(
+    monkeypatch, joint_fit
+):
+    """68 and 68.0 are one level; another level or interval type is not a
+    cache hit."""
+    calls = _counting_interval(monkeypatch)
+    other = _counting_interval(monkeypatch, name="other")
+
+    joint_fit.confidence_bounds(68, interval_type="counting", params=["OtG"])
+    joint_fit.confidence_bounds(68.0, interval_type="counting", params=["OtG"])
+    assert calls == [0.0]
+
+    joint_fit.confidence_bounds(95, interval_type="counting", params=["OtG"])
+    joint_fit.confidence_bounds(68, interval_type="other", params=["OtG"])
+    assert calls == [0.0, 0.0]
+    assert other == [0.0]
+
+
+def test_confidence_bounds_cannot_be_corrupted_through_their_result(joint_fit):
+    joint_fit.confidence_bounds(68)["OtG"].append((-1.0, -2.0))
+    assert len(joint_fit.confidence_bounds(68)["OtG"]) == 1
+
+
+def test_confidence_bounds_still_validate_on_a_cache_hit(joint_fit):
+    joint_fit.confidence_bounds(68)
+    with pytest.raises(ValueError, match="Unknown interval_type"):
+        joint_fit.confidence_bounds(68, interval_type="hpd")
+
+
+def test_bounded_parameters_are_the_free_coefficients_with_samples():
+    fit = _joint_fit("fit", {"OtG": _RAMP})
+    fit.fit_results.free_parameters = ["OtG", "OpQM"]
+    assert fit.bounded_parameters == ["OtG"]
+
+
 def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
     """The error lists what is available, so a typo is a one-line fix."""
     with pytest.raises(ValueError, match="'hpd'.*\\['eti', 'hdi'\\]"):

@@ -17,11 +17,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.stats
 from matplotlib.collections import LineCollection, PathCollection
 
 from smefit import credible_intervals
 from smefit import figures as figures_mod
 from smefit.figures import (
+    _confidence_ellipse,
+    _density_level,
+    _kde_grid,
     _plot_heatmap,
     plot_chi2_scan,
     plot_coefficient_bounds,
@@ -890,3 +894,130 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
         _one_figure(plot_coefficient_bounds_comparison, [], latex_label=_plain)
+
+
+# ---------------------------------------------------------------------------
+# 2D contour helpers: _kde_grid, _density_level, _confidence_ellipse
+# ---------------------------------------------------------------------------
+
+_COV_2D = np.array([[1.0, 0.6], [0.6, 0.5]])
+
+
+def _gaussian_pair(n: int = 4000, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """``n`` draws of a correlated 2D Gaussian centred on (1, -2), covariance `_COV_2D`."""
+    rng = np.random.default_rng(seed)
+    draws = rng.multivariate_normal([1.0, -2.0], _COV_2D, size=n)
+    return draws[:, 0], draws[:, 1]
+
+
+@pytest.mark.parametrize("level", [68.0, 95.0])
+def test_density_level_encloses_the_requested_fraction_of_samples(
+    level: float,
+) -> None:
+    x, y = _gaussian_pair()
+    *_, sample_density = _kde_grid(x, y)
+
+    inside = np.mean(sample_density >= _density_level(sample_density, level))
+
+    assert inside == pytest.approx(level / 100.0, abs=1e-3)
+
+
+def test_density_level_encloses_the_requested_fraction_of_a_bimodal_posterior() -> None:
+    """The quadratic case the KDE is there for: two disjoint solutions."""
+    x, y = _gaussian_pair(n=2000)
+    x = np.concatenate([x - 5.0, x + 5.0])
+    y = np.concatenate([y, y])
+    *_, sample_density = _kde_grid(x, y)
+
+    inside = np.mean(sample_density >= _density_level(sample_density, 95.0))
+
+    assert inside == pytest.approx(0.95, abs=1e-3)
+
+
+def test_density_level_is_lower_for_a_wider_level() -> None:
+    *_, sample_density = _kde_grid(*_gaussian_pair())
+
+    assert _density_level(sample_density, 95.0) < _density_level(sample_density, 68.0)
+
+
+def test_kde_grid_covers_the_samples_with_a_square_grid() -> None:
+    x, y = _gaussian_pair()
+
+    xx, yy, density, sample_density = _kde_grid(x, y)
+
+    shape = (figures_mod._KDE_GRIDSIZE, figures_mod._KDE_GRIDSIZE)
+    assert xx.shape == yy.shape == density.shape == shape
+    assert sample_density.shape == x.shape
+    assert xx.min() < x.min() and xx.max() > x.max()
+    assert yy.min() < y.min() and yy.max() > y.max()
+
+
+def test_kde_grid_rejects_mismatched_sizes() -> None:
+    """Checked before thinning, which would otherwise erase the difference."""
+    n = figures_mod._KDE_MAX_SAMPLES + 1000
+    with pytest.raises(ValueError, match="same size"):
+        _kde_grid(np.zeros(2 * n), np.zeros(2 * n - 1))
+
+
+def test_kde_grid_thins_large_posteriors(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset.shape[1])
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+    x, y = _gaussian_pair(n=3 * figures_mod._KDE_MAX_SAMPLES)
+
+    *_, sample_density = _kde_grid(x, y)
+
+    assert seen == [figures_mod._KDE_MAX_SAMPLES]
+    assert sample_density.size == figures_mod._KDE_MAX_SAMPLES
+
+
+def test_kde_grid_leaves_small_posteriors_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[int] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset.shape[1])
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+
+    _kde_grid(*_gaussian_pair(n=1234))
+
+    assert seen == [1234]
+
+
+@pytest.mark.parametrize("level", [68.0, 95.0])
+def test_confidence_ellipse_axes_match_the_sample_covariance(level: float) -> None:
+    x, y = _gaussian_pair(n=200_000)
+
+    ellipse = _confidence_ellipse(x, y, level)
+
+    eig_val, eig_vec = np.linalg.eigh(_COV_2D)
+    chi2_qnt = scipy.stats.chi2.ppf(level / 100.0, 2)
+    assert ellipse.width / 2 == pytest.approx(np.sqrt(chi2_qnt * eig_val[1]), rel=1e-2)
+    assert ellipse.height / 2 == pytest.approx(np.sqrt(chi2_qnt * eig_val[0]), rel=1e-2)
+    # the major axis is an eigenvector, so its angle is fixed modulo 180 degrees
+    expected = np.degrees(np.arctan2(eig_vec[1, 1], eig_vec[0, 1]))
+    assert (ellipse.angle - expected + 90.0) % 180.0 - 90.0 == pytest.approx(
+        0.0, abs=1.0
+    )
+
+
+def test_confidence_ellipse_is_centred_on_the_median() -> None:
+    x, y = _gaussian_pair()
+
+    ellipse = _confidence_ellipse(x, y, 95.0)
+
+    assert ellipse.center == pytest.approx((np.median(x), np.median(y)))
+
+
+def test_confidence_ellipse_rejects_mismatched_sizes() -> None:
+    with pytest.raises(ValueError, match="same size"):
+        _confidence_ellipse(np.zeros(10), np.zeros(9), 95.0)

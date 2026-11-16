@@ -8,13 +8,24 @@ import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats
 from matplotlib.lines import Line2D
+from matplotlib.patches import Ellipse
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
+
+# Resolution of the grid a 2D KDE is drawn on, how far past the outermost
+# samples it extends (in bandwidths, so the tails are not truncated), and the
+# sample count above which a posterior is thinned before the estimate: its cost
+# grows linearly with the samples while the estimate barely moves past a few
+# thousand.
+_KDE_GRIDSIZE = 200
+_KDE_CUT = 3
+_KDE_MAX_SAMPLES = 5000
 
 
 def _plot_heatmap(
@@ -558,6 +569,79 @@ def plot_coefficient_bounds_comparison(
         lin_thr,
         x_min,
         x_max,
+    )
+
+
+def _kde_grid(x, y, bw_adjust=1.5):
+    """Evaluate a 2D Gaussian KDE of the samples ``(x, y)`` on a regular grid.
+
+    Returns ``(xx, yy, density, sample_density)``: the first three are the
+    ``(_KDE_GRIDSIZE, _KDE_GRIDSIZE)`` grid and the density on it, which is what
+    gets drawn; ``sample_density`` is the same KDE at the (thinned) samples,
+    which is what :func:`_density_level` reads the contour level off.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    # checked before thinning: a common stride can erase a small difference in
+    # length (6000 and 5999 both thin to 3000), silently pairing up samples
+    # from different draws
+    if x.size != y.size:
+        raise ValueError(f"x and y must be the same size, got {x.size} and {y.size}.")
+
+    if x.size > _KDE_MAX_SAMPLES:
+        stride = int(np.ceil(x.size / _KDE_MAX_SAMPLES))
+        x, y = x[::stride], y[::stride]
+
+    kde = scipy.stats.gaussian_kde(np.vstack([x, y]))
+    kde.set_bandwidth(kde.factor * bw_adjust)
+
+    bw_x = float(np.sqrt(kde.covariance[0, 0]))
+    bw_y = float(np.sqrt(kde.covariance[1, 1]))
+    x_grid = np.linspace(
+        x.min() - _KDE_CUT * bw_x, x.max() + _KDE_CUT * bw_x, _KDE_GRIDSIZE
+    )
+    y_grid = np.linspace(
+        y.min() - _KDE_CUT * bw_y, y.max() + _KDE_CUT * bw_y, _KDE_GRIDSIZE
+    )
+    xx, yy = np.meshgrid(x_grid, y_grid)
+    density = kde(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+    sample_density = kde(np.vstack([x, y]))
+    return xx, yy, density, sample_density
+
+
+def _density_level(sample_density, level):
+    """The iso-density value enclosing ``level`` percent of the posterior.
+
+    It is the ``1 - level`` quantile of the density *at the samples*, so
+    ``level`` percent of them lie inside the contour by construction. Reading
+    it off the grid instead — sorting the grid densities and cutting where
+    their cumulative sum reaches ``level`` — systematically over-covers.
+    """
+    return float(np.quantile(sample_density, 1.0 - level / 100.0))
+
+
+def _confidence_ellipse(x, y, level):
+    """The ``level`` percent ellipse of the samples ``(x, y)``, not yet drawn.
+
+    The iso-contour of the Gaussian with the samples' covariance, centred on
+    their median: each half-axis is ``sqrt(chi2_2(level) * eigenvalue)``.
+    The caller styles it and adds it to an axes.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.size != y.size:
+        raise ValueError(f"x and y must be the same size, got {x.size} and {y.size}.")
+
+    # symmetric: eigh keeps everything real and sorts the eigenvalues ascending
+    eig_val, eig_vec = np.linalg.eigh(np.cov(x, y))
+    major = eig_vec[:, -1]
+    angle = np.degrees(np.arctan2(major[1], major[0]))
+    chi2_qnt = scipy.stats.chi2.ppf(level / 100.0, 2)
+    return Ellipse(
+        (float(np.median(x)), float(np.median(y))),
+        width=2 * np.sqrt(chi2_qnt * eig_val[-1]),
+        height=2 * np.sqrt(chi2_qnt * eig_val[-2]),
+        angle=float(angle),
     )
 
 

@@ -16,6 +16,7 @@ import yaml
 from smefit import credible_intervals
 from smefit.core import Coefficient, CoefficientGroup
 from smefit.dataset_info import DatasetInfo
+from smefit.figures import plot_coefficient_bounds
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import default_latex_labels, make_latex_label
 from smefit.pca import PCA
@@ -208,6 +209,24 @@ def test_coefficient_bounds_table_quotes_both_intervals() -> None:
     assert table.columns.tolist() == ["68% CL (ETI)", "95% CL (ETI)"]
     assert table.index.tolist() == [r"$c_{tG}$"]
     assert table.iloc[0].tolist() == ["[160.000, 840.000]", "[25.000, 975.000]"]
+
+
+def test_bounds_tables_and_plots_share_their_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing a default in credible_intervals changes it for the tables and
+    the plots alike, so one report's figures and tables cannot disagree."""
+    monkeypatch.setattr(credible_intervals, "_DEFAULT_BOUNDS_LEVELS", [99.0])
+    monkeypatch.setattr(credible_intervals, "_DEFAULT_INTERVAL_TYPES", ["hdi"])
+    fit = _joint_fit({"OtG": _RAMP})
+
+    table = coefficient_bounds_table(fit, latex_label=_plain)
+    [(fig, suffix)] = list(plot_coefficient_bounds(fit, latex_label=_plain))
+
+    assert table.columns.tolist() == ["99% CL (HDI)"]
+    assert suffix == "hdi"
+    legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert any("99" in text and "HDI" in text for text in legend)
 
 
 def test_coefficient_bounds_table_rounds_to_round_val_without_a_negative_zero() -> None:

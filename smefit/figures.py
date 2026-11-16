@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 from reportengine.figure import figure, figuregen
 
+from smefit.credible_intervals import bounds_settings
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
@@ -392,21 +393,9 @@ def _coefficient_bounds(
     """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
-    if bounds_levels is None:
-        bounds_levels = [68.0, 95.0]
-    elif isinstance(bounds_levels, (int, float)):
-        bounds_levels = [bounds_levels]
-    if not bounds_levels:
-        raise ValueError("bounds_levels is empty: give at least one level.")
+    bounds_levels, interval_types = bounds_settings(bounds_levels, interval_types)
     # widest first: drawn first and thinnest, under the narrower ones
-    levels = sorted({float(level) for level in bounds_levels}, reverse=True)
-
-    if interval_types is None:
-        interval_types = ["eti"]
-    elif isinstance(interval_types, str):
-        interval_types = [interval_types]
-    if not interval_types:
-        raise ValueError("interval_types is empty: give at least one type.")
+    levels = sorted(set(bounds_levels), reverse=True)
 
     # the union over the fits, in order of first appearance: a coefficient one
     # fit did not sample is a gap in its row, not an error. Chosen before any

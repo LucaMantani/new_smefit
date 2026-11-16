@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from reportengine.table import table
 
+from smefit.credible_intervals import bounds_settings
 from smefit.plot_utils import select_params
 
 if TYPE_CHECKING:
@@ -169,23 +170,12 @@ def _bounds_by_coefficient(
     columns are there even with no rows, so a fit without samples for any of
     its coefficients still has its columns in a comparison.
     """
-    if bounds_levels is None:
-        bounds_levels = [68.0, 95.0]
-    elif isinstance(bounds_levels, (int, float)):
-        bounds_levels = [bounds_levels]
-    if not bounds_levels:
-        raise ValueError("bounds_levels is empty: give at least one level.")
-    if interval_types is None:
-        interval_types = ["eti"]
-    elif isinstance(interval_types, str):
-        interval_types = [interval_types]
-    if not interval_types:
-        raise ValueError("interval_types is empty: give at least one type.")
+    bounds_levels, interval_types = bounds_settings(bounds_levels, interval_types)
 
     # level outer, type inner: the columns of one level sit side by side,
     # which is the comparison a reader makes
     bounds = {
-        (float(level), interval_type): fit.confidence_bounds(level, interval_type)
+        (level, interval_type): fit.confidence_bounds(level, interval_type)
         for level in bounds_levels
         for interval_type in interval_types
     }

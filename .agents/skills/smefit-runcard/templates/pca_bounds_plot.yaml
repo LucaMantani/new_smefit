@@ -1,0 +1,52 @@
+# AUTO-COPIED from template_runcards/pca_bounds_plot.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# 1D confidence bounds of a fit along the principal components of its own
+# Fisher matrix: no fit is run here, the posterior samples are read back from
+# fit_results.json and rotated into the PCA basis. One row per component, every
+# level a bar of its own width, the widest thinnest.
+#
+# Run analytical_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.'}
+
+# the PCA of each fit, at its best-fit point (every sub-key has a default)
+pca_settings: {}
+
+# confidence levels drawn, in percent (default: 68 and 95) — the same key the
+# bounds tables read, so the plot and pca_bounds_table agree
+bounds_levels: [68, 95]
+# credible intervals drawn: eti (default) and/or hdi. One figure per type,
+# saved with the type as its suffix
+interval_types: [eti, hdi]
+
+# restrict the rows to these components, in this order, top to bottom
+# components_to_plot: [PC2, PC1]
+
+# x-axis: a symmetric log scale for bounds spanning several decades, and
+# explicit limits (chosen from the intervals by default)
+# x_log: true
+# lin_thr: 1.0e-2
+# x_min: -0.1
+# x_max: 0.05
+
+# `fits::fitcontext` gives every fit its own setup, hence its own PCA: PC1 is a
+# different direction in each fit, so there is no comparison plot. The table
+# sits beside the plot, with the same rows and intervals.
+template_text: |
+    PCA bounds
+    ==========
+    {@with fits::fitcontext@}
+    {@fit@}
+    ---------
+    {@plot_pca_bounds@}
+    {@pca_bounds_table@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

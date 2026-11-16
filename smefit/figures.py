@@ -371,6 +371,12 @@ def plot_posterior_correlations(
     )
 
 
+# the x-axis of a bounds plot: a Wilson coefficient, or a principal component —
+# a unit-norm combination of them, so in the same units
+_COEFFICIENT_AXIS_LABEL = r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$"
+_PCA_AXIS_LABEL = r"$p_i/\Lambda^2\ ({\rm TeV}^{-2})$"
+
+
 def _coefficient_bounds(
     fits,
     latex_label,
@@ -381,9 +387,10 @@ def _coefficient_bounds(
     lin_thr,
     x_min,
     x_max,
+    x_label,
 ):
-    """The shared core of :func:`plot_coefficient_bounds` and
-    :func:`plot_coefficient_bounds_comparison`.
+    """The shared core of :func:`plot_coefficient_bounds`,
+    :func:`plot_coefficient_bounds_comparison` and :func:`plot_pca_bounds`.
 
     One figure per interval type, yielded as ``(figure, interval_type)`` so
     each is saved under its own suffix. One row per coefficient, top to
@@ -443,7 +450,7 @@ def _coefficient_bounds(
             ax.set_xscale("symlog", linthresh=lin_thr)
         ax.set_xlim(x_min, x_max)
         ax.grid(True, which="both", ls="dashed", axis="x", lw=0.5)
-        ax.set_xlabel(r"$c_i/\Lambda^2\ ({\rm TeV}^{-2})$", fontsize=20)
+        ax.set_xlabel(x_label, fontsize=20)
 
         handles = [Line2D([], [], color=f"C{i}", lw=3) for i in range(len(fits))]
         labels = [fit.plot_label for fit in fits]
@@ -519,6 +526,7 @@ def plot_coefficient_bounds(
         lin_thr,
         x_min,
         x_max,
+        _COEFFICIENT_AXIS_LABEL,
     )
 
 
@@ -558,6 +566,64 @@ def plot_coefficient_bounds_comparison(
         lin_thr,
         x_min,
         x_max,
+        _COEFFICIENT_AXIS_LABEL,
+    )
+
+
+@figuregen
+def plot_pca_bounds(
+    fit,
+    pca,
+    latex_label,
+    components_to_plot=None,
+    bounds_levels=None,
+    interval_types=None,
+    x_log=False,
+    lin_thr=1e-2,
+    x_min=None,
+    x_max=None,
+):
+    """Plot the confidence bounds of one fit along its principal components.
+
+    :func:`plot_coefficient_bounds` of the fit rotated by
+    :meth:`Fit.in_pca_basis`: one row per principal component of ``pca``, the
+    bounds being those of that linear combination of coefficients — the plot
+    of :func:`smefit.tables.pca_bounds_table`. There is no comparison
+    counterpart: under ``fits::fitcontext`` every fit has a PCA of its own,
+    so ``PC1`` is a different direction in each.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk, sampled jointly.
+    pca : smefit.pca.PCA
+        A PCA over exactly the fit's free coefficients; under
+        ``fits::fitcontext`` it is the fit's own, at its best-fit point.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    components_to_plot : list of str, optional
+        Restrict the rows to these components (``PC1``, ...), in this order,
+        top to bottom. All of them by default. The key
+        :func:`smefit.tables.pca_bounds_table` reads.
+    bounds_levels, interval_types, x_log, lin_thr, x_min, x_max
+        As :func:`plot_coefficient_bounds`.
+
+    Raises
+    ------
+    ValueError
+        As :meth:`Fit.in_pca_basis` and :func:`plot_coefficient_bounds`.
+    """
+    return _coefficient_bounds(
+        [fit.in_pca_basis(pca)],
+        latex_label,
+        components_to_plot,
+        bounds_levels,
+        interval_types,
+        x_log,
+        lin_thr,
+        x_min,
+        x_max,
+        _PCA_AXIS_LABEL,
     )
 
 

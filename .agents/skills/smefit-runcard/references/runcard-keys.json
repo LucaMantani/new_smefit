@@ -52,6 +52,7 @@
     "pca_bounds_table",
     "plot_coefficient_bounds",
     "plot_coefficient_bounds_comparison",
+    "plot_pca_bounds",
     "plot_posterior_correlations",
     "report"
   ],

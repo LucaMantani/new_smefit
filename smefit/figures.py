@@ -408,18 +408,21 @@ def _coefficient_bounds(
     if not interval_types:
         raise ValueError("interval_types is empty: give at least one type.")
 
+    # the union over the fits, in order of first appearance: a coefficient one
+    # fit did not sample is a gap in its row, not an error. Chosen before any
+    # bound is computed, so the coefficients left out cost nothing.
+    names = list(dict.fromkeys(name for fit in fits for name in fit.bounded_parameters))
+    context = ", ".join(fit.fit_name for fit in fits)
+    names = select_params(names, params_to_plot, context=context)
+
     for interval_type in interval_types:
         bounds = [
-            {level: fit.confidence_bounds(level, interval_type) for level in levels}
+            {
+                level: fit.confidence_bounds(level, interval_type, params=names)
+                for level in levels
+            }
             for fit in fits
         ]
-        # the union over the fits, in order of first appearance: a coefficient one
-        # fit did not sample is a gap in its row, not an error
-        names = list(
-            dict.fromkeys(name for per_fit in bounds for name in per_fit[levels[0]])
-        )
-        context = ", ".join(fit.fit_name for fit in fits)
-        names = select_params(names, params_to_plot, context=context)
 
         set_plot_style()
         fig, ax = plt.subplots(

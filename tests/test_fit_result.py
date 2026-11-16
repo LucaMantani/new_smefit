@@ -1014,6 +1014,22 @@ def test_confidence_bounds_keep_every_piece_of_a_disjoint_region(monkeypatch):
     assert fit.confidence_bounds(68, interval_type="fake")["OtG"] == pieces
 
 
+def test_confidence_bounds_bound_only_the_params_asked_for(joint_fit):
+    """In the fit's order, not the order asked, and a name the fit does not
+    bound is ignored."""
+    assert list(joint_fit.confidence_bounds(68, params=["OpQM", "OtG", "OpNope"])) == [
+        "OtG",
+        "OpQM",
+    ]
+    assert list(joint_fit.confidence_bounds(68, params=["OpQM"])) == ["OpQM"]
+
+
+def test_bounded_parameters_are_the_free_coefficients_with_samples():
+    fit = _joint_fit("fit", {"OtG": _RAMP})
+    fit.fit_results.free_parameters = ["OtG", "OpQM"]
+    assert fit.bounded_parameters == ["OtG"]
+
+
 def test_confidence_bounds_reject_an_unknown_interval_type(joint_fit):
     """The error lists what is available, so a typo is a one-line fix."""
     with pytest.raises(ValueError, match="'hpd'.*\\['eti', 'hdi'\\]"):

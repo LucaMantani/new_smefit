@@ -704,7 +704,7 @@ def test_plot_coefficient_bounds_draws_every_piece_of_a_split_region(
     fit = _bounds_fit(samples={"OpA": [0.0, 1.0]})
     pieces = [(-2.0, -1.0), (1.0, 2.0)]
     monkeypatch.setattr(
-        fit, "confidence_bounds", lambda level, interval_type: {"OpA": pieces}
+        fit, "confidence_bounds", lambda level, interval_type, params: {"OpA": pieces}
     )
 
     fig = _one_figure(
@@ -722,7 +722,7 @@ def test_plot_coefficient_bounds_passes_the_interval_type_on(
     fit = _bounds_fit(samples={"OpA": [0.0, 1.0]})
     asked = []
 
-    def bounds(level: float, interval_type: str) -> dict:
+    def bounds(level: float, interval_type: str, params: list[str]) -> dict:
         asked.append(interval_type)
         return {"OpA": [(0.0, 1.0)]}
 
@@ -734,6 +734,39 @@ def test_plot_coefficient_bounds_passes_the_interval_type_on(
     assert set(asked) == {"hdi"}
     legend = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
     assert any("HDI" in text for text in legend)
+
+
+@pytest.mark.parametrize("comparison", [False, True])
+def test_plot_coefficient_bounds_only_bounds_the_coefficients_drawn(
+    monkeypatch: pytest.MonkeyPatch, comparison: bool
+) -> None:
+    """``params_to_plot`` is applied before any bound is computed: an HDI is a
+    KDE per coefficient, too slow to spend on rows never drawn."""
+    bounded = []
+
+    def recording(values: np.ndarray, _level: float, _bounds: object) -> list:
+        bounded.append(float(values[-1]))
+        return [(0.0, 1.0)]
+
+    monkeypatch.setitem(credible_intervals._INTERVAL_TYPES, "recording", recording)
+    # tell the coefficients apart by their last sample
+    fit = _bounds_fit(samples={"OpA": [0.0, 1.0], "OpZZ": [0.0, 2.0]})
+    action, fits = (
+        (plot_coefficient_bounds_comparison, [fit])
+        if comparison
+        else (plot_coefficient_bounds, fit)
+    )
+
+    _one_figure(
+        action,
+        fits,
+        latex_label=_plain,
+        params_to_plot=["OpZZ"],
+        bounds_levels=[68, 95],
+        interval_types="recording",
+    )
+
+    assert bounded == [2.0, 2.0]
 
 
 @pytest.mark.parametrize("comparison", [False, True])

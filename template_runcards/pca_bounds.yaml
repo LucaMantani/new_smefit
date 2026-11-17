@@ -1,0 +1,49 @@
+# 1D confidence bounds of a fit along the principal components of its own
+# Fisher matrix, as a plot and as a table: no fit is run here, the posterior
+# samples are read back from fit_results.json and rotated into the PCA basis.
+#
+# Run analytical_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.'}
+
+# the PCA of each fit, at its best-fit point (every sub-key has a default)
+pca_settings: {}
+
+# confidence levels quoted, in percent (default: 68 and 95): one bar width each
+# in the plot, one column each in the table
+bounds_levels: [68, 95]
+# credible intervals quoted: eti (default) and/or hdi. One figure per type,
+# saved with the type as its suffix, and one table column per type
+interval_types: [eti, hdi]
+
+# restrict the rows to these components, in this order, top to bottom. The key
+# is the one the coefficient reports read, so a list serving both bases names
+# both: [OpD, PC2, PC1]
+# params_to_plot: [PC2, PC1]
+
+# x-axis of the plot: a symmetric log scale for bounds spanning several decades,
+# and explicit limits (chosen from the intervals by default)
+# x_log: true
+# lin_thr: 1.0e-2
+# x_min: -0.1
+# x_max: 0.05
+
+# `fits::fitcontext` gives every fit its own setup, hence its own PCA, and
+# `pcabasis` below it rotates the fit by that PCA: the routines are those of
+# coefficient_bounds_plot.yaml and coefficient_bounds_table.yaml, reading the
+# rotated fit. PC1 is a different direction in each fit, so there is no
+# comparison across fits.
+template_text: |
+    PCA bounds
+    ==========
+    {@with fits::fitcontext@}
+    {@fit@}
+    ---------
+    {@with pcabasis@}
+    {@plot_coefficient_bounds@}
+    {@coefficient_bounds_table@}
+    {@endwith@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

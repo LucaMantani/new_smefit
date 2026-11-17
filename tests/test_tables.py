@@ -901,3 +901,32 @@ def test_mass_scan_table_uses_first_free_coefficient_name():
     result = mass_scan_table(coefficients, [1.0], [5.0], latex_label=_plain)
 
     assert result.columns.tolist() == ["OpM", "chi2"]
+
+
+# ---------------------------------------------------------------------------
+# A fit in the PCA basis: the same routine, on Fit.in_pca_basis
+# ---------------------------------------------------------------------------
+
+_ROOT_HALF: float = 0.5**0.5
+
+
+def _rotation_pca() -> PCA:
+    """PCA whose directions are OpA + OpB and OpA - OpB, normalised."""
+    return PCA(
+        eigenvalues=np.array([2.0, 1.0]),
+        eigenvectors=np.array([[1.0, 1.0], [1.0, -1.0]]) * _ROOT_HALF,
+        coeff_names=["OpA", "OpB"],
+        threshold=1.0e-3,
+        min_weight=0.01,
+    )
+
+
+def test_coefficient_bounds_table_bounds_a_fit_in_the_pca_basis() -> None:
+    """OpA = OpB on every sample: PC1 = sqrt(2) OpA, PC2 = 0."""
+    fit = _joint_fit({"OpA": _RAMP, "OpB": _RAMP}).in_pca_basis(_rotation_pca())
+    table = coefficient_bounds_table(fit, _plain)
+
+    assert table.index.tolist() == ["PC1", "PC2"]
+    low, high = 160.0 / _ROOT_HALF, 840.0 / _ROOT_HALF
+    assert table.loc["PC1", "68% CL (ETI)"] == f"[{low:.3f}, {high:.3f}]"
+    assert table.loc["PC2", "68% CL (ETI)"] == "[0.000, 0.000]"

@@ -1,0 +1,59 @@
+# AUTO-COPIED from template_runcards/pca_posterior.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# 1D confidence bounds of a fit along the principal components of its own
+# Fisher matrix, as a plot and as a table, and the posterior correlations of
+# those components: no fit is run here, the posterior samples are read back
+# from fit_results.json and rotated into the PCA basis.
+#
+# Run analytical_fit.yaml first, from this directory.
+fits:
+  - {name: analytical_fit, path: '.'}
+
+# the PCA of each fit, at its best-fit point (every sub-key has a default)
+pca_settings: {}
+
+# confidence levels quoted, in percent (default: 68 and 95): one bar width each
+# in the plot, one column each in the table
+bounds_levels: [68, 95]
+# credible intervals quoted: eti (default) and/or hdi. One figure per type,
+# saved with the type as its suffix, and one table column per type
+interval_types: [eti, hdi]
+
+# restrict the rows to these components, in this order, top to bottom. The key
+# is the one the coefficient reports read, so a list serving both bases names
+# both: [OpD, PC2, PC1]
+# params_to_plot: [PC2, PC1]
+
+# `fits::fitcontext` gives every fit its own setup, hence its own PCA, and
+# `pcabasis` below it rotates the fit by that PCA: the routines are those of
+# coefficient_bounds_plot.yaml, coefficient_bounds_table.yaml and
+# posterior_correlations.yaml, reading the rotated fit. PC1 is a different
+# direction in each fit, so there is no comparison across fits.
+#
+# The PCA diagonalises the Fisher matrix at the best fit, so the components are
+# uncorrelated only as far as the likelihood is Gaussian there: correlations
+# between them in the posterior signal quadratic EFT terms, or prior edges,
+# that the PCA does not see.
+template_text: |
+    PCA posterior
+    =============
+    {@with fits::fitcontext@}
+    {@fit@}
+    ---------
+    {@with pcabasis@}
+    PCA bounds
+    {@plot_coefficient_bounds@}
+    {@coefficient_bounds_table@}
+    PCA correlations
+    {@plot_posterior_correlations@}
+    {@endwith@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

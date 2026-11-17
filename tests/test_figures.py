@@ -1125,3 +1125,49 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
         _one_figure(plot_coefficient_bounds_comparison, [], latex_label=_plain)
+
+
+def test_plot_coefficient_bounds_labels_the_axis_with_a_coefficient() -> None:
+    fig = _one_figure(plot_coefficient_bounds, _bounds_fit(), latex_label=_plain)
+
+    assert fig.axes[0].get_xlabel().startswith("$c_i")
+
+
+# ---------------------------------------------------------------------------
+# A fit in the PCA basis: the same routine, on Fit.in_pca_basis
+# ---------------------------------------------------------------------------
+
+_ROOT_HALF: float = 0.5**0.5
+
+
+def _rotation_pca() -> PCA:
+    """PCA whose directions are OpA + OpB and OpA - OpB, normalised."""
+    return PCA(
+        eigenvalues=np.array([2.0, 1.0]),
+        eigenvectors=np.array([[1.0, 1.0], [1.0, -1.0]]) * _ROOT_HALF,
+        coeff_names=["OpA", "OpB"],
+        threshold=1.0e-3,
+        min_weight=0.01,
+    )
+
+
+def _rotated_fit() -> Fit:
+    """OpA = OpB on every sample: PC1 = sqrt(2) OpA, PC2 = 0."""
+    grid = list(np.linspace(0.0, 1.0, 1001))
+    fit = _bounds_fit(samples={"OpA": grid, "OpB": grid})
+    return fit.in_pca_basis(_rotation_pca())
+
+
+def test_plot_coefficient_bounds_draws_a_fit_in_the_pca_basis() -> None:
+    fit = _rotated_fit()
+    fig = _one_figure(plot_coefficient_bounds, fit, _plain, bounds_levels=95)
+
+    ax = fig.axes[0]
+    ticks = dict(zip([t.get_text() for t in ax.get_yticklabels()], ax.get_yticks()))
+    assert list(ticks) == ["PC1", "PC2"]
+    assert ticks["PC1"] > ticks["PC2"]
+    drawn = {y: (low, high) for y, low, high, _ in _bars(ax)}
+    assert drawn[ticks["PC1"]] == pytest.approx(
+        (0.025 / _ROOT_HALF, 0.975 / _ROOT_HALF)
+    )
+    assert drawn[ticks["PC2"]] == pytest.approx((0.0, 0.0), abs=1e-12)

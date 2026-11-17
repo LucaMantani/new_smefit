@@ -504,6 +504,53 @@ actions_:
   (`tables/<fit_name>_fitcontext_pca_spectrum.csv`). `run_pca` writes a single
   `pca.json`, so it is for one fit only.
 
+### A fit in its PCA basis: `pcabasis`
+
+`pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
+principal components of its own Fisher matrix. The actions inside it are the
+ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
+`plot_posterior_correlations` — now with one row per component. Template:
+`pca_posterior.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.'}
+pca_settings: {}
+
+template_text: |
+  {@with fits::fitcontext@}
+  ## {@fit@}
+  {@with pcabasis@}
+  {@plot_coefficient_bounds@}
+  {@coefficient_bounds_table@}
+  {@plot_posterior_correlations@}
+  {@endwith@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- Under `actions_:` it is `- fits::fitcontext::pcabasis coefficient_bounds_table`.
+  Outputs carry the namespace in their name
+  (`<fit_name>_fitcontext_pcabasis_coefficient_bounds_table.csv`), so they sit
+  beside the coefficient-basis ones without clashing.
+- It needs a likelihood to take the PCA of: `fits::pcabasis` alone, in a runcard
+  of fits only, is refused. Everything the `fitcontext` recipe says about the
+  PCA applies — a `pca_settings:` block, and no negative curvature at the
+  fit's stored best fit, which a sampler fit with quadratics may have.
+- `params_to_plot` is read as everywhere else, so inside `pcabasis` it must name
+  components: `[PC2, PC1]`. A list naming only coefficients selects nothing
+  there and stops the run; one serving both bases names both,
+  `[OpD, PC2, PC1]`, each basis keeping the names it has.
+- A component is a unit-norm combination of coefficients, so its bounds are in
+  the same units. The bounds plot labels its axis `c_i` in either basis.
+- The components diagonalise the Fisher matrix at the best fit, so their
+  posterior correlations vanish only as far as the likelihood is Gaussian
+  there: correlations in `plot_posterior_correlations` signal quadratic terms
+  or prior edges that the PCA does not see.
+- There is no comparison across fits: each has its own PCA, so `PC1` is a
+  different direction in each. A `run_individual_*_fits` fit is rejected.
+
 ### Coefficient bounds table
 
 `coefficient_bounds_table` tabulates, per fit, the confidence bounds of every

@@ -509,7 +509,8 @@ actions_:
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
 ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
-`plot_posterior_correlations` — now with one row per component. Template:
+`plot_posterior_histograms`, `plot_posterior_correlations` — now with one row
+(or panel) per component. Template:
 `pca_posterior.yaml`.
 
 ```yaml
@@ -523,6 +524,7 @@ template_text: |
   {@with pcabasis@}
   {@plot_coefficient_bounds@}
   {@coefficient_bounds_table@}
+  {@plot_posterior_histograms@}
   {@plot_posterior_correlations@}
   {@endwith@}
   {@endwith@}

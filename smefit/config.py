@@ -13,7 +13,12 @@ from typing import Any
 import jax.numpy as jnp
 import numpy as np
 import optax
-from reportengine.configparser import ConfigError, element_of, explicit_node
+from reportengine.configparser import (
+    ConfigError,
+    ExplicitNode,
+    element_of,
+    explicit_node,
+)
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
@@ -27,7 +32,7 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
-from smefit.fit_result import CONTOUR_STYLES, Fit
+from smefit.fit_result import CONTOUR_STYLES, Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
@@ -1092,6 +1097,34 @@ class smefitConfig(Config):
             [best_fit_point[name] for name in context["coefficients"].free_names]
         )
         return context
+
+    def produce_pcabasis(self, fit, coefficients=None):
+        """A fit in the basis of its principal components, as a namespace.
+
+        Under ``fits::fitcontext::pcabasis`` every node takes as ``fit`` the fit
+        rotated by :meth:`Fit.in_pca_basis`, so the routines reading a fit's
+        posterior report on its principal components unchanged. In that basis
+        ``params_to_plot`` must name components (``PC1``, ...).
+
+        ``pca`` is only computed when the graph runs, so ``fit`` is handed over
+        as an ``ExplicitNode`` whose result replaces it here. Its worker reads
+        the unrotated fit from this namespace (``unrotated_fit``) on purpose:
+        reportengine stores a result at the outermost namespace holding all of
+        the node's inputs, which with ``pca`` alone would be ``fitcontext``.
+
+        ``coefficients`` is taken only to refuse a namespace with no likelihood
+        to take the PCA of, as ``fits::pcabasis`` is in a runcard of fits alone.
+        """
+        if coefficients is None:
+            raise ConfigError(
+                f"'pcabasis' rotates '{fit.fit_name}' by the PCA of a likelihood, "
+                "and this runcard defines none here. Use it under the fit's own: "
+                "'fits::fitcontext::pcabasis'."
+            )
+        return {
+            "unrotated_fit": fit,
+            "fit": ExplicitNode(_fit_in_pca_basis),
+        }
 
     def parse_interval_types(self, interval_types: str | list) -> list:
         """The credible intervals a report's bounds quote.

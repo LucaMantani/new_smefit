@@ -1089,27 +1089,16 @@ class smefitConfig(Config):
     def produce_pcabasis(self, fit):
         """A fit in the basis of its principal components, as a namespace.
 
-        Used under the fit's own context, ``fits::fitcontext::pcabasis``: every
-        node below it takes as ``fit`` the fit rotated by
-        :meth:`Fit.in_pca_basis`, so any routine reading a fit's posterior —
-        ``plot_coefficient_bounds``, ``coefficient_bounds_table``, … — reports
-        on the principal components with no code of its own for them. The
-        rotation is by the ``pca`` of the enclosing namespace, which under
-        ``fitcontext`` is the fit's own, at its best-fit point.
+        Under ``fits::fitcontext::pcabasis`` every node takes as ``fit`` the fit
+        rotated by :meth:`Fit.in_pca_basis`, so the routines reading a fit's
+        posterior report on its principal components unchanged. In that basis
+        ``params_to_plot`` must name components (``PC1``, ...).
 
-        ``pca`` is a provider, computed when the graph runs, which a
-        ``produce_`` cannot take. So ``fit`` is not rotated here: it is handed
-        over as an ``ExplicitNode``, a node reportengine builds from
-        ``_fit_in_pca_basis`` and whose result replaces it in this namespace.
-        That worker must read the unrotated fit from *this* namespace
-        (``coefficient_fit``) rather than be a closure over it: reportengine
-        puts a node, and its result, at the outermost namespace holding all of
-        its inputs. Depending on ``pca`` alone it would land in ``fitcontext``,
-        overwriting the ``fit`` there and leaving the ``ExplicitNode`` here.
-
-        ``params_to_plot`` is read as anywhere else, so to restrict a report in
-        this basis it must name components (``PC1``, ...): a list naming only
-        coefficients selects nothing here, which the routines refuse.
+        ``pca`` is only computed when the graph runs, so ``fit`` is handed over
+        as an ``ExplicitNode`` whose result replaces it here. Its worker reads
+        the unrotated fit from this namespace (``coefficient_fit``) on purpose:
+        reportengine stores a result at the outermost namespace holding all of
+        the node's inputs, which with ``pca`` alone would be ``fitcontext``.
         """
         return {
             "coefficient_fit": fit,

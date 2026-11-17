@@ -472,8 +472,9 @@ actions_:
 
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
-ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table` — now with
-one row per component. Template: `pca_bounds.yaml`.
+ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
+`plot_posterior_correlations` — now with one row per component. Template:
+`pca_posterior.yaml`.
 
 ```yaml
 fits:
@@ -486,6 +487,7 @@ template_text: |
   {@with pcabasis@}
   {@plot_coefficient_bounds@}
   {@coefficient_bounds_table@}
+  {@plot_posterior_correlations@}
   {@endwith@}
   {@endwith@}
 actions_:
@@ -506,6 +508,10 @@ actions_:
   `[OpD, PC2, PC1]`, each basis keeping the names it has.
 - A component is a unit-norm combination of coefficients, so its bounds are in
   the same units. The bounds plot labels its axis `c_i` in either basis.
+- The components diagonalise the Fisher matrix at the best fit, so their
+  posterior correlations vanish only as far as the likelihood is Gaussian
+  there: correlations in `plot_posterior_correlations` signal quadratic terms
+  or prior edges that the PCA does not see.
 - There is no comparison across fits: each has its own PCA, so `PC1` is a
   different direction in each. A `run_individual_*_fits` fit is rejected.
 

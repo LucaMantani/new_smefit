@@ -1,8 +1,7 @@
 # 1D confidence bounds of a fit along the principal components of its own
-# Fisher matrix, as a plot and as a table, with the posterior correlations of
-# those components and the Fisher matrix they diagonalise: no fit is run here,
-# the posterior samples are read back from fit_results.json and rotated into
-# the PCA basis.
+# Fisher matrix, as a plot and as a table, and the posterior correlations of
+# those components: no fit is run here, the posterior samples are read back
+# from fit_results.json and rotated into the PCA basis.
 #
 # Run analytical_fit.yaml first, from this directory.
 fits:
@@ -25,12 +24,17 @@ interval_types: [eti, hdi]
 
 # `fits::fitcontext` gives every fit its own setup, hence its own PCA, and
 # `pcabasis` below it rotates the fit by that PCA: the routines are those of
-# coefficient_bounds_plot.yaml and coefficient_bounds_table.yaml, reading the
-# rotated fit. PC1 is a different direction in each fit, so there is no
-# comparison across fits.
+# coefficient_bounds_plot.yaml, coefficient_bounds_table.yaml and
+# posterior_correlations.yaml, reading the rotated fit. PC1 is a different
+# direction in each fit, so there is no comparison across fits.
+#
+# The PCA diagonalises the Fisher matrix at the best fit, so the components are
+# uncorrelated only as far as the likelihood is Gaussian there: correlations
+# between them in the posterior signal quadratic EFT terms, or prior edges,
+# that the PCA does not see.
 template_text: |
-    PCA bounds
-    ==========
+    PCA posterior
+    =============
     {@with fits::fitcontext@}
     {@fit@}
     ---------

@@ -460,6 +460,7 @@ which runcard keys each action ultimately needs.
 - `init_scale`(rge) — Produce the initial scale (in GeV) at which Wilson coefficients are defined.
 - `latex_label`(latex_labels) — The function report tables and figures use to write a name in LaTeX.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
+- `pcabasis`(fit, coefficients) — A fit in the basis of its principal components, as a namespace.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.

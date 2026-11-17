@@ -210,9 +210,10 @@ without running a fit.
 `pcabasis` is a namespace, used as `fits::fitcontext::pcabasis`
 (`produce_pcabasis`, `config.py`): under it `fit` is the fit rotated into the
 principal components of its own Fisher matrix (`Fit.in_pca_basis`), so the
-routines reading a fit's posterior — the bounds plot and table — report on the
-components with no code of their own. Extend it, or add a sibling, rather than
-duplicating an action per basis; the `smefit-dev` skill has the pattern.
+routines reading a fit's posterior — the bounds plot and table, the correlations
+heatmap — report on the components with no code of their own. Extend it, or add
+a sibling, rather than duplicating an action per basis; the `smefit-dev` skill
+has the pattern.
 
 An optional `params_to_plot: [OtG, OpQM, ...]` list restricts a report to those
 coefficients, in that order. It is a plain provider parameter, global on purpose:

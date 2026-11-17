@@ -169,11 +169,9 @@ def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotate
     aggregated = aggregate_fisher_information_matrices(
         fisher_information_matrices, data_groups
     )
-    eigenvectors = np.asarray(pca.eigenvectors, dtype=float)
-    coeff_names = list(pca.coeff_names)
-    components = pca.component_names
-
-    flat = [name for name, is_flat in zip(components, pca.flat_mask) if is_flat]
+    flat = [
+        name for name, is_flat in zip(pca.component_names, pca.flat_mask) if is_flat
+    ]
     if flat:
         log.warning(
             "Fisher information in the PCA basis: %s flat (lambda/lambda_max < "
@@ -183,16 +181,7 @@ def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotate
             "it" if len(flat) == 1 else "them",
         )
 
-    return {
-        source: pd.DataFrame(
-            eigenvectors.T
-            @ fisher.loc[coeff_names, coeff_names].to_numpy(dtype=float)
-            @ eigenvectors,
-            index=components,
-            columns=components,
-        )
-        for source, fisher in aggregated.items()
-    }
+    return {source: pca.rotate_matrix(fisher) for source, fisher in aggregated.items()}
 
 
 ############################

@@ -1086,7 +1086,7 @@ class smefitConfig(Config):
         )
         return context
 
-    def produce_pcabasis(self, fit):
+    def produce_pcabasis(self, fit, coefficients=None):
         """A fit in the basis of its principal components, as a namespace.
 
         Under ``fits::fitcontext::pcabasis`` every node takes as ``fit`` the fit
@@ -1099,7 +1099,16 @@ class smefitConfig(Config):
         the unrotated fit from this namespace (``coefficient_fit``) on purpose:
         reportengine stores a result at the outermost namespace holding all of
         the node's inputs, which with ``pca`` alone would be ``fitcontext``.
+
+        ``coefficients`` is taken only to refuse a namespace with no likelihood
+        to take the PCA of, as ``fits::pcabasis`` is in a runcard of fits alone.
         """
+        if coefficients is None:
+            raise ConfigError(
+                f"'pcabasis' rotates '{fit.fit_name}' by the PCA of a likelihood, "
+                "and this runcard defines none here. Use it under the fit's own: "
+                "'fits::fitcontext::pcabasis'."
+            )
         return {
             "coefficient_fit": fit,
             "fit": ExplicitNode(_fit_in_pca_basis),

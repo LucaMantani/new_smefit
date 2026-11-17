@@ -516,3 +516,24 @@ def test_pcabasis_leaves_the_fit_of_the_fitcontext_alone(
     assert rotated["coefficient_bounds_table"].index.tolist() != (
         context["coefficient_bounds_table"].index.tolist()
     )
+
+
+def test_pcabasis_refuses_a_namespace_without_a_likelihood(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """``fits::pcabasis`` in a runcard of fits alone: there is no PCA to rotate by."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_sampled_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
+    config = smefitConfig(
+        {"fits": fits, "pca_settings": {}}, environment=smefitAPI.loadedenv
+    )
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget("coefficient_bounds_table", ("fits", "pcabasis"), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+
+    with pytest.raises(ConfigError, match="fits::fitcontext::pcabasis"):
+        builder.resolve_fuzzytargets()

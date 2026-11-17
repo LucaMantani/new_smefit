@@ -1083,3 +1083,21 @@ class Fit:
             fit_runcard=fit_runcard,
             path=path,
         )
+
+
+def _fit_in_pca_basis(coefficient_fit, pca) -> Fit:
+    """The ``fit`` of the ``pcabasis`` namespace: ``coefficient_fit`` rotated by
+    ``pca``.
+
+    The worker ``smefitConfig.produce_pcabasis`` hands to reportengine, which
+    resolves its parameters as resources: hence the fit read under another
+    name, and no annotations, which reportengine would check at runtime.
+
+    Parameters
+    ----------
+    coefficient_fit : Fit
+        The fit as loaded, in the basis of its coefficients.
+    pca : smefit.pca.PCA
+        A PCA over exactly its free coefficients.
+    """
+    return coefficient_fit.in_pca_basis(pca)

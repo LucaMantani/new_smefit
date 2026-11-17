@@ -28,7 +28,6 @@ from smefit.figures import (
     plot_coefficient_bounds_comparison,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
-    plot_pca_bounds,
     plot_pca_components_heatmap,
     plot_pca_spectrum,
     plot_posterior_correlations,
@@ -900,7 +899,7 @@ def test_plot_coefficient_bounds_labels_the_axis_with_a_coefficient() -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_pca_bounds: the bounds of the fit rotated into its principal components
+# A fit in the PCA basis: the same routine, on Fit.in_pca_basis
 # ---------------------------------------------------------------------------
 
 _ROOT_HALF: float = 0.5**0.5
@@ -917,78 +916,23 @@ def _rotation_pca() -> PCA:
     )
 
 
-def _aligned_fit() -> Fit:
+def _rotated_fit() -> Fit:
     """OpA = OpB on every sample: PC1 = sqrt(2) OpA, PC2 = 0."""
     grid = list(np.linspace(0.0, 1.0, 1001))
-    return _bounds_fit(samples={"OpA": grid, "OpB": grid})
+    fit = _bounds_fit(samples={"OpA": grid, "OpB": grid})
+    return fit.in_pca_basis(_rotation_pca())
 
 
-def test_plot_pca_bounds_draws_the_bounds_of_the_principal_combinations() -> None:
-    fit = _aligned_fit()
-    pca = _rotation_pca()
-    fig = _one_figure(plot_pca_bounds, fit, pca, latex_label=_plain, bounds_levels=95)
+def test_plot_coefficient_bounds_draws_a_fit_in_the_pca_basis() -> None:
+    fit = _rotated_fit()
+    fig = _one_figure(plot_coefficient_bounds, fit, _plain, bounds_levels=95)
 
     ax = fig.axes[0]
     ticks = dict(zip([t.get_text() for t in ax.get_yticklabels()], ax.get_yticks()))
     assert list(ticks) == ["PC1", "PC2"]
     assert ticks["PC1"] > ticks["PC2"]
-    rotated = fit.in_pca_basis(pca).confidence_bounds(95)
     drawn = {y: (low, high) for y, low, high, _ in _bars(ax)}
-    assert drawn[ticks["PC1"]] == pytest.approx(rotated["PC1"][0])
-    assert rotated["PC1"][0] == pytest.approx((0.025 / _ROOT_HALF, 0.975 / _ROOT_HALF))
+    assert drawn[ticks["PC1"]] == pytest.approx(
+        (0.025 / _ROOT_HALF, 0.975 / _ROOT_HALF)
+    )
     assert drawn[ticks["PC2"]] == pytest.approx((0.0, 0.0), abs=1e-12)
-
-
-def test_plot_pca_bounds_labels_the_axis_with_a_component() -> None:
-    fig = _one_figure(plot_pca_bounds, _aligned_fit(), _rotation_pca(), _plain)
-
-    assert fig.axes[0].get_xlabel().startswith("$p_i")
-
-
-def test_plot_pca_bounds_labels_the_components() -> None:
-    fig = _one_figure(
-        plot_pca_bounds,
-        _aligned_fit(),
-        _rotation_pca(),
-        latex_label=make_latex_label({"PC1": "$v_1$"}),
-    )
-
-    labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
-    assert labels == ["$v_1$", make_latex_label()("PC2")]
-
-
-def test_plot_pca_bounds_keeps_components_to_plot_in_its_order() -> None:
-    fig = _one_figure(
-        plot_pca_bounds,
-        _aligned_fit(),
-        _rotation_pca(),
-        _plain,
-        components_to_plot=["PC2", "PC1"],
-    )
-
-    assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["PC2", "PC1"]
-
-
-def test_plot_pca_bounds_forwards_its_arguments() -> None:
-    figures = list(
-        plot_pca_bounds(
-            _aligned_fit(),
-            _rotation_pca(),
-            _plain,
-            interval_types=["eti", "hdi"],
-            x_log=True,
-            x_min=-5.0,
-            x_max=5.0,
-        )
-    )
-
-    assert [suffix for _, suffix in figures] == ["eti", "hdi"]
-    ax = figures[0][0].axes[0]
-    assert ax.get_xscale() == "symlog"
-    assert ax.get_xlim() == (-5.0, 5.0)
-
-
-def test_plot_pca_bounds_rejects_a_pca_of_other_coefficients() -> None:
-    """Raised on the call, before any figure is drawn."""
-    with pytest.raises(ValueError, match="same coefficients"):
-        plot_pca_bounds(_bounds_fit(), _rotation_pca(), _plain)

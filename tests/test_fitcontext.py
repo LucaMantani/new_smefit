@@ -66,20 +66,31 @@ def _write_fit(
     return {"name": fit_dir.name, "path": str(fit_dir.parent)}
 
 
-def _in_fitcontext(target: str, fits: list[dict[str, str]], **keys: Any) -> list[Any]:
-    """The value of ``target`` under ``fits::fitcontext``, for each fit."""
+def _in_fitcontext(
+    target: str,
+    fits: list[dict[str, str]],
+    inner: tuple[str, ...] = (),
+    **keys: Any,
+) -> list[Any]:
+    """The value of ``target`` under ``fits::fitcontext``, for each fit.
+
+    ``inner`` names the namespaces nested below it: ``("pcabasis",)`` resolves
+    the target under ``fits::fitcontext::pcabasis``.
+    """
     config = smefitConfig({"fits": fits, **keys}, environment=smefitAPI.loadedenv)
     builder = ResourceBuilder(
         config,
         smefitAPI.provider_loaded,
-        [FuzzyTarget(target, ("fits", "fitcontext"), (), ())],
+        [FuzzyTarget(target, ("fits", "fitcontext", *inner), (), ())],
         perform_final=False,
     )
     builder.rootns.update(smefitAPI.loadedenv.ns_dump())
     builder.resolve_fuzzytargets()
     builder.execute_sequential()
     return [
-        namespaces.resolve(builder.rootns, [("fits", index), "fitcontext"])[target]
+        namespaces.resolve(builder.rootns, [("fits", index), "fitcontext", *inner])[
+            target
+        ]
         for index in range(len(fits))
     ]
 
@@ -443,19 +454,65 @@ def _minimum(runcard: dict[str, Any]) -> dict[str, float]:
     return dict(zip(_BEST_FIT, map(float, minimum)))
 
 
-def test_pca_bounds_table_rotates_by_the_fit_own_pca(
+def _loaded(fits: list[dict[str, str]]) -> list[Fit]:
+    config = smefitConfig({"fits": fits}, environment=smefitAPI.loadedenv)
+    return config.process_all_params()["fits"]
+
+
+def test_pcabasis_rotates_the_fit_by_its_own_pca(
     tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
 ) -> None:
+    """The bounds table, unchanged, tabulates the principal components."""
     runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
     fits = [_write_sampled_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
 
-    [table] = _in_fitcontext("pca_bounds_table", fits, pca_settings={})
+    [table] = _in_fitcontext(
+        "coefficient_bounds_table", fits, ("pcabasis",), pca_settings={}
+    )
     [decomposition] = _in_fitcontext("pca", fits, pca_settings={})
-    [fit] = smefitConfig(
-        {"fits": fits}, environment=smefitAPI.loadedenv
-    ).process_all_params()["fits"]
+    [fit] = _loaded(fits)
 
     assert table.index.tolist() == ["$\\mathrm{PC1}$", "$\\mathrm{PC2}$"]
     rotated = fit.in_pca_basis(decomposition).confidence_bounds(68)
     [(low, high)] = rotated["PC1"]
     assert table.iloc[0, 0] == f"[{low:.3f}, {high:.3f}]"
+
+
+def test_pcabasis_leaves_the_fit_of_the_fitcontext_alone(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """The rotated fit replaces ``fit`` in ``pcabasis`` only.
+
+    reportengine puts a node's result at the outermost namespace holding all of
+    its inputs: were the rotation to depend on ``pca`` alone, it would land in
+    ``fitcontext`` and every routine there would read principal components.
+    """
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_sampled_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
+    config = smefitConfig(
+        {"fits": fits, "pca_settings": {}}, environment=smefitAPI.loadedenv
+    )
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [
+            FuzzyTarget("coefficient_bounds_table", spec, (), ())
+            for spec in (("fits", "fitcontext", "pcabasis"), ("fits", "fitcontext"))
+        ],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()
+    builder.execute_sequential()
+
+    context = namespaces.resolve(builder.rootns, [("fits", 0), "fitcontext"])
+    rotated = namespaces.resolve(
+        builder.rootns, [("fits", 0), "fitcontext", "pcabasis"]
+    )
+    assert context["fit"].bounded_parameters == list(_BEST_FIT)
+    assert rotated["fit"].bounded_parameters == ["PC1", "PC2"]
+    assert rotated["coefficient_fit"] is context["fit"]
+    assert len(context["coefficient_bounds_table"]) == len(_BEST_FIT)
+    assert rotated["coefficient_bounds_table"].index.tolist() != (
+        context["coefficient_bounds_table"].index.tolist()
+    )

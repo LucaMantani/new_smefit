@@ -13,7 +13,12 @@ from typing import Any
 import jax.numpy as jnp
 import numpy as np
 import optax
-from reportengine.configparser import ConfigError, element_of, explicit_node
+from reportengine.configparser import (
+    ConfigError,
+    ExplicitNode,
+    element_of,
+    explicit_node,
+)
 from reportengine.namespaces import NSList
 from reportengine.report import Config
 
@@ -27,7 +32,7 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
-from smefit.fit_result import Fit
+from smefit.fit_result import Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
@@ -1080,6 +1085,36 @@ class smefitConfig(Config):
             [best_fit_point[name] for name in context["coefficients"].free_names]
         )
         return context
+
+    def produce_pcabasis(self, fit):
+        """A fit in the basis of its principal components, as a namespace.
+
+        Used under the fit's own context, ``fits::fitcontext::pcabasis``: every
+        node below it takes as ``fit`` the fit rotated by
+        :meth:`Fit.in_pca_basis`, so any routine reading a fit's posterior —
+        ``plot_coefficient_bounds``, ``coefficient_bounds_table``, … — reports
+        on the principal components with no code of its own for them. The
+        rotation is by the ``pca`` of the enclosing namespace, which under
+        ``fitcontext`` is the fit's own, at its best-fit point.
+
+        ``pca`` is a provider, computed when the graph runs, which a
+        ``produce_`` cannot take. So ``fit`` is not rotated here: it is handed
+        over as an ``ExplicitNode``, a node reportengine builds from
+        ``_fit_in_pca_basis`` and whose result replaces it in this namespace.
+        That worker must read the unrotated fit from *this* namespace
+        (``coefficient_fit``) rather than be a closure over it: reportengine
+        puts a node, and its result, at the outermost namespace holding all of
+        its inputs. Depending on ``pca`` alone it would land in ``fitcontext``,
+        overwriting the ``fit`` there and leaving the ``ExplicitNode`` here.
+
+        ``params_to_plot`` is read as anywhere else, so to restrict a report in
+        this basis it must name components (``PC1``, ...): a list naming only
+        coefficients selects nothing here, which the routines refuse.
+        """
+        return {
+            "coefficient_fit": fit,
+            "fit": ExplicitNode(_fit_in_pca_basis),
+        }
 
     def parse_interval_types(self, interval_types: str | list) -> list:
         """The credible intervals a report's bounds quote.

@@ -943,13 +943,6 @@ class Fit:
     def in_pca_basis(self, pca: "PCA") -> "Fit":
         """This fit, with its posterior expressed in the principal components of *pca*.
 
-        Every sample is rotated as ``p = V^T c``, where the columns of ``V`` are
-        the principal directions. The rotation is not centred: a PC value is the
-        value of that linear combination of coefficients, so the SM point stays
-        at zero. The free parameters become ``PC1 ... PCn``, so any routine
-        reading a fit's posterior (bounds, correlations, ...) reads it in the
-        PCA basis unchanged.
-
         Only the free coefficients are rotated; the samples of the
         ``expr``-constrained ones are dropped, as they are not coordinates of
         the space *pca* spans. The prior specs are dropped as well: a prior on
@@ -962,13 +955,6 @@ class Fit:
         pca : smefit.pca.PCA
             Decomposition of a Fisher matrix over exactly this fit's free
             coefficients, in any order.
-
-        Raises
-        ------
-        ValueError
-            If the fit was run one coefficient at a time (there is no joint
-            posterior to rotate), stored no samples, or its free coefficients
-            are not those *pca* was built over.
         """
         result = self.fit_results
         if isinstance(result, FitResultGroup):

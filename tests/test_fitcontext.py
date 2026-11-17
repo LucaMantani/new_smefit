@@ -511,7 +511,7 @@ def test_pcabasis_leaves_the_fit_of_the_fitcontext_alone(
     )
     assert context["fit"].bounded_parameters == list(_BEST_FIT)
     assert rotated["fit"].bounded_parameters == ["PC1", "PC2"]
-    assert rotated["coefficient_fit"] is context["fit"]
+    assert rotated["unrotated_fit"] is context["fit"]
     assert len(context["coefficient_bounds_table"]) == len(_BEST_FIT)
     assert rotated["coefficient_bounds_table"].index.tolist() != (
         context["coefficient_bounds_table"].index.tolist()

@@ -1096,7 +1096,7 @@ class smefitConfig(Config):
 
         ``pca`` is only computed when the graph runs, so ``fit`` is handed over
         as an ``ExplicitNode`` whose result replaces it here. Its worker reads
-        the unrotated fit from this namespace (``coefficient_fit``) on purpose:
+        the unrotated fit from this namespace (``unrotated_fit``) on purpose:
         reportengine stores a result at the outermost namespace holding all of
         the node's inputs, which with ``pca`` alone would be ``fitcontext``.
 
@@ -1110,7 +1110,7 @@ class smefitConfig(Config):
                 "'fits::fitcontext::pcabasis'."
             )
         return {
-            "coefficient_fit": fit,
+            "unrotated_fit": fit,
             "fit": ExplicitNode(_fit_in_pca_basis),
         }
 

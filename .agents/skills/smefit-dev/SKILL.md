@@ -467,8 +467,8 @@ write a `plot_<basis>_bounds` beside `plot_coefficient_bounds`.
 def produce_pcabasis(self, fit, coefficients=None):
     ...
     return {
-        "coefficient_fit": fit,
-        "fit": ExplicitNode(_fit_in_pca_basis),  # (coefficient_fit, pca)
+        "unrotated_fit": fit,
+        "fit": ExplicitNode(_fit_in_pca_basis),  # (unrotated_fit, pca)
     }
 ```
 
@@ -483,7 +483,7 @@ this kind:
   closing over `fit` and taking only `pca` is placed in `fitcontext`: its result
   overwrites the `fit` there, and the `ExplicitNode` stays in `pcabasis`, where
   consumers receive it raw (`'ExplicitNode' object has no attribute …`).
-  `coefficient_fit`, present only in this namespace, pins the node to it.
+  `unrotated_fit`, present only in this namespace, pins the node to it.
 - **The worker is a private, unannotated module-level function** next to the
   feature (`_fit_in_pca_basis`, `smefit/fit_result.py`), as for any
   `@explicit_node` worker.

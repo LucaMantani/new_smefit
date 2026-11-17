@@ -1071,8 +1071,8 @@ class Fit:
         )
 
 
-def _fit_in_pca_basis(coefficient_fit, pca) -> Fit:
-    """The ``fit`` of the ``pcabasis`` namespace: ``coefficient_fit`` rotated by
+def _fit_in_pca_basis(unrotated_fit, pca) -> Fit:
+    """The ``fit`` of the ``pcabasis`` namespace: ``unrotated_fit`` rotated by
     ``pca``.
 
     The worker ``smefitConfig.produce_pcabasis`` hands to reportengine, which
@@ -1081,9 +1081,9 @@ def _fit_in_pca_basis(coefficient_fit, pca) -> Fit:
 
     Parameters
     ----------
-    coefficient_fit : Fit
+    unrotated_fit : Fit
         The fit as loaded, in the basis of its coefficients.
     pca : smefit.pca.PCA
         A PCA over exactly its free coefficients.
     """
-    return coefficient_fit.in_pca_basis(pca)
+    return unrotated_fit.in_pca_basis(pca)

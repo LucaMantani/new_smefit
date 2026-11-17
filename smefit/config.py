@@ -32,6 +32,7 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
+from smefit.fisher import _fisher_in_pca_basis
 from smefit.fit_result import Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
@@ -1094,11 +1095,20 @@ class smefitConfig(Config):
         posterior report on its principal components unchanged. In that basis
         ``params_to_plot`` must name components (``PC1``, ...).
 
+        The per-source Fisher matrices are rotated too
+        (:func:`smefit.fisher._fisher_in_pca_basis`), so the Fisher and global
+        information routines say which sources fix each component. Since the
+        total rotated Fisher matrix is diagonal, the normalised Fisher
+        diagonals and the global information shares coincide in this basis.
+
         ``pca`` is only computed when the graph runs, so ``fit`` is handed over
         as an ``ExplicitNode`` whose result replaces it here. Its worker reads
         the unrotated fit from this namespace (``unrotated_fit``) on purpose:
         reportengine stores a result at the outermost namespace holding all of
         the node's inputs, which with ``pca`` alone would be ``fitcontext``.
+        The Fisher worker takes ``unrotated_fit`` for the same reason, and
+        reads the raw ``fisher_information_matrices``, since the aggregate is
+        itself here.
 
         ``coefficients`` is taken only to refuse a namespace with no likelihood
         to take the PCA of, as ``fits::pcabasis`` is in a runcard of fits alone.
@@ -1112,6 +1122,7 @@ class smefitConfig(Config):
         return {
             "unrotated_fit": fit,
             "fit": ExplicitNode(_fit_in_pca_basis),
+            "aggregate_fisher_information_matrices": ExplicitNode(_fisher_in_pca_basis),
         }
 
     def parse_interval_types(self, interval_types: str | list) -> list:

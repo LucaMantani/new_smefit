@@ -17,6 +17,7 @@ from smefit.core import (
     TheoryGroup,
 )
 from smefit.fisher import (
+    _fisher_in_pca_basis,
     _resolve_groups,
     aggregate_fisher_information_matrices,
     fisher_information_matrices,
@@ -24,6 +25,7 @@ from smefit.fisher import (
     total_fisher_information_matrix,
 )
 from smefit.model import EFTModel
+from smefit.pca import pca as pca_of
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
@@ -609,3 +611,103 @@ def test_gim_silent_when_every_source_is_positive_semidefinite(caplog):
         global_information_matrix(fim)
 
     assert "negative share" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _fisher_in_pca_basis: the Fisher matrices of the pcabasis namespace
+# ---------------------------------------------------------------------------
+
+_PCA_SETTINGS = {"threshold": 1e-12, "min_weight": 0.1}
+
+
+def _decompose(fim):
+    """The PCA of the total of ``fim``, as the ``pca`` node computes it."""
+    return pca_of(sum(fim.values()), _PCA_SETTINGS)
+
+
+def _correlated_fim():
+    return _fim(
+        ["OpA", "OpB", "OpC"],
+        DS_A=[[3.0, 1.0, 0.0], [1.0, 2.0, 0.5], [0.0, 0.5, 1.0]],
+        DS_B=[[1.0, -0.5, 0.2], [-0.5, 2.0, 0.0], [0.2, 0.0, 4.0]],
+        DS_C=[[0.5, 0.0, 0.0], [0.0, 0.1, 0.3], [0.0, 0.3, 1.0]],
+    )
+
+
+def test_fisher_in_pca_basis_sums_to_the_spectrum():
+    """The rotated total is diag(lambda): each source's diagonal splits it."""
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+
+    rotated = _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert list(rotated) == ["DS_A", "DS_B", "DS_C"]
+    for matrix in rotated.values():
+        assert matrix.index.tolist() == ["PC1", "PC2", "PC3"]
+        assert matrix.columns.tolist() == ["PC1", "PC2", "PC3"]
+    total = sum(m.to_numpy() for m in rotated.values())
+    np.testing.assert_allclose(total, np.diag(decomposition.eigenvalues), atol=1e-12)
+    diagonals = sum(np.diag(m.to_numpy()) for m in rotated.values())
+    np.testing.assert_allclose(diagonals, decomposition.eigenvalues)
+
+
+def test_fisher_in_pca_basis_reorders_the_coefficients_first():
+    """A Fisher matrix in another coefficient order rotates to the same result."""
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+    order = ["OpC", "OpA", "OpB"]
+    shuffled = {source: F.loc[order, order] for source, F in fim.items()}
+
+    expected = _fisher_in_pca_basis(fim, {}, decomposition, None)
+    rotated = _fisher_in_pca_basis(shuffled, {}, decomposition, None)
+
+    for source in fim:
+        pd.testing.assert_frame_equal(rotated[source], expected[source])
+
+
+def test_fisher_in_pca_basis_merges_groups_before_rotating():
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+
+    rotated = _fisher_in_pca_basis(fim, {"AB": ["DS_A", "DS_B"]}, decomposition, None)
+    single = _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert list(rotated) == ["AB", "DS_C"]
+    pd.testing.assert_frame_equal(rotated["AB"], single["DS_A"] + single["DS_B"])
+
+
+def test_fisher_in_pca_basis_equals_the_global_information_shares():
+    """Diagonal total Fisher: the Fisher diagonals are the variance shares."""
+    rotated = _fisher_in_pca_basis(
+        _correlated_fim(), {}, _decompose(_correlated_fim()), None
+    )
+
+    diagonals = pd.DataFrame(
+        {source: np.diag(F.to_numpy()) for source, F in rotated.items()},
+        index=["PC1", "PC2", "PC3"],
+    )
+    normalised = diagonals.div(diagonals.sum(axis=1), axis=0)
+
+    pd.testing.assert_frame_equal(global_information_matrix(rotated), normalised)
+
+
+def test_fisher_in_pca_basis_warns_on_a_flat_component(caplog):
+    # OpA - OpB is never constrained: the second component is flat
+    fim = _fim(["OpA", "OpB"], DS_A=np.ones((2, 2)), DS_B=2 * np.ones((2, 2)))
+    decomposition = _decompose(fim)
+    assert decomposition.flat_mask.tolist() == [False, True]
+
+    with caplog.at_level(logging.WARNING):
+        _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert "PC2 flat" in caplog.text
+    assert "PC1" not in caplog.text
+
+
+def test_fisher_in_pca_basis_silent_without_flat_components(caplog):
+    fim = _correlated_fim()
+
+    with caplog.at_level(logging.WARNING):
+        _fisher_in_pca_basis(fim, {}, _decompose(fim), None)
+
+    assert "PCA basis" not in caplog.text

@@ -7,9 +7,10 @@
 # `external_chi2` entries are illustrative and must be replaced with ones
 # chosen for the analysis at hand — do not carry them over verbatim.
 # 1D confidence bounds of a fit along the principal components of its own
-# Fisher matrix, as a plot and as a table, and the posterior correlations of
-# those components: no fit is run here, the posterior samples are read back
-# from fit_results.json and rotated into the PCA basis.
+# Fisher matrix, as a plot and as a table, the posterior correlations of those
+# components, and the share of each component's Fisher information coming from
+# each dataset: no fit is run here, the posterior samples are read back from
+# fit_results.json and rotated into the PCA basis.
 #
 # Run analytical_fit.yaml first, from this directory.
 fits:
@@ -40,6 +41,12 @@ interval_types: [eti, hdi]
 # uncorrelated only as far as the likelihood is Gaussian there: correlations
 # between them in the posterior signal quadratic EFT terms, or prior edges,
 # that the PCA does not see.
+#
+# The Fisher table and heatmap are rotated too: each row says which datasets
+# fix that component (e.g. "PC1 is 80% LEP, 20% LHC"). The per-dataset Fisher
+# matrices add up to a diagonal one in this basis, so the global information
+# table would be identical to the Fisher one, and is not shown. A flat
+# component's shares divide by ~0: they are logged with a warning.
 template_text: |
     PCA posterior
     =============
@@ -52,6 +59,9 @@ template_text: |
     {@coefficient_bounds_table@}
     PCA correlations
     {@plot_posterior_correlations@}
+    PCA Fisher information
+    {@fisher_diagonals_normalised@}
+    {@plot_fisher_diagonals_heatmap@}
     {@endwith@}
     {@endwith@}
 

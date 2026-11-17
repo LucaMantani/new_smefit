@@ -135,6 +135,66 @@ def aggregate_fisher_information_matrices(
     }
 
 
+def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotated_fit):
+    """The ``aggregate_fisher_information_matrices`` of ``pcabasis``: each
+    source's Fisher matrix rotated into the principal components, ``V^T F_k V``.
+
+    The rotated matrices sum to ``diag(pca.eigenvalues)``, so the normalised
+    Fisher diagonals and the global information matrix coincide in this basis.
+    Shares on a flat component are meaningless and logged.
+
+    Wiring, as an ``ExplicitNode`` worker of ``produce_pcabasis``:
+
+    - it aggregates ``fisher_information_matrices`` itself, since inside
+      ``pcabasis`` the aggregate is this node;
+    - ``unrotated_fit`` is unused and pins the node to ``pcabasis``: otherwise
+      reportengine stores the result in ``fitcontext``, overwriting the
+      coefficient-basis matrices. The rotated ``fit`` would need samples.
+
+    Parameters
+    ----------
+    fisher_information_matrices : dict[str, pd.DataFrame]
+    data_groups : dict[str, list[str]]
+    pca : smefit.pca.PCA
+        Over exactly the coefficients of the Fisher matrices.
+    unrotated_fit : smefit.fit_result.Fit
+        Unused; see above.
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+        Source -> rotated Fisher matrix, indexed by ``pca.component_names``.
+    """
+    del unrotated_fit  # the namespace pin, see the docstring
+    aggregated = aggregate_fisher_information_matrices(
+        fisher_information_matrices, data_groups
+    )
+    eigenvectors = np.asarray(pca.eigenvectors, dtype=float)
+    coeff_names = list(pca.coeff_names)
+    components = pca.component_names
+
+    flat = [name for name, is_flat in zip(components, pca.flat_mask) if is_flat]
+    if flat:
+        log.warning(
+            "Fisher information in the PCA basis: %s flat (lambda/lambda_max < "
+            "%g), so the shares of the sources in %s are not meaningful.",
+            ", ".join(flat),
+            pca.threshold,
+            "it" if len(flat) == 1 else "them",
+        )
+
+    return {
+        source: pd.DataFrame(
+            eigenvectors.T
+            @ fisher.loc[coeff_names, coeff_names].to_numpy(dtype=float)
+            @ eigenvectors,
+            index=components,
+            columns=components,
+        )
+        for source, fisher in aggregated.items()
+    }
+
+
 ############################
 # Global Information Matrix
 ############################

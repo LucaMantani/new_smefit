@@ -473,7 +473,8 @@ actions_:
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
 ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
-`plot_posterior_correlations` — now with one row per component. Template:
+`plot_posterior_correlations`, `fisher_diagonals_normalised`,
+`plot_fisher_diagonals_heatmap` — now with one row per component. Template:
 `pca_posterior.yaml`.
 
 ```yaml
@@ -488,6 +489,8 @@ template_text: |
   {@plot_coefficient_bounds@}
   {@coefficient_bounds_table@}
   {@plot_posterior_correlations@}
+  {@fisher_diagonals_normalised@}
+  {@plot_fisher_diagonals_heatmap@}
   {@endwith@}
   {@endwith@}
 actions_:
@@ -495,6 +498,11 @@ actions_:
 ```
 
 - Under `actions_:` it is `- fits::fitcontext::pcabasis coefficient_bounds_table`.
+- The Fisher routines read the per-dataset Fisher matrices rotated into the
+  components, so a row says which datasets fix that component. They sum to a
+  diagonal matrix in this basis, so `global_information_table` gives the same
+  numbers as `fisher_diagonals_normalised`: use the latter, it needs no
+  inversion. A flat component's shares are noise and are logged as such.
   Outputs carry the namespace in their name
   (`<fit_name>_fitcontext_pcabasis_coefficient_bounds_table.csv`), so they sit
   beside the coefficient-basis ones without clashing.

@@ -211,7 +211,10 @@ without running a fit.
 (`produce_pcabasis`, `config.py`): under it `fit` is the fit rotated into the
 principal components of its own Fisher matrix (`Fit.in_pca_basis`), so the
 routines reading a fit's posterior — the bounds plot and table, the correlations
-heatmap — report on the components with no code of their own. Extend it, or add
+heatmap — report on the components with no code of their own. It also rotates
+the per-source Fisher matrices (`aggregate_fisher_information_matrices`), so the
+Fisher table and heatmap say which datasets fix each component; in that basis
+the global information table coincides with them. Extend it, or add
 a sibling, rather than duplicating an action per basis; the `smefit-dev` skill
 has the pattern.
 

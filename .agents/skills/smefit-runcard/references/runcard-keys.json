@@ -86,7 +86,6 @@
     "dataset_table_label",
     "fetch_bibtex",
     "hatch",
-    "kde",
     "lin_thr",
     "n_eval",
     "n_samples",
@@ -194,10 +193,12 @@
     },
     "fit": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -205,10 +206,12 @@
     },
     "fits": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -352,7 +355,6 @@
     "hatch",
     "hessian_settings",
     "interval_types",
-    "kde",
     "latex_labels",
     "lin_thr",
     "meta",

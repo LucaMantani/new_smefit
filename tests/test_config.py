@@ -1522,6 +1522,28 @@ def test_parse_fits_rejects_a_non_string_label(cfg, tmp_path):
         )
 
 
+def test_parse_fits_contours_default_to_kde(cfg, tmp_path):
+    _write_fit_dir(tmp_path / "fit_a")
+    _write_fit_dir(tmp_path / "fit_b")
+
+    result = cfg.parse_fits(
+        [
+            {"name": "fit_a", "path": str(tmp_path)},
+            {"name": "fit_b", "path": str(tmp_path), "contours": "gaussian"},
+        ]
+    )
+
+    assert [f.contours for f in result] == ["kde", "gaussian"]
+
+
+@pytest.mark.parametrize("contours", ["ellipse", True, "KDE"])
+def test_parse_fits_rejects_an_unknown_contour_style(cfg, tmp_path, contours):
+    _write_fit_dir(tmp_path / "fit_a")
+
+    with pytest.raises(ConfigError, match="must be one of kde, gaussian"):
+        cfg.parse_fits([{"name": "fit_a", "path": str(tmp_path), "contours": contours}])
+
+
 def test_parse_interval_types_wraps_a_single_name(cfg):
     """``interval_types: eti`` in a runcard, as for ``params_to_plot: OtG``."""
     assert cfg.parse_interval_types("eti") == ["eti"]

@@ -300,6 +300,7 @@ def _fit(
     fit_name="my_fit",
     action="run_analytic_fit",
     use_quad=False,
+    contours="kde",
 ):
     """A joint fit holding the given posterior samples.
 
@@ -318,6 +319,7 @@ def _fit(
         ),
         fit_name=fit_name,
         label=label,
+        contours=contours,
         fit_runcard={"actions_": [action], "use_quad": use_quad},
     )
 
@@ -1038,6 +1040,7 @@ def _contour_fit(
     fit_name: str = "my_fit",
     label: str | None = None,
     use_quad: bool = False,
+    contours: str = "kde",
     n: int = 400,
     seed: int = 0,
 ) -> Fit:
@@ -1052,6 +1055,7 @@ def _contour_fit(
         fit_name=fit_name,
         label=label,
         use_quad=use_quad,
+        contours=contours,
     )
 
 
@@ -1132,7 +1136,7 @@ def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
 
 def test_plot_posterior_contours_fill_the_widest_level_and_dash_the_rest() -> None:
     fig = plot_posterior_contours(
-        _contour_fit(names=("OpA", "OpB")), latex_label=_plain, kde=False
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"), latex_label=_plain
     )
 
     [ax] = fig.axes
@@ -1143,9 +1147,8 @@ def test_plot_posterior_contours_fill_the_widest_level_and_dash_the_rest() -> No
 
 def test_plot_posterior_contours_dash_every_level_but_the_widest() -> None:
     fig = plot_posterior_contours(
-        _contour_fit(names=("OpA", "OpB")),
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"),
         latex_label=_plain,
-        kde=False,
         bounds_levels=[68, 95, 99],
     )
 
@@ -1160,7 +1163,6 @@ def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
     fig = plot_posterior_contours(
         _contour_fit(names=("OpA", "OpB")),
         latex_label=_plain,
-        kde=True,
         hatch=False,
     )
 
@@ -1175,21 +1177,18 @@ def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
     assert outlines[0].linestyles != "dashed"
 
 
+@pytest.mark.parametrize("use_quad", [True, False])
 @pytest.mark.parametrize(
-    ("use_quad", "kde", "expect_kde"),
-    [
-        (True, None, True),
-        (False, None, False),
-        (False, True, True),
-        (True, False, False),
-    ],
+    ("contours", "expect_kde"), [("kde", True), ("gaussian", False)]
 )
-def test_plot_posterior_contours_kde_follows_use_quad_unless_set(
+def test_plot_posterior_contours_draw_in_the_fits_contour_style(
     monkeypatch: pytest.MonkeyPatch,
     use_quad: bool,
-    kde: bool | None,
+    contours: str,
     expect_kde: bool,
 ) -> None:
+    """KDE by default whatever ``use_quad``: a linear fit's posterior need not
+    be Gaussian, so ellipses are only ever asked for."""
     calls: list[int] = []
     real = figures_mod._kde_grid
 
@@ -1200,7 +1199,7 @@ def test_plot_posterior_contours_kde_follows_use_quad_unless_set(
     monkeypatch.setattr(figures_mod, "_kde_grid", spy)
 
     fig = plot_posterior_contours(
-        _contour_fit(use_quad=use_quad), latex_label=_plain, kde=kde
+        _contour_fit(use_quad=use_quad, contours=contours), latex_label=_plain
     )
 
     # one KDE evaluation per panel, shared by both levels
@@ -1209,11 +1208,35 @@ def test_plot_posterior_contours_kde_follows_use_quad_unless_set(
     assert has_ellipses is not expect_kde
 
 
+def test_plot_posterior_contours_comparison_draws_each_fit_its_own_way() -> None:
+    """``contours`` belongs to the fit: one comparison can mix the two."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(names=("OpA", "OpB"), fit_name="kde"),
+            _contour_fit(names=("OpA", "OpB"), fit_name="gauss", contours="gaussian"),
+        ],
+        latex_label=_plain,
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    contour_colors = {
+        matplotlib.colors.to_hex(c.get_facecolor()[0])
+        for c in ax.collections
+        if isinstance(c, ContourSet) and c.filled
+    }
+    ellipse_colors = {matplotlib.colors.to_hex(p.get_facecolor()) for p in _filled(ax)}
+    assert contour_colors == {matplotlib.colors.to_hex("C0")}
+    assert ellipse_colors == {matplotlib.colors.to_hex("C1")}
+
+
 def test_plot_posterior_contours_hatch_one_pattern_per_fit() -> None:
     fig = plot_posterior_contours_comparison(
-        [_contour_fit(fit_name="a"), _contour_fit(fit_name="b", seed=1)],
+        [
+            _contour_fit(fit_name="a", contours="gaussian"),
+            _contour_fit(fit_name="b", seed=1, contours="gaussian"),
+        ],
         latex_label=_plain,
-        kde=False,
     )
 
     hatches = {p.get_hatch() for ax in _panels(fig) for p in ax.patches} - {None}
@@ -1222,7 +1245,7 @@ def test_plot_posterior_contours_hatch_one_pattern_per_fit() -> None:
 
 def test_plot_posterior_contours_without_hatch_draw_no_hatch_layer() -> None:
     fig = plot_posterior_contours(
-        _contour_fit(), latex_label=_plain, kde=False, hatch=False
+        _contour_fit(contours="gaussian"), latex_label=_plain, hatch=False
     )
 
     assert all(p.get_hatch() is None for ax in _panels(fig) for p in ax.patches)
@@ -1234,11 +1257,12 @@ def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks(
     """A coefficient one fit did not sample is a gap for that fit, not an error."""
     fig = plot_posterior_contours_comparison(
         [
-            _contour_fit(names=("OpA", "OpB"), fit_name="ab", label="$AB$"),
-            _contour_fit(names=("OpA", "OpC"), fit_name="ac"),
+            _contour_fit(
+                names=("OpA", "OpB"), fit_name="ab", label="$AB$", contours="gaussian"
+            ),
+            _contour_fit(names=("OpA", "OpC"), fit_name="ac", contours="gaussian"),
         ],
         latex_label=_plain,
-        kde=False,
     )
 
     by_cell = {_cell(ax): ax for ax in _panels(fig)}

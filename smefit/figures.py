@@ -652,19 +652,19 @@ def _confidence_ellipse(x, y, level):
     )
 
 
-def _draw_pair(ax, x, y, color, levels, kde, hatch):
+def _draw_pair(ax, x, y, color, levels, contours, hatch):
     """Draw one fit's 2D posterior of the samples ``(x, y)`` on ``ax``.
 
     ``levels`` are in percent, widest first: the widest region is filled
     (``alpha=0.3``, the ``hatch`` layer over it when one is given, a solid
-    outline), every narrower one a dashed outline. With ``kde`` the regions
-    are iso-density contours of one KDE evaluation shared by every level,
-    otherwise Gaussian ellipses. Returns the fit's legend handle: a tuple of
-    patches, overlaid by the legend.
+    outline), every narrower one a dashed outline. ``contours`` is the
+    fit's style: ``"kde"``, iso-density contours of one KDE evaluation shared
+    by every level, or ``"gaussian"`` ellipses. Returns the fit's legend handle: a
+    tuple of patches, overlaid by the legend.
     """
     filled, *dashed = levels
 
-    if kde:
+    if contours == "kde":
         xx, yy, density, sample_density = _kde_grid(x, y)
 
         def region(level, **kwargs):
@@ -687,7 +687,7 @@ def _draw_pair(ax, x, y, color, levels, kde, hatch):
             outline(level, linestyles="dashed", linewidths=1.5)
     else:
 
-        def ellipse(level, **kwargs):
+        def draw_ellipse(level, **kwargs):
             shape = _confidence_ellipse(x, y, level)
             ax.add_patch(
                 Ellipse(
@@ -699,12 +699,12 @@ def _draw_pair(ax, x, y, color, levels, kde, hatch):
                 )
             )
 
-        ellipse(filled, facecolor=color, edgecolor="none", alpha=0.3)
+        draw_ellipse(filled, facecolor=color, edgecolor="none", alpha=0.3)
         if hatch:
-            ellipse(filled, facecolor="none", edgecolor=color, hatch=hatch, lw=0)
-        ellipse(filled, fill=False, edgecolor=color, lw=1.5)
+            draw_ellipse(filled, facecolor="none", edgecolor=color, hatch=hatch, lw=0)
+        draw_ellipse(filled, fill=False, edgecolor=color, lw=1.5)
         for level in dashed:
-            ellipse(level, fill=False, edgecolor=color, ls="dashed", lw=1.5)
+            draw_ellipse(level, fill=False, edgecolor=color, ls="dashed", lw=1.5)
 
     return (
         Patch(facecolor=color, edgecolor="none", alpha=0.3),
@@ -717,14 +717,16 @@ def _draw_pair(ax, x, y, color, levels, kde, hatch):
     )
 
 
-def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, kde, hatch):
+def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch):
     """The shared core of :func:`plot_posterior_contours` and
     :func:`plot_posterior_contours_comparison`.
 
     The lower triangle of the coefficient matrix: the panel in row ``j - 1``,
     column ``i`` has coefficient ``i`` on the x-axis and ``j`` on the y-axis.
     Every fit is drawn in every panel whose two coefficients it sampled; one it
-    did not sample leaves that fit out of the panel. The legend and title go in
+    did not sample leaves that fit out of the panel. Each fit is drawn in
+    the style its ``fits`` entry sets with ``contours``.
+    The legend and title go in
     the free upper-right cell, or inside the axes for a single panel.
     """
     if not fits:
@@ -763,7 +765,6 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, kde, h
         }
         for fit in fits
     ]
-    kdes = [fit.use_quad if kde is None else bool(kde) for fit in fits]
     hatches = [
         _HATCH_CYCLE[idx % len(_HATCH_CYCLE)] if hatch else None
         for idx in range(len(fits))
@@ -805,7 +806,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, kde, h
                 fit_samples[y_name],
                 f"C{idx}",
                 levels,
-                kdes[idx],
+                fits[idx].contours,
                 hatches[idx],
             )
 
@@ -874,10 +875,16 @@ def plot_posterior_contours(
     latex_label,
     params_to_plot=None,
     bounds_levels=None,
-    kde=None,
     hatch=True,
 ):
     """Plot the pairwise 2D posterior contours of one fit, as a corner plot.
+
+    The regions are kernel density contours, or Gaussian ellipses built from
+    the samples' covariance where the fit's ``fits`` entry sets
+    ``contours: gaussian``. Ellipses are opt-in: they misrepresent a non-Gaussian
+    posterior — quadratic corrections, a nonlinear ``expr`` constraint, a
+    prior cutting into the likelihood, an external likelihood — with no
+    warning.
 
     Parameters
     ----------
@@ -892,17 +899,11 @@ def plot_posterior_contours(
         The confidence levels drawn, in percent, 68 and 95 by default — the
         same key the bounds tables and plots read. The widest region is
         filled, every narrower one a dashed outline.
-    kde : bool, optional
-        Draw kernel density contours (True) or Gaussian ellipses (False). By
-        default a fit with quadratic corrections gets a KDE, a linear one —
-        whose posterior is Gaussian — ellipses.
     hatch : bool, optional
         Hatch the filled region, one pattern per fit, so it reads in print
         and greyscale. On by default.
     """
-    return _posterior_contours(
-        [fit], latex_label, params_to_plot, bounds_levels, kde, hatch
-    )
+    return _posterior_contours([fit], latex_label, params_to_plot, bounds_levels, hatch)
 
 
 @figure
@@ -911,7 +912,6 @@ def plot_posterior_contours_comparison(
     latex_label,
     params_to_plot=None,
     bounds_levels=None,
-    kde=None,
     hatch=True,
 ):
     """Overlay the pairwise 2D posterior contours of several fits.
@@ -919,13 +919,12 @@ def plot_posterior_contours_comparison(
     One figure for the whole ``fits`` list, one colour (and hatch) per fit,
     legend-labelled with the ``label`` of its ``fits`` entry (its name
     otherwise). The coefficients are the union of the fits'; a fit is left
-    out of every panel showing a coefficient it did not sample. ``kde``
-    defaults per fit. The parameters are those of
+    out of every panel showing a coefficient it did not sample, and each fit
+    is drawn in the style of its own ``contours``. The
+    parameters are those of
     :func:`plot_posterior_contours`.
     """
-    return _posterior_contours(
-        fits, latex_label, params_to_plot, bounds_levels, kde, hatch
-    )
+    return _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
 
 
 @figure

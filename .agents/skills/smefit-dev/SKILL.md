@@ -454,6 +454,49 @@ keys like any other node. Three rules keep that true:
   saying how to fit (sampler, optimizer, whitening settings) or how to report
   is not a setup key.
 
+## A transformed fit as a namespace: `pcabasis`
+
+`produce_pcabasis` (`smefit/config.py`) is the other direction: where
+`fitcontext` keeps `fit` and replaces the setup around it, `pcabasis` replaces
+`fit` itself, by the fit rotated into its principal components
+(`Fit.in_pca_basis`). Every routine taking `fit` then reports in that basis,
+so a transformed view of a fit needs **no second copy of any action** — do not
+write a `plot_<basis>_bounds` beside `plot_coefficient_bounds`.
+
+```python
+def produce_pcabasis(self, fit, coefficients=None):
+    ...
+    return {
+        "coefficient_fit": fit,
+        "fit": ExplicitNode(_fit_in_pca_basis),  # (coefficient_fit, pca)
+    }
+```
+
+The rotation needs `pca`, a provider, which exists only once the graph runs and
+which a `produce_` therefore cannot take. So the namespace holds `fit` as an
+`ExplicitNode`, and the node's result replaces it. Rules for a namespace of
+this kind:
+
+- **The worker reads the original from the namespace, under another name.**
+  reportengine stores a node's result at the outermost namespace holding all of
+  its inputs (`_make_callspec`, `reportengine/resourcebuilder.py`). A worker
+  closing over `fit` and taking only `pca` is placed in `fitcontext`: its result
+  overwrites the `fit` there, and the `ExplicitNode` stays in `pcabasis`, where
+  consumers receive it raw (`'ExplicitNode' object has no attribute …`).
+  `coefficient_fit`, present only in this namespace, pins the node to it.
+- **The worker is a private, unannotated module-level function** next to the
+  feature (`_fit_in_pca_basis`, `smefit/fit_result.py`), as for any
+  `@explicit_node` worker.
+- **A consumer annotating `fit: Fit` would fail under it**: the value is an
+  `ExplicitNode` when reportengine type-checks (see "Type annotations are
+  checked at runtime"). Report routines take `fit` unannotated.
+- **Refuse the namespaces it cannot work in, in the `produce_`.** It takes
+  `coefficients=None` only to raise a `ConfigError` when there is no likelihood
+  to take the PCA of; left to the graph, that failure is unreadable.
+- **Test it through reportengine**, with the consumer resolved in both
+  namespaces at once (`tests/test_fitcontext.py`): calling the worker directly
+  exercises none of the above.
+
 ## Coefficients, priors, external chi2
 
 - **Coefficient sub-keys** are the fields of the `Coefficient` dataclass in

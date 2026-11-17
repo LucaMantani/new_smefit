@@ -207,6 +207,13 @@ likelihood — and with `gradient_descent_settings: {sm_solution: true}` it cost
 one Hessian evaluation, so it answers "what would this dataset constrain?"
 without running a fit.
 
+`pcabasis` is a namespace, used as `fits::fitcontext::pcabasis`
+(`produce_pcabasis`, `config.py`): under it `fit` is the fit rotated into the
+principal components of its own Fisher matrix (`Fit.in_pca_basis`), so the
+routines reading a fit's posterior — the bounds plot and table — report on the
+components with no code of their own. Extend it, or add a sibling, rather than
+duplicating an action per basis; the `smefit-dev` skill has the pattern.
+
 An optional `params_to_plot: [OtG, OpQM, ...]` list restricts a report to those
 coefficients, in that order. It is a plain provider parameter, global on purpose:
 every report routine taking one reads the same key, so figures and tables agree on

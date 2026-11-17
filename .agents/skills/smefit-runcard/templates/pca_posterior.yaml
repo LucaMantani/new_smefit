@@ -48,14 +48,22 @@ template_text: |
     {@with fits::fitcontext@}
     {@fit@}
     ---------
+
     {@with pcabasis@}
-    PCA bounds
+    ### Bounds
+
     {@plot_coefficient_bounds@}
+
     {@coefficient_bounds_table@}
-    PCA marginal posteriors
+
+    ### Marginal posteriors
+
     {@plot_posterior_histograms@}
-    PCA correlations
+
+    ### Correlations
+
     {@plot_posterior_correlations@}
+
     {@endwith@}
     {@endwith@}
 

@@ -74,8 +74,6 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Share of each coefficient's variance contributed by each source.
 - `mass_scan_table(coefficients, individual_mass_scales, individual_mass_scan_points, latex_label)`
   - Mass scan results as a table.
-- `pca_bounds_table(fit, pca, latex_label, components_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
-  - Tabulate the confidence bounds of one fit along its principal components.
 - `pca_components(pca, latex_label)`
   - Weight of each coefficient in each principal direction.
 - `pca_spectrum(pca, latex_label)`
@@ -93,8 +91,6 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the Fisher diagonals matrix as a heatmap.
 - `plot_global_information_heatmap(global_information_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the global information matrix as a heatmap.
-- `plot_pca_bounds(fit, pca, latex_label, components_to_plot=None, bounds_levels=None, interval_types=None, x_log=False, lin_thr=0.01, x_min=None, x_max=None)`
-  - Plot the confidence bounds of one fit along its principal components.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca, latex_label)`

@@ -1047,12 +1047,16 @@ def test_confidence_ellipse_axes_match_the_sample_covariance(level: float) -> No
     )
 
 
-def test_confidence_ellipse_is_centred_on_the_median() -> None:
-    x, y = _gaussian_pair()
+def test_confidence_ellipse_is_centred_on_the_mean() -> None:
+    """The mean, about which the covariance is taken: on skewed samples, where
+    it parts from the median, the ellipse follows it."""
+    rng = np.random.default_rng(0)
+    x, y = rng.exponential(size=5000), rng.exponential(size=5000)
 
     ellipse = _confidence_ellipse(x, y, 95.0)
 
-    assert ellipse.center == pytest.approx((np.median(x), np.median(y)))
+    assert ellipse.center == pytest.approx((x.mean(), y.mean()))
+    assert abs(ellipse.center[0] - np.median(x)) > 0.2
 
 
 def test_confidence_ellipse_rejects_mismatched_sizes() -> None:

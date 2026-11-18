@@ -641,7 +641,7 @@ def _confidence_ellipse(x, y, level):
     """The ``level`` percent ellipse of the samples ``(x, y)``, not yet drawn.
 
     The iso-contour of the Gaussian with the samples' covariance, centred on
-    their median, holding ``level`` percent of the joint 2D distribution: each
+    their mean — the point that covariance is taken about — holding ``level`` percent of the joint 2D distribution: each
     half-axis is ``sqrt(chi2_2(level) * eigenvalue)``, the quantile of a
     chi-squared with two degrees of freedom, not one.
     The caller styles it and adds it to an axes.
@@ -657,7 +657,7 @@ def _confidence_ellipse(x, y, level):
     angle = np.degrees(np.arctan2(major[1], major[0]))
     chi2_qnt = scipy.stats.chi2.ppf(level / 100.0, 2)
     return Ellipse(
-        (float(np.median(x)), float(np.median(y))),
+        (float(np.mean(x)), float(np.mean(y))),
         width=2 * np.sqrt(chi2_qnt * eig_val[-1]),
         height=2 * np.sqrt(chi2_qnt * eig_val[-2]),
         angle=float(angle),

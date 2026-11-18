@@ -6,13 +6,13 @@
 # the `datasets`, `coefficients` (especially any `expr` constraints) and
 # `external_chi2` entries are illustrative and must be replaced with ones
 # chosen for the analysis at hand — do not carry them over verbatim.
-# 1D confidence bounds of a fit along the principal components of its own
+# 1D confidence bounds of each fit along the principal components of its own
 # Fisher matrix, as a plot and as a table, the posterior correlations of those
 # components, and the share of each component's Fisher information coming from
 # each dataset: no fit is run here, the posterior samples are read back from
 # fit_results.json and rotated into the PCA basis.
 #
-# Run analytical_fit.yaml first, from this directory.
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
 fits:
   - {name: analytical_fit, path: '.'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}

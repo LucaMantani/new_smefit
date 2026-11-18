@@ -4,17 +4,40 @@ smefit.figures.py
 Functions for creating figures and plots.
 """
 
+import itertools
 import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats
 from matplotlib.lines import Line2D
+from matplotlib.patches import Ellipse, Patch
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
 from smefit.plot_utils import select_params, set_plot_style
 
 log = logging.getLogger(__name__)
+
+# Resolution of the grid a 2D KDE is drawn on, how far past the outermost
+# samples it extends (in bandwidths, so the tails are not truncated), and the
+# sample count above which a posterior is thinned before the estimate: its cost
+# grows linearly with the samples while the estimate barely moves past a few
+# thousand.
+_KDE_GRIDSIZE = 100
+_KDE_CUT = 3
+_KDE_MAX_SAMPLES = 5000
+
+# Hatch patterns handed out alongside the colour cycle, one per fit, so a filled
+# contour stays distinguishable in print and in greyscale. A hatch is always its
+# own unfilled layer over the fill: the PDF backend silently drops the hatch of a
+# patch that is both filled and hatched.
+_HATCH_CYCLE = ("///", "\\\\\\", "---", "|||", "...", "+++", "ooo")
+
+# Line styles handed out to the confidence levels inside the filled one, from
+# the widest down, so each level reads as its own contour; the filled level's
+# outline is solid. As for the hatches, the cycle repeats past its end.
+_LEVEL_LINESTYLE_CYCLE = ("dashed", "dotted", "dashdot")
 
 
 def _plot_heatmap(
@@ -559,6 +582,391 @@ def plot_coefficient_bounds_comparison(
         x_min,
         x_max,
     )
+
+
+def _kde_grid(x, y, bw_adjust=1.5):
+    """Evaluate a 2D Gaussian KDE of the samples ``(x, y)`` on a regular grid.
+
+    Returns ``(xx, yy, density, sample_density)``: the first three are the
+    ``(_KDE_GRIDSIZE, _KDE_GRIDSIZE)`` grid and the density on it, which is what
+    gets drawn; ``sample_density`` is the same KDE at the (thinned) samples,
+    which is what :func:`_density_level` reads the contour level off.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    # checked before thinning, which draws one set of indices for both and
+    # would otherwise silently pair up samples from different draws
+    if x.size != y.size:
+        raise ValueError(f"x and y must be the same size, got {x.size} and {y.size}.")
+
+    if x.size > _KDE_MAX_SAMPLES:
+        # a seeded random subsample, not a stride: NUTS stores its chains
+        # interleaved (sample k is chain k mod C), so x[::stride] keeps only the
+        # chains whose index the stride hits — with 4 chains a stride of 2
+        # drops half of them, a stride of 4 all but one, and with them any mode
+        # only those chains found. The seed keeps the plot reproducible.
+        idx = np.random.default_rng(0).choice(x.size, _KDE_MAX_SAMPLES, replace=False)
+        x, y = x[idx], y[idx]
+
+    kde = scipy.stats.gaussian_kde(np.vstack([x, y]))
+    kde.set_bandwidth(kde.factor * bw_adjust)
+
+    bw_x = float(np.sqrt(kde.covariance[0, 0]))
+    bw_y = float(np.sqrt(kde.covariance[1, 1]))
+    x_grid = np.linspace(
+        x.min() - _KDE_CUT * bw_x, x.max() + _KDE_CUT * bw_x, _KDE_GRIDSIZE
+    )
+    y_grid = np.linspace(
+        y.min() - _KDE_CUT * bw_y, y.max() + _KDE_CUT * bw_y, _KDE_GRIDSIZE
+    )
+    xx, yy = np.meshgrid(x_grid, y_grid)
+    density = kde(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+    sample_density = kde(np.vstack([x, y]))
+    return xx, yy, density, sample_density
+
+
+def _density_level(sample_density, level):
+    """The iso-density value enclosing ``level`` percent of the joint 2D
+    posterior of the pair.
+
+    It is the ``1 - level`` quantile of the density *at the samples*, so
+    ``level`` percent of them lie inside the contour by construction. Reading
+    it off the grid instead — sorting the grid densities and cutting where
+    their cumulative sum reaches ``level`` — systematically over-covers.
+    """
+    return float(np.quantile(sample_density, 1.0 - level / 100.0))
+
+
+def _gaussian_ellipse(x, y):
+    """The Gaussian of the samples ``(x, y)``, as the shape of its ellipses.
+
+    Returns ``(center, axes, angle)``: the samples' mean — the point their
+    covariance is taken about — the full ``(width, height)`` of the ellipse at
+    one unit of chi-squared, ``2 * sqrt(eigenvalue)``, major axis first, and
+    the major axis's angle in degrees. Every level is the same ellipse scaled:
+    the one holding ``level`` percent of the joint 2D distribution has its axes
+    times ``sqrt(chi2_2(level))``, the quantile of a chi-squared with two
+    degrees of freedom, not one.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if x.size != y.size:
+        raise ValueError(f"x and y must be the same size, got {x.size} and {y.size}.")
+
+    # symmetric: eigh keeps everything real and sorts the eigenvalues ascending
+    eig_val, eig_vec = np.linalg.eigh(np.cov(x, y))
+    major = eig_vec[:, -1]
+    angle = float(np.degrees(np.arctan2(major[1], major[0])))
+    center = (float(np.mean(x)), float(np.mean(y)))
+    return center, 2 * np.sqrt(eig_val[::-1]), angle
+
+
+def _inner_linestyles(n_inner):
+    """The line styles of the ``n_inner`` levels inside the filled one, widest
+    first: :data:`_LEVEL_LINESTYLE_CYCLE` in order, repeated past its end."""
+    return [
+        _LEVEL_LINESTYLE_CYCLE[idx % len(_LEVEL_LINESTYLE_CYCLE)]
+        for idx in range(n_inner)
+    ]
+
+
+def _level_legend(levels):
+    """The legend entries of the confidence ``levels`` (percent, widest first),
+    as ``(handles, labels)``: in grey, as they are drawn for every fit — a
+    filled patch with a solid outline for the widest, a line in its own style
+    for each narrower one."""
+    filled, *inner = levels
+    handles = [Patch(facecolor="grey", edgecolor="grey", alpha=0.3, lw=1.5)]
+    handles += [
+        Line2D([], [], color="grey", ls=style, lw=1.5)
+        for style in _inner_linestyles(len(inner))
+    ]
+    # written as the bounds plot writes its levels: the ``%`` escaped, since
+    # the text goes through LaTeX, where a bare one starts a comment
+    return handles, [rf"${level:.10g}\%\ \mathrm{{CL}}$" for level in levels]
+
+
+def _draw_pair(ax, x, y, color, levels, contours, hatch):
+    """Draw one fit's 2D posterior of the samples ``(x, y)`` on ``ax``.
+
+    ``levels`` are in percent, widest first: the widest region is filled
+    (``alpha=0.3``, the ``hatch`` layer over it when one is given, a solid
+    outline), every narrower one an outline in its own line style, from
+    :data:`_LEVEL_LINESTYLE_CYCLE`. ``contours`` is the fit's style:
+    ``"kde"``, iso-density contours of one KDE evaluation shared by every
+    level, or ``"gaussian"`` ellipses. Returns the fit's legend handle: a
+    tuple of patches, overlaid by the legend.
+    """
+    filled, *inner = levels
+    inner_styles = _inner_linestyles(len(inner))
+
+    if contours == "kde":
+        xx, yy, density, sample_density = _kde_grid(x, y)
+
+        def region(level, **kwargs):
+            low = _density_level(sample_density, level)
+            # the level comes from the samples, the fill from the grid, which
+            # need not resolve the very peak: nudge the top past the level so
+            # contourf's levels always increase
+            top = float(np.nextafter(max(float(density.max()), low), np.inf))
+            return ax.contourf(xx, yy, density, levels=[low, top], **kwargs)
+
+        def outline(level, **kwargs):
+            low = _density_level(sample_density, level)
+            return ax.contour(xx, yy, density, levels=[low], colors=[color], **kwargs)
+
+        region(filled, colors=[color], alpha=0.3)
+        if hatch:
+            region(filled, colors="none", hatches=[hatch]).set_edgecolor(color)
+        outline(filled, linewidths=1.5)
+        for level, style in zip(inner, inner_styles):
+            outline(level, linestyles=style, linewidths=1.5)
+    else:
+
+        # one Gaussian per fit and panel, every level and layer a scaling of it
+        center, axes, angle = _gaussian_ellipse(x, y)
+
+        def draw_ellipse(level, **kwargs):
+            scale = np.sqrt(scipy.stats.chi2.ppf(level / 100.0, 2))
+            ax.add_patch(Ellipse(center, *(scale * axes), angle=angle, **kwargs))
+
+        draw_ellipse(filled, facecolor=color, edgecolor="none", alpha=0.3)
+        if hatch:
+            draw_ellipse(filled, facecolor="none", edgecolor=color, hatch=hatch, lw=0)
+        draw_ellipse(filled, fill=False, edgecolor=color, lw=1.5)
+        for level, style in zip(inner, inner_styles):
+            draw_ellipse(level, fill=False, edgecolor=color, ls=style, lw=1.5)
+
+    return (
+        Patch(facecolor=color, edgecolor="none", alpha=0.3),
+        *(
+            [Patch(facecolor="none", edgecolor=color, hatch=hatch, lw=0)]
+            if hatch
+            else []
+        ),
+        Patch(fill=False, edgecolor=color, lw=1.5),
+    )
+
+
+def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch):
+    """The shared core of :func:`plot_posterior_contours` and
+    :func:`plot_posterior_contours_comparison`.
+
+    The lower triangle of the coefficient matrix: the panel in row ``j - 1``,
+    column ``i`` has coefficient ``i`` on the x-axis and ``j`` on the y-axis.
+    Every fit is drawn in every panel whose two coefficients it sampled; one it
+    did not sample leaves that fit out of the panel. Each fit is drawn in
+    the style its ``fits`` entry sets with ``contours``.
+    The legend and title go in
+    the free upper-right cell, or inside the axes for a single panel.
+    """
+    if not fits:
+        raise ValueError("fits is empty: list at least one fit under 'fits:'.")
+    # rejected before any figure exists to be half-drawn
+    for fit in fits:
+        if fit.individual_fit:
+            raise ValueError(
+                f"Fit '{fit.fit_name}' was run one coefficient at a time, so "
+                "there is no joint posterior to draw contours from."
+            )
+        if not fit.fit_results.samples:
+            raise ValueError(
+                f"Fit '{fit.fit_name}' stored no posterior samples, so there is "
+                "nothing to draw contours from."
+            )
+
+    bounds_levels, _ = bounds_settings(bounds_levels, None)
+    # widest first: filled, the narrower ones outlined on top of it
+    levels = sorted(set(bounds_levels), reverse=True)
+
+    # the union over the fits, in order of first appearance, as for the bounds
+    names = list(dict.fromkeys(name for fit in fits for name in fit.bounded_parameters))
+    context = ", ".join(fit.fit_name for fit in fits)
+    names = select_params(names, params_to_plot, context=context)
+    if len(names) < 2:
+        raise ValueError(
+            f"Contours need at least two coefficients, {context} leave "
+            f"{names} to plot."
+        )
+
+    # each fit's own free coefficients only: the stored samples also hold its
+    # fixed and derived ones, and a coefficient free in one fit but fixed in
+    # another would otherwise draw the latter as a constant — a singular KDE —
+    # and pull its value into the pooled limits
+    samples = [
+        {
+            name: np.asarray(fit.fit_results.samples[name], dtype=float)
+            for name in fit.bounded_parameters
+        }
+        for fit in fits
+    ]
+    hatches = [
+        _HATCH_CYCLE[idx % len(_HATCH_CYCLE)] if hatch else None
+        for idx in range(len(fits))
+    ]
+
+    # one range per coefficient, wherever it appears: the pooled samples of
+    # every fit, padded by 10%
+    limits = {}
+    for name in names:
+        values = np.concatenate([s[name] for s in samples if name in s])
+        low, high = float(values.min()), float(values.max())
+        pad = 0.1 * (high - low) if high > low else abs(low) or 1.0
+        limits[name] = (low - pad, high + pad)
+
+    set_plot_style()
+    n_par = len(names)
+    n_cells = n_par - 1
+    single_panel = n_par == 2
+    subplot_size = 6 if single_panel else 4
+    label_size, tick_size = (22, 14) if single_panel else (26, 22)
+    legend_size, title_size = (12, 20) if single_panel else (20, 24)
+    # from three coefficients the lower triangle leaves the upper-right cell
+    # free for the legend; two columns at least, so it has room
+    n_cols = n_cells if single_panel else max(n_cells, 2)
+    fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
+    grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
+
+    handles = [None] * len(fits)
+    for i, j in itertools.combinations(range(n_par), 2):
+        x_name, y_name = names[i], names[j]
+        ax = fig.add_subplot(grid[j - 1, i])
+
+        for idx, fit_samples in enumerate(samples):
+            if x_name not in fit_samples or y_name not in fit_samples:
+                continue
+            handles[idx] = _draw_pair(
+                ax,
+                fit_samples[x_name],
+                fit_samples[y_name],
+                f"C{idx}",
+                levels,
+                fits[idx].contours,
+                hatches[idx],
+            )
+
+        ax.set_xlim(*limits[x_name])
+        ax.set_ylim(*limits[y_name])
+        ax.locator_params(axis="x", nbins=5)
+        ax.locator_params(axis="y", nbins=6)
+        ax.minorticks_on()
+        ax.grid(linestyle="dotted", linewidth=0.5)
+        ax.tick_params(axis="both", which="major", labelsize=tick_size)
+        # only the outer panels carry axis and tick labels
+        if j == n_par - 1:
+            ax.set_xlabel(latex_label(x_name), fontsize=label_size)
+        else:
+            ax.tick_params(axis="x", which="both", labelbottom=False)
+        if i == 0:
+            ax.set_ylabel(latex_label(y_name), fontsize=label_size)
+        else:
+            ax.tick_params(axis="y", which="both", labelleft=False)
+
+    # a fit every panel left out (it sampled no pair of the selection) has
+    # nothing to stand for in the legend
+    drawn = [idx for idx, handle in enumerate(handles) if handle is not None]
+    legend_handles = [handles[idx] for idx in drawn]
+    legend_labels = [fits[idx].plot_label for idx in drawn]
+    # then the levels, which every fit shares: which outline is which
+    level_handles, level_labels = _level_legend(levels)
+    legend_handles += level_handles
+    legend_labels += level_labels
+
+    # the levels are in the legend; the title says which kind they are
+    title = r"$\mathrm{2D\ marginalised\ posterior}$"
+    if single_panel:
+        # ``ax`` is the one panel: an ordinary plot's legend and title
+        ax.legend(
+            legend_handles,
+            legend_labels,
+            loc="best",
+            fontsize=legend_size,
+            handlelength=2.5,
+            framealpha=0.9,
+        )
+        fig.suptitle(title, fontsize=title_size)
+    else:
+        legend_ax = fig.add_subplot(grid[0, 1:])
+        legend_ax.axis("off")
+        legend_ax.legend(
+            legend_handles,
+            legend_labels,
+            loc="lower left",
+            frameon=False,
+            fontsize=legend_size,
+            handlelength=2.5,
+            handletextpad=1,
+        )
+        legend_ax.text(
+            0.05,
+            0.95,
+            title,
+            fontsize=title_size,
+            transform=legend_ax.transAxes,
+            verticalalignment="top",
+        )
+    return fig
+
+
+@figure
+def plot_posterior_contours(
+    fit,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    hatch=True,
+):
+    """Plot the pairwise 2D posterior contours of one fit, as a corner plot.
+
+    The regions are kernel density contours, or Gaussian ellipses built from
+    the samples' covariance where the fit's ``fits`` entry sets
+    ``contours: gaussian``. Ellipses are opt-in: they misrepresent a non-Gaussian
+    posterior — quadratic corrections, a nonlinear ``expr`` constraint, a
+    prior cutting into the likelihood, an external likelihood — with no
+    warning.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run joint fit with posterior samples, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    params_to_plot : list of str, optional
+        Restrict the panels to these coefficients, in this order. All of them
+        by default.
+    bounds_levels : float or list of float, optional
+        The confidence levels drawn, in percent, 68 and 95 by default. Each
+        region holds that fraction of the joint 2D posterior of its pair, so
+        its projection onto an axis is wider than the 1D interval at the same
+        level in the bounds tables and plots, although they read the same key.
+        The widest region is filled, every narrower one an outline in its own
+        line style.
+    hatch : bool, optional
+        Hatch the filled region, one pattern per fit, so it reads in print
+        and greyscale. On by default.
+    """
+    return _posterior_contours([fit], latex_label, params_to_plot, bounds_levels, hatch)
+
+
+@figure
+def plot_posterior_contours_comparison(
+    fits,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    hatch=True,
+):
+    """Overlay the pairwise 2D posterior contours of several fits.
+
+    One figure for the whole ``fits`` list, one colour (and hatch) per fit,
+    legend-labelled with the ``label`` of its ``fits`` entry (its name
+    otherwise). The coefficients are the union of the fits'; a fit is left
+    out of every panel showing a coefficient it did not sample, and each fit
+    is drawn in the style of its own ``contours``. The
+    parameters are those of
+    :func:`plot_posterior_contours`.
+    """
+    return _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
 
 
 @figure

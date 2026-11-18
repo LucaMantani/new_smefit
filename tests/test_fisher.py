@@ -635,7 +635,8 @@ def _correlated_fim():
 
 
 def test_fisher_in_pca_basis_sums_to_the_spectrum():
-    """The rotated total is diag(lambda): each source's diagonal splits it."""
+    """With the PCA taken of the sum of the sources, as when no systematic is
+    shared across datasets, the rotated total is diag(lambda)."""
     fim = _correlated_fim()
     decomposition = _decompose(fim)
 
@@ -711,3 +712,68 @@ def test_fisher_in_pca_basis_silent_without_flat_components(caplog):
         _fisher_in_pca_basis(fim, {}, _decompose(fim), None)
 
     assert "PCA basis" not in caplog.text
+
+
+def _two_coefficient_setup(
+    fit_covmat: jnp.ndarray,
+) -> tuple[Chi2, list[Chi2]]:
+    """Two datasets, two free coefficients, linear corrections only: the total
+    chi2 and the per-dataset ones, built on ``fit_covmat``."""
+    theories = [
+        Theory(
+            name=name,
+            order="LO",
+            sm_pred=jnp.array(sm),
+            eft_pred={"OpA": lin_a, "OpB": lin_b},
+            sm_covmat=jnp.eye(2),
+            scales=jnp.full(2, 100.0),
+            operators=["OpA", "OpB"],
+        )
+        for name, sm, lin_a, lin_b in (
+            ("DS_A", [10.0, 20.0], [1.0, 2.0], [0.5, -0.3]),
+            ("DS_B", [30.0, 40.0], [0.2, 0.4], [3.0, 1.0]),
+        )
+    ]
+    model = EFTModel(
+        TheoryGroup(theories),
+        CoefficientGroup([_free("OpA"), _free("OpB")]),
+        use_quad=False,
+    )
+    data = DataGroup(
+        [_make_dataset("DS_A", [10.0, 20.0]), _make_dataset("DS_B", [30.0, 40.0])]
+    )
+    total = Chi2(
+        build_chi2(model, data, fit_covmat), param_names=["OpA", "OpB"], num_data=4
+    )
+    return total, build_datasets_chi2(model, data, fit_covmat)
+
+
+@pytest.mark.parametrize("shared", [False, True], ids=["block_diagonal", "shared"])
+def test_fisher_in_pca_basis_matches_the_global_information_only_without_shared_systematics(
+    shared: bool,
+) -> None:
+    """The PCA is of the total likelihood; the per-dataset matrices see their
+    own covariance blocks. They agree, and so do the two tables, only when no
+    systematic is shared across datasets."""
+    fit_covmat = jnp.eye(4)
+    if shared:
+        fit_covmat = fit_covmat.at[0, 2].set(0.6).at[2, 0].set(0.6)
+    total, per_dataset = _two_coefficient_setup(fit_covmat)
+    c0 = _sm_point(2)
+    decomposition = pca_of(total_fisher_information_matrix(total, c0), _PCA_SETTINGS)
+
+    rotated = _fisher_in_pca_basis(
+        fisher_information_matrices(per_dataset, c0), {}, decomposition, None
+    )
+
+    summed = sum(F.to_numpy() for F in rotated.values())
+    diagonals = pd.DataFrame(
+        {source: np.diag(F.to_numpy()) for source, F in rotated.items()},
+        index=decomposition.component_names,
+    )
+    normalised = diagonals.div(diagonals.sum(axis=1), axis=0)
+    shares = global_information_matrix(rotated)
+    agree = np.allclose(summed, np.diag(decomposition.eigenvalues)) and np.allclose(
+        shares.to_numpy(), normalised.to_numpy()
+    )
+    assert agree is not shared

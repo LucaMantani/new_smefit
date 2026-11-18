@@ -1097,9 +1097,10 @@ class smefitConfig(Config):
 
         The per-source Fisher matrices are rotated too
         (:func:`smefit.fisher._fisher_in_pca_basis`), so the Fisher and global
-        information routines say which sources fix each component. Since the
-        total rotated Fisher matrix is diagonal, the normalised Fisher
-        diagonals and the global information shares coincide in this basis.
+        information routines say which sources fix each component. When no
+        systematic is shared across datasets the per-source matrices add up to
+        a diagonal one in this basis, and the normalised Fisher diagonals and
+        the global information shares coincide.
 
         ``pca`` is only computed when the graph runs, so ``fit`` is handed over
         as an ``ExplicitNode`` whose result replaces it here. Its worker reads

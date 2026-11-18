@@ -44,10 +44,12 @@ interval_types: [eti, hdi]
 # that the PCA does not see.
 #
 # The Fisher table and heatmap are rotated too: each row says which datasets
-# fix that component (e.g. "PC1 is 80% LEP, 20% LHC"). The per-dataset Fisher
-# matrices add up to a diagonal one in this basis, so the global information
-# table would be identical to the Fisher one, and is not shown. A flat
-# component's shares divide by ~0: they are logged with a warning.
+# fix that component (e.g. "PC1 is 80% LEP, 20% LHC"). With no systematic shared
+# across datasets, as here, the per-dataset Fisher matrices add up to a diagonal
+# one in this basis, so the global information table would be identical to the
+# Fisher one, and is not shown. Add {@global_information_table@} when datasets
+# share one: the two then differ. A flat component's shares divide by ~0: they
+# are logged with a warning.
 template_text: |
     PCA posterior
     =============

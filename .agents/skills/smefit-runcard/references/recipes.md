@@ -498,14 +498,17 @@ actions_:
 ```
 
 - Under `actions_:` it is `- fits::fitcontext::pcabasis coefficient_bounds_table`.
-- The Fisher routines read the per-dataset Fisher matrices rotated into the
-  components, so a row says which datasets fix that component. They sum to a
-  diagonal matrix in this basis, so `global_information_table` gives the same
-  numbers as `fisher_diagonals_normalised`: use the latter, it needs no
-  inversion. A flat component's shares are noise and are logged as such.
   Outputs carry the namespace in their name
   (`<fit_name>_fitcontext_pcabasis_coefficient_bounds_table.csv`), so they sit
   beside the coefficient-basis ones without clashing.
+- The Fisher routines read the per-dataset Fisher matrices rotated into the
+  components, so a row says which datasets fix that component. When no
+  systematic is shared across datasets they sum to a diagonal matrix in this
+  basis, and `global_information_table` gives the same numbers as
+  `fisher_diagonals_normalised`. A shared one (a common luminosity, say) enters
+  the likelihood the PCA is taken of but no per-dataset matrix, and the two
+  tables then differ. A flat component's Fisher shares are noise and logged as
+  such; `global_information_table` refuses it.
 - It needs a likelihood to take the PCA of: `fits::pcabasis` alone, in a runcard
   of fits only, is refused. Everything the `fitcontext` recipe says about the
   PCA applies — a `pca_settings:` block, and no negative curvature at the

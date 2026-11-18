@@ -139,8 +139,10 @@ def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotate
     """The ``aggregate_fisher_information_matrices`` of ``pcabasis``: each
     source's Fisher matrix rotated into the principal components, ``V^T F_k V``.
 
-    The rotated matrices sum to ``diag(pca.eigenvalues)``, so the normalised
-    Fisher diagonals and the global information matrix coincide in this basis.
+    When no systematic is shared across datasets, the rotated matrices sum to
+    ``diag(pca.eigenvalues)``, so the normalised Fisher diagonals and the global
+    information matrix coincide in this basis. A shared one enters the total
+    likelihood ``pca`` diagonalises but no per-dataset block, and the two differ.
     Shares on a flat component are meaningless and logged.
 
     Wiring, as an ``ExplicitNode`` worker of ``produce_pcabasis``:

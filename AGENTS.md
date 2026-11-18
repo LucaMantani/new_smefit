@@ -214,7 +214,8 @@ routines reading a fit's posterior — the bounds plot and table, the correlatio
 heatmap — report on the components with no code of their own. It also rotates
 the per-source Fisher matrices (`aggregate_fisher_information_matrices`), so the
 Fisher table and heatmap say which datasets fix each component; in that basis
-the global information table coincides with them. Extend it, or add
+the global information table coincides with them unless datasets share a
+systematic. Extend it, or add
 a sibling, rather than duplicating an action per basis; the `smefit-dev` skill
 has the pattern.
 

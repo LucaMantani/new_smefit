@@ -34,6 +34,11 @@ _KDE_MAX_SAMPLES = 5000
 # patch that is both filled and hatched.
 _HATCH_CYCLE = ("///", "\\\\\\", "---", "|||", "...", "+++", "ooo")
 
+# Line styles handed out to the confidence levels inside the filled one, from
+# the widest down, so each level reads as its own contour; the filled level's
+# outline is solid. As for the hatches, the cycle repeats past its end.
+_LEVEL_LINESTYLE_CYCLE = ("dashed", "dotted", "dashdot")
+
 
 def _plot_heatmap(
     matrix,
@@ -656,17 +661,44 @@ def _confidence_ellipse(x, y, level):
     )
 
 
+def _inner_linestyles(n_inner):
+    """The line styles of the ``n_inner`` levels inside the filled one, widest
+    first: :data:`_LEVEL_LINESTYLE_CYCLE` in order, repeated past its end."""
+    return [
+        _LEVEL_LINESTYLE_CYCLE[idx % len(_LEVEL_LINESTYLE_CYCLE)]
+        for idx in range(n_inner)
+    ]
+
+
+def _level_legend(levels):
+    """The legend entries of the confidence ``levels`` (percent, widest first),
+    as ``(handles, labels)``: in grey, as they are drawn for every fit — a
+    filled patch with a solid outline for the widest, a line in its own style
+    for each narrower one."""
+    filled, *inner = levels
+    handles = [Patch(facecolor="grey", edgecolor="grey", alpha=0.3, lw=1.5)]
+    handles += [
+        Line2D([], [], color="grey", ls=style, lw=1.5)
+        for style in _inner_linestyles(len(inner))
+    ]
+    # written as the bounds plot writes its levels: the ``%`` escaped, since
+    # the text goes through LaTeX, where a bare one starts a comment
+    return handles, [rf"${level:.10g}\%\ \mathrm{{CL}}$" for level in levels]
+
+
 def _draw_pair(ax, x, y, color, levels, contours, hatch):
     """Draw one fit's 2D posterior of the samples ``(x, y)`` on ``ax``.
 
     ``levels`` are in percent, widest first: the widest region is filled
     (``alpha=0.3``, the ``hatch`` layer over it when one is given, a solid
-    outline), every narrower one a dashed outline. ``contours`` is the
-    fit's style: ``"kde"``, iso-density contours of one KDE evaluation shared
-    by every level, or ``"gaussian"`` ellipses. Returns the fit's legend handle: a
+    outline), every narrower one an outline in its own line style, from
+    :data:`_LEVEL_LINESTYLE_CYCLE`. ``contours`` is the fit's style:
+    ``"kde"``, iso-density contours of one KDE evaluation shared by every
+    level, or ``"gaussian"`` ellipses. Returns the fit's legend handle: a
     tuple of patches, overlaid by the legend.
     """
-    filled, *dashed = levels
+    filled, *inner = levels
+    inner_styles = _inner_linestyles(len(inner))
 
     if contours == "kde":
         xx, yy, density, sample_density = _kde_grid(x, y)
@@ -687,8 +719,8 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
         if hatch:
             region(filled, colors="none", hatches=[hatch]).set_edgecolor(color)
         outline(filled, linewidths=1.5)
-        for level in dashed:
-            outline(level, linestyles="dashed", linewidths=1.5)
+        for level, style in zip(inner, inner_styles):
+            outline(level, linestyles=style, linewidths=1.5)
     else:
 
         def draw_ellipse(level, **kwargs):
@@ -707,8 +739,8 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
         if hatch:
             draw_ellipse(filled, facecolor="none", edgecolor=color, hatch=hatch, lw=0)
         draw_ellipse(filled, fill=False, edgecolor=color, lw=1.5)
-        for level in dashed:
-            draw_ellipse(level, fill=False, edgecolor=color, ls="dashed", lw=1.5)
+        for level, style in zip(inner, inner_styles):
+            draw_ellipse(level, fill=False, edgecolor=color, ls=style, lw=1.5)
 
     return (
         Patch(facecolor=color, edgecolor="none", alpha=0.3),
@@ -749,7 +781,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
             )
 
     bounds_levels, _ = bounds_settings(bounds_levels, None)
-    # widest first: filled, the narrower ones dashed on top of it
+    # widest first: filled, the narrower ones outlined on top of it
     levels = sorted(set(bounds_levels), reverse=True)
 
     # the union over the fits, in order of first appearance, as for the bounds
@@ -840,6 +872,10 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     drawn = [idx for idx, handle in enumerate(handles) if handle is not None]
     legend_handles = [handles[idx] for idx in drawn]
     legend_labels = [fits[idx].plot_label for idx in drawn]
+    # then the levels, which every fit shares: which outline is which
+    level_handles, level_labels = _level_legend(levels)
+    legend_handles += level_handles
+    legend_labels += level_labels
 
     level_text = r",\ ".join(f"{level:.10g}" for level in sorted(levels))
     title = rf"$\mathrm{{Marginalised}}\ {level_text}\%\ \mathrm{{CL}}$"
@@ -850,7 +886,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
             legend_labels,
             loc="best",
             fontsize=legend_size,
-            handlelength=1,
+            handlelength=2.5,
             framealpha=0.9,
         )
         fig.suptitle(title, fontsize=title_size)
@@ -863,7 +899,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
             loc="lower left",
             frameon=False,
             fontsize=legend_size,
-            handlelength=1,
+            handlelength=2.5,
             handletextpad=1,
         )
         legend_ax.text(
@@ -906,7 +942,7 @@ def plot_posterior_contours(
     bounds_levels : float or list of float, optional
         The confidence levels drawn, in percent, 68 and 95 by default — the
         same key the bounds tables and plots read. The widest region is
-        filled, every narrower one a dashed outline.
+        filled, every narrower one an outline in its own line style.
     hatch : bool, optional
         Hatch the filled region, one pattern per fit, so it reads in print
         and greyscale. On by default.

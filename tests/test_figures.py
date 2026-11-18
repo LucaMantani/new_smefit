@@ -1108,8 +1108,18 @@ def _filled(ax: matplotlib.axes.Axes) -> list[Ellipse]:
     return [p for p in _ellipses(ax) if p.get_alpha() == pytest.approx(0.3)]
 
 
-def _dashed(ax: matplotlib.axes.Axes) -> list[Ellipse]:
-    return [p for p in _ellipses(ax) if p.get_linestyle() == "dashed"]
+def _inner(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    """The outlines of the levels inside the filled one, widest first: the
+    unfilled ellipses not drawn solid."""
+    return sorted(
+        (
+            p
+            for p in _ellipses(ax)
+            if not p.get_fill() and p.get_linestyle() not in ("-", "solid")
+        ),
+        key=lambda p: p.width,
+        reverse=True,
+    )
 
 
 def test_plot_posterior_contours_two_coefficients_is_one_panel_with_its_legend() -> (
@@ -1164,29 +1174,72 @@ def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
         )
 
 
-def test_plot_posterior_contours_fill_the_widest_level_and_dash_the_rest() -> None:
+def test_plot_posterior_contours_fill_the_widest_level_and_outline_the_rest() -> None:
     fig = plot_posterior_contours(
         _contour_fit(names=("OpA", "OpB"), contours="gaussian"), latex_label=_plain
     )
 
     [ax] = fig.axes
     [filled] = _filled(ax)
-    [dashed] = _dashed(ax)
-    assert filled.width > dashed.width
+    [inner] = _inner(ax)
+    assert filled.width > inner.width
+    assert inner.get_linestyle() == "dashed"
 
 
-def test_plot_posterior_contours_dash_every_level_but_the_widest() -> None:
+def test_plot_posterior_contours_give_each_inner_level_its_own_line_style() -> None:
     fig = plot_posterior_contours(
         _contour_fit(names=("OpA", "OpB"), contours="gaussian"),
         latex_label=_plain,
-        bounds_levels=[68, 95, 99],
+        bounds_levels=[68, 90, 95, 99],
     )
 
     [ax] = fig.axes
     [filled] = _filled(ax)
-    dashed = _dashed(ax)
-    assert len(dashed) == 2
-    assert all(filled.width > d.width for d in dashed)
+    inner = _inner(ax)
+    assert all(filled.width > p.width for p in inner)
+    # 95, 90, 68: the cycle in order, from the widest inner level down
+    assert [p.get_linestyle() for p in inner] == ["dashed", "dotted", "dashdot"]
+
+
+@pytest.mark.parametrize("names", [("OpA", "OpB"), ("OpA", "OpB", "OpC")])
+def test_plot_posterior_contours_legend_a_grey_entry_per_level(
+    names: tuple[str, ...],
+) -> None:
+    """After the fit, one entry per level in the style it is drawn with: a
+    filled patch for the widest, a line in its own style for the others —
+    for the single panel's legend and the legend cell's alike."""
+    fig = plot_posterior_contours(
+        _contour_fit(names=names, contours="gaussian"),
+        latex_label=_plain,
+        bounds_levels=[68, 90, 95],
+    )
+
+    [legend] = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    labels = [t.get_text() for t in legend.get_texts()]
+    assert labels == [
+        "my_fit",
+        *(rf"${level}\%\ \mathrm{{CL}}$" for level in (95, 90, 68)),
+    ]
+    _, widest, *inner = legend.legend_handles
+    grey = matplotlib.colors.to_rgba("grey")
+    assert widest.get_facecolor()[:3] == pytest.approx(grey[:3])
+    assert [h.get_linestyle() for h in inner] == ["--", ":"]
+    assert all(h.get_color() == "grey" for h in inner)
+
+
+def test_plot_posterior_contours_cycle_the_line_styles_past_their_end() -> None:
+    levels = [50, 60, 70, 80, 90]
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"),
+        latex_label=_plain,
+        bounds_levels=levels,
+    )
+
+    [ax] = fig.axes
+    cycle = figures_mod._LEVEL_LINESTYLE_CYCLE
+    assert [p.get_linestyle() for p in _inner(ax)] == [
+        cycle[idx % len(cycle)] for idx in range(len(levels) - 1)
+    ]
 
 
 def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
@@ -1205,6 +1258,28 @@ def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
     assert fill.levels[0] == pytest.approx(outlines[0].levels[0])
     assert outlines[1].linestyles == "dashed"
     assert outlines[0].linestyles != "dashed"
+
+
+def test_plot_posterior_contours_kde_gives_each_inner_level_its_own_line_style() -> (
+    None
+):
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")),
+        latex_label=_plain,
+        bounds_levels=[68, 90, 95],
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    outlines = sorted(
+        (c for c in ax.collections if isinstance(c, ContourSet) and not c.filled),
+        key=lambda c: c.levels[0],
+    )
+    # increasing density is decreasing level: 95 (filled, matplotlib's default
+    # solid line), then 90 and 68
+    widest, *inner = outlines
+    assert widest.linestyles not in figures_mod._LEVEL_LINESTYLE_CYCLE
+    assert [c.linestyles for c in inner] == ["dashed", "dotted"]
 
 
 @pytest.mark.parametrize("use_quad", [True, False])
@@ -1306,7 +1381,8 @@ def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks(
     assert colors == {(0, 0): {c0}, (1, 0): {c1}, (1, 1): set()}
     [legend_cell] = [ax for ax in fig.axes if not ax.axison]
     labels = [t.get_text() for t in legend_cell.get_legend().get_texts()]
-    assert labels == ["$AB$", "ac"]
+    # the fits, then the default levels
+    assert labels == ["$AB$", "ac", r"$95\%\ \mathrm{CL}$", r"$68\%\ \mathrm{CL}$"]
 
 
 def test_plot_posterior_contours_comparison_leave_out_a_coefficient_a_fit_fixed() -> (

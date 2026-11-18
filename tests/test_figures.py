@@ -1279,6 +1279,26 @@ def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks(
     assert labels == ["$AB$", "ac"]
 
 
+def test_plot_posterior_contours_comparison_leave_out_a_coefficient_a_fit_fixed() -> (
+    None
+):
+    """The stored samples hold fixed coefficients too: one free in a fit but
+    fixed in another is a gap for the latter, not a constant fed to the KDE
+    (a singular covariance) or pooled into the limits."""
+    free = _contour_fit(fit_name="free")
+    fixed = _contour_fit(names=("OpA", "OpB"), fit_name="fixed", seed=1)
+    fixed.fit_results.samples["OpC"] = [50.0] * 400
+
+    fig = plot_posterior_contours_comparison([free, fixed], latex_label=_plain)
+
+    by_cell = {_cell(ax): ax for ax in _panels(fig)}
+    # (OpA, OpC) at (1, 0), (OpB, OpC) at (1, 1): OpC on the y-axis
+    for cell in [(1, 0), (1, 1)]:
+        low, high = by_cell[cell].get_ylim()
+        assert high < 50.0
+        assert len(by_cell[cell].collections) == len(by_cell[(0, 0)].collections) // 2
+
+
 def test_plot_posterior_contours_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
         plot_posterior_contours_comparison([], latex_label=_plain)

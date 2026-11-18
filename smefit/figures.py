@@ -758,10 +758,14 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
             f"{names} to plot."
         )
 
+    # each fit's own free coefficients only: the stored samples also hold its
+    # fixed and derived ones, and a coefficient free in one fit but fixed in
+    # another would otherwise draw the latter as a constant — a singular KDE —
+    # and pull its value into the pooled limits
     samples = [
         {
-            name: np.asarray(values, dtype=float)
-            for name, values in fit.fit_results.samples.items()
+            name: np.asarray(fit.fit_results.samples[name], dtype=float)
+            for name in fit.bounded_parameters
         }
         for fit in fits
     ]

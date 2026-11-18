@@ -15,6 +15,7 @@
 # Run analytical_fit.yaml first, from this directory.
 fits:
   - {name: analytical_fit, path: '.'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
 # the PCA of each fit, at its best-fit point (every sub-key has a default)
 pca_settings: {}

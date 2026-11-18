@@ -136,7 +136,8 @@ directory name), rows the union of their coefficients. It sits outside the
 `tables/coefficient_bounds_comparison_table.csv`.
 
 `datasets_chi2_comparison_table` compares the fits on their data instead:
-chi2/N_dat of each dataset at each fit's best fit, in a block per data group
+chi2/N_dat of each dataset at each fit's best fit and at its own baseline
+(`baseline_value`, the SM by default), in a block per data group
 ending in the group total, empty where a fit lacks the dataset, and the overall
 total last (written to `tables/datasets_chi2_comparison_table.csv`).
 `recipes.md` has the details.

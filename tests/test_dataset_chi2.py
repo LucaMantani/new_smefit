@@ -16,7 +16,7 @@ from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
 from smefit.api import smefitAPI
 from smefit.chi2 import Chi2
 from smefit.config import smefitConfig
-from smefit.dataset_chi2 import UNGROUPED, best_fit_datasets_chi2
+from smefit.dataset_chi2 import UNGROUPED, datasets_chi2_values
 from smefit.fit_result import FitResult
 from smefit.tables import (
     _ALL,
@@ -34,14 +34,25 @@ def _plain(name):
 
 
 def _chi2(name: str, ndat: int, value: float) -> Chi2:
-    return Chi2(lambda c: value + 0.0 * c.sum(), ["c"], ndat, name=name)
+    """A chi2 of ``value`` at the origin, growing with the coefficient."""
+    return Chi2(lambda c: value + c.sum(), ["c"], ndat, name=name)
 
 
-def _per_fit(rows: dict[str, tuple[str, int, float]]) -> pd.DataFrame:
+def _per_fit(rows: dict[str, tuple]) -> pd.DataFrame:
+    """``rows``: name to ``(group, ndat, chi2 at best fit[, chi2 at baseline])``,
+    the baseline chi2 being the best-fit one when not given."""
     return pd.DataFrame.from_dict(
-        {name: {"group": g, "ndat": n, "chi2": c} for name, (g, n, c) in rows.items()},
+        {
+            name: {
+                "group": g,
+                "ndat": n,
+                "chi2_best_fit": c,
+                "chi2_baseline": base[0] if base else c,
+            }
+            for name, (g, n, c, *base) in rows.items()
+        },
         orient="index",
-        columns=["group", "ndat", "chi2"],
+        columns=["group", "ndat", "chi2_best_fit", "chi2_baseline"],
     )
 
 
@@ -54,23 +65,42 @@ def _table(fits_rows, labels=None, round_val=3) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# best_fit_datasets_chi2
+# datasets_chi2_values
 # ---------------------------------------------------------------------------
 
 
-def test_best_fit_datasets_chi2_evaluates_each_dataset_with_its_group() -> None:
+def _baseline_at(value: float) -> SimpleNamespace:
+    return SimpleNamespace(baseline_free=jnp.array([value]))
+
+
+def test_datasets_chi2_values_evaluates_each_dataset_with_its_group() -> None:
     chi2s = [_chi2("A", 4, 2.0), _chi2("B", 5, 10.0), _chi2("ext", 1, 3.0)]
 
-    result = best_fit_datasets_chi2(chi2s, jnp.zeros(1), {"G": ["A", "ext"]})
+    result = datasets_chi2_values(
+        chi2s, jnp.zeros(1), _baseline_at(0.0), {"G": ["A", "ext"]}
+    )
 
     assert result.index.tolist() == ["A", "B", "ext"]
     assert result["group"].tolist() == ["G", UNGROUPED, "G"]
     assert result["ndat"].tolist() == [4, 5, 1]
-    assert result["chi2"].tolist() == pytest.approx([2.0, 10.0, 3.0])
+    assert result["chi2_best_fit"].tolist() == pytest.approx([2.0, 10.0, 3.0])
 
 
-def test_best_fit_datasets_chi2_without_groups_puts_all_in_ungrouped() -> None:
-    result = best_fit_datasets_chi2([_chi2("A", 4, 2.0)], jnp.zeros(1), None)
+def test_datasets_chi2_values_evaluates_at_the_coefficients_baseline() -> None:
+    # the chi2's own baseline is zero, as an external likelihood's is: the point
+    # must come from the coefficients
+    [chi2] = [_chi2("A", 4, 2.0)]
+
+    result = datasets_chi2_values([chi2], jnp.array([1.0]), _baseline_at(0.5), None)
+
+    assert result.at["A", "chi2_best_fit"] == pytest.approx(3.0)
+    assert result.at["A", "chi2_baseline"] == pytest.approx(2.5)
+
+
+def test_datasets_chi2_values_without_groups_puts_all_in_ungrouped() -> None:
+    result = datasets_chi2_values(
+        [_chi2("A", 4, 2.0)], jnp.zeros(1), _baseline_at(0.0), None
+    )
     assert result["group"].tolist() == [UNGROUPED]
 
 
@@ -79,11 +109,15 @@ def test_best_fit_datasets_chi2_without_groups_puts_all_in_ungrouped() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _chi2_col(label: str) -> tuple[str, str]:
-    return (_CHI2_PER_POINT, label)
+def _chi2_col(label: str) -> tuple[str, str, str]:
+    return (_CHI2_PER_POINT, label, "best fit")
 
 
-_NDAT_COL = (_NDAT, "")
+def _baseline_col(label: str) -> tuple[str, str, str]:
+    return (_CHI2_PER_POINT, label, "baseline")
+
+
+_NDAT_COL = (_NDAT, "", "")
 _BLANK = ("", "")
 
 
@@ -125,12 +159,33 @@ def test_comparison_table_quotes_one_ndat_and_each_fit_chi2_per_point() -> None:
         ]
     )
 
-    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("fit0"), _chi2_col("fit1")]
+    assert table.columns.tolist() == [
+        _NDAT_COL,
+        _chi2_col("fit0"),
+        _baseline_col("fit0"),
+        _chi2_col("fit1"),
+        _baseline_col("fit1"),
+    ]
     rows = table[[index != _BLANK for index in table.index]]
     assert rows[_NDAT_COL].tolist() == ["4", "6", "10", "10"]
     # the total is the summed chi2 over the summed points, not a mean of ratios
     assert rows[_chi2_col("fit0")].tolist() == ["0.500", "1.500", "1.100", "1.100"]
     assert rows[_chi2_col("fit1")].tolist() == ["1.000"] * 4
+
+
+def test_comparison_table_quotes_each_fit_at_its_own_baseline() -> None:
+    table = _table(
+        [
+            {"A": ("Top", 4, 2.0, 8.0), "B": ("Top", 6, 9.0, 12.0)},
+            {"A": ("Top", 4, 4.0, 4.0)},
+        ]
+    )
+
+    assert _at(table, ("Top", "A"), _baseline_col("fit0")) == "2.000"
+    assert _at(table, ("Top", "B"), _baseline_col("fit1")) == ""
+    assert _at(table, ("Top", _TOTAL), _baseline_col("fit0")) == "2.000"
+    assert _at(table, ("Top", _TOTAL), _baseline_col("fit1")) == "1.000"
+    assert _at(table, (_ALL, _TOTAL), _baseline_col("fit0")) == "2.000"
 
 
 def test_comparison_table_leaves_a_dataset_a_fit_lacks_empty() -> None:
@@ -211,7 +266,11 @@ def test_comparison_table_rejects_fits_sharing_a_label() -> None:
 
 
 def _write_fit(
-    fit_dir: Path, data_path: Path, theory_path: Path, group: str | None
+    fit_dir: Path,
+    data_path: Path,
+    theory_path: Path,
+    group: str | None,
+    baseline: float = 0.0,
 ) -> dict[str, Any]:
     dataset: dict[str, Any] = {"name": "TESTDATA", "order": "NLO"}
     if group is not None:
@@ -224,7 +283,11 @@ def _write_fit(
         "use_quad": True,
         "datasets": [dataset],
         "coefficients": {
-            name: {"free": True, "prior": {"dist": "uniform", "low": -5, "high": 5}}
+            name: {
+                "free": True,
+                "prior": {"dist": "uniform", "low": -5, "high": 5},
+                "baseline_value": baseline,
+            }
             for name in _BEST_FIT
         },
         "actions_": ["run_analytic_fit"],
@@ -246,7 +309,7 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     runcard = _write_fit(
         tmp_path / "grouped", fixtures_data_path, fixtures_theory_path, "Top"
     )
-    _write_fit(tmp_path / "plain", fixtures_data_path, fixtures_theory_path, None)
+    _write_fit(tmp_path / "plain", fixtures_data_path, fixtures_theory_path, None, 0.1)
     fits = [
         {"name": "grouped", "path": str(tmp_path), "label": "G"},
         {"name": "plain", "path": str(tmp_path), "label": "P"},
@@ -264,7 +327,11 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     table = builder.rootns["datasets_chi2_comparison_table"]
 
     [chi2] = smefitAPI.datasets_chi2(**runcard)
-    expected = f"{float(chi2(jnp.array(list(_BEST_FIT.values())))) / chi2.num_data:.3f}"
+
+    def per_point(point):
+        return f"{float(chi2(jnp.array(point))) / chi2.num_data:.3f}"
+
+    expected = per_point(list(_BEST_FIT.values()))
     top = (r"$\mathrm{Top}$", _TOTAL)
     assert _at(table, top, _chi2_col("G")) == expected
     assert _at(table, top, _chi2_col("P")) == ""
@@ -274,3 +341,7 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     assert _at(table, (_ALL, _TOTAL), _NDAT_COL) == str(chi2.num_data)
     assert _at(table, (_ALL, _TOTAL), _chi2_col("G")) == expected
     assert _at(table, (_ALL, _TOTAL), _chi2_col("P")) == expected
+    # each fit at its own baseline
+    assert _at(table, top, _baseline_col("G")) == per_point([0.0, 0.0])
+    assert _at(table, other, _baseline_col("P")) == per_point([0.1, 0.1])
+    assert per_point([0.0, 0.0]) != per_point([0.1, 0.1])

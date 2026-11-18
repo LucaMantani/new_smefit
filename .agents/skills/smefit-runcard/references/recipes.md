@@ -580,7 +580,8 @@ template_text: |
 
 `datasets_chi2_comparison_table` compares how well each fit describes its
 data: the chi2 per data point of every dataset, at each fit's stored best-fit
-point. Like the bounds comparison it takes the whole `fits:` list and goes
+point and at its baseline. Like the bounds comparison it takes the whole
+`fits:` list and goes
 **outside** any `{@with fits@}` loop; a runcard of `fits:` alone is enough,
 since each fit's likelihood is rebuilt from its own setup (as under
 `fits::fitcontext`):
@@ -597,7 +598,10 @@ template_text: |
   both. A single table rather than one per group, so that every group is drawn
   at the same column widths.
 - Columns: one `N_dat` per dataset, then `chi2/N_dat` of each fit, headed by
-  its label. A dataset a fit does not have is an empty cell. Two fits
+  its label, in two sub-columns: `best fit` and `baseline`. The baseline is the
+  fit's own (the `baseline_value` of its free coefficients, zero unless set, so
+  the SM by default), so fits with different baselines are each compared with
+  theirs and no SM fit is needed. A dataset a fit does not have is an empty cell. Two fits
   disagreeing on a dataset's `N_dat` (different `data_path`s) raise.
   `round_val` (default 3) sets the decimals.
 - Each block ends in a `Total` row, the group's summed chi2 over its summed

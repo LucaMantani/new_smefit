@@ -68,7 +68,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `dataset_table(dataset_info)`
   - The datasets of the runcard, as :func:`write_dataset_table` lists them.
-- `datasets_chi2_comparison_table(fits, fits_best_fit_datasets_chi2, latex_label, round_val=3)`
+- `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3)`
   - Compare the chi2 per data point of each dataset across fits, in blocks by data group.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
@@ -188,8 +188,8 @@ names in tracebacks. They are resolved for you.
 
 ### `smefit.dataset_chi2`
 
-- `best_fit_datasets_chi2(datasets_chi2, best_fit_point, data_groups)`
-  - The chi2 of each dataset at ``best_fit_point``, with its group and size.
+- `datasets_chi2_values(datasets_chi2, best_fit_point, coefficients, data_groups)`
+  - The chi2 of each dataset at ``best_fit_point`` and at the baseline of ``coefficients``, with its group and size.
 
 ### `smefit.pca`
 

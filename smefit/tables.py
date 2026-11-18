@@ -387,18 +387,22 @@ _NDAT = r"$N_{\mathrm{dat}}$"
 _CHI2_PER_POINT = r"$\chi^2/N_{\mathrm{dat}}$"
 _TOTAL = "Total"
 _ALL = "All"
+# the points each fit's chi2 is quoted at: column of datasets_chi2_values, header
+_CHI2_POINTS = {"chi2_best_fit": "best fit", "chi2_baseline": "baseline"}
 
 
 @table
 def datasets_chi2_comparison_table(
-    fits, fits_best_fit_datasets_chi2, latex_label, round_val=3
+    fits, fits_datasets_chi2_values, latex_label, round_val=3
 ):
     r"""Compare the chi2 per data point of each dataset across fits, in blocks
     by data group.
 
     Each fit's chi2 is rebuilt from its own setup and evaluated at its stored
-    best-fit point (:func:`smefit.dataset_chi2.best_fit_datasets_chi2`): a
-    runcard needs only ``fits:``. Each dataset is evaluated on its own block of
+    best-fit point and at its own baseline, the ``baseline_value`` of its free
+    coefficients (:func:`smefit.dataset_chi2.datasets_chi2_values`): a runcard
+    needs only ``fits:``, and fits with different baselines are each compared
+    with theirs. Each dataset is evaluated on its own block of
     the fit's covariance matrix, so correlations between datasets are left out,
     of the totals too. Datasets without a ``group:`` are tabulated under
     ``Other``. One table rather than one per group, so that every group is
@@ -407,8 +411,8 @@ def datasets_chi2_comparison_table(
     Parameters
     ----------
     fits : list of smefit.fit_result.Fit
-    fits_best_fit_datasets_chi2 : list of pd.DataFrame
-        :func:`smefit.dataset_chi2.best_fit_datasets_chi2` of each fit, in the
+    fits_datasets_chi2_values : list of pd.DataFrame
+        :func:`smefit.dataset_chi2.datasets_chi2_values` of each fit, in the
         order of ``fits``.
     latex_label : Callable[[str], str]
         Writes a name in LaTeX (the ``latex_label`` resource).
@@ -422,7 +426,8 @@ def datasets_chi2_comparison_table(
         first appearance and ``Other`` last, listing the datasets any fit has
         in it and ending in a ``Total`` row, blocks separated by a blank row
         ``("", "")``; then ``(All, Total)`` over every dataset. Columns
-        ``(N_dat, "")`` and ``(chi2/N_dat, <fit label>)``. A ``Total`` is the
+        ``(N_dat, "", "")``, then ``(chi2/N_dat, <fit label>, best fit)`` and
+        ``(chi2/N_dat, <fit label>, baseline)`` for each fit. A ``Total`` is the
         summed chi2 over the summed points of the datasets the fit has; its
         ``N_dat`` counts every dataset listed, so a fit missing one (an empty
         cell) is divided by fewer.
@@ -435,7 +440,7 @@ def datasets_chi2_comparison_table(
     """
     labels = _fit_column_labels(fits)
     # one row per (fit, dataset)
-    rows = pd.concat(fits_best_fit_datasets_chi2, keys=labels, names=["fit", "dataset"])
+    rows = pd.concat(fits_datasets_chi2_values, keys=labels, names=["fit", "dataset"])
     rows = rows.reset_index()
 
     ndat = rows.groupby("dataset", sort=False)["ndat"].unique()
@@ -451,16 +456,18 @@ def datasets_chi2_comparison_table(
     ndat = ndat.map(lambda n: int(n[0]))
 
     def line(selected, n):
-        """``N_dat``, then each fit's summed chi2 over its summed points; empty
-        for a fit with none of ``selected`` (or no point to divide by)."""
-        by_fit = selected.groupby("fit")[["chi2", "ndat"]].sum()
+        """``N_dat``, then each fit's summed chi2 over its summed points at each
+        of its points; empty for a fit with none of ``selected`` (or no point to
+        divide by)."""
+        by_fit = selected.groupby("fit")[["ndat", *_CHI2_POINTS]].sum()
         return [str(n)] + [
             (
-                _number(by_fit.at[label, "chi2"] / by_fit.at[label, "ndat"], round_val)
+                _number(by_fit.at[label, point] / by_fit.at[label, "ndat"], round_val)
                 if label in by_fit.index and by_fit.at[label, "ndat"] > 0
                 else ""
             )
             for label in labels
+            for point in _CHI2_POINTS
         ]
 
     groups = list(dict.fromkeys(rows["group"]))
@@ -479,7 +486,7 @@ def datasets_chi2_comparison_table(
         index.append((latex_label(group), _TOTAL))
         cells.append(line(in_group, ndat[names].sum()))
         index.append(("", ""))
-        cells.append([""] * (1 + len(labels)))
+        cells.append([""] * (1 + len(labels) * len(_CHI2_POINTS)))
     # ...but counts once in the overall total
     index.append((_ALL, _TOTAL))
     cells.append(line(rows, ndat.sum()))
@@ -488,7 +495,12 @@ def datasets_chi2_comparison_table(
         cells,
         index=pd.MultiIndex.from_tuples(index),
         columns=pd.MultiIndex.from_tuples(
-            [(_NDAT, "")] + [(_CHI2_PER_POINT, label) for label in labels]
+            [(_NDAT, "", "")]
+            + [
+                (_CHI2_PER_POINT, label, header)
+                for label in labels
+                for header in _CHI2_POINTS.values()
+            ]
         ),
     )
 

@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 # sample count above which a posterior is thinned before the estimate: its cost
 # grows linearly with the samples while the estimate barely moves past a few
 # thousand.
-_KDE_GRIDSIZE = 200
+_KDE_GRIDSIZE = 100
 _KDE_CUT = 3
 _KDE_MAX_SAMPLES = 5000
 

@@ -9,9 +9,12 @@
 # Pairwise 2D posterior contours of fits that have already been run: no fit is
 # run here, the posterior samples are read back from each fit's
 # fit_results.json. The panels are the lower triangle of the coefficient matrix.
+# `contours` sets how each fit is drawn: kernel density contours (kde, the
+# default) or Gaussian ellipses from the samples' covariance (gaussian), only
+# faithful for a Gaussian posterior.
 fits:
-  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
-  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$', contours: gaussian}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$', contours: kde}
 
 # confidence levels drawn, in percent (default: 68 and 95) — the same key the
 # bounds tables and plots read, so a report quoting them keeps them in
@@ -20,10 +23,6 @@ bounds_levels: [68, 95]
 
 # restrict the panels to these coefficients, in this order (at least two)
 # params_to_plot: [OpD, OpWB]
-
-# kernel density contours (true) or Gaussian ellipses (false). Default: each
-# fit's use_quad, a linear fit's posterior being Gaussian
-# kde: true
 
 # hatch the filled regions, one pattern per fit, so they read in greyscale
 # (default: true)

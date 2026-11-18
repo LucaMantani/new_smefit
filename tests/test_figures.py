@@ -983,6 +983,36 @@ def test_kde_grid_thins_large_posteriors(monkeypatch: pytest.MonkeyPatch) -> Non
     assert sample_density.size == figures_mod._KDE_MAX_SAMPLES
 
 
+def test_kde_grid_thinning_keeps_every_interleaved_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NUTS stores its chains interleaved (sample k is chain k mod 4). Four
+    chains each in its own mode, thinned by 4: a stride would keep chain 0
+    alone, so every mode must still be in what the KDE sees."""
+    seen: list[np.ndarray] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset)
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+    n_chains = 4
+    n = n_chains * figures_mod._KDE_MAX_SAMPLES
+    modes = 10.0 * np.arange(n_chains)
+    rng = np.random.default_rng(0)
+    x = modes[np.arange(n) % n_chains] + rng.normal(size=n)
+    y = rng.normal(size=n)
+
+    _kde_grid(x, y)
+
+    [dataset] = seen
+    kept_chain = np.rint(dataset[0] / 10.0).astype(int)
+    counts = np.bincount(kept_chain, minlength=n_chains)
+    # about a quarter each, far from the 5000 / 0 / 0 / 0 of a stride
+    assert np.all(counts > 0.2 * figures_mod._KDE_MAX_SAMPLES)
+
+
 def test_kde_grid_leaves_small_posteriors_untouched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

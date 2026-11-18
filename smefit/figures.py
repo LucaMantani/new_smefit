@@ -589,15 +589,19 @@ def _kde_grid(x, y, bw_adjust=1.5):
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    # checked before thinning: a common stride can erase a small difference in
-    # length (6000 and 5999 both thin to 3000), silently pairing up samples
-    # from different draws
+    # checked before thinning, which draws one set of indices for both and
+    # would otherwise silently pair up samples from different draws
     if x.size != y.size:
         raise ValueError(f"x and y must be the same size, got {x.size} and {y.size}.")
 
     if x.size > _KDE_MAX_SAMPLES:
-        stride = int(np.ceil(x.size / _KDE_MAX_SAMPLES))
-        x, y = x[::stride], y[::stride]
+        # a seeded random subsample, not a stride: NUTS stores its chains
+        # interleaved (sample k is chain k mod C), so x[::stride] keeps only the
+        # chains whose index the stride hits — with 4 chains a stride of 2
+        # drops half of them, a stride of 4 all but one, and with them any mode
+        # only those chains found. The seed keeps the plot reproducible.
+        idx = np.random.default_rng(0).choice(x.size, _KDE_MAX_SAMPLES, replace=False)
+        x, y = x[idx], y[idx]
 
     kde = scipy.stats.gaussian_kde(np.vstack([x, y]))
     kde.set_bandwidth(kde.factor * bw_adjust)

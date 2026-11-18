@@ -601,7 +601,8 @@ template_text: |
   its label, in two sub-columns: `best fit` and `baseline`. The baseline is the
   fit's own (the `baseline_value` of its free coefficients, zero unless set, so
   the SM by default), so fits with different baselines are each compared with
-  theirs and no SM fit is needed. A dataset a fit does not have is an empty cell. Two fits
+  theirs and no SM fit is needed. `show_baseline_chi2: false` (a top-level
+  key, or an action argument) leaves the `baseline` columns out. A dataset a fit does not have is an empty cell. Two fits
   disagreeing on a dataset's `N_dat` (different `data_path`s) raise.
   `round_val` (default 3) sets the decimals.
 - Each block ends in a `Total` row, the group's summed chi2 over its summed

@@ -56,11 +56,11 @@ def _per_fit(rows: dict[str, tuple]) -> pd.DataFrame:
     )
 
 
-def _table(fits_rows, labels=None, round_val=3) -> pd.DataFrame:
+def _table(fits_rows, labels=None, round_val=3, **kwargs) -> pd.DataFrame:
     labels = labels or [f"fit{i}" for i in range(len(fits_rows))]
     fits = [SimpleNamespace(plot_label=label) for label in labels]
     return datasets_chi2_comparison_table(
-        fits, [_per_fit(rows) for rows in fits_rows], _plain, round_val
+        fits, [_per_fit(rows) for rows in fits_rows], _plain, round_val, **kwargs
     )
 
 
@@ -188,6 +188,18 @@ def test_comparison_table_quotes_each_fit_at_its_own_baseline() -> None:
     assert _at(table, (_ALL, _TOTAL), _baseline_col("fit0")) == "2.000"
 
 
+def test_comparison_table_hides_the_baseline_when_asked() -> None:
+    fits_rows = [{"A": ("Top", 4, 2.0, 8.0)}, {"A": ("Top", 4, 4.0)}]
+
+    table = _table(fits_rows, show_baseline_chi2=False)
+
+    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("fit0"), _chi2_col("fit1")]
+    # the blank separator rows follow the columns
+    assert {len(row) for row in table.values.tolist()} == {3}
+    shown = _table(fits_rows)
+    assert table[_chi2_col("fit0")].tolist() == shown[_chi2_col("fit0")].tolist()
+
+
 def test_comparison_table_leaves_a_dataset_a_fit_lacks_empty() -> None:
     table = _table(
         [
@@ -303,6 +315,22 @@ def _write_fit(
     return runcard
 
 
+def _resolve_table(fits: list[dict[str, str]], **keys: Any) -> pd.DataFrame:
+    """The table as reportengine builds it from a runcard of ``fits`` and
+    ``keys``."""
+    config = smefitConfig({"fits": fits, **keys}, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget("datasets_chi2_comparison_table", (), (), ())],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()
+    builder.execute_sequential()
+    return builder.rootns["datasets_chi2_comparison_table"]
+
+
 def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
 ) -> None:
@@ -314,17 +342,7 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
         {"name": "grouped", "path": str(tmp_path), "label": "G"},
         {"name": "plain", "path": str(tmp_path), "label": "P"},
     ]
-    config = smefitConfig({"fits": fits}, environment=smefitAPI.loadedenv)
-    builder = ResourceBuilder(
-        config,
-        smefitAPI.provider_loaded,
-        [FuzzyTarget("datasets_chi2_comparison_table", (), (), ())],
-        perform_final=False,
-    )
-    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
-    builder.resolve_fuzzytargets()
-    builder.execute_sequential()
-    table = builder.rootns["datasets_chi2_comparison_table"]
+    table = _resolve_table(fits)
 
     [chi2] = smefitAPI.datasets_chi2(**runcard)
 
@@ -345,3 +363,14 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     assert _at(table, top, _baseline_col("G")) == per_point([0.0, 0.0])
     assert _at(table, other, _baseline_col("P")) == per_point([0.1, 0.1])
     assert per_point([0.0, 0.0]) != per_point([0.1, 0.1])
+
+
+def test_comparison_table_takes_show_baseline_chi2_from_the_runcard(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    _write_fit(tmp_path / "fit", fixtures_data_path, fixtures_theory_path, None)
+    fits = [{"name": "fit", "path": str(tmp_path), "label": "F"}]
+
+    table = _resolve_table(fits, show_baseline_chi2=False)
+
+    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("F")]

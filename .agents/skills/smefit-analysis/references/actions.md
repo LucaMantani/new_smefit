@@ -68,7 +68,7 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of one fit.
 - `dataset_table(dataset_info)`
   - The datasets of the runcard, as :func:`write_dataset_table` lists them.
-- `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3)`
+- `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
   - Compare the chi2 per data point of each dataset across fits, in blocks by data group.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.

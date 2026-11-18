@@ -12,6 +12,9 @@ fits:
   - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
   - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
+# quote each fit at its baseline too, beside its best fit (default: true)
+show_baseline_chi2: true
+
 template_text: |
     Dataset chi2 comparison
     =======================

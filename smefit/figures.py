@@ -626,7 +626,8 @@ def _kde_grid(x, y, bw_adjust=1.5):
 
 
 def _density_level(sample_density, level):
-    """The iso-density value enclosing ``level`` percent of the posterior.
+    """The iso-density value enclosing ``level`` percent of the joint 2D
+    posterior of the pair.
 
     It is the ``1 - level`` quantile of the density *at the samples*, so
     ``level`` percent of them lie inside the contour by construction. Reading
@@ -640,7 +641,9 @@ def _confidence_ellipse(x, y, level):
     """The ``level`` percent ellipse of the samples ``(x, y)``, not yet drawn.
 
     The iso-contour of the Gaussian with the samples' covariance, centred on
-    their median: each half-axis is ``sqrt(chi2_2(level) * eigenvalue)``.
+    their median, holding ``level`` percent of the joint 2D distribution: each
+    half-axis is ``sqrt(chi2_2(level) * eigenvalue)``, the quantile of a
+    chi-squared with two degrees of freedom, not one.
     The caller styles it and adds it to an axes.
     """
     x = np.asarray(x, dtype=float)
@@ -877,8 +880,8 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     legend_handles += level_handles
     legend_labels += level_labels
 
-    level_text = r",\ ".join(f"{level:.10g}" for level in sorted(levels))
-    title = rf"$\mathrm{{Marginalised}}\ {level_text}\%\ \mathrm{{CL}}$"
+    # the levels are in the legend; the title says which kind they are
+    title = r"$\mathrm{2D\ marginalised\ posterior}$"
     if single_panel:
         # ``ax`` is the one panel: an ordinary plot's legend and title
         ax.legend(
@@ -940,9 +943,12 @@ def plot_posterior_contours(
         Restrict the panels to these coefficients, in this order. All of them
         by default.
     bounds_levels : float or list of float, optional
-        The confidence levels drawn, in percent, 68 and 95 by default — the
-        same key the bounds tables and plots read. The widest region is
-        filled, every narrower one an outline in its own line style.
+        The confidence levels drawn, in percent, 68 and 95 by default. Each
+        region holds that fraction of the joint 2D posterior of its pair, so
+        its projection onto an axis is wider than the 1D interval at the same
+        level in the bounds tables and plots, although they read the same key.
+        The widest region is filled, every narrower one an outline in its own
+        line style.
     hatch : bool, optional
         Hatch the filled region, one pattern per fit, so it reads in print
         and greyscale. On by default.

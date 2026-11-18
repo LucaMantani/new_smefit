@@ -576,6 +576,43 @@ template_text: |
 - Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
   are only written if the report also asks for `coefficient_bounds_table`.
 
+#### The chi2 of each dataset, fit by fit
+
+`datasets_chi2_comparison_table` compares how well each fit describes its
+data: the chi2 per data point of every dataset, at each fit's stored best-fit
+point. Like the bounds comparison it takes the whole `fits:` list and goes
+**outside** any `{@with fits@}` loop; a runcard of `fits:` alone is enough,
+since each fit's likelihood is rebuilt from its own setup (as under
+`fits::fitcontext`):
+
+```yaml
+template_text: |
+  # Dataset chi2
+  {@datasets_chi2_comparison_table@}
+```
+
+- One table, in a block per data group, from the `group:` of each dataset
+  (and external chi2) in each fit's own runcard; datasets without one are under
+  `Other`, last. A dataset two fits put in different groups is listed under
+  both. A single table rather than one per group, so that every group is drawn
+  at the same column widths.
+- Columns: one `N_dat` per dataset, then `chi2/N_dat` of each fit, headed by
+  its label. A dataset a fit does not have is an empty cell. Two fits
+  disagreeing on a dataset's `N_dat` (different `data_path`s) raise.
+  `round_val` (default 3) sets the decimals.
+- Each block ends in a `Total` row, the group's summed chi2 over its summed
+  data points, fit by fit; the last row, `All` / `Total`, is the same over
+  every dataset. A blank row separates the blocks (index `("", "")` in the
+  CSV, so drop those rows when reading it back).
+- In a `Total`, each fit is divided by the points of the datasets it has, while
+  `N_dat` counts every dataset listed: with an empty cell above it, the fit's
+  total covers fewer points than the `N_dat` beside it.
+- Each dataset is evaluated on its own block of the fit covariance matrix:
+  correlations between datasets are left out, of the totals too.
+- Written to `tables/datasets_chi2_comparison_table.csv`.
+- Fits run one coefficient at a time (`run_individual_*_fits`) are refused:
+  their best-fit values are not one point of the likelihood.
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an

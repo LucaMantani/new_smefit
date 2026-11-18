@@ -1,0 +1,20 @@
+# Chi2 per data point of each dataset, at each fit's best fit, compared across
+# fits: a block per data group (the `group:` of each dataset or external chi2),
+# each ending in the group's total, and the overall total last. A dataset a fit
+# does not have is an empty cell: here the analytic fit has two of the three LEP
+# datasets and no Higgs or Drell-Yan ones.
+#
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
+# Each fit's likelihood is rebuilt from its own setup, so this runcard needs no
+# datasets or coefficients of its own.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+template_text: |
+    Dataset chi2 comparison
+    =======================
+    {@datasets_chi2_comparison_table@}
+
+actions_:
+  - report(main=True)

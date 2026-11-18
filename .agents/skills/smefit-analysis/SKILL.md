@@ -135,6 +135,12 @@ directory name), rows the union of their coefficients. It sits outside the
 `{@with fits@}` loop and is written to
 `tables/coefficient_bounds_comparison_table.csv`.
 
+`datasets_chi2_comparison_table` compares the fits on their data instead:
+chi2/N_dat of each dataset at each fit's best fit, in a block per data group
+ending in the group total, empty where a fit lacks the dataset, and the overall
+total last (written to `tables/datasets_chi2_comparison_table.csv`).
+`recipes.md` has the details.
+
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key
 or as an action argument, which wins. `recipes.md` has the details and the two

@@ -13,6 +13,7 @@ import pandas as pd
 from reportengine.table import table
 
 from smefit.credible_intervals import bounds_settings
+from smefit.dataset_chi2 import UNGROUPED
 from smefit.plot_utils import select_params
 
 if TYPE_CHECKING:
@@ -276,15 +277,15 @@ def coefficient_bounds_table(
     )
 
 
-def _coefficient_bounds_comparison_table(
-    fits: Sequence[Fit],
-    latex_label: Callable[[str], str],
-    params_to_plot: list[str] | str | None,
-    round_val: int,
-    bounds_levels: float | Sequence[float] | None,
-    interval_types: str | Sequence[str] | None,
-) -> pd.DataFrame:
-    """The typed core of :func:`coefficient_bounds_comparison_table`."""
+def _fit_column_labels(fits: Sequence[Fit]) -> list[str]:
+    """The column label of each of ``fits`` in a comparison table.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty or two fits share a label: their columns would
+        merge.
+    """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
     labels = [fit.plot_label for fit in fits]
@@ -295,6 +296,19 @@ def _coefficient_bounds_comparison_table(
             + ", ".join(repr(label) for label in duplicates)
             + ": give each a distinct 'label' in its fits entry."
         )
+    return labels
+
+
+def _coefficient_bounds_comparison_table(
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: list[str] | str | None,
+    round_val: int,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+) -> pd.DataFrame:
+    """The typed core of :func:`coefficient_bounds_comparison_table`."""
+    labels = _fit_column_labels(fits)
     # selected once, on the union and before any bound is computed:
     # ``params_to_plot`` is global, so a fit having none of the coefficients is
     # an empty column rather than an error, and the order is the requested one
@@ -366,6 +380,116 @@ def coefficient_bounds_comparison_table(
     # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_comparison_table(
         fits, latex_label, params_to_plot, round_val, bounds_levels, interval_types
+    )
+
+
+_NDAT = r"$N_{\mathrm{dat}}$"
+_CHI2_PER_POINT = r"$\chi^2/N_{\mathrm{dat}}$"
+_TOTAL = "Total"
+_ALL = "All"
+
+
+@table
+def datasets_chi2_comparison_table(
+    fits, fits_best_fit_datasets_chi2, latex_label, round_val=3
+):
+    r"""Compare the chi2 per data point of each dataset across fits, in blocks
+    by data group.
+
+    Each fit's chi2 is rebuilt from its own setup and evaluated at its stored
+    best-fit point (:func:`smefit.dataset_chi2.best_fit_datasets_chi2`): a
+    runcard needs only ``fits:``. Each dataset is evaluated on its own block of
+    the fit's covariance matrix, so correlations between datasets are left out,
+    of the totals too. Datasets without a ``group:`` are tabulated under
+    ``Other``. One table rather than one per group, so that every group is
+    drawn at the same column widths.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+    fits_best_fit_datasets_chi2 : list of pd.DataFrame
+        :func:`smefit.dataset_chi2.best_fit_datasets_chi2` of each fit, in the
+        order of ``fits``.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    round_val : int, optional
+        Number of decimals of each chi2 per data point.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = (group label, dataset label): a block per group, in order of
+        first appearance and ``Other`` last, listing the datasets any fit has
+        in it and ending in a ``Total`` row, blocks separated by a blank row
+        ``("", "")``; then ``(All, Total)`` over every dataset. Columns
+        ``(N_dat, "")`` and ``(chi2/N_dat, <fit label>)``. A ``Total`` is the
+        summed chi2 over the summed points of the datasets the fit has; its
+        ``N_dat`` counts every dataset listed, so a fit missing one (an empty
+        cell) is divided by fewer.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty, two fits share a label, or two fits disagree on
+        the number of points of a dataset.
+    """
+    labels = _fit_column_labels(fits)
+    # one row per (fit, dataset)
+    rows = pd.concat(fits_best_fit_datasets_chi2, keys=labels, names=["fit", "dataset"])
+    rows = rows.reset_index()
+
+    ndat = rows.groupby("dataset", sort=False)["ndat"].unique()
+    differing = ndat[ndat.map(len) > 1]
+    if len(differing):
+        raise ValueError(
+            "The fits disagree on the number of data points of "
+            + ", ".join(
+                f"'{name}' ({', '.join(map(str, n))})" for name, n in differing.items()
+            )
+            + ": the chi2 comparison quotes one N_dat per dataset."
+        )
+    ndat = ndat.map(lambda n: int(n[0]))
+
+    def line(selected, n):
+        """``N_dat``, then each fit's summed chi2 over its summed points; empty
+        for a fit with none of ``selected`` (or no point to divide by)."""
+        by_fit = selected.groupby("fit")[["chi2", "ndat"]].sum()
+        return [str(n)] + [
+            (
+                _number(by_fit.at[label, "chi2"] / by_fit.at[label, "ndat"], round_val)
+                if label in by_fit.index and by_fit.at[label, "ndat"] > 0
+                else ""
+            )
+            for label in labels
+        ]
+
+    groups = list(dict.fromkeys(rows["group"]))
+    if UNGROUPED in groups:
+        groups.append(groups.pop(groups.index(UNGROUPED)))
+
+    # a list, not a dict: a dataset or group may be called "Total" or "All"
+    index, cells = [], []
+    for group in groups:
+        in_group = rows[rows["group"] == group]
+        # a dataset two fits group differently is listed under both groups
+        names = list(dict.fromkeys(in_group["dataset"]))
+        for name in names:
+            index.append((latex_label(group), latex_label(name)))
+            cells.append(line(in_group[in_group["dataset"] == name], ndat[name]))
+        index.append((latex_label(group), _TOTAL))
+        cells.append(line(in_group, ndat[names].sum()))
+        index.append(("", ""))
+        cells.append([""] * (1 + len(labels)))
+    # ...but counts once in the overall total
+    index.append((_ALL, _TOTAL))
+    cells.append(line(rows, ndat.sum()))
+
+    return pd.DataFrame(
+        cells,
+        index=pd.MultiIndex.from_tuples(index),
+        columns=pd.MultiIndex.from_tuples(
+            [(_NDAT, "")] + [(_CHI2_PER_POINT, label) for label in labels]
+        ),
     )
 
 

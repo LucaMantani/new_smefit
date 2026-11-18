@@ -15,7 +15,8 @@ rge:
 
 # Datasets to include
 datasets:
-  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP1_EWPOs_2006, order: LO, group: LEP}
+  - {name: LEP_Bhabha_2013, order: LO, group: LEP}
 
 # Coefficients to fit
 coefficients:

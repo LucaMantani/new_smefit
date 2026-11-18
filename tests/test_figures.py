@@ -25,8 +25,8 @@ from matplotlib.patches import Ellipse
 from smefit import credible_intervals
 from smefit import figures as figures_mod
 from smefit.figures import (
-    _confidence_ellipse,
     _density_level,
+    _gaussian_ellipse,
     _kde_grid,
     _plot_heatmap,
     plot_chi2_scan,
@@ -904,7 +904,7 @@ def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2D contour helpers: _kde_grid, _density_level, _confidence_ellipse
+# 2D contour helpers: _kde_grid, _density_level, _gaussian_ellipse
 # ---------------------------------------------------------------------------
 
 _COV_2D = np.array([[1.0, 0.6], [0.6, 0.5]])
@@ -1030,38 +1030,34 @@ def test_kde_grid_leaves_small_posteriors_untouched(
     assert seen == [1234]
 
 
-@pytest.mark.parametrize("level", [68.0, 95.0])
-def test_confidence_ellipse_axes_match_the_sample_covariance(level: float) -> None:
+def test_gaussian_ellipse_axes_match_the_sample_covariance() -> None:
     x, y = _gaussian_pair(n=200_000)
 
-    ellipse = _confidence_ellipse(x, y, level)
+    _, (width, height), angle = _gaussian_ellipse(x, y)
 
     eig_val, eig_vec = np.linalg.eigh(_COV_2D)
-    chi2_qnt = scipy.stats.chi2.ppf(level / 100.0, 2)
-    assert ellipse.width / 2 == pytest.approx(np.sqrt(chi2_qnt * eig_val[1]), rel=1e-2)
-    assert ellipse.height / 2 == pytest.approx(np.sqrt(chi2_qnt * eig_val[0]), rel=1e-2)
+    assert width / 2 == pytest.approx(np.sqrt(eig_val[1]), rel=1e-2)
+    assert height / 2 == pytest.approx(np.sqrt(eig_val[0]), rel=1e-2)
     # the major axis is an eigenvector, so its angle is fixed modulo 180 degrees
     expected = np.degrees(np.arctan2(eig_vec[1, 1], eig_vec[0, 1]))
-    assert (ellipse.angle - expected + 90.0) % 180.0 - 90.0 == pytest.approx(
-        0.0, abs=1.0
-    )
+    assert (angle - expected + 90.0) % 180.0 - 90.0 == pytest.approx(0.0, abs=1.0)
 
 
-def test_confidence_ellipse_is_centred_on_the_mean() -> None:
+def test_gaussian_ellipse_is_centred_on_the_mean() -> None:
     """The mean, about which the covariance is taken: on skewed samples, where
     it parts from the median, the ellipse follows it."""
     rng = np.random.default_rng(0)
     x, y = rng.exponential(size=5000), rng.exponential(size=5000)
 
-    ellipse = _confidence_ellipse(x, y, 95.0)
+    center, _, _ = _gaussian_ellipse(x, y)
 
-    assert ellipse.center == pytest.approx((x.mean(), y.mean()))
-    assert abs(ellipse.center[0] - np.median(x)) > 0.2
+    assert center == pytest.approx((x.mean(), y.mean()))
+    assert abs(center[0] - np.median(x)) > 0.2
 
 
-def test_confidence_ellipse_rejects_mismatched_sizes() -> None:
+def test_gaussian_ellipse_rejects_mismatched_sizes() -> None:
     with pytest.raises(ValueError, match="same size"):
-        _confidence_ellipse(np.zeros(10), np.zeros(9), 95.0)
+        _gaussian_ellipse(np.zeros(10), np.zeros(9))
 
 
 # ---------------------------------------------------------------------------
@@ -1229,6 +1225,37 @@ def test_plot_posterior_contours_legend_a_grey_entry_per_level(
     assert widest.get_facecolor()[:3] == pytest.approx(grey[:3])
     assert [h.get_linestyle() for h in inner] == ["--", ":"]
     assert all(h.get_color() == "grey" for h in inner)
+
+
+def test_plot_posterior_contours_scale_one_gaussian_per_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every level and layer of a fit's ellipses is one Gaussian scaled by
+    sqrt(chi2_2(level)): one eigendecomposition per fit and panel."""
+    calls: list[int] = []
+    real_eigh = np.linalg.eigh
+
+    def spy(matrix: np.ndarray) -> object:
+        calls.append(1)
+        return real_eigh(matrix)
+
+    fit = _contour_fit(names=("OpA", "OpB"), contours="gaussian")
+    samples = fit.fit_results.samples
+    center, axes, angle = _gaussian_ellipse(samples["OpA"], samples["OpB"])
+    monkeypatch.setattr(figures_mod.np.linalg, "eigh", spy)
+
+    fig = plot_posterior_contours(fit, latex_label=_plain, bounds_levels=[68, 95])
+
+    assert len(calls) == 1
+    [ax] = fig.axes
+    for patch in _ellipses(ax):
+        assert patch.center == pytest.approx(center)
+        assert patch.angle == pytest.approx(angle)
+    [filled] = _filled(ax)
+    [inner] = _inner(ax)
+    for patch, level in [(filled, 95.0), (inner, 68.0)]:
+        scale = np.sqrt(scipy.stats.chi2.ppf(level / 100.0, 2))
+        assert (patch.width, patch.height) == pytest.approx(tuple(scale * axes))
 
 
 def test_plot_posterior_contours_cycle_the_line_styles_past_their_end() -> None:

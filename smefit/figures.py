@@ -637,14 +637,16 @@ def _density_level(sample_density, level):
     return float(np.quantile(sample_density, 1.0 - level / 100.0))
 
 
-def _confidence_ellipse(x, y, level):
-    """The ``level`` percent ellipse of the samples ``(x, y)``, not yet drawn.
+def _gaussian_ellipse(x, y):
+    """The Gaussian of the samples ``(x, y)``, as the shape of its ellipses.
 
-    The iso-contour of the Gaussian with the samples' covariance, centred on
-    their mean — the point that covariance is taken about — holding ``level`` percent of the joint 2D distribution: each
-    half-axis is ``sqrt(chi2_2(level) * eigenvalue)``, the quantile of a
-    chi-squared with two degrees of freedom, not one.
-    The caller styles it and adds it to an axes.
+    Returns ``(center, axes, angle)``: the samples' mean — the point their
+    covariance is taken about — the full ``(width, height)`` of the ellipse at
+    one unit of chi-squared, ``2 * sqrt(eigenvalue)``, major axis first, and
+    the major axis's angle in degrees. Every level is the same ellipse scaled:
+    the one holding ``level`` percent of the joint 2D distribution has its axes
+    times ``sqrt(chi2_2(level))``, the quantile of a chi-squared with two
+    degrees of freedom, not one.
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -654,14 +656,9 @@ def _confidence_ellipse(x, y, level):
     # symmetric: eigh keeps everything real and sorts the eigenvalues ascending
     eig_val, eig_vec = np.linalg.eigh(np.cov(x, y))
     major = eig_vec[:, -1]
-    angle = np.degrees(np.arctan2(major[1], major[0]))
-    chi2_qnt = scipy.stats.chi2.ppf(level / 100.0, 2)
-    return Ellipse(
-        (float(np.mean(x)), float(np.mean(y))),
-        width=2 * np.sqrt(chi2_qnt * eig_val[-1]),
-        height=2 * np.sqrt(chi2_qnt * eig_val[-2]),
-        angle=float(angle),
-    )
+    angle = float(np.degrees(np.arctan2(major[1], major[0])))
+    center = (float(np.mean(x)), float(np.mean(y)))
+    return center, 2 * np.sqrt(eig_val[::-1]), angle
 
 
 def _inner_linestyles(n_inner):
@@ -726,17 +723,12 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
             outline(level, linestyles=style, linewidths=1.5)
     else:
 
+        # one Gaussian per fit and panel, every level and layer a scaling of it
+        center, axes, angle = _gaussian_ellipse(x, y)
+
         def draw_ellipse(level, **kwargs):
-            shape = _confidence_ellipse(x, y, level)
-            ax.add_patch(
-                Ellipse(
-                    shape.center,
-                    shape.width,
-                    shape.height,
-                    angle=shape.angle,
-                    **kwargs,
-                )
-            )
+            scale = np.sqrt(scipy.stats.chi2.ppf(level / 100.0, 2))
+            ax.add_patch(Ellipse(center, *(scale * axes), angle=angle, **kwargs))
 
         draw_ellipse(filled, facecolor=color, edgecolor="none", alpha=0.3)
         if hatch:

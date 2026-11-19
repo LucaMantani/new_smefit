@@ -36,6 +36,8 @@ from smefit.figures import (
     plot_coefficient_bounds_comparison,
     plot_fisher_diagonals_heatmap,
     plot_global_information_heatmap,
+    plot_mass_reach,
+    plot_mass_reach_comparison,
     plot_pca_components_heatmap,
     plot_pca_spectrum,
     plot_posterior_contours,
@@ -1137,6 +1139,187 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
         _one_figure(plot_coefficient_bounds_comparison, [], latex_label=_plain)
+
+
+# ---------------------------------------------------------------------------
+# plot_mass_reach / plot_mass_reach_comparison
+# ---------------------------------------------------------------------------
+
+
+def _reach_bars(ax: matplotlib.axes.Axes) -> list[tuple[float, float, float]]:
+    """Every bar drawn, as ``(x centre, height, alpha)``."""
+    return [
+        (p.get_x() + p.get_width() / 2, p.get_height(), p.get_alpha())
+        for p in ax.patches
+        if isinstance(p, Rectangle)
+    ]
+
+
+@pytest.mark.parametrize(
+    "pieces, expected",
+    [
+        ([(-0.25, 0.25)], 2.0),  # half-width 1/4
+        ([(1.0, 3.0)], 1.0),  # off zero: the width counts, not the position
+        ([(-2.0, -1.0), (1.0, 2.0)], 2**-0.5),  # outermost edges, gap included
+        ([], np.nan),
+        ([(1.0, 1.0)], np.nan),  # no width
+    ],
+)
+def test_reach_from_pieces_is_one_over_root_half_width(pieces, expected) -> None:
+    assert figures_mod._reach_from_pieces(pieces) == pytest.approx(
+        expected, nan_ok=True
+    )
+
+
+def test_plot_mass_reach_draws_one_bar_per_coefficient_and_level() -> None:
+    """The narrowest level is the tallest bar, drawn faintest under the wider."""
+    fit = _bounds_fit()
+    fig = _one_figure(
+        plot_mass_reach,
+        fit,
+        latex_label=make_latex_label({"OpA": "$c_A$"}),
+        bounds_levels=[95, 68],
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["$c_A$", r"$\mathrm{OpZZ}$"]
+    assert ax.get_yscale() == "log"
+    bars = _reach_bars(ax)
+    assert len(bars) == 4
+    expected = {
+        level: figures_mod._reach_from_pieces(fit.confidence_bounds(level)["OpA"])
+        for level in (68.0, 95.0)
+    }
+    op_a = sorted((b for b in bars if b[0] < 0.5), key=lambda b: b[2])
+    assert [h for _, h, _ in op_a] == pytest.approx([expected[68.0], expected[95.0]])
+    assert expected[68.0] > expected[95.0]
+
+
+def test_plot_mass_reach_skips_a_coefficient_without_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fit = _bounds_fit()
+    monkeypatch.setattr(
+        fit,
+        "confidence_bounds",
+        lambda level, interval_type, params: {"OpA": [(-1.0, 1.0)], "OpZZ": [(0, 0)]},
+    )
+
+    fig = _one_figure(plot_mass_reach, fit, latex_label=_plain, bounds_levels=95)
+
+    [(x, height, _)] = _reach_bars(fig.axes[0])
+    assert x == pytest.approx(0.0)
+    assert height == pytest.approx(1.0)
+
+
+def test_plot_mass_reach_keeps_params_to_plot_and_axis_options() -> None:
+    fig = _one_figure(
+        plot_mass_reach,
+        _bounds_fit(),
+        latex_label=_plain,
+        params_to_plot=["OpZZ", "OpA"],
+        y_log=False,
+        y_min=0.0,
+        y_max=5.0,
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["OpZZ", "OpA"]
+    assert ax.get_yscale() == "linear"
+    assert ax.get_ylim() == (0.0, 5.0)
+
+
+def test_plot_mass_reach_log_axis_starts_a_decade_below_the_shortest_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Autoscaling a log axis would cut every bar at the shortest one."""
+    fit = _bounds_fit()
+    monkeypatch.setattr(
+        fit,
+        "confidence_bounds",
+        lambda level, interval_type, params: {
+            "OpA": [(-0.04, 0.04)],  # 5 TeV
+            "OpZZ": [(-1e-4, 1e-4)],  # 100 TeV
+        },
+    )
+
+    fig = _one_figure(plot_mass_reach, fit, latex_label=_plain, bounds_levels=95)
+
+    assert fig.axes[0].get_ylim()[0] == pytest.approx(1.0)
+
+
+def test_plot_mass_reach_yields_one_figure_per_interval_type() -> None:
+    suffixes = [
+        suffix
+        for _, suffix in plot_mass_reach(
+            _bounds_fit(), latex_label=_plain, interval_types=["eti", "hdi"]
+        )
+    ]
+    assert suffixes == ["eti", "hdi"]
+
+
+def test_plot_mass_reach_comparison_groups_are_the_union_of_the_fits() -> None:
+    grid = list(np.linspace(0.0, 1.0, 101))
+    both = _bounds_fit(fit_name="both", label="$\\mathrm{Both}$")
+    only_b = _bounds_fit(samples={"OpB": grid}, fit_name="only_b")
+
+    fig = _one_figure(
+        plot_mass_reach_comparison,
+        [both, only_b],
+        latex_label=_plain,
+        bounds_levels=95,
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["OpA", "OpZZ", "OpB"]
+    bars = _reach_bars(ax)
+    assert len(bars) == 3
+    # each fit off the group centre, on opposite sides
+    xs = sorted(x for x, *_ in bars)
+    assert xs[0] < 0 < xs[1] < 1 < xs[2]
+    legend = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert legend[:2] == ["$\\mathrm{Both}$", "only_b"]
+
+
+def test_plot_mass_reach_comparison_rejects_no_fits() -> None:
+    with pytest.raises(ValueError, match="fits is empty"):
+        _one_figure(plot_mass_reach_comparison, [], latex_label=_plain)
+
+
+def test_plot_mass_reach_graph_resolves(tmp_path):
+    """The template runcard resolves through reportengine, which checks the
+    annotations that calling the provider directly skips."""
+    import yaml
+    from reportengine.resourcebuilder import FuzzyTarget, ResourceBuilder
+
+    from smefit.api import smefitAPI
+
+    template = Path(__file__).parents[1] / "template_runcards/mass_reach_plot.yaml"
+    runcard = yaml.safe_load(template.read_text())
+    template_text = runcard.pop("template_text")
+    assert "{@plot_mass_reach_comparison@}" in template_text
+    assert "{@plot_mass_reach@}" in template_text
+    for entry in runcard["fits"]:
+        folder = tmp_path / entry["name"]
+        _fit(samples={"OpA": _GAUSS, "OpZZ": _GAUSS}).fit_results.write(folder)
+        (folder / "input").mkdir()
+        (folder / "input" / "runcard.yaml").write_text(
+            yaml.safe_dump({"actions_": ["run_analytic_fit"]})
+        )
+        entry["path"] = str(tmp_path)
+
+    config = smefitAPI.config_class(runcard, environment=smefitAPI.loadedenv)
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [
+            FuzzyTarget("plot_mass_reach_comparison", (), (), ()),
+            FuzzyTarget("plot_mass_reach", ("fits",), (), ()),
+        ],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()
 
 
 # ---------------------------------------------------------------------------

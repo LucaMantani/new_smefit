@@ -1,0 +1,44 @@
+# Mass reach Lambda/sqrt(|c_i|) of fits that have already been run: no fit is
+# run here, the posterior samples are read back from each fit's
+# fit_results.json. One bar per coefficient, in TeV: 1/sqrt of the half-width of
+# the credible region on c_i/Lambda^2 (TeV^-2), from its lowest edge to its
+# highest, so it measures sensitivity whether or not the region contains zero.
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+
+# confidence levels drawn, in percent (default: 68 and 95) — the same key the
+# bounds plots and tables read. All over the same bar: the narrowest interval,
+# hence the highest reach, faintest underneath
+bounds_levels: [68, 95]
+# credible intervals: eti (default) and/or hdi. One figure per type, saved with
+# the type as its suffix
+interval_types: [eti, hdi]
+
+# restrict the bars to these coefficients, in this order, left to right
+# params_to_plot: [OpD, OpWB]
+
+# y-axis: log scale by default, and explicit limits (chosen from the bars by
+# default)
+# y_log: false
+# y_min: 0.1
+# y_max: 10.0
+
+# The comparison sets every fit side by side within each coefficient's group;
+# a coefficient a fit did not sample has no bar from it.
+# `with fits` opens a section per fit, each with its own figure.
+template_text: |
+    Mass reach comparison
+    =====================
+    {@plot_mass_reach_comparison@}
+
+    Mass reach per fit
+    ==================
+    {@with fits@}
+    {@fit@}
+    ---------
+    {@plot_mass_reach@}
+    {@endwith@}
+
+actions_:
+  - report(main=True)

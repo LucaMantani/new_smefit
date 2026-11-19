@@ -509,9 +509,10 @@ actions_:
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
 ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
-`plot_posterior_histograms`, `plot_posterior_correlations` — now with one row
-(or panel) per component. Template:
-`pca_posterior.yaml`.
+`plot_posterior_histograms`, `plot_posterior_contours`,
+`plot_posterior_correlations`, `fisher_diagonals_normalised`,
+`plot_fisher_diagonals_heatmap` — now with one row (or panel) per component.
+Template: `pca_posterior.yaml`.
 
 ```yaml
 fits:
@@ -526,6 +527,8 @@ template_text: |
   {@coefficient_bounds_table@}
   {@plot_posterior_histograms@}
   {@plot_posterior_correlations@}
+  {@fisher_diagonals_normalised@}
+  {@plot_fisher_diagonals_heatmap@}
   {@endwith@}
   {@endwith@}
 actions_:
@@ -536,6 +539,14 @@ actions_:
   Outputs carry the namespace in their name
   (`<fit_name>_fitcontext_pcabasis_coefficient_bounds_table.csv`), so they sit
   beside the coefficient-basis ones without clashing.
+- The Fisher routines read the per-dataset Fisher matrices rotated into the
+  components, so a row says which datasets fix that component. When no
+  systematic is shared across datasets they sum to a diagonal matrix in this
+  basis, and `global_information_table` gives the same numbers as
+  `fisher_diagonals_normalised`. A shared one (a common luminosity, say) enters
+  the likelihood the PCA is taken of but no per-dataset matrix, and the two
+  tables then differ. A flat component's Fisher shares are noise and logged as
+  such; `global_information_table` refuses it.
 - It needs a likelihood to take the PCA of: `fits::pcabasis` alone, in a runcard
   of fits only, is refused. Everything the `fitcontext` recipe says about the
   PCA applies — a `pca_settings:` block, and no negative curvature at the
@@ -613,6 +624,63 @@ template_text: |
   A list that selects nothing from any fit raises.
 - Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
   are only written if the report also asks for `coefficient_bounds_table`.
+
+#### The chi2 of each dataset, fit by fit
+
+`datasets_chi2_comparison_table` compares how well each fit describes its
+data: the chi2 per data point of every dataset, at each fit's stored best-fit
+point and at its baseline. Like the bounds comparison it takes the whole
+`fits:` list and goes
+**outside** any `{@with fits@}` loop; a runcard of `fits:` alone is enough,
+since each fit's likelihood is rebuilt from its own setup (as under
+`fits::fitcontext`):
+
+```yaml
+template_text: |
+  # Dataset chi2
+  {@datasets_chi2_comparison_table@}
+```
+
+- One table, in a block per data group, from the `group:` of each dataset
+  (and external chi2) in each fit's own runcard; datasets without one are under
+  `Other`, last. A dataset two fits put in different groups is listed under
+  both. A single table rather than one per group, so that every group is drawn
+  at the same column widths.
+- Columns: a block per fit, headed by its label: its own `N_dat`, then its
+  `chi2/N_dat` in two sub-columns, `best fit` and `baseline`. `N_dat` is per
+  fit because fits may differ in their datasets (or their points, e.g. with
+  different `data_path`s). The baseline is the
+  fit's own (the `baseline_value` of its free coefficients, zero unless set, so
+  the SM by default), so fits with different baselines are each compared with
+  theirs and no SM fit is needed. `show_baseline_chi2: false` (a top-level
+  key, or an action argument) leaves the `baseline` columns out. A dataset a fit does not have is empty in all
+  of that fit's columns.
+  `round_val` (default 3) sets the decimals.
+- Each block ends in a `Total` row, the group's summed chi2 over its summed
+  data points, fit by fit; the last row, `All` / `Total`, is the same over
+  every dataset. A blank row separates the blocks (index `("", "")` in the
+  CSV, so drop those rows when reading it back).
+- In a `Total`, each fit's `N_dat` and `chi2/N_dat` are over the datasets of
+  the block it has.
+- Each dataset is evaluated on its own block of the fit covariance matrix:
+  correlations between datasets are left out, of the totals too.
+- Written to `tables/datasets_chi2_comparison_table.csv`.
+- Fits run one coefficient at a time (`run_individual_*_fits`) are refused:
+  their best-fit values are not one point of the likelihood.
+
+`data_groups_chi2_comparison_table` is the same comparison with only the
+group totals: one row per data group (in the same order, `Other` last), then
+`Total` over every dataset. It takes the same keys (`show_baseline_chi2`,
+`round_val`), and its rows are exactly the `Total` rows of
+`datasets_chi2_comparison_table`, so the two can go in one report:
+
+```yaml
+template_text: |
+  # Chi2 by data group
+  {@data_groups_chi2_comparison_table@}
+```
+
+Written to `tables/data_groups_chi2_comparison_table.csv` (no blank rows).
 
 ### Configuring an action
 

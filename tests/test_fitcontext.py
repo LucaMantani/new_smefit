@@ -14,6 +14,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 from reportengine import namespaces
@@ -537,3 +538,79 @@ def test_pcabasis_refuses_a_namespace_without_a_likelihood(
 
     with pytest.raises(ConfigError, match="fits::fitcontext::pcabasis"):
         builder.resolve_fuzzytargets()
+
+
+_CONTEXT = ("fits", "fitcontext")
+_PCABASIS = ("fits", "fitcontext", "pcabasis")
+
+
+def _resolve_both(
+    targets: list[tuple[str, tuple[str, ...]]], fits: list[dict[str, str]]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Resolve each ``(target, namespace)`` in one graph; return the namespaces
+    ``fits::fitcontext`` and ``fits::fitcontext::pcabasis`` of the first fit."""
+    config = smefitConfig(
+        {"fits": fits, "pca_settings": {}}, environment=smefitAPI.loadedenv
+    )
+    builder = ResourceBuilder(
+        config,
+        smefitAPI.provider_loaded,
+        [FuzzyTarget(target, spec, (), ()) for target, spec in targets],
+        perform_final=False,
+    )
+    builder.rootns.update(smefitAPI.loadedenv.ns_dump())
+    builder.resolve_fuzzytargets()
+    builder.execute_sequential()
+    return (
+        namespaces.resolve(builder.rootns, [("fits", 0), *_CONTEXT[1:]]),
+        namespaces.resolve(builder.rootns, [("fits", 0), *_PCABASIS[1:]]),
+    )
+
+
+def test_pcabasis_rotates_the_fisher_and_leaves_the_fitcontext_alone(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """The Fisher matrices are those of the components in ``pcabasis`` only.
+
+    Both namespaces in one graph: were the rotation stored in ``fitcontext``
+    (all its inputs but ``unrotated_fit`` live there), it would overwrite the
+    coefficient-basis matrices. The fit is stored without samples: the Fisher
+    must not depend on the posterior.
+    """
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path, group="Top")
+    fits = [_write_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
+    name = "aggregate_fisher_information_matrices"
+
+    context, rotated = _resolve_both(
+        [(name, _PCABASIS), (name, _CONTEXT), ("pca", _CONTEXT)], fits
+    )
+
+    [coefficient_basis] = context[name].values()
+    assert list(context[name]) == ["Top"]
+    assert coefficient_basis.index.tolist() == list(_BEST_FIT)
+
+    assert list(rotated[name]) == ["Top"]
+    [component_basis] = rotated[name].values()
+    assert component_basis.index.tolist() == ["PC1", "PC2"]
+    assert component_basis.columns.tolist() == ["PC1", "PC2"]
+    np.testing.assert_allclose(
+        component_basis.to_numpy(),
+        np.diag(context["pca"].eigenvalues),
+        atol=1e-9 * context["pca"].eigenvalues[0],
+    )
+
+
+def test_pcabasis_fisher_diagonals_equal_the_global_information(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    """The total Fisher matrix is diagonal in the PCA basis, so the two tables
+    coincide there; in the coefficient basis they do not have to."""
+    runcard = _fit_runcard(fixtures_data_path, fixtures_theory_path)
+    fits = [_write_fit(tmp_path / "my_fit", runcard, _minimum(runcard))]
+    tables = ("fisher_diagonals_normalised", "global_information_table")
+
+    _, rotated = _resolve_both([(table, _PCABASIS) for table in tables], fits)
+
+    fisher, shares = (rotated[table] for table in tables)
+    assert fisher.index.tolist() == ["$\\mathrm{PC1}$", "$\\mathrm{PC2}$"]
+    pd.testing.assert_frame_equal(fisher, shares)

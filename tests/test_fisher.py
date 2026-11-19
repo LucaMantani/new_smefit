@@ -17,6 +17,7 @@ from smefit.core import (
     TheoryGroup,
 )
 from smefit.fisher import (
+    _fisher_in_pca_basis,
     _resolve_groups,
     aggregate_fisher_information_matrices,
     fisher_information_matrices,
@@ -24,6 +25,7 @@ from smefit.fisher import (
     total_fisher_information_matrix,
 )
 from smefit.model import EFTModel
+from smefit.pca import pca as pca_of
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
@@ -609,3 +611,169 @@ def test_gim_silent_when_every_source_is_positive_semidefinite(caplog):
         global_information_matrix(fim)
 
     assert "negative share" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _fisher_in_pca_basis: the Fisher matrices of the pcabasis namespace
+# ---------------------------------------------------------------------------
+
+_PCA_SETTINGS = {"threshold": 1e-12, "min_weight": 0.1}
+
+
+def _decompose(fim):
+    """The PCA of the total of ``fim``, as the ``pca`` node computes it."""
+    return pca_of(sum(fim.values()), _PCA_SETTINGS)
+
+
+def _correlated_fim():
+    return _fim(
+        ["OpA", "OpB", "OpC"],
+        DS_A=[[3.0, 1.0, 0.0], [1.0, 2.0, 0.5], [0.0, 0.5, 1.0]],
+        DS_B=[[1.0, -0.5, 0.2], [-0.5, 2.0, 0.0], [0.2, 0.0, 4.0]],
+        DS_C=[[0.5, 0.0, 0.0], [0.0, 0.1, 0.3], [0.0, 0.3, 1.0]],
+    )
+
+
+def test_fisher_in_pca_basis_sums_to_the_spectrum():
+    """With the PCA taken of the sum of the sources, as when no systematic is
+    shared across datasets, the rotated total is diag(lambda)."""
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+
+    rotated = _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert list(rotated) == ["DS_A", "DS_B", "DS_C"]
+    for matrix in rotated.values():
+        assert matrix.index.tolist() == ["PC1", "PC2", "PC3"]
+        assert matrix.columns.tolist() == ["PC1", "PC2", "PC3"]
+    total = sum(m.to_numpy() for m in rotated.values())
+    np.testing.assert_allclose(total, np.diag(decomposition.eigenvalues), atol=1e-12)
+    diagonals = sum(np.diag(m.to_numpy()) for m in rotated.values())
+    np.testing.assert_allclose(diagonals, decomposition.eigenvalues)
+
+
+def test_fisher_in_pca_basis_reorders_the_coefficients_first():
+    """A Fisher matrix in another coefficient order rotates to the same result."""
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+    order = ["OpC", "OpA", "OpB"]
+    shuffled = {source: F.loc[order, order] for source, F in fim.items()}
+
+    expected = _fisher_in_pca_basis(fim, {}, decomposition, None)
+    rotated = _fisher_in_pca_basis(shuffled, {}, decomposition, None)
+
+    for source in fim:
+        pd.testing.assert_frame_equal(rotated[source], expected[source])
+
+
+def test_fisher_in_pca_basis_merges_groups_before_rotating():
+    fim = _correlated_fim()
+    decomposition = _decompose(fim)
+
+    rotated = _fisher_in_pca_basis(fim, {"AB": ["DS_A", "DS_B"]}, decomposition, None)
+    single = _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert list(rotated) == ["AB", "DS_C"]
+    pd.testing.assert_frame_equal(rotated["AB"], single["DS_A"] + single["DS_B"])
+
+
+def test_fisher_in_pca_basis_equals_the_global_information_shares():
+    """Diagonal total Fisher: the Fisher diagonals are the variance shares."""
+    rotated = _fisher_in_pca_basis(
+        _correlated_fim(), {}, _decompose(_correlated_fim()), None
+    )
+
+    diagonals = pd.DataFrame(
+        {source: np.diag(F.to_numpy()) for source, F in rotated.items()},
+        index=["PC1", "PC2", "PC3"],
+    )
+    normalised = diagonals.div(diagonals.sum(axis=1), axis=0)
+
+    pd.testing.assert_frame_equal(global_information_matrix(rotated), normalised)
+
+
+def test_fisher_in_pca_basis_warns_on_a_flat_component(caplog):
+    # OpA - OpB is never constrained: the second component is flat
+    fim = _fim(["OpA", "OpB"], DS_A=np.ones((2, 2)), DS_B=2 * np.ones((2, 2)))
+    decomposition = _decompose(fim)
+    assert decomposition.flat_mask.tolist() == [False, True]
+
+    with caplog.at_level(logging.WARNING):
+        _fisher_in_pca_basis(fim, {}, decomposition, None)
+
+    assert "PC2 flat" in caplog.text
+    assert "PC1" not in caplog.text
+
+
+def test_fisher_in_pca_basis_silent_without_flat_components(caplog):
+    fim = _correlated_fim()
+
+    with caplog.at_level(logging.WARNING):
+        _fisher_in_pca_basis(fim, {}, _decompose(fim), None)
+
+    assert "PCA basis" not in caplog.text
+
+
+def _two_coefficient_setup(
+    fit_covmat: jnp.ndarray,
+) -> tuple[Chi2, list[Chi2]]:
+    """Two datasets, two free coefficients, linear corrections only: the total
+    chi2 and the per-dataset ones, built on ``fit_covmat``."""
+    theories = [
+        Theory(
+            name=name,
+            order="LO",
+            sm_pred=jnp.array(sm),
+            eft_pred={"OpA": lin_a, "OpB": lin_b},
+            sm_covmat=jnp.eye(2),
+            scales=jnp.full(2, 100.0),
+            operators=["OpA", "OpB"],
+        )
+        for name, sm, lin_a, lin_b in (
+            ("DS_A", [10.0, 20.0], [1.0, 2.0], [0.5, -0.3]),
+            ("DS_B", [30.0, 40.0], [0.2, 0.4], [3.0, 1.0]),
+        )
+    ]
+    model = EFTModel(
+        TheoryGroup(theories),
+        CoefficientGroup([_free("OpA"), _free("OpB")]),
+        use_quad=False,
+    )
+    data = DataGroup(
+        [_make_dataset("DS_A", [10.0, 20.0]), _make_dataset("DS_B", [30.0, 40.0])]
+    )
+    total = Chi2(
+        build_chi2(model, data, fit_covmat), param_names=["OpA", "OpB"], num_data=4
+    )
+    return total, build_datasets_chi2(model, data, fit_covmat)
+
+
+@pytest.mark.parametrize("shared", [False, True], ids=["block_diagonal", "shared"])
+def test_fisher_in_pca_basis_matches_the_global_information_only_without_shared_systematics(
+    shared: bool,
+) -> None:
+    """The PCA is of the total likelihood; the per-dataset matrices see their
+    own covariance blocks. They agree, and so do the two tables, only when no
+    systematic is shared across datasets."""
+    fit_covmat = jnp.eye(4)
+    if shared:
+        fit_covmat = fit_covmat.at[0, 2].set(0.6).at[2, 0].set(0.6)
+    total, per_dataset = _two_coefficient_setup(fit_covmat)
+    c0 = _sm_point(2)
+    decomposition = pca_of(total_fisher_information_matrix(total, c0), _PCA_SETTINGS)
+
+    rotated = _fisher_in_pca_basis(
+        fisher_information_matrices(per_dataset, c0), {}, decomposition, None
+    )
+
+    summed = sum(F.to_numpy() for F in rotated.values())
+    diagonals = pd.DataFrame(
+        {source: np.diag(F.to_numpy()) for source, F in rotated.items()},
+        index=decomposition.component_names,
+    )
+    normalised = diagonals.div(diagonals.sum(axis=1), axis=0)
+    shares = global_information_matrix(rotated)
+    agree = np.allclose(summed, np.diag(decomposition.eigenvalues)) and np.allclose(
+        shares.to_numpy(), normalised.to_numpy()
+    )
+    assert agree is not shared

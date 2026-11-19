@@ -50,8 +50,12 @@
   "fit_reading_actions": [
     "coefficient_bounds_comparison_table",
     "coefficient_bounds_table",
+    "data_groups_chi2_comparison_table",
+    "datasets_chi2_comparison_table",
     "plot_coefficient_bounds",
     "plot_coefficient_bounds_comparison",
+    "plot_posterior_contours",
+    "plot_posterior_contours_comparison",
     "plot_posterior_correlations",
     "plot_posterior_histograms",
     "plot_posterior_histograms_comparison",
@@ -86,6 +90,7 @@
     "dataset_table_caption",
     "dataset_table_label",
     "fetch_bibtex",
+    "hatch",
     "lin_thr",
     "n_bins",
     "n_cols",
@@ -96,6 +101,7 @@
     "round_val",
     "seed",
     "shared_bins",
+    "show_baseline_chi2",
     "tol",
     "value_fmt",
     "x_log",
@@ -196,10 +202,12 @@
     },
     "fit": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -207,10 +215,12 @@
     },
     "fits": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -351,6 +361,7 @@
     "fit",
     "fits",
     "gradient_descent_settings",
+    "hatch",
     "hessian_settings",
     "interval_types",
     "latex_labels",
@@ -369,6 +380,7 @@
     "round_val",
     "seed",
     "shared_bins",
+    "show_baseline_chi2",
     "template_text",
     "theory_path",
     "tol",

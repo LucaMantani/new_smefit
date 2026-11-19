@@ -32,7 +32,8 @@ from smefit.chi2 import Chi2, build_chi2, build_datasets_chi2
 from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
-from smefit.fit_result import Fit, _fit_in_pca_basis
+from smefit.fisher import _fisher_in_pca_basis
+from smefit.fit_result import CONTOUR_STYLES, Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
@@ -996,6 +997,8 @@ class smefitConfig(Config):
             - name: my_fit                     # mandatory, the fit directory name
               path: smefit_results/fits        # optional, where to look for it
               label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+              contours: gaussian               # optional, kde (default) or
+                                               # gaussian, in contour plots
 
         Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
         downloaded from the server if it is not there yet. ``path`` is resolved
@@ -1004,13 +1007,16 @@ class smefitConfig(Config):
         The name is how the fit is referred to everywhere downstream: it is the
         key of the per-fit plot settings, and the legend label when no ``label``
         is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
-        LaTeX (quote it in YAML to keep the backslashes).
+        LaTeX (quote it in YAML to keep the backslashes). ``contours`` is how
+        the fit's 2D posterior contours are drawn: ``kde``, kernel density
+        contours, or ``gaussian``, ellipses from the samples' covariance, only
+        faithful for a Gaussian posterior.
         """
         entry = {"name": fit} if isinstance(fit, str) else dict(fit)
         if "name" not in entry:
             raise ConfigError(f"Each fits entry requires a 'name': {entry}")
 
-        known_keys = {"name", "path", "label"}
+        known_keys = {"name", "path", "label", "contours"}
         for k in set(entry.keys()) - known_keys:
             log.warning("Unknown key '%s' in fits entry.", k)
 
@@ -1021,15 +1027,22 @@ class smefitConfig(Config):
                 f"got {label!r}."
             )
 
+        contours = entry.get("contours", "kde")
+        if contours not in CONTOUR_STYLES:
+            raise ConfigError(
+                f"The 'contours' of fit '{entry['name']}' must be one of "
+                f"{', '.join(CONTOUR_STYLES)}, got {contours!r}."
+            )
+
         try:
             path = resolve_fit_dir(entry["name"], entry.get("path"))
         except (FileNotFoundError, ValueError) as e:
             raise ConfigError(str(e)) from e
 
         try:
-            # A label is how the runcard chooses to present the fit, not
-            # something the fit directory knows about.
-            return Fit.from_folder(path, label=label)
+            # A label and a contour style are how the runcard chooses to
+            # present the fit, not something the fit directory knows about.
+            return Fit.from_folder(path, label=label, contours=contours)
         except (KeyError, OSError, ValueError) as e:
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
@@ -1094,11 +1107,21 @@ class smefitConfig(Config):
         posterior report on its principal components unchanged. In that basis
         ``params_to_plot`` must name components (``PC1``, ...).
 
+        The per-source Fisher matrices are rotated too
+        (:func:`smefit.fisher._fisher_in_pca_basis`), so the Fisher and global
+        information routines say which sources fix each component. When no
+        systematic is shared across datasets the per-source matrices add up to
+        a diagonal one in this basis, and the normalised Fisher diagonals and
+        the global information shares coincide.
+
         ``pca`` is only computed when the graph runs, so ``fit`` is handed over
         as an ``ExplicitNode`` whose result replaces it here. Its worker reads
         the unrotated fit from this namespace (``unrotated_fit``) on purpose:
         reportengine stores a result at the outermost namespace holding all of
         the node's inputs, which with ``pca`` alone would be ``fitcontext``.
+        The Fisher worker takes ``unrotated_fit`` for the same reason, and
+        reads the raw ``fisher_information_matrices``, since the aggregate is
+        itself here.
 
         ``coefficients`` is taken only to refuse a namespace with no likelihood
         to take the PCA of, as ``fits::pcabasis`` is in a runcard of fits alone.
@@ -1112,6 +1135,7 @@ class smefitConfig(Config):
         return {
             "unrotated_fit": fit,
             "fit": ExplicitNode(_fit_in_pca_basis),
+            "aggregate_fisher_information_matrices": ExplicitNode(_fisher_in_pca_basis),
         }
 
     def parse_interval_types(self, interval_types: str | list) -> list:

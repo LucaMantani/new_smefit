@@ -371,6 +371,15 @@ def test_label_is_given_by_the_caller_not_the_fit_directory(tmp_path):
     )
 
 
+def test_contours_are_given_by_the_caller_not_the_fit_directory(tmp_path):
+    """Like a label, how a fit's contours are drawn is the runcard's choice."""
+    out = _write_runcard(tmp_path / "my_fit")
+    _make_written_result().write(out)
+
+    assert Fit.from_folder(out).contours == "kde"
+    assert Fit.from_folder(out, contours="gaussian").contours == "gaussian"
+
+
 def _write_summary(path):
     """The ``fit_results.json`` a ``run_individual_*_fits`` run leaves behind."""
     r1 = _make_individual_result("OpA", best_val=1.0, samples_vals=[0.8, 1.0, 1.2])

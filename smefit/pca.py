@@ -138,6 +138,72 @@ class PCA:
             self.eigenvectors, index=self.coeff_names, columns=self.component_names
         )
 
+    # The two rotations below are each other's transpose-inverse only because
+    # the eigenvectors are orthonormal: a basis that is not would need its
+    # inverse for the matrix rule.
+
+    def rotate_points(self, points: pd.DataFrame) -> pd.DataFrame:
+        """Coefficient values to component values, ``c @ V``.
+
+        Parameters
+        ----------
+        points : pd.DataFrame
+            One row per point (a sample, a best fit), one column per coefficient,
+            in any order; it must hold every coefficient of this PCA. Any
+            other column is ignored, so a point that also carries fixed or
+            derived coefficients (a fit's ``best_fit_point``) can be passed
+            as it is.
+
+        Returns
+        -------
+        pd.DataFrame
+            Same rows, one column per component (``component_names``).
+        """
+        values = points.loc[:, self.coeff_names].to_numpy(dtype=float)
+        return pd.DataFrame(
+            values @ np.asarray(self.eigenvectors, dtype=float),
+            index=points.index,
+            columns=self.component_names,
+        )
+
+    def rotate_matrix(self, matrix: pd.DataFrame) -> pd.DataFrame:
+        """A quadratic form over the coefficients (a Fisher matrix) to one over
+        the components, ``V^T F V``.
+
+        Parameters
+        ----------
+        matrix : pd.DataFrame
+            Square, indexed on both axes by exactly the coefficients of this
+            PCA, in any order.
+
+        Returns
+        -------
+        pd.DataFrame
+            Indexed by ``component_names`` on both axes.
+
+        Raises
+        ------
+        ValueError
+            If either axis is not exactly ``coeff_names``. Unlike a point, a
+            quadratic form cannot shed a coefficient: dropping its row and
+            column fixes that coefficient to zero instead of changing basis.
+        """
+        expected = sorted(self.coeff_names)
+        for axis, labels in (("rows", matrix.index), ("columns", matrix.columns)):
+            if sorted(labels) != expected:
+                raise ValueError(
+                    f"The PCA is over {expected}, but the {axis} of the matrix "
+                    f"are {sorted(labels)}: a matrix can only be rotated by a "
+                    "PCA of the same coefficients."
+                )
+        values = matrix.loc[self.coeff_names, self.coeff_names].to_numpy(dtype=float)
+        vectors = np.asarray(self.eigenvectors, dtype=float)
+        return pd.DataFrame(
+            vectors.T @ values @ vectors,
+            index=self.component_names,
+            columns=self.component_names,
+        )
+
     def describe(self, i: int, label: Callable[[str], str] | None = None) -> str:
         """Render principal direction *i* as a linear combination.
 

@@ -66,8 +66,12 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of several fits side by side.
 - `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
+- `data_groups_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
+  - Compare the chi2 per data point of each data group across fits.
 - `dataset_table(dataset_info)`
   - The datasets of the runcard, as :func:`write_dataset_table` lists them.
+- `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
+  - Compare the chi2 per data point of each dataset across fits, in blocks by data group.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `global_information_table(global_information_matrix, latex_label, params_to_plot=None)`
@@ -95,6 +99,10 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca, latex_label)`
   - Plot the eigenvalue spectrum, with the flat-direction threshold marked.
+- `plot_posterior_contours(fit, latex_label, params_to_plot=None, bounds_levels=None, hatch=True)`
+  - Plot the pairwise 2D posterior contours of one fit, as a corner plot.
+- `plot_posterior_contours_comparison(fits, latex_label, params_to_plot=None, bounds_levels=None, hatch=True)`
+  - Overlay the pairwise 2D posterior contours of several fits.
 - `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
 - `plot_posterior_histograms(fit, latex_label, params_to_plot=None, n_bins=30, n_cols=4)`
@@ -187,6 +195,11 @@ names in tracebacks. They are resolved for you.
   - Compute the constraining power of each source on each coefficient.
 - `total_fisher_information_matrix(chi2, best_fit_point)`
   - Fisher information matrix of the full likelihood at the best-fit point.
+
+### `smefit.dataset_chi2`
+
+- `datasets_chi2_values(datasets_chi2, best_fit_point, coefficients, data_groups)`
+  - The chi2 of each dataset at ``best_fit_point`` and at the baseline of ``coefficients``, with its group and size.
 
 ### `smefit.pca`
 

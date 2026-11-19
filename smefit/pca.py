@@ -170,14 +170,29 @@ class PCA:
         Parameters
         ----------
         matrix : pd.DataFrame
-            Square, indexed by coefficient on both axes, in any order; it must
-            hold every coefficient of this PCA.
+            Square, indexed on both axes by exactly the coefficients of this
+            PCA, in any order.
 
         Returns
         -------
         pd.DataFrame
             Indexed by ``component_names`` on both axes.
+
+        Raises
+        ------
+        ValueError
+            If either axis is not exactly ``coeff_names``. Unlike a point, a
+            quadratic form cannot shed a coefficient: dropping its row and
+            column fixes that coefficient to zero instead of changing basis.
         """
+        expected = sorted(self.coeff_names)
+        for axis, labels in (("rows", matrix.index), ("columns", matrix.columns)):
+            if sorted(labels) != expected:
+                raise ValueError(
+                    f"The PCA is over {expected}, but the {axis} of the matrix "
+                    f"are {sorted(labels)}: a matrix can only be rotated by a "
+                    "PCA of the same coefficients."
+                )
         values = matrix.loc[self.coeff_names, self.coeff_names].to_numpy(dtype=float)
         vectors = np.asarray(self.eigenvectors, dtype=float)
         return pd.DataFrame(

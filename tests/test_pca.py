@@ -241,6 +241,31 @@ def test_rotate_matrix_matches_coefficients_by_name():
     )
 
 
+def test_rotate_matrix_rejects_a_matrix_over_more_coefficients():
+    """Slicing the extra one away would fix it to zero, not change basis."""
+    result = _pca_of(_CORRELATED, _NAMES)
+    larger = _fisher(np.eye(4), [*_NAMES, "OpZ"])
+
+    with pytest.raises(ValueError, match="same coefficients"):
+        result.rotate_matrix(larger)
+
+
+def test_rotate_matrix_rejects_a_matrix_missing_a_coefficient():
+    result = _pca_of(_CORRELATED, _NAMES)
+    smaller = _fisher(np.eye(2), ["OpA", "OpB"])
+
+    with pytest.raises(ValueError, match="same coefficients"):
+        result.rotate_matrix(smaller)
+
+
+def test_rotate_matrix_checks_both_axes():
+    result = _pca_of(_CORRELATED, _NAMES)
+    fisher = _fisher(_CORRELATED, _NAMES)
+
+    with pytest.raises(ValueError, match="columns"):
+        result.rotate_matrix(fisher.assign(OpZ=0.0))
+
+
 def test_rotate_points_projects_onto_the_directions():
     """A point along PC i has coordinate 1 on it and 0 on the others."""
     result = _pca_of(_CORRELATED, _NAMES)

@@ -473,7 +473,8 @@ actions_:
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
 ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
-`plot_posterior_correlations` — now with one row per component. Template:
+`plot_posterior_correlations`, `fisher_diagonals_normalised`,
+`plot_fisher_diagonals_heatmap` — now with one row per component. Template:
 `pca_posterior.yaml`.
 
 ```yaml
@@ -488,6 +489,8 @@ template_text: |
   {@plot_coefficient_bounds@}
   {@coefficient_bounds_table@}
   {@plot_posterior_correlations@}
+  {@fisher_diagonals_normalised@}
+  {@plot_fisher_diagonals_heatmap@}
   {@endwith@}
   {@endwith@}
 actions_:
@@ -498,6 +501,14 @@ actions_:
   Outputs carry the namespace in their name
   (`<fit_name>_fitcontext_pcabasis_coefficient_bounds_table.csv`), so they sit
   beside the coefficient-basis ones without clashing.
+- The Fisher routines read the per-dataset Fisher matrices rotated into the
+  components, so a row says which datasets fix that component. When no
+  systematic is shared across datasets they sum to a diagonal matrix in this
+  basis, and `global_information_table` gives the same numbers as
+  `fisher_diagonals_normalised`. A shared one (a common luminosity, say) enters
+  the likelihood the PCA is taken of but no per-dataset matrix, and the two
+  tables then differ. A flat component's Fisher shares are noise and logged as
+  such; `global_information_table` refuses it.
 - It needs a likelihood to take the PCA of: `fits::pcabasis` alone, in a runcard
   of fits only, is refused. Everything the `fitcontext` recipe says about the
   PCA applies — a `pca_settings:` block, and no negative curvature at the

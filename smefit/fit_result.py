@@ -989,28 +989,23 @@ class Fit:
                 "rotated by a PCA of the same coefficients."
             )
 
-        # Stack in the PCA's row order, so a fit listing its coefficients in a
-        # different order is rotated by the right weights.
-        vectors = np.asarray(pca.eigenvectors, dtype=float)
-        posterior = np.stack(
-            [np.asarray(result.samples[name], dtype=float) for name in pca.coeff_names],
-            axis=1,
+        # The PCA matches coefficients by name, so their order here is free.
+        posterior = pca.rotate_points(
+            pd.DataFrame(
+                {name: np.asarray(result.samples[name]) for name in pca.coeff_names}
+            )
         )
-        best = np.array([result.best_fit_point[name] for name in pca.coeff_names])
+        best = pca.rotate_points(pd.DataFrame([result.best_fit_point])).iloc[0]
 
-        components = pca.component_names
-        rotated = posterior @ vectors
-        best_rotated = best @ vectors
         pca_result = FitResult(
-            free_parameters=list(components),
-            best_fit_point={
-                name: float(best_rotated[i]) for i, name in enumerate(components)
-            },
+            free_parameters=pca.component_names,
+            best_fit_point={name: float(value) for name, value in best.items()},
             max_loglikelihood=result.max_loglikelihood,
             num_data=result.num_data,
             logz=result.logz,
             samples={
-                name: jnp.asarray(rotated[:, i]) for i, name in enumerate(components)
+                name: jnp.asarray(column.to_numpy())
+                for name, column in posterior.items()
             },
         )
         return dataclasses.replace(self, fit_results=pca_result)

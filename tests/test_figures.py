@@ -40,9 +40,11 @@ from smefit.figures import (
     plot_posterior_contours_comparison,
     plot_posterior_correlations,
 )
+from smefit.fisher import _fisher_in_pca_basis
 from smefit.fit_result import Fit, FitResult, FitResultGroup
 from smefit.latex_labels import make_latex_label
 from smefit.pca import PCA
+from smefit.tables import fisher_diagonals_normalised
 
 
 def _plain(name):
@@ -1502,6 +1504,26 @@ def _rotation_pca() -> PCA:
         threshold=1.0e-3,
         min_weight=0.01,
     )
+
+
+def test_plot_fisher_diagonals_heatmap_draws_the_fisher_in_the_pca_basis() -> None:
+    """DS_A constrains OpA + OpB alone, DS_B OpA - OpB alone: one per component."""
+    total = np.array([[1.5, 0.5], [0.5, 1.5]])  # the spectrum of _rotation_pca
+    along_pc1 = np.full((2, 2), 1.0)
+    fim = {
+        source: pd.DataFrame(F, index=["OpA", "OpB"], columns=["OpA", "OpB"])
+        for source, F in (("DS_A", along_pc1), ("DS_B", total - along_pc1))
+    }
+    rotated = _fisher_in_pca_basis(fim, {}, _rotation_pca(), None)
+    table = fisher_diagonals_normalised(rotated, _plain)
+    np.testing.assert_allclose(table.to_numpy(), np.eye(2), atol=1e-12)
+
+    fig = plot_fisher_diagonals_heatmap(table)
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["PC1", "PC2"]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["DS_A", "DS_B"]
+    assert [t.get_text() for t in ax.texts] == ["100.0", "100.0"]  # zeros not drawn
 
 
 def _rotated_fit() -> Fit:

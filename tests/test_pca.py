@@ -210,6 +210,98 @@ def test_as_frame_labels_rows_and_columns():
     assert frame.loc["OpA", "PC1"] == pytest.approx(0.8)
 
 
+# ----------------------------------------------------------------------
+# rotating points and quadratic forms into the components
+# ----------------------------------------------------------------------
+
+_CORRELATED = [[3.0, 1.0, 0.0], [1.0, 2.0, 0.5], [0.0, 0.5, 1.0]]
+_NAMES = ["OpA", "OpB", "OpC"]
+
+
+def test_rotate_matrix_diagonalises_the_fisher_it_was_taken_of():
+    fisher = _fisher(_CORRELATED, _NAMES)
+    result = pca(fisher, SETTINGS)
+
+    rotated = result.rotate_matrix(fisher)
+
+    assert rotated.index.tolist() == ["PC1", "PC2", "PC3"]
+    assert rotated.columns.tolist() == ["PC1", "PC2", "PC3"]
+    np.testing.assert_allclose(
+        rotated.to_numpy(), np.diag(result.eigenvalues), atol=1e-12
+    )
+
+
+def test_rotate_matrix_matches_coefficients_by_name():
+    fisher = _fisher(_CORRELATED, _NAMES)
+    result = pca(fisher, SETTINGS)
+    order = ["OpC", "OpA", "OpB"]
+
+    pd.testing.assert_frame_equal(
+        result.rotate_matrix(fisher.loc[order, order]), result.rotate_matrix(fisher)
+    )
+
+
+def test_rotate_matrix_rejects_a_matrix_over_more_coefficients():
+    """Slicing the extra one away would fix it to zero, not change basis."""
+    result = _pca_of(_CORRELATED, _NAMES)
+    larger = _fisher(np.eye(4), [*_NAMES, "OpZ"])
+
+    with pytest.raises(ValueError, match="same coefficients"):
+        result.rotate_matrix(larger)
+
+
+def test_rotate_matrix_rejects_a_matrix_missing_a_coefficient():
+    result = _pca_of(_CORRELATED, _NAMES)
+    smaller = _fisher(np.eye(2), ["OpA", "OpB"])
+
+    with pytest.raises(ValueError, match="same coefficients"):
+        result.rotate_matrix(smaller)
+
+
+def test_rotate_matrix_checks_both_axes():
+    result = _pca_of(_CORRELATED, _NAMES)
+    fisher = _fisher(_CORRELATED, _NAMES)
+
+    with pytest.raises(ValueError, match="columns"):
+        result.rotate_matrix(fisher.assign(OpZ=0.0))
+
+
+def test_rotate_points_projects_onto_the_directions():
+    """A point along PC i has coordinate 1 on it and 0 on the others."""
+    result = _pca_of(_CORRELATED, _NAMES)
+    points = pd.DataFrame(result.eigenvectors.T, columns=_NAMES, index=["a", "b", "c"])
+
+    rotated = result.rotate_points(points)
+
+    assert rotated.index.tolist() == ["a", "b", "c"]
+    assert rotated.columns.tolist() == ["PC1", "PC2", "PC3"]
+    np.testing.assert_allclose(rotated.to_numpy(), np.eye(3), atol=1e-12)
+
+
+def test_rotate_points_matches_coefficients_by_name_and_ignores_others():
+    result = _pca_of(_CORRELATED, _NAMES)
+    points = pd.DataFrame({"OpA": [1.0, 0.5], "OpB": [-2.0, 0.1], "OpC": [0.3, 4.0]})
+    shuffled = points[["OpC", "OpA", "OpB"]].assign(OpZ=[9.0, 9.0])
+
+    pd.testing.assert_frame_equal(
+        result.rotate_points(shuffled), result.rotate_points(points)
+    )
+
+
+def test_rotations_preserve_the_chi2():
+    """c^T F c is the same number in either basis, as it must be for the
+    Fisher shares and the rotated bounds to describe the same likelihood."""
+    fisher = _fisher(_CORRELATED, _NAMES)
+    result = pca(fisher, SETTINGS)
+    point = pd.DataFrame([[0.4, -1.2, 0.7]], columns=_NAMES)
+
+    c = point.to_numpy()[0]
+    c_rotated = result.rotate_points(point).to_numpy()[0]
+    F_rotated = result.rotate_matrix(fisher).to_numpy()
+
+    assert c_rotated @ F_rotated @ c_rotated == pytest.approx(c @ fisher.to_numpy() @ c)
+
+
 def test_to_dict_is_json_serialisable_with_null_for_infinite_widths():
     result = _pca_of(np.diag([4.0, 0.0]), ["OpA", "OpB"])
 

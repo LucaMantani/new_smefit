@@ -6,14 +6,16 @@
 # the `datasets`, `coefficients` (especially any `expr` constraints) and
 # `external_chi2` entries are illustrative and must be replaced with ones
 # chosen for the analysis at hand — do not carry them over verbatim.
-# 1D confidence bounds of a fit along the principal components of its own
-# Fisher matrix, as a plot and as a table, and the posterior correlations of
-# those components: no fit is run here, the posterior samples are read back
-# from fit_results.json and rotated into the PCA basis.
+# 1D confidence bounds of each fit along the principal components of its own
+# Fisher matrix, as a plot and as a table, the posterior correlations of those
+# components, and the share of each component's Fisher information coming from
+# each dataset: no fit is run here, the posterior samples are read back from
+# fit_results.json and rotated into the PCA basis.
 #
-# Run analytical_fit.yaml first, from this directory.
+# Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
 fits:
   - {name: analytical_fit, path: '.'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
 
 # the PCA of each fit, at its best-fit point (every sub-key has a default)
 pca_settings: {}
@@ -40,6 +42,14 @@ interval_types: [eti, hdi]
 # uncorrelated only as far as the likelihood is Gaussian there: correlations
 # between them in the posterior signal quadratic EFT terms, or prior edges,
 # that the PCA does not see.
+#
+# The Fisher table and heatmap are rotated too: each row says which datasets
+# fix that component (e.g. "PC1 is 80% LEP, 20% LHC"). With no systematic shared
+# across datasets, as here, the per-dataset Fisher matrices add up to a diagonal
+# one in this basis, so the global information table would be identical to the
+# Fisher one, and is not shown. Add {@global_information_table@} when datasets
+# share one: the two then differ. A flat component's shares divide by ~0: they
+# are logged with a warning.
 template_text: |
     PCA posterior
     =============
@@ -53,6 +63,9 @@ template_text: |
     {@plot_posterior_contours@}
     PCA correlations
     {@plot_posterior_correlations@}
+    PCA Fisher information
+    {@fisher_diagonals_normalised@}
+    {@plot_fisher_diagonals_heatmap@}
     {@endwith@}
     {@endwith@}
 

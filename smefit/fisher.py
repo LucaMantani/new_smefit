@@ -135,6 +135,57 @@ def aggregate_fisher_information_matrices(
     }
 
 
+def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotated_fit):
+    """The ``aggregate_fisher_information_matrices`` of ``pcabasis``: each
+    source's Fisher matrix rotated into the principal components, ``V^T F_k V``.
+
+    When no systematic is shared across datasets, the rotated matrices sum to
+    ``diag(pca.eigenvalues)``, so the normalised Fisher diagonals and the global
+    information matrix coincide in this basis. A shared one enters the total
+    likelihood ``pca`` diagonalises but no per-dataset block, and the two differ.
+    Shares on a flat component are meaningless and logged.
+
+    Wiring, as an ``ExplicitNode`` worker of ``produce_pcabasis``:
+
+    - it aggregates ``fisher_information_matrices`` itself, since inside
+      ``pcabasis`` the aggregate is this node;
+    - ``unrotated_fit`` is unused and pins the node to ``pcabasis``: otherwise
+      reportengine stores the result in ``fitcontext``, overwriting the
+      coefficient-basis matrices. The rotated ``fit`` would need samples.
+
+    Parameters
+    ----------
+    fisher_information_matrices : dict[str, pd.DataFrame]
+    data_groups : dict[str, list[str]]
+    pca : smefit.pca.PCA
+        Over exactly the coefficients of the Fisher matrices.
+    unrotated_fit : smefit.fit_result.Fit
+        Unused; see above.
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+        Source -> rotated Fisher matrix, indexed by ``pca.component_names``.
+    """
+    del unrotated_fit  # the namespace pin, see the docstring
+    aggregated = aggregate_fisher_information_matrices(
+        fisher_information_matrices, data_groups
+    )
+    flat = [
+        name for name, is_flat in zip(pca.component_names, pca.flat_mask) if is_flat
+    ]
+    if flat:
+        log.warning(
+            "Fisher information in the PCA basis: %s flat (lambda/lambda_max < "
+            "%g), so the shares of the sources in %s are not meaningful.",
+            ", ".join(flat),
+            pca.threshold,
+            "it" if len(flat) == 1 else "them",
+        )
+
+    return {source: pca.rotate_matrix(fisher) for source, fisher in aggregated.items()}
+
+
 ############################
 # Global Information Matrix
 ############################

@@ -459,8 +459,9 @@ keys like any other node. Three rules keep that true:
 `produce_pcabasis` (`smefit/config.py`) is the other direction: where
 `fitcontext` keeps `fit` and replaces the setup around it, `pcabasis` replaces
 `fit` itself, by the fit rotated into its principal components
-(`Fit.in_pca_basis`). Every routine taking `fit` then reports in that basis,
-so a transformed view of a fit needs **no second copy of any action** — do not
+(`Fit.in_pca_basis`), and the per-source Fisher matrices, by the same matrices
+rotated into those components. Every routine taking either then reports in
+that basis, so a transformed view of a fit needs **no second copy of any action** — do not
 write a `plot_<basis>_bounds` beside `plot_coefficient_bounds`.
 
 ```python
@@ -469,6 +470,8 @@ def produce_pcabasis(self, fit, coefficients=None):
     return {
         "unrotated_fit": fit,
         "fit": ExplicitNode(_fit_in_pca_basis),  # (unrotated_fit, pca)
+        # (fisher_information_matrices, data_groups, pca, unrotated_fit)
+        "aggregate_fisher_information_matrices": ExplicitNode(_fisher_in_pca_basis),
     }
 ```
 
@@ -484,9 +487,19 @@ this kind:
   overwrites the `fit` there, and the `ExplicitNode` stays in `pcabasis`, where
   consumers receive it raw (`'ExplicitNode' object has no attribute …`).
   `unrotated_fit`, present only in this namespace, pins the node to it.
+- **A worker never takes the name it overrides.** Inside `pcabasis`,
+  `aggregate_fisher_information_matrices` *is* the rotation node, so
+  `_fisher_in_pca_basis` takes the raw `fisher_information_matrices` and
+  `data_groups` and aggregates them itself.
+- **Pin with `unrotated_fit` even when the worker does not use it.** All of the
+  Fisher worker's real inputs live in `fitcontext`, so without the pin its
+  result would overwrite the coefficient-basis matrices there. Pin with
+  `unrotated_fit`, not the rotated `fit`: that would make the Fisher depend on
+  the posterior samples, and fail for a fit stored without them.
 - **The worker is a private, unannotated module-level function** next to the
-  feature (`_fit_in_pca_basis`, `smefit/fit_result.py`), as for any
-  `@explicit_node` worker.
+  feature (`_fit_in_pca_basis`, `smefit/fit_result.py`;
+  `_fisher_in_pca_basis`, `smefit/fisher.py`), as for any `@explicit_node`
+  worker.
 - **A consumer annotating `fit: Fit` would fail under it**: the value is an
   `ExplicitNode` when reportengine type-checks (see "Type annotations are
   checked at runtime"). Report routines take `fit` unannotated.

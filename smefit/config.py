@@ -33,7 +33,7 @@ from smefit.core import Coefficient, CoefficientGroup, DataGroup, TheoryGroup
 from smefit.credible_intervals import _INTERVAL_TYPES
 from smefit.external_chi2 import load_external_chi2
 from smefit.fisher import _fisher_in_pca_basis
-from smefit.fit_result import Fit, _fit_in_pca_basis
+from smefit.fit_result import CONTOUR_STYLES, Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
 from smefit.loader import load_dataset, load_theory
 from smefit.model import EFTModel
@@ -997,6 +997,8 @@ class smefitConfig(Config):
             - name: my_fit                     # mandatory, the fit directory name
               path: smefit_results/fits        # optional, where to look for it
               label: '$\\mathrm{My\\ fit}$'      # optional, the legend label
+              contours: gaussian               # optional, kde (default) or
+                                               # gaussian, in contour plots
 
         Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
         downloaded from the server if it is not there yet. ``path`` is resolved
@@ -1005,13 +1007,16 @@ class smefitConfig(Config):
         The name is how the fit is referred to everywhere downstream: it is the
         key of the per-fit plot settings, and the legend label when no ``label``
         is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
-        LaTeX (quote it in YAML to keep the backslashes).
+        LaTeX (quote it in YAML to keep the backslashes). ``contours`` is how
+        the fit's 2D posterior contours are drawn: ``kde``, kernel density
+        contours, or ``gaussian``, ellipses from the samples' covariance, only
+        faithful for a Gaussian posterior.
         """
         entry = {"name": fit} if isinstance(fit, str) else dict(fit)
         if "name" not in entry:
             raise ConfigError(f"Each fits entry requires a 'name': {entry}")
 
-        known_keys = {"name", "path", "label"}
+        known_keys = {"name", "path", "label", "contours"}
         for k in set(entry.keys()) - known_keys:
             log.warning("Unknown key '%s' in fits entry.", k)
 
@@ -1022,15 +1027,22 @@ class smefitConfig(Config):
                 f"got {label!r}."
             )
 
+        contours = entry.get("contours", "kde")
+        if contours not in CONTOUR_STYLES:
+            raise ConfigError(
+                f"The 'contours' of fit '{entry['name']}' must be one of "
+                f"{', '.join(CONTOUR_STYLES)}, got {contours!r}."
+            )
+
         try:
             path = resolve_fit_dir(entry["name"], entry.get("path"))
         except (FileNotFoundError, ValueError) as e:
             raise ConfigError(str(e)) from e
 
         try:
-            # A label is how the runcard chooses to present the fit, not
-            # something the fit directory knows about.
-            return Fit.from_folder(path, label=label)
+            # A label and a contour style are how the runcard chooses to
+            # present the fit, not something the fit directory knows about.
+            return Fit.from_folder(path, label=label, contours=contours)
         except (KeyError, OSError, ValueError) as e:
             raise ConfigError(
                 f"Could not load fit '{entry['name']}' from {path}: {e}"

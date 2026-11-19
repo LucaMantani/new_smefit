@@ -218,6 +218,8 @@ Each entry is the name of a fit, or a mapping
     - name: my_fit                     # mandatory, the fit directory name
       path: smefit_results/fits        # optional, where to look for it
       label: '$\mathrm{My\ fit}$'      # optional, the legend label
+      contours: gaussian               # optional, kde (default) or
+                                       # gaussian, in contour plots
 
 Without ``path`` the fit is looked up in ``smefit_results/fits/`` and
 downloaded from the server if it is not there yet. ``path`` is resolved
@@ -226,10 +228,14 @@ through ``.config/paths.yaml`` like any other path.
 The name is how the fit is referred to everywhere downstream: it is the
 key of the per-fit plot settings, and the legend label when no ``label``
 is given. A ``label`` is passed to matplotlib verbatim, so it can be raw
-LaTeX (quote it in YAML to keep the backslashes).
+LaTeX (quote it in YAML to keep the backslashes). ``contours`` is how
+the fit's 2D posterior contours are drawn: ``kde``, kernel density
+contours, or ``gaussian``, ellipses from the samples' covariance, only
+faithful for a Gaussian posterior.
 
 Recognized sub-keys (unknown sub-keys only produce a warning):
 
+- `contours` — default: `'kde'`
 - `label` — default: `(no default)`
 - `name`
 - `path` — default: `(no default)`

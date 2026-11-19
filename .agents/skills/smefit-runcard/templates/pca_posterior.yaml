@@ -60,6 +60,7 @@ template_text: |
     PCA bounds
     {@plot_coefficient_bounds@}
     {@coefficient_bounds_table@}
+    {@plot_posterior_contours@}
     PCA correlations
     {@plot_posterior_correlations@}
     PCA Fisher information

@@ -592,6 +592,12 @@ class FitResultGroup:
         return cls(results)
 
 
+# How a fit's 2D posterior contours can be drawn, the values of the
+# ``contours`` key of its ``fits`` entry: kernel density contours (the
+# default) or Gaussian ellipses from the samples' covariance.
+CONTOUR_STYLES = ("kde", "gaussian")
+
+
 @dataclass
 class Fit:
     """A fit that exists on disk: what it produced, and how it was run.
@@ -636,6 +642,12 @@ class Fit:
         to ``fit_name``. How the fit is presented in a given plot, not a
         property of the fit itself, so it comes from the runcard that loads the
         fit rather than from the fit directory.
+    contours : str
+        How this fit's 2D posterior contours are drawn, one of
+        :data:`CONTOUR_STYLES`: ``"kde"`` (the default) or ``"gaussian"``
+        ellipses, from the ``contours`` key of its ``fits`` entry.
+        Presentation, like :attr:`label`, so it comes from the runcard that
+        loads the fit.
     fit_runcard : dict
         The runcard the fit was run with, read from ``input/runcard.yaml``.
         :meth:`from_folder` requires it: a fit whose configuration is unknown
@@ -649,6 +661,7 @@ class Fit:
     fit_results: Union[FitResult, FitResultGroup]
     fit_name: str
     label: Optional[str] = None
+    contours: str = "kde"
     fit_runcard: Dict = field(default_factory=dict)
     path: Optional[pathlib.Path] = None
     # (confidence_level, interval_type, coefficient) -> the pieces of its region,
@@ -1002,15 +1015,17 @@ class Fit:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_folder(cls, path, label: Optional[str] = None) -> "Fit":
+    def from_folder(
+        cls, path, label: Optional[str] = None, contours: str = "kde"
+    ) -> "Fit":
         """Load a Fit from a fit directory.
 
         The posterior samples are read from ``fit_results.json``
         and how the fit was run from ``input/runcard.yaml``.
 
-        ``label`` is how the caller chooses to present the fit; the directory
-        knows nothing about it, so it is the metadata passed in rather than
-        read back.
+        ``label`` and ``contours`` are how the caller chooses to present the
+        fit; the directory knows nothing about them, so they are the metadata
+        passed in rather than read back.
 
         Raises
         ------
@@ -1061,6 +1076,7 @@ class Fit:
             # The directory name is the identity users refer to in runcards.
             fit_name=path.name,
             label=label,
+            contours=contours,
             fit_runcard=fit_runcard,
             path=path,
         )

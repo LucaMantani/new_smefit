@@ -52,6 +52,8 @@
     "coefficient_bounds_table",
     "plot_coefficient_bounds",
     "plot_coefficient_bounds_comparison",
+    "plot_posterior_contours",
+    "plot_posterior_contours_comparison",
     "plot_posterior_correlations",
     "report"
   ],
@@ -84,6 +86,7 @@
     "dataset_table_caption",
     "dataset_table_label",
     "fetch_bibtex",
+    "hatch",
     "lin_thr",
     "n_eval",
     "n_samples",
@@ -191,10 +194,12 @@
     },
     "fit": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -202,10 +207,12 @@
     },
     "fits": {
       "defaults": {
+        "contours": "'kde'",
         "label": "(no default)",
         "path": "(no default)"
       },
       "known_keys": [
+        "contours",
         "label",
         "name",
         "path"
@@ -346,6 +353,7 @@
     "fit",
     "fits",
     "gradient_descent_settings",
+    "hatch",
     "hessian_settings",
     "interval_types",
     "latex_labels",

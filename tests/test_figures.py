@@ -17,11 +17,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.stats
 from matplotlib.collections import LineCollection, PathCollection
+from matplotlib.contour import ContourSet
+from matplotlib.patches import Ellipse
 
 from smefit import credible_intervals
 from smefit import figures as figures_mod
 from smefit.figures import (
+    _density_level,
+    _gaussian_ellipse,
+    _kde_grid,
     _plot_heatmap,
     plot_chi2_scan,
     plot_coefficient_bounds,
@@ -30,6 +36,8 @@ from smefit.figures import (
     plot_global_information_heatmap,
     plot_pca_components_heatmap,
     plot_pca_spectrum,
+    plot_posterior_contours,
+    plot_posterior_contours_comparison,
     plot_posterior_correlations,
 )
 from smefit.fisher import _fisher_in_pca_basis
@@ -293,6 +301,8 @@ def _fit(
     label=None,
     fit_name="my_fit",
     action="run_analytic_fit",
+    use_quad=False,
+    contours="kde",
 ):
     """A joint fit holding the given posterior samples.
 
@@ -311,7 +321,8 @@ def _fit(
         ),
         fit_name=fit_name,
         label=label,
-        fit_runcard={"actions_": [action]},
+        contours=contours,
+        fit_runcard={"actions_": [action], "use_quad": use_quad},
     )
 
 
@@ -892,6 +903,583 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:
     with pytest.raises(ValueError, match="fits is empty"):
         _one_figure(plot_coefficient_bounds_comparison, [], latex_label=_plain)
+
+
+# ---------------------------------------------------------------------------
+# 2D contour helpers: _kde_grid, _density_level, _gaussian_ellipse
+# ---------------------------------------------------------------------------
+
+_COV_2D = np.array([[1.0, 0.6], [0.6, 0.5]])
+
+
+def _gaussian_pair(n: int = 4000, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """``n`` draws of a correlated 2D Gaussian centred on (1, -2), covariance `_COV_2D`."""
+    rng = np.random.default_rng(seed)
+    draws = rng.multivariate_normal([1.0, -2.0], _COV_2D, size=n)
+    return draws[:, 0], draws[:, 1]
+
+
+@pytest.mark.parametrize("level", [68.0, 95.0])
+def test_density_level_encloses_the_requested_fraction_of_samples(
+    level: float,
+) -> None:
+    x, y = _gaussian_pair()
+    *_, sample_density = _kde_grid(x, y)
+
+    inside = np.mean(sample_density >= _density_level(sample_density, level))
+
+    assert inside == pytest.approx(level / 100.0, abs=1e-3)
+
+
+def test_density_level_encloses_the_requested_fraction_of_a_bimodal_posterior() -> None:
+    """The quadratic case the KDE is there for: two disjoint solutions."""
+    x, y = _gaussian_pair(n=2000)
+    x = np.concatenate([x - 5.0, x + 5.0])
+    y = np.concatenate([y, y])
+    *_, sample_density = _kde_grid(x, y)
+
+    inside = np.mean(sample_density >= _density_level(sample_density, 95.0))
+
+    assert inside == pytest.approx(0.95, abs=1e-3)
+
+
+def test_density_level_is_lower_for_a_wider_level() -> None:
+    *_, sample_density = _kde_grid(*_gaussian_pair())
+
+    assert _density_level(sample_density, 95.0) < _density_level(sample_density, 68.0)
+
+
+def test_kde_grid_covers_the_samples_with_a_square_grid() -> None:
+    x, y = _gaussian_pair()
+
+    xx, yy, density, sample_density = _kde_grid(x, y)
+
+    shape = (figures_mod._KDE_GRIDSIZE, figures_mod._KDE_GRIDSIZE)
+    assert xx.shape == yy.shape == density.shape == shape
+    assert sample_density.shape == x.shape
+    assert xx.min() < x.min() and xx.max() > x.max()
+    assert yy.min() < y.min() and yy.max() > y.max()
+
+
+def test_kde_grid_rejects_mismatched_sizes() -> None:
+    """Checked before thinning, which would otherwise erase the difference."""
+    n = figures_mod._KDE_MAX_SAMPLES + 1000
+    with pytest.raises(ValueError, match="same size"):
+        _kde_grid(np.zeros(2 * n), np.zeros(2 * n - 1))
+
+
+def test_kde_grid_thins_large_posteriors(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset.shape[1])
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+    x, y = _gaussian_pair(n=3 * figures_mod._KDE_MAX_SAMPLES)
+
+    *_, sample_density = _kde_grid(x, y)
+
+    assert seen == [figures_mod._KDE_MAX_SAMPLES]
+    assert sample_density.size == figures_mod._KDE_MAX_SAMPLES
+
+
+def test_kde_grid_thinning_keeps_every_interleaved_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NUTS stores its chains interleaved (sample k is chain k mod 4). Four
+    chains each in its own mode, thinned by 4: a stride would keep chain 0
+    alone, so every mode must still be in what the KDE sees."""
+    seen: list[np.ndarray] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset)
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+    n_chains = 4
+    n = n_chains * figures_mod._KDE_MAX_SAMPLES
+    modes = 10.0 * np.arange(n_chains)
+    rng = np.random.default_rng(0)
+    x = modes[np.arange(n) % n_chains] + rng.normal(size=n)
+    y = rng.normal(size=n)
+
+    _kde_grid(x, y)
+
+    [dataset] = seen
+    kept_chain = np.rint(dataset[0] / 10.0).astype(int)
+    counts = np.bincount(kept_chain, minlength=n_chains)
+    # about a quarter each, far from the 5000 / 0 / 0 / 0 of a stride
+    assert np.all(counts > 0.2 * figures_mod._KDE_MAX_SAMPLES)
+
+
+def test_kde_grid_leaves_small_posteriors_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[int] = []
+    real_kde = figures_mod.scipy.stats.gaussian_kde
+
+    def spy(dataset: np.ndarray) -> object:
+        seen.append(dataset.shape[1])
+        return real_kde(dataset)
+
+    monkeypatch.setattr(figures_mod.scipy.stats, "gaussian_kde", spy)
+
+    _kde_grid(*_gaussian_pair(n=1234))
+
+    assert seen == [1234]
+
+
+def test_gaussian_ellipse_axes_match_the_sample_covariance() -> None:
+    x, y = _gaussian_pair(n=200_000)
+
+    _, (width, height), angle = _gaussian_ellipse(x, y)
+
+    eig_val, eig_vec = np.linalg.eigh(_COV_2D)
+    assert width / 2 == pytest.approx(np.sqrt(eig_val[1]), rel=1e-2)
+    assert height / 2 == pytest.approx(np.sqrt(eig_val[0]), rel=1e-2)
+    # the major axis is an eigenvector, so its angle is fixed modulo 180 degrees
+    expected = np.degrees(np.arctan2(eig_vec[1, 1], eig_vec[0, 1]))
+    assert (angle - expected + 90.0) % 180.0 - 90.0 == pytest.approx(0.0, abs=1.0)
+
+
+def test_gaussian_ellipse_is_centred_on_the_mean() -> None:
+    """The mean, about which the covariance is taken: on skewed samples, where
+    it parts from the median, the ellipse follows it."""
+    rng = np.random.default_rng(0)
+    x, y = rng.exponential(size=5000), rng.exponential(size=5000)
+
+    center, _, _ = _gaussian_ellipse(x, y)
+
+    assert center == pytest.approx((x.mean(), y.mean()))
+    assert abs(center[0] - np.median(x)) > 0.2
+
+
+def test_gaussian_ellipse_rejects_mismatched_sizes() -> None:
+    with pytest.raises(ValueError, match="same size"):
+        _gaussian_ellipse(np.zeros(10), np.zeros(9))
+
+
+# ---------------------------------------------------------------------------
+# plot_posterior_contours / plot_posterior_contours_comparison
+# ---------------------------------------------------------------------------
+
+
+def _contour_fit(
+    names: tuple[str, ...] = ("OpA", "OpB", "OpC"),
+    fit_name: str = "my_fit",
+    label: str | None = None,
+    use_quad: bool = False,
+    contours: str = "kde",
+    n: int = 400,
+    seed: int = 0,
+) -> Fit:
+    """A joint fit with a correlated Gaussian posterior over ``names``."""
+    rng = np.random.default_rng(seed)
+    cov = 0.5 * np.eye(len(names)) + 0.3
+    draws = rng.multivariate_normal(np.zeros(len(names)), cov, size=n)
+    samples = {name: list(draws[:, k]) for k, name in enumerate(names)}
+    return _fit(
+        free=list(names),
+        samples=samples,
+        fit_name=fit_name,
+        label=label,
+        use_quad=use_quad,
+        contours=contours,
+    )
+
+
+def _panels(fig: matplotlib.figure.Figure) -> list[matplotlib.axes.Axes]:
+    """The contour panels, the legend cell (axis off) left out."""
+    return [ax for ax in fig.axes if ax.axison]
+
+
+def _cell(ax: matplotlib.axes.Axes) -> tuple[int, int]:
+    spec = ax.get_subplotspec()
+    return spec.rowspan.start, spec.colspan.start
+
+
+def _ellipses(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    return [p for p in ax.patches if isinstance(p, Ellipse)]
+
+
+def _filled(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    """The filled region of each fit: the patch drawn at alpha 0.3."""
+    return [p for p in _ellipses(ax) if p.get_alpha() == pytest.approx(0.3)]
+
+
+def _inner(ax: matplotlib.axes.Axes) -> list[Ellipse]:
+    """The outlines of the levels inside the filled one, widest first: the
+    unfilled ellipses not drawn solid."""
+    return sorted(
+        (
+            p
+            for p in _ellipses(ax)
+            if not p.get_fill() and p.get_linestyle() not in ("-", "solid")
+        ),
+        key=lambda p: p.width,
+        reverse=True,
+    )
+
+
+def test_plot_posterior_contours_two_coefficients_is_one_panel_with_its_legend() -> (
+    None
+):
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")), latex_label=_plain
+    )
+
+    [ax] = fig.axes
+    assert ax.get_legend() is not None
+    assert fig.get_suptitle()
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("OpA", "OpB")
+
+
+def test_plot_posterior_contours_three_coefficients_fill_the_lower_triangle() -> None:
+    label = make_latex_label({"OpA": "$c_A$"})
+    fig = plot_posterior_contours(_contour_fit(), latex_label=label)
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    # (row j - 1, column i) holds coefficient i against coefficient j
+    assert set(panels) == {(0, 0), (1, 0), (1, 1)}
+    [legend_cell] = [ax for ax in fig.axes if not ax.axison]
+    assert legend_cell.get_legend() is not None
+    assert _cell(legend_cell) == (0, 1)
+
+    # axis labels on the outer panels only
+    assert panels[1, 0].get_xlabel() == "$c_A$"
+    assert panels[1, 1].get_xlabel() == label("OpB")
+    assert panels[0, 0].get_ylabel() == label("OpB")
+    assert panels[1, 0].get_ylabel() == label("OpC")
+    assert panels[0, 0].get_xlabel() == ""
+    assert panels[1, 1].get_ylabel() == ""
+
+
+def test_plot_posterior_contours_follow_the_params_to_plot_order() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(),
+        latex_label=_plain,
+        params_to_plot=["OpC", "NotThere", "OpA", "OpB"],
+    )
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    assert [panels[1, i].get_xlabel() for i in range(2)] == ["OpC", "OpA"]
+    assert [panels[j, 0].get_ylabel() for j in range(2)] == ["OpA", "OpB"]
+
+
+def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
+    with pytest.raises(ValueError, match="at least two coefficients"):
+        plot_posterior_contours(
+            _contour_fit(), latex_label=_plain, params_to_plot=["OpA", "Nope"]
+        )
+
+
+def test_plot_posterior_contours_fill_the_widest_level_and_outline_the_rest() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"), latex_label=_plain
+    )
+
+    [ax] = fig.axes
+    [filled] = _filled(ax)
+    [inner] = _inner(ax)
+    assert filled.width > inner.width
+    assert inner.get_linestyle() == "dashed"
+
+
+def test_plot_posterior_contours_give_each_inner_level_its_own_line_style() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"),
+        latex_label=_plain,
+        bounds_levels=[68, 90, 95, 99],
+    )
+
+    [ax] = fig.axes
+    [filled] = _filled(ax)
+    inner = _inner(ax)
+    assert all(filled.width > p.width for p in inner)
+    # 95, 90, 68: the cycle in order, from the widest inner level down
+    assert [p.get_linestyle() for p in inner] == ["dashed", "dotted", "dashdot"]
+
+
+@pytest.mark.parametrize("names", [("OpA", "OpB"), ("OpA", "OpB", "OpC")])
+def test_plot_posterior_contours_legend_a_grey_entry_per_level(
+    names: tuple[str, ...],
+) -> None:
+    """After the fit, one entry per level in the style it is drawn with: a
+    filled patch for the widest, a line in its own style for the others —
+    for the single panel's legend and the legend cell's alike."""
+    fig = plot_posterior_contours(
+        _contour_fit(names=names, contours="gaussian"),
+        latex_label=_plain,
+        bounds_levels=[68, 90, 95],
+    )
+
+    [legend] = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    labels = [t.get_text() for t in legend.get_texts()]
+    assert labels == [
+        "my_fit",
+        *(rf"${level}\%\ \mathrm{{CL}}$" for level in (95, 90, 68)),
+    ]
+    _, widest, *inner = legend.legend_handles
+    grey = matplotlib.colors.to_rgba("grey")
+    assert widest.get_facecolor()[:3] == pytest.approx(grey[:3])
+    assert [h.get_linestyle() for h in inner] == ["--", ":"]
+    assert all(h.get_color() == "grey" for h in inner)
+
+
+def test_plot_posterior_contours_scale_one_gaussian_per_level(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every level and layer of a fit's ellipses is one Gaussian scaled by
+    sqrt(chi2_2(level)): one eigendecomposition per fit and panel."""
+    calls: list[int] = []
+    real_eigh = np.linalg.eigh
+
+    def spy(matrix: np.ndarray) -> object:
+        calls.append(1)
+        return real_eigh(matrix)
+
+    fit = _contour_fit(names=("OpA", "OpB"), contours="gaussian")
+    samples = fit.fit_results.samples
+    center, axes, angle = _gaussian_ellipse(samples["OpA"], samples["OpB"])
+    monkeypatch.setattr(figures_mod.np.linalg, "eigh", spy)
+
+    fig = plot_posterior_contours(fit, latex_label=_plain, bounds_levels=[68, 95])
+
+    assert len(calls) == 1
+    [ax] = fig.axes
+    for patch in _ellipses(ax):
+        assert patch.center == pytest.approx(center)
+        assert patch.angle == pytest.approx(angle)
+    [filled] = _filled(ax)
+    [inner] = _inner(ax)
+    for patch, level in [(filled, 95.0), (inner, 68.0)]:
+        scale = np.sqrt(scipy.stats.chi2.ppf(level / 100.0, 2))
+        assert (patch.width, patch.height) == pytest.approx(tuple(scale * axes))
+
+
+def test_plot_posterior_contours_cycle_the_line_styles_past_their_end() -> None:
+    levels = [50, 60, 70, 80, 90]
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB"), contours="gaussian"),
+        latex_label=_plain,
+        bounds_levels=levels,
+    )
+
+    [ax] = fig.axes
+    cycle = figures_mod._LEVEL_LINESTYLE_CYCLE
+    assert [p.get_linestyle() for p in _inner(ax)] == [
+        cycle[idx % len(cycle)] for idx in range(len(levels) - 1)
+    ]
+
+
+def test_plot_posterior_contours_kde_fills_the_widest_level() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")),
+        latex_label=_plain,
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    sets = [c for c in ax.collections if isinstance(c, ContourSet)]
+    [fill] = [c for c in sets if c.filled]
+    outlines = sorted((c for c in sets if not c.filled), key=lambda c: c.levels[0])
+    # the wider region sits at the lower density: filled, and solid
+    assert len(outlines) == 2
+    assert fill.levels[0] == pytest.approx(outlines[0].levels[0])
+    assert outlines[1].linestyles == "dashed"
+    assert outlines[0].linestyles != "dashed"
+
+
+def test_plot_posterior_contours_kde_gives_each_inner_level_its_own_line_style() -> (
+    None
+):
+    fig = plot_posterior_contours(
+        _contour_fit(names=("OpA", "OpB")),
+        latex_label=_plain,
+        bounds_levels=[68, 90, 95],
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    outlines = sorted(
+        (c for c in ax.collections if isinstance(c, ContourSet) and not c.filled),
+        key=lambda c: c.levels[0],
+    )
+    # increasing density is decreasing level: 95 (filled, matplotlib's default
+    # solid line), then 90 and 68
+    widest, *inner = outlines
+    assert widest.linestyles not in figures_mod._LEVEL_LINESTYLE_CYCLE
+    assert [c.linestyles for c in inner] == ["dashed", "dotted"]
+
+
+@pytest.mark.parametrize("use_quad", [True, False])
+@pytest.mark.parametrize(
+    ("contours", "expect_kde"), [("kde", True), ("gaussian", False)]
+)
+def test_plot_posterior_contours_draw_in_the_fits_contour_style(
+    monkeypatch: pytest.MonkeyPatch,
+    use_quad: bool,
+    contours: str,
+    expect_kde: bool,
+) -> None:
+    """KDE by default whatever ``use_quad``: a linear fit's posterior need not
+    be Gaussian, so ellipses are only ever asked for."""
+    calls: list[int] = []
+    real = figures_mod._kde_grid
+
+    def spy(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, ...]:
+        calls.append(1)
+        return real(x, y)
+
+    monkeypatch.setattr(figures_mod, "_kde_grid", spy)
+
+    fig = plot_posterior_contours(
+        _contour_fit(use_quad=use_quad, contours=contours), latex_label=_plain
+    )
+
+    # one KDE evaluation per panel, shared by both levels
+    assert len(calls) == (3 if expect_kde else 0)
+    has_ellipses = any(_ellipses(ax) for ax in _panels(fig))
+    assert has_ellipses is not expect_kde
+
+
+def test_plot_posterior_contours_comparison_draws_each_fit_its_own_way() -> None:
+    """``contours`` belongs to the fit: one comparison can mix the two."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(names=("OpA", "OpB"), fit_name="kde"),
+            _contour_fit(names=("OpA", "OpB"), fit_name="gauss", contours="gaussian"),
+        ],
+        latex_label=_plain,
+        hatch=False,
+    )
+
+    [ax] = fig.axes
+    contour_colors = {
+        matplotlib.colors.to_hex(c.get_facecolor()[0])
+        for c in ax.collections
+        if isinstance(c, ContourSet) and c.filled
+    }
+    ellipse_colors = {matplotlib.colors.to_hex(p.get_facecolor()) for p in _filled(ax)}
+    assert contour_colors == {matplotlib.colors.to_hex("C0")}
+    assert ellipse_colors == {matplotlib.colors.to_hex("C1")}
+
+
+def test_plot_posterior_contours_hatch_one_pattern_per_fit() -> None:
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(fit_name="a", contours="gaussian"),
+            _contour_fit(fit_name="b", seed=1, contours="gaussian"),
+        ],
+        latex_label=_plain,
+    )
+
+    hatches = {p.get_hatch() for ax in _panels(fig) for p in ax.patches} - {None}
+    assert len(hatches) == 2
+
+
+def test_plot_posterior_contours_without_hatch_draw_no_hatch_layer() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(contours="gaussian"), latex_label=_plain, hatch=False
+    )
+
+    assert all(p.get_hatch() is None for ax in _panels(fig) for p in ax.patches)
+
+
+def test_plot_posterior_contours_comparison_leaves_a_fit_out_of_panels_it_lacks() -> (
+    None
+):
+    """A coefficient one fit did not sample is a gap for that fit, not an error."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(
+                names=("OpA", "OpB"), fit_name="ab", label="$AB$", contours="gaussian"
+            ),
+            _contour_fit(names=("OpA", "OpC"), fit_name="ac", contours="gaussian"),
+        ],
+        latex_label=_plain,
+    )
+
+    by_cell = {_cell(ax): ax for ax in _panels(fig)}
+    colors = {
+        cell: {matplotlib.colors.to_hex(p.get_facecolor()) for p in _filled(ax)}
+        for cell, ax in by_cell.items()
+    }
+    c0, c1 = matplotlib.colors.to_hex("C0"), matplotlib.colors.to_hex("C1")
+    # coefficients OpA, OpB, OpC: (OpA, OpB) at (0, 0), (OpA, OpC) at (1, 0),
+    # (OpB, OpC) at (1, 1)
+    assert colors == {(0, 0): {c0}, (1, 0): {c1}, (1, 1): set()}
+    [legend_cell] = [ax for ax in fig.axes if not ax.axison]
+    labels = [t.get_text() for t in legend_cell.get_legend().get_texts()]
+    # the fits, then the default levels
+    assert labels == ["$AB$", "ac", r"$95\%\ \mathrm{CL}$", r"$68\%\ \mathrm{CL}$"]
+
+
+def test_plot_posterior_contours_comparison_leave_out_a_coefficient_a_fit_fixed() -> (
+    None
+):
+    """The stored samples hold fixed coefficients too: one free in a fit but
+    fixed in another is a gap for the latter, not a constant fed to the KDE
+    (a singular covariance) or pooled into the limits."""
+    free = _contour_fit(fit_name="free")
+    fixed = _contour_fit(names=("OpA", "OpB"), fit_name="fixed", seed=1)
+    fixed.fit_results.samples["OpC"] = [50.0] * 400
+
+    fig = plot_posterior_contours_comparison([free, fixed], latex_label=_plain)
+
+    by_cell = {_cell(ax): ax for ax in _panels(fig)}
+    # (OpA, OpC) at (1, 0), (OpB, OpC) at (1, 1): OpC on the y-axis
+    for cell in [(1, 0), (1, 1)]:
+        low, high = by_cell[cell].get_ylim()
+        assert high < 50.0
+        assert len(by_cell[cell].collections) == len(by_cell[(0, 0)].collections) // 2
+
+
+def test_plot_posterior_contours_comparison_rejects_no_fits() -> None:
+    with pytest.raises(ValueError, match="fits is empty"):
+        plot_posterior_contours_comparison([], latex_label=_plain)
+
+
+def test_plot_posterior_contours_comparison_rejects_an_individual_fit() -> None:
+    individual = Fit(
+        fit_results=FitResultGroup(
+            [
+                FitResult(
+                    free_parameters=["OpA"],
+                    best_fit_point={"OpA": 0.0},
+                    max_loglikelihood=-1.0,
+                    num_data=10,
+                    samples={"OpA": jnp.array([0.0, 1.0])},
+                )
+            ]
+        ),
+        fit_name="my_individual_fit",
+        fit_runcard={"actions_": ["run_individual_analytic_fits"]},
+    )
+
+    with pytest.raises(ValueError, match="my_individual_fit"):
+        plot_posterior_contours_comparison(
+            [_contour_fit(), individual], latex_label=_plain
+        )
+
+
+def test_plot_posterior_contours_comparison_rejects_a_fit_without_samples() -> None:
+    empty = Fit(
+        fit_results=FitResult(
+            free_parameters=["OpA", "OpB"],
+            best_fit_point={"OpA": 0.0, "OpB": 0.0},
+            max_loglikelihood=-1.0,
+            num_data=10,
+        ),
+        fit_name="no_samples",
+        fit_runcard={"actions_": ["run_analytic_fit"]},
+    )
+
+    with pytest.raises(ValueError, match="no_samples"):
+        plot_posterior_contours_comparison([_contour_fit(), empty], latex_label=_plain)
 
 
 def test_plot_coefficient_bounds_labels_the_axis_with_a_coefficient() -> None:

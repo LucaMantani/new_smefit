@@ -105,6 +105,10 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Overlay the pairwise 2D posterior contours of several fits.
 - `plot_posterior_correlations(fit, latex_label, params_to_plot=None, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the posterior correlations of one fit's free coefficients.
+- `plot_posterior_histograms(fit, latex_label, params_to_plot=None, n_bins=30, n_cols=4)`
+  - Plot the marginal posterior of every coefficient of one fit.
+- `plot_posterior_histograms_comparison(fits, latex_label, params_to_plot=None, n_bins=30, shared_bins=False, n_cols=4)`
+  - Overlay the marginal posteriors of several fits, one panel per coefficient.
 
 ### `smefit.utils_actions`
 

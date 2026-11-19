@@ -149,7 +149,10 @@ class PCA:
         ----------
         points : pd.DataFrame
             One row per point (a sample, a best fit), one column per coefficient,
-            in any order; it must hold every coefficient of this PCA.
+            in any order; it must hold every coefficient of this PCA. Any
+            other column is ignored, so a point that also carries fixed or
+            derived coefficients (a fit's ``best_fit_point``) can be passed
+            as it is.
 
         Returns
         -------

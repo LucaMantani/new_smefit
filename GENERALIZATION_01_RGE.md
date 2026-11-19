@@ -144,8 +144,13 @@ and checked by tests:
      `rge_matrix.pkl` already written, as the `settings` docstring warns.
 3. **Names a runner cannot evolve map to `{}`.** The SMEFT runner does this
    today for external couplings.
-4. **`all_ops` matches the names in the theory tables.** `EFTModel` contracts
-   the rows of the matrix with them.
+4. **`all_ops` matches the names in the theory tables, in their basis.**
+   `EFTModel` contracts the rows of the matrix with them. The SMEFT runner
+   computes in the Warsaw basis and maps back to the SMEFiT basis, because
+   today's tables use the SMEFiT basis. Tables in the Warsaw basis, such as
+   POPxf files with `basis.wcxf`, would need the rows from before that last
+   step. That is later work, and this contract keeps it a runner option rather
+   than a redesign (see the long-term goals in the analysis).
 5. **No file I/O in runners.** Caching stays in `build.py` and `matrix.py`.
 
 These stay on `SMEFTRunner` only: `RGEevolve`, `RGEbasis`, `map_to_smefit`,
@@ -174,8 +179,11 @@ duplication, once the reference generator can document `OPTIONS`.
   `DeprecationWarning`, for external modules outside the repo.
 - `resolve_rge_matrices` keeps its logic and annotates the runner as
   `RGERunner`.
-- `_resolve_scales` is unchanged. It reads `theory_group.scales`, which stays
-  part of `Theory`.
+- `_resolve_scales` is unchanged. It reads `theory_group.scales`, and nothing
+  else from the theory, and it should stay that way. PR 3 gives the theory one
+  scale per polynomial. A σ×BR model, whose production and decay polynomials
+  sit at different scales, then gets one matrix per polynomial without any
+  change here.
 - In docstrings, "Wilson coefficients" becomes "parameters".
 
 ### `matrix.py`
@@ -183,7 +191,10 @@ duplication, once the reference generator can document `OPTIONS`.
 The logic does not change, and neither do the field names (`obs_operators`,
 `init_operators`): `EFTModel`, the external modules and the tests all use them.
 The docstrings point to `RGERunner.settings` instead of
-`smefit.rge.runner.RGE.settings`.
+`smefit.rge.runner.RGE.settings`. They also describe `stacked_mats` as one
+matrix per entry of `scales`, not per data point. The two are the same today,
+and the wording stays correct once PR 3 gives the theory one scale per
+polynomial.
 
 The pickle layout is unchanged, so files stay readable by both older and newer
 versions.

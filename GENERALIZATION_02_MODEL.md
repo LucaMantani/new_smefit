@@ -35,9 +35,9 @@ check them.
 
 1. **`EFTModel` stays the SMEFT model.** It has the limitations of the SMEFT
    model, among them predictions that are at most quadratic in the
-   coefficients. A general polynomial model, with higher orders or a basis of
-   functions, would be a separate and more general model, not a rename of
-   `EFTModel`.
+   coefficients. A general model, evaluating any function of the parameters
+   that the theory defines, would be a separate and more general model, not a
+   rename of `EFTModel`.
 2. **The model declares its RGE runner.** A runcard does not pick a runner. It
    picks a model, and the model brings its runner, or none.
 3. **The `model:` block holds every model option**, for example
@@ -46,10 +46,16 @@ check them.
    SMEFT model, because every stored fit's runcard uses it. The deprecation
    warning is logged once per fit, so a report that rebuilds several old fits
    warns once for each of them.
-4. **The t0 covmat keeps using `theory.sm_pred`.** It is the zeroth-order term
-   of the theory tables, whose layout is shared by every model, so t0 does not
-   depend on the model. Switching to the model's prediction at its baseline
-   would change existing fits whenever a fixed coefficient is non-zero.
+4. **The t0 covmat uses the theory's reference prediction**, the theory's
+   predictions at a reference point the theory defines. That point is zero
+   for every parameter unless the theory file names another, so t0 depends
+   neither on the model nor on the runcard.
+   - In this PR the reference prediction is still `theory.sm_pred`.
+   - PR 3 renames it `reference_prediction` and adds the optional field that
+     names a reference point. It also covers observables built from several
+     polynomials, such as σ_SM × BR_SM for a σ×BR model.
+   - Switching to the model's prediction at its baseline would change
+     existing fits whenever a fixed coefficient is non-zero.
 5. **Mass scans stay in `config.py`.** The one SMEFT convention in them, scan
    points in TeV against an `init_scale` in GeV, moves into the model. SMEFT
    needs no reportengine nodes of its own.
@@ -165,6 +171,21 @@ docstring and checked by tests:
    arrays are fixed at construction.
 4. **`is_linear` is conservative.** Return True only when that is guaranteed,
    because `analytic_fit` relies on it.
+5. **A model checks the theory it is given.** It raises a clear error for a
+   theory it cannot use, rather than reading only part of it. Today's theory
+   always fits `EFTModel`. PR 3 lets the theory hold terms of any degree, and
+   its interface allows several polynomials per data point. From then on,
+   `EFTModel` rejects degrees above 2 and more than one polynomial per data
+   point. The check lands in PR 3, together with those cases.
+6. **Errors raise `ValueError`, never `KeyError`.** This covers the check in
+   item 5 and anything else that fails while a model is built.
+   - **Why.** The model is built while the config is read, and reportengine
+     treats a `KeyError` raised there as "input not available".
+   - **What goes wrong otherwise.** A consumer with a default then swallows
+     the error. `produce_pseudodata` has `eft_model=None`, so it would build
+     SM-only pseudodata without any message.
+   - **Precedent.** `load_theory` converts its `KeyError` for the same
+     reason.
 
 ### `EFTModel`, the SMEFT model
 
@@ -402,7 +423,7 @@ There is no runcard change in this commit.
 |---|---|
 | `tests/test_models.py` (new) | **Contract, on a toy linear model and a toy non-linear model:** `forward_map` shape, `coefficients`, `is_linear`, and `mass_to_init_scale` raising by default. **Lookup:** laziness and unknown names. **`ModelSpec.build`.** |
 | `tests/test_smeft_model.py` (from `test_model.py`) | Today's `EFTModel` tests, plus `OPTIONS`, `rge_runner is SMEFTRunner`, `is_linear` and `mass_to_init_scale` |
-| `tests/test_config.py` | **`parse_model`:** valid block, unknown name, a block without `name` is the SMEFT model, an unknown option warns, a bad value raises. **`produce_model_spec`:** default, legacy `use_quad` warns, both together raise. **Warning frequency:** a report over two old fits logs the deprecation warning once for each. **`parse_rge`:** refused for a model without a runner; options checked against that model's runner. **Mass producers:** use `mass_to_init_scale`. **Other:** the signature pin on `rge_matrix` stays; `_FIT_SETUP_KEYS` contains `model`; `test_produce_individual_mass_eft_model_builds_model` follows the new signature. |
+| `tests/test_config.py` | **`parse_model`:** valid block, unknown name, a block without `name` is the SMEFT model, an unknown option warns, a bad value raises. **`produce_model_spec`:** default, legacy `use_quad` warns, both together raise. **Warning frequency:** a report over two old fits logs the deprecation warning once for each. **`parse_rge`:** refused for a model without a runner; options checked against that model's runner. **Mass producers:** use `mass_to_init_scale`. **Other:** the signature pin on `rge_matrix` stays; `_FIT_SETUP_KEYS` contains `model`; `test_produce_individual_mass_eft_model_builds_model` follows the new signature. **Errors (contract item 6):** a toy model whose constructor raises `ValueError` makes `produce_pseudodata` fail, instead of falling back to SM-only pseudodata. |
 | New graph test | **The test that proves the goal.** Register a toy model in `_MODELS` with `monkeypatch`. A runcard with `model: {name: toy}` on `tests/fixtures/` then resolves `chi2` and runs an analytic fit, with no change to `config.py`. |
 | `tests/test_analytic_fit.py` | The error is raised for a non-linear model and matches the new message |
 | `tests/test_fit_result.py` | `model_name`, `model_options` and `use_quad`, from a new runcard and from an old one |
@@ -438,9 +459,19 @@ There is no runcard change in this commit.
   with deprecated aliases or an announced break.
 - **The external chi2 contract** (`coefficients=`, `rge_dict=`) is PR 4. The
   Drell-Yan modules only change their import here.
-- **Neutral names in `Theory` and `load_theory`** are PR 3.
-- **A general polynomial model** is later work, outside the master PR, which
-  only refactors (see Decision 1).
+- **The theory container and the loader interface** are PR 3.
+- **A general model**, evaluating any function of the parameters that the
+  theory defines, is later work, outside the master PR, which only refactors
+  (see Decision 1).
+- **The σ×BR model** of the long-term goals is later work too, and the
+  contract here already fits it:
+  - its options, for example whether to expand the product again, go in its
+    `model:` block;
+  - it reports `is_linear` False;
+  - its `forward_map` combines the production and decay polynomials of the
+    theory;
+  - it receives one RGE matrix per polynomial once PR 3 gives each polynomial
+    its own scale.
 - **DAG nodes contributed by a model package.** SMEFT needs none, so a
   mechanism waits for the first model that does.
 - **Analytic fits with non-linear `expr:` constraints** keep being linearised,

@@ -582,6 +582,14 @@ this kind:
 - **External chi2 modules** must accept `coefficients=` and `rge_dict=` plus
   the runcard's extra keys, and expose `compute_chi2`, `num_data`,
   `param_names`. See `parse_external_chi2` and `smefit/external_chi2.py`.
+  `max_scale` is the one key smefit resolves before forwarding (the entry's,
+  else the global one, `null` exempting it) and passes only when a cut
+  applies, so a module with nothing to cut needs no such argument; a module
+  that can be cut takes `max_scale=None` and loads its data through
+  `smefitAPI.data`/`smefitAPI.theory` with the cut on its dataset entry, as
+  the Drell-Yan modules do, so datasets and modules share one cut rule
+  (`produce_scale_masks`) — do not reimplement it with the loader. A cut reaching a constructor without the argument raises
+  (`_accepts_max_scale`) — never silently leave a likelihood uncut.
 
 ## Keep it JAX-differentiable
 

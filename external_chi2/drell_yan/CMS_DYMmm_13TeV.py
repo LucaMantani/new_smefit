@@ -3,8 +3,7 @@ import pathlib
 
 import jax.numpy as jnp
 
-from smefit import loader
-from smefit.core import DataGroup, TheoryGroup
+from smefit.api import smefitAPI
 from smefit.model import EFTModel
 from smefit.rge import build_rge_matrix
 
@@ -26,6 +25,7 @@ class CMS_DYMmm_13TeV:
         use_projection_L0=False,
         save_rge_path=None,
         rg_matrix=None,
+        max_scale=None,
     ):
         """
         Initialize the CMS_DYMmm_13TeV class.
@@ -49,6 +49,9 @@ class CMS_DYMmm_13TeV:
         save_rge_path : str or pathlib.Path, optional
             If provided, the path where to save the computed RGE matrix for future reuse.
         rg_matrix : A pre-computed RGE matrix.
+        max_scale : float, optional
+            Energy-scale cut (GeV): drops the bins whose scale is above it.
+            Passed by smefit, resolved from the runcard's ``max_scale`` keys.
         """
         theory_path = _HERE / "theory"
         if use_projection_L0:
@@ -58,13 +61,17 @@ class CMS_DYMmm_13TeV:
 
         coeff_list = sorted(coefficients.names)
 
-        ds = {"name": "CMS_DYMmm_13TeV", "order": order}
-
-        dataset = loader.load_dataset(data_path, ds)
-        theory = loader.load_theory(theory_path, ds)
-
-        data = DataGroup([dataset])
-        theory_group = TheoryGroup([theory])
+        # Loaded as a one-dataset runcard, so the cut is the one `datasets`
+        # get: None, on the entry, means no cut.
+        spec = dict(
+            data_path=str(data_path),
+            theory_path=str(theory_path),
+            datasets=[
+                {"name": "CMS_DYMmm_13TeV", "order": order, "max_scale": max_scale}
+            ],
+        )
+        data = smefitAPI.data(**spec)
+        theory_group = smefitAPI.theory(**spec)
 
         rge_matrix = None
         if rge_dict is not None:

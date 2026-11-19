@@ -246,3 +246,26 @@ def test_pseudodata_exempt_datasets_are_not_a_cut(database):
         name: {"free": False, "value": 0.0} for name in ("OpA", "OpB")
     }
     assert smefitAPI.pseudodata(**runcard).num_data == 3
+
+
+def test_global_cut_reaches_an_external_chi2(tmp_path, database):
+    """Through reportengine: the global max_scale reaches an external chi2,
+    and the dataset entries' cuts do not leak into it."""
+    module = tmp_path / "cut_reporter.py"
+    module.write_text(
+        "class CutReporter:\n"
+        "    def __init__(self, coefficients, rge_dict, max_scale=None):\n"
+        "        self.num_data = int(max_scale)\n"
+        "    def compute_chi2(self, c):\n"
+        "        return 0.0\n"
+    )
+    data_path, theory_path = database
+    runcard = _runcard(
+        data_path,
+        theory_path,
+        max_scale=250.0,
+        datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": 150.0}],
+        external_chi2={"CutReporter": {"path": str(module)}},
+    )
+    # TESTDATA keeps 1 point at 150 GeV; the external chi2 reports its 250
+    assert smefitAPI.chi2(**runcard).num_data == 1 + 250

@@ -13,6 +13,7 @@ Exit codes: 0 = valid, 1 = errors found, 2 = cannot read input.
 """
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -528,6 +529,43 @@ def check_rge_rg_matrix(value, label, resolver, rep):
         rep.error(f"{label}: {RGE_MATRIX_FILENAME} not found in {resolved}")
 
 
+def _constructor_takes_max_scale(module_path, class_name):
+    """Whether ``class_name``'s ``__init__`` in ``module_path`` takes a
+    ``max_scale`` argument (or ``**kwargs``); ``None`` when that cannot be told
+    from the source without importing it."""
+    try:
+        tree = ast.parse(Path(module_path).read_text())
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == "__init__":
+                    args = item.args
+                    names = {a.arg for a in args.args + args.kwonlyargs}
+                    return "max_scale" in names or args.kwarg is not None
+            return None  # inherited constructor
+    return None
+
+
+def check_external_max_scale(runcard, class_name, cfg, module_path, label, rep):
+    """An external chi2 entry's cut: its own max_scale, else the global one,
+    reaches the module's constructor, which must take it."""
+    own = cfg.get("max_scale")
+    if own is not None and not _is_positive_number(own):
+        rep.error(f"{label}: max_scale must be a positive number (GeV) or null")
+        return
+    cut = cfg["max_scale"] if "max_scale" in cfg else runcard.get("max_scale")
+    if not _is_positive_number(cut) or module_path is None:
+        return
+    if _constructor_takes_max_scale(module_path, class_name) is False:
+        rep.error(
+            f"{label}: max_scale {cut:g} applies to it, but {class_name} takes "
+            "no max_scale argument, so it cannot be cut; implement the cut in "
+            "the module or set max_scale: null on its entry"
+        )
+
+
 def _has_scale_cut(runcard):
     """Whether a max_scale cut applies to any dataset of the runcard."""
     global_cut = runcard.get("max_scale")
@@ -751,6 +789,7 @@ def main():
                     check_rg_matrix(
                         cfg["rg_matrix"], f"{label}.rg_matrix", resolver, rep
                     )
+                check_external_max_scale(runcard, cname, cfg, resolved, label, rep)
 
     check_bayesian_update(runcard.get("bayesian_update"), resolver, rep)
 

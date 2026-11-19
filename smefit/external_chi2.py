@@ -1,8 +1,11 @@
 import copy
 import importlib
+import inspect
 import logging
 import pathlib
 import sys
+
+from reportengine.configparser import ConfigError
 
 from smefit.chi2 import Chi2
 
@@ -14,7 +17,15 @@ log = logging.getLogger(__name__)
 _EXT_CHI2_RESERVED_KEYS = frozenset({"path", "group"})
 
 
-def load_external_chi2(external_chi2, coefficients, rge_dict):
+def _accepts_max_scale(chi2_class):
+    """Whether the constructor of ``chi2_class`` takes a ``max_scale`` argument."""
+    params = inspect.signature(chi2_class).parameters.values()
+    return any(
+        p.name == "max_scale" or p.kind is inspect.Parameter.VAR_KEYWORD for p in params
+    )
+
+
+def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
     """
     Loads the external chi2 modules.
     We assume that the external chi2 only need to know which coefficients we want to
@@ -31,6 +42,16 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
         The coefficient manager object.
     rge_dict: dict
         The RGE dictionary, specifying the reference scale and theory settings.
+    max_scale: float or None
+        The runcard's global energy-scale cut (GeV). An entry's own
+        ``max_scale`` overrides it, ``null`` exempting the entry, exactly as on
+        ``datasets``. The resolved cut is passed to the constructor as
+        ``max_scale=`` -- only when there is one, so a module with no data to
+        cut needs no such argument -- and the module applies it to its own
+        data, most simply by loading it through ``smefitAPI.data`` and
+        ``smefitAPI.theory`` with the cut on its dataset entry. A cut reaching
+        a module whose constructor does not take it raises rather than leave
+        it uncut.
 
     Returns
     -------
@@ -62,6 +83,18 @@ def load_external_chi2(external_chi2, coefficients, rge_dict):
             for key, value in module.items()
             if key not in _EXT_CHI2_RESERVED_KEYS
         }
+        # the entry's own cut (null: exempt), else the global one; passed on
+        # only when there is one
+        cut = extra_keys.pop("max_scale", max_scale)
+        if cut is not None:
+            if not _accepts_max_scale(my_chi2_class):
+                raise ConfigError(
+                    f"max_scale {cut:g} applies to external chi2 {class_name}, "
+                    "whose constructor takes no max_scale argument, so it cannot "
+                    "be cut. Implement the cut in the module, or exempt it with "
+                    "max_scale: null on its entry."
+                )
+            extra_keys["max_scale"] = cut
 
         chi2_ext = my_chi2_class(
             coefficients=coefficients, rge_dict=copy.deepcopy(rge_dict), **extra_keys

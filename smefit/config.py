@@ -513,6 +513,8 @@ class smefitConfig(Config):
 
         `group` is the one exception: it is read by `data_groups` for the
         report/Fisher aggregation, and `load_external_chi2` does not forward it.
+        `max_scale` is forwarded resolved against the global one; see
+        `load_external_chi2`.
 
         A runcard may define `external_chi2` with no `datasets:` at all, in
         which case the fit runs on the external likelihoods alone.
@@ -522,12 +524,18 @@ class smefitConfig(Config):
             entry = dict(cfg)
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
+            if "max_scale" in entry:
+                entry["max_scale"] = self.parse_max_scale(entry["max_scale"])
             cleaned[name] = entry
         return cleaned
 
-    def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
+    def produce_ext_chi2_func(
+        self, coefficients, external_chi2, rge=None, max_scale=None
+    ):
         """Load and wrap external chi2 modules into Chi2 objects."""
-        return load_external_chi2(external_chi2, coefficients, rge_dict=rge)
+        return load_external_chi2(
+            external_chi2, coefficients, rge_dict=rge, max_scale=max_scale
+        )
 
     def _build_chi2_impl(
         self,
@@ -1273,10 +1281,12 @@ class smefitConfig(Config):
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(
-        self, individual_coefficients, external_chi2, rge=None
+        self, individual_coefficients, external_chi2, rge=None, max_scale=None
     ):
         """Load and wrap external chi2 modules for a single-free-parameter individual fit."""
-        return load_external_chi2(external_chi2, individual_coefficients, rge_dict=rge)
+        return load_external_chi2(
+            external_chi2, individual_coefficients, rge_dict=rge, max_scale=max_scale
+        )
 
     def produce_individual_chi2(
         self,
@@ -1350,7 +1360,12 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, individual_mass_rge_matrix)
 
     def produce_individual_mass_ext_chi2_func(
-        self, coefficients, external_chi2, individual_mass_scale, rge=None
+        self,
+        coefficients,
+        external_chi2,
+        individual_mass_scale,
+        rge=None,
+        max_scale=None,
     ):
         """Load external chi2 for a single mass scan point with init_scale overridden.
 
@@ -1361,7 +1376,9 @@ class smefitConfig(Config):
         if rge_dict is not None:
             # 1e3 converts the scan point from TeV to GeV
             rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
-        return load_external_chi2(external_chi2, coefficients, rge_dict=rge_dict)
+        return load_external_chi2(
+            external_chi2, coefficients, rge_dict=rge_dict, max_scale=max_scale
+        )
 
     def produce_individual_mass_chi2(
         self,

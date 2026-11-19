@@ -12,13 +12,28 @@ from reportengine.environment import Environment
 
 log = logging.getLogger(__name__)
 
+# The precision chosen explicitly by an environment in this process, if any.
+_chosen_float32 = None
+
 
 class smefitEnvironment(Environment):
-    """smefit Environment class."""
+    """smefit Environment class.
 
-    def __init__(self, float32=False, *args, **kwargs):
+    ``float32`` sets the JAX precision of the whole process. ``None`` keeps the
+    one an earlier environment chose explicitly, float64 if none did: that is
+    how ``smefitAPI`` builds its environment, at import, and importing it from
+    within a ``smefit -f32`` run (an external chi2 module, a Bayesian update)
+    must not switch the run to float64.
+    """
+
+    def __init__(self, float32=None, *args, **kwargs):
+        global _chosen_float32
         super().__init__(*args, **kwargs)
 
+        if float32 is None:
+            float32 = bool(_chosen_float32)
+        else:
+            _chosen_float32 = float32
         self.float32 = float32
 
         if self.float32:

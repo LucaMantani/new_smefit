@@ -1,0 +1,76 @@
+# AUTO-COPIED from template_runcards/ultranest_fit_with_scale_cut.yaml by scripts/generate_skill_reference.py
+# — edit the original and regenerate; do not edit this copy.
+#
+# These are the repo's smoke-test runcards, so the settings blocks and the
+# overall shape are authoritative, but the PHYSICS CONTENT is placeholder:
+# the `datasets`, `coefficients` (especially any `expr` constraints) and
+# `external_chi2` entries are illustrative and must be replaced with ones
+# chosen for the analysis at hand — do not carry them over verbatim.
+# UltraNest fit with an energy-scale cut on the data points, on datasets and on
+# an external likelihood alike.
+#
+# max_scale (GeV) drops every data point whose scale -- the `scales` entry of its
+# theory file, here the m_tt or m_ll bin -- is above the cut, from the commondata
+# and the theory alike. A point exactly at the cut is kept. The number of points
+# kept per dataset is logged at the start of the run.
+
+# path to data and theory: prefixes are resolved via the machine-specific
+# .config/paths.yaml -- run smefit_setup_local once to configure (absolute paths also work)
+data_path: smefit_database/commondata
+theory_path: smefit_database/theory  # required by max_scale: the scales live in the theory files
+# Covmat settings
+use_theory_covmat: True
+use_t0: True
+# SMEFT Expansion Order
+use_quad: True
+
+# Global cut, applied to every dataset and external chi2 that does not set its own
+max_scale: 1000.0
+
+# Datasets to include
+datasets:
+  # global cut: keeps the m_tt bins up to 1000 GeV (5 of 7)
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}
+  # own cut, overriding the global one: keeps the bins up to 1500 GeV (11 of 15)
+  - {name: CMS_tt_13TeV_Mtt, order: NLO_QCD, max_scale: 1500.0}
+  # null exempts the dataset from any cut: all 7 bins kept
+  - {name: CMS_tt_13TeV_dilep_2016_Mtt, order: NLO_QCD, max_scale: null}
+
+# External likelihoods take max_scale the same way: the entry's own, else the
+# global one, null exempting it. smefit passes the resolved cut to the module's
+# constructor as max_scale=, and the module cuts its own data; a cut reaching a
+# module whose constructor takes no max_scale is an error.
+external_chi2:
+  CMS_DYMee_13TeV:
+    path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+    use_quad: True
+    order: NLO_QCD
+    max_scale: 2000.0  # own cut: keeps the m_ee bins up to 2000 GeV (33 of 79)
+
+# Coefficients to fit
+coefficients:
+  OtG:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+  O8qt:
+    free: True
+    prior: {dist: uniform, low: -5.0, high: 5.0}
+  Oeu:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+  Oql13:
+    free: True
+    prior: {dist: uniform, low: -1.0, high: 1.0}
+
+# Nested Sampling settings
+ultranest_settings:
+  ReactiveNS_settings:
+    vectorized: False
+    ndraw_max: 500              # Maximum number of points to simultaneously propose.
+  Run_settings:
+    min_num_live_points: 200    # Minimum number of live points throughout the run.
+    min_ess: 50                 # Target number of effective posterior samples.
+    frac_remain: 0.01           # Integrate until this fraction of the integral is left in the remainder.
+
+actions_:
+- run_ultranest_fit

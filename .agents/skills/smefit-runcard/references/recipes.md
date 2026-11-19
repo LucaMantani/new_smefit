@@ -196,7 +196,25 @@ auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,
-and `param_names`. A runcard may have `external_chi2` with no `datasets:` at
+and `param_names`. To support an energy-scale cut, the constructor also takes
+`max_scale=None` and applies it to its data. If the module's data is in
+commondata/theory files, load it through the API as a one-dataset runcard, and
+the cut is the one `datasets` get (see "Cutting data points above an energy
+scale"):
+
+```python
+from smefit.api import smefitAPI
+
+spec = dict(
+    data_path=...,
+    theory_path=...,
+    datasets=[{"name": NAME, "order": order, "max_scale": max_scale}],
+)
+data = smefitAPI.data(**spec)  # DataGroup, already cut
+theory = smefitAPI.theory(**spec)  # TheoryGroup, cut the same way
+```
+
+The shipped Drell-Yan modules do exactly this. A runcard may have `external_chi2` with no `datasets:` at
 all — then the fit runs on external likelihoods alone.
 
 ## chi2 scans
@@ -294,6 +312,32 @@ datasets:
 - The scale is whatever the theory file records per point; check it is the
   variable you mean to cut on (for a binned distribution, which point of the bin
   it stands for).
+
+External likelihoods take the cut the same way: an `external_chi2` entry's own
+`max_scale` overrides the global one, and `null` exempts it.
+
+```yaml
+max_scale: 1000.0
+external_chi2:
+  CMS_DYMee_13TeV:
+    path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+    order: NLO_QCD
+    max_scale: 2000.0          # own cut; omit it for the global one
+  FCCee_OO:
+    path: ...
+    max_scale: null            # exempt: the module takes no cut
+```
+
+- smefit works out the entry's cut and passes it to the module's constructor
+  as `max_scale=`, only when there is one. The module cuts its own data, so the
+  cut does whatever the module says it does: the shipped Drell-Yan modules drop
+  the bins above it, like `datasets`.
+- A cut that reaches a module whose constructor takes no `max_scale` is an
+  error, never left uncut: exempt the entry with `max_scale: null`. Only the
+  Drell-Yan modules take one at the moment, so a global cut together with any
+  other external chi2 needs that `null`. `validate_runcard.py` catches this up
+  front.
+- See `templates/ultranest_fit_with_scale_cut.yaml`.
 
 ## Pseudodata / projections
 

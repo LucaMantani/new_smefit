@@ -618,6 +618,20 @@ template_text: |
 - Fits run one coefficient at a time (`run_individual_*_fits`) are refused:
   their best-fit values are not one point of the likelihood.
 
+`data_groups_chi2_comparison_table` is the same comparison with only the
+group totals: one row per data group (in the same order, `Other` last), then
+`Total` over every dataset. It takes the same keys (`show_baseline_chi2`,
+`round_val`), and its rows are exactly the `Total` rows of
+`datasets_chi2_comparison_table`, so the two can go in one report:
+
+```yaml
+template_text: |
+  # Chi2 by data group
+  {@data_groups_chi2_comparison_table@}
+```
+
+Written to `tables/data_groups_chi2_comparison_table.csv` (no blank rows).
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an

@@ -66,6 +66,8 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of several fits side by side.
 - `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
+- `data_groups_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
+  - Compare the chi2 per data point of each data group across fits.
 - `dataset_table(dataset_info)`
   - The datasets of the runcard, as :func:`write_dataset_table` lists them.
 - `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`

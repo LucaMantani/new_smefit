@@ -1,5 +1,6 @@
 """Tests of the per-dataset chi2 at a fit's best fit, and of the table comparing
-it across fits (``smefit.dataset_chi2``, ``datasets_chi2_comparison_table``)."""
+it across fits (``smefit.dataset_chi2``, ``datasets_chi2_comparison_table``,
+``data_groups_chi2_comparison_table``)."""
 
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from smefit.tables import (
     _CHI2_PER_POINT,
     _NDAT,
     _TOTAL,
+    data_groups_chi2_comparison_table,
     datasets_chi2_comparison_table,
 )
 
@@ -56,12 +58,18 @@ def _per_fit(rows: dict[str, tuple]) -> pd.DataFrame:
     )
 
 
-def _table(fits_rows, labels=None, round_val=3, **kwargs) -> pd.DataFrame:
+def _table(
+    fits_rows, labels=None, round_val=3, action=datasets_chi2_comparison_table, **kwargs
+) -> pd.DataFrame:
     labels = labels or [f"fit{i}" for i in range(len(fits_rows))]
     fits = [SimpleNamespace(plot_label=label) for label in labels]
-    return datasets_chi2_comparison_table(
+    return action(
         fits, [_per_fit(rows) for rows in fits_rows], _plain, round_val, **kwargs
     )
+
+
+def _groups_table(fits_rows, **kwargs) -> pd.DataFrame:
+    return _table(fits_rows, action=data_groups_chi2_comparison_table, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +281,65 @@ def test_comparison_table_rejects_fits_sharing_a_label() -> None:
 
 
 # ---------------------------------------------------------------------------
+# data_groups_chi2_comparison_table
+# ---------------------------------------------------------------------------
+
+_GROUP_FITS = [
+    {"A": ("Top", 4, 2.0, 8.0), "B": ("Higgs", 6, 9.0), "C": (UNGROUPED, 10, 5.0)},
+    {"A": ("Top", 4, 4.0), "D": ("Top", 2, 2.0), "C": (UNGROUPED, 10, 3.0)},
+]
+
+
+def test_groups_table_is_one_row_per_group_then_the_total() -> None:
+    table = _groups_table(_GROUP_FITS)
+    assert table.index.tolist() == ["Top", "Higgs", UNGROUPED, _TOTAL]
+    assert table.columns.tolist() == _table(_GROUP_FITS).columns.tolist()
+
+
+def test_groups_table_rows_are_the_totals_of_the_datasets_table() -> None:
+    groups = _groups_table(_GROUP_FITS)
+    datasets = _table(_GROUP_FITS)
+    for group in ["Top", "Higgs", UNGROUPED]:
+        assert groups.loc[group].tolist() == [
+            _at(datasets, (group, _TOTAL), column) for column in datasets.columns
+        ]
+    assert groups.loc[_TOTAL].tolist() == [
+        _at(datasets, (_ALL, _TOTAL), column) for column in datasets.columns
+    ]
+
+
+def test_groups_table_values() -> None:
+    table = _groups_table(_GROUP_FITS)
+    assert table[_NDAT_COL].tolist() == ["6", "6", "10", "22"]
+    assert table[_chi2_col("fit0")].tolist() == ["0.500", "1.500", "0.500", "0.800"]
+    assert table[_baseline_col("fit0")].tolist()[0] == "2.000"
+    # fit1 has no Higgs dataset, and only A of the Top ones fit0 has
+    assert table[_chi2_col("fit1")].tolist() == ["1.000", "", "0.300", "0.562"]
+
+
+def test_groups_table_hides_the_baseline_when_asked() -> None:
+    table = _groups_table(_GROUP_FITS, show_baseline_chi2=False)
+    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("fit0"), _chi2_col("fit1")]
+
+
+def test_groups_table_counts_a_dataset_grouped_twice_once_in_the_total() -> None:
+    table = _groups_table([{"A": ("Top", 4, 2.0)}, {"A": ("Higgs", 4, 2.0)}])
+    assert table.index.tolist() == ["Top", "Higgs", _TOTAL]
+    assert table.loc[_TOTAL, _NDAT_COL] == "4"
+
+
+def test_groups_table_keeps_a_group_named_like_the_total() -> None:
+    table = _groups_table([{"A": ("Total", 4, 2.0), "B": ("Top", 6, 3.0)}])
+    assert table.index.tolist() == ["Total", "Top", _TOTAL]
+    assert table[_NDAT_COL].tolist() == ["4", "6", "10"]
+
+
+def test_groups_table_rejects_fits_disagreeing_on_ndat() -> None:
+    with pytest.raises(ValueError, match=r"'A' \(4, 5\)"):
+        _groups_table([{"A": ("Top", 4, 2.0)}, {"A": ("Top", 5, 2.0)}])
+
+
+# ---------------------------------------------------------------------------
 # Through reportengine, on fits written to disk
 # ---------------------------------------------------------------------------
 
@@ -315,20 +382,24 @@ def _write_fit(
     return runcard
 
 
-def _resolve_table(fits: list[dict[str, str]], **keys: Any) -> pd.DataFrame:
-    """The table as reportengine builds it from a runcard of ``fits`` and
-    ``keys``."""
+def _resolve_table(
+    fits: list[dict[str, str]],
+    target: str = "datasets_chi2_comparison_table",
+    **keys: Any,
+) -> pd.DataFrame:
+    """The table ``target`` as reportengine builds it from a runcard of ``fits``
+    and ``keys``."""
     config = smefitConfig({"fits": fits, **keys}, environment=smefitAPI.loadedenv)
     builder = ResourceBuilder(
         config,
         smefitAPI.provider_loaded,
-        [FuzzyTarget("datasets_chi2_comparison_table", (), (), ())],
+        [FuzzyTarget(target, (), (), ())],
         perform_final=False,
     )
     builder.rootns.update(smefitAPI.loadedenv.ns_dump())
     builder.resolve_fuzzytargets()
     builder.execute_sequential()
-    return builder.rootns["datasets_chi2_comparison_table"]
+    return builder.rootns[target]
 
 
 def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
@@ -374,3 +445,26 @@ def test_comparison_table_takes_show_baseline_chi2_from_the_runcard(
     table = _resolve_table(fits, show_baseline_chi2=False)
 
     assert table.columns.tolist() == [_NDAT_COL, _chi2_col("F")]
+
+
+def test_groups_table_resolves_from_fits_alone(
+    tmp_path: Path, fixtures_data_path: Path, fixtures_theory_path: Path
+) -> None:
+    _write_fit(tmp_path / "grouped", fixtures_data_path, fixtures_theory_path, "Top")
+    _write_fit(tmp_path / "plain", fixtures_data_path, fixtures_theory_path, None)
+    fits = [
+        {"name": "grouped", "path": str(tmp_path), "label": "G"},
+        {"name": "plain", "path": str(tmp_path), "label": "P"},
+    ]
+
+    groups = _resolve_table(fits, "data_groups_chi2_comparison_table")
+    datasets = _resolve_table(fits)
+
+    top, other = r"$\mathrm{Top}$", rf"$\mathrm{{{UNGROUPED}}}$"
+    assert groups.index.tolist() == [top, other, _TOTAL]
+    assert groups.loc[top].tolist() == [
+        _at(datasets, (top, _TOTAL), column) for column in datasets.columns
+    ]
+    assert groups.loc[_TOTAL].tolist() == [
+        _at(datasets, (_ALL, _TOTAL), column) for column in datasets.columns
+    ]

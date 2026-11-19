@@ -140,6 +140,8 @@ chi2/N_dat of each dataset at each fit's best fit and at its own baseline
 (`baseline_value`, the SM by default), in a block per data group
 ending in the group total, empty where a fit lacks the dataset, and the overall
 total last (written to `tables/datasets_chi2_comparison_table.csv`).
+`data_groups_chi2_comparison_table` keeps only the group totals, a row per
+group and the overall total.
 `recipes.md` has the details.
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword

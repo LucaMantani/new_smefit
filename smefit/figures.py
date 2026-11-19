@@ -15,7 +15,7 @@ from matplotlib.patches import Ellipse, Patch
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
-from smefit.plot_utils import select_params, set_plot_style
+from smefit.plot_utils import rescale_exponents, select_params, set_plot_style
 
 log = logging.getLogger(__name__)
 
@@ -394,6 +394,14 @@ def plot_posterior_correlations(
     )
 
 
+def _scale_label(label, exponent):
+    """*label* followed by the power of ten its row is multiplied by, if any."""
+    if exponent == 0:
+        return label
+    power = "10" if exponent == 1 else f"10^{{{exponent}}}"
+    return rf"{label} $(\times {power})$"
+
+
 def _coefficient_bounds(
     fits,
     latex_label,
@@ -404,6 +412,7 @@ def _coefficient_bounds(
     lin_thr,
     x_min,
     x_max,
+    rescale_bounds=True,
 ):
     """The shared core of :func:`plot_coefficient_bounds` and
     :func:`plot_coefficient_bounds_comparison`.
@@ -413,6 +422,10 @@ def _coefficient_bounds(
     bottom; every fit on its own offset within the row, one colour each; every
     level as a bar of its own width, the widest interval thinnest so the
     narrower ones read on top of it.
+
+    With ``rescale_bounds`` a row much narrower than the widest one is
+    multiplied by a power of ten, written in its label, so bounds decades apart
+    are all readable on the one linear axis (:func:`rescale_exponents`).
     """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
@@ -448,18 +461,45 @@ def _coefficient_bounds(
         shifts = np.linspace(spread / 2, -spread / 2, len(fits))
         widths = np.linspace(1.0, 4.0, len(levels)) if len(levels) > 1 else [2.0]
 
+        # one power of ten per row, from everything drawn on it: its fits and
+        # levels share the factor, so they stay comparable within the row. A
+        # symmetric log axis already answers bounds decades apart, and the two
+        # are not combined.
+        exponents = [0] * len(names)
+        if rescale_bounds and not x_log:
+            exponents = rescale_exponents(
+                max(
+                    (
+                        abs(edge)
+                        for per_fit in bounds
+                        for per_level in per_fit.values()
+                        for piece in per_level.get(name, [])
+                        for edge in piece
+                    ),
+                    default=0.0,
+                )
+                for name in names
+            )
+
         for fit_idx, per_fit in enumerate(bounds):
             color = f"C{fit_idx}"
-            for row, name in zip(rows, names):
+            for row, name, exponent in zip(rows, names, exponents):
                 y = row + shifts[fit_idx]
+                factor = 10.0**exponent
                 for level, width in zip(levels, widths):
                     # every piece of the region on the same row: a multimodal
                     # posterior is drawn as the disjoint intervals it has
                     for low, high in per_fit[level].get(name, []):
-                        ax.hlines(y, low, high, color=color, lw=width)
+                        ax.hlines(y, low * factor, high * factor, color=color, lw=width)
 
         ax.axvline(0.0, ls="dashed", color="black", alpha=0.7)
-        ax.set_yticks(rows, [latex_label(name) for name in names])
+        ax.set_yticks(
+            rows,
+            [
+                _scale_label(latex_label(name), exponent)
+                for name, exponent in zip(names, exponents)
+            ],
+        )
         ax.set_ylim(-0.75, len(names) - 0.25)
         if x_log:
             # bounds run either side of zero, which a plain log scale cannot show

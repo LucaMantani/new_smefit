@@ -13,6 +13,7 @@ import pandas as pd
 from reportengine.table import table
 
 from smefit.credible_intervals import bounds_settings
+from smefit.dataset_chi2 import UNGROUPED
 from smefit.plot_utils import select_params
 
 if TYPE_CHECKING:
@@ -276,15 +277,15 @@ def coefficient_bounds_table(
     )
 
 
-def _coefficient_bounds_comparison_table(
-    fits: Sequence[Fit],
-    latex_label: Callable[[str], str],
-    params_to_plot: list[str] | str | None,
-    round_val: int,
-    bounds_levels: float | Sequence[float] | None,
-    interval_types: str | Sequence[str] | None,
-) -> pd.DataFrame:
-    """The typed core of :func:`coefficient_bounds_comparison_table`."""
+def _fit_column_labels(fits: Sequence[Fit]) -> list[str]:
+    """The column label of each of ``fits`` in a comparison table.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty or two fits share a label: their columns would
+        merge.
+    """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
     labels = [fit.plot_label for fit in fits]
@@ -295,6 +296,19 @@ def _coefficient_bounds_comparison_table(
             + ", ".join(repr(label) for label in duplicates)
             + ": give each a distinct 'label' in its fits entry."
         )
+    return labels
+
+
+def _coefficient_bounds_comparison_table(
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: list[str] | str | None,
+    round_val: int,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+) -> pd.DataFrame:
+    """The typed core of :func:`coefficient_bounds_comparison_table`."""
+    labels = _fit_column_labels(fits)
     # selected once, on the union and before any bound is computed:
     # ``params_to_plot`` is global, so a fit having none of the coefficients is
     # an empty column rather than an error, and the order is the requested one
@@ -367,6 +381,224 @@ def coefficient_bounds_comparison_table(
     return _coefficient_bounds_comparison_table(
         fits, latex_label, params_to_plot, round_val, bounds_levels, interval_types
     )
+
+
+_NDAT = r"$N_{\mathrm{dat}}$"
+_CHI2_PER_POINT = r"$\chi^2/N_{\mathrm{dat}}$"
+_TOTAL = "Total"
+_ALL = "All"
+# the points each fit's chi2 is quoted at: column of datasets_chi2_values, header
+_CHI2_POINTS = {"chi2_best_fit": "best fit", "chi2_baseline": "baseline"}
+
+
+class _Chi2Comparison:
+    """The per-dataset chi2 of every fit, pooled for the chi2 comparison tables.
+
+    Validates the fits once (distinct labels) and holds what both tables
+    share: the fit labels, the points each fit is quoted at, one row per (fit,
+    dataset), the groups in table order, and the rule by which a selection of
+    rows becomes one line of the table.
+    """
+
+    def __init__(self, fits, fits_datasets_chi2_values, show_baseline_chi2):
+        self.labels = _fit_column_labels(fits)
+        self.points = {
+            point: header
+            for point, header in _CHI2_POINTS.items()
+            if show_baseline_chi2 or point != "chi2_baseline"
+        }
+        # one row per (fit, dataset)
+        rows = pd.concat(
+            fits_datasets_chi2_values, keys=self.labels, names=["fit", "dataset"]
+        )
+        self.rows = rows.reset_index()
+
+        groups = list(dict.fromkeys(self.rows["group"]))
+        if UNGROUPED in groups:
+            groups.append(groups.pop(groups.index(UNGROUPED)))
+        self.groups = groups
+
+    def in_group(self, group):
+        return self.rows[self.rows["group"] == group]
+
+    def datasets(self, selected):
+        """The datasets of ``selected``, each once, in order of appearance."""
+        return list(dict.fromkeys(selected["dataset"]))
+
+    def line(self, selected, round_val):
+        """For each fit, its summed points over ``selected``, then its summed
+        chi2 over them at each of its points; all empty for a fit with none of
+        ``selected``, the ratios empty for one with no point to divide by."""
+        # skipna=False: a NaN chi2 must show as one, not be summed as zero
+        by_fit = selected.groupby("fit")[["ndat", *self.points]].sum(skipna=False)
+        cells = []
+        for label in self.labels:
+            if label not in by_fit.index:
+                cells += [""] * (1 + len(self.points))
+                continue
+            ndat = by_fit.at[label, "ndat"]
+            cells.append(str(int(ndat)))
+            cells += [
+                _number(by_fit.at[label, point] / ndat, round_val) if ndat > 0 else ""
+                for point in self.points
+            ]
+        return cells
+
+    def blank(self):
+        return [""] * (len(self.labels) * (1 + len(self.points)))
+
+    def total(self, round_val):
+        """The line over every dataset, each counted once however many groups
+        list it."""
+        return self.line(self.rows, round_val)
+
+    def columns(self):
+        """For each fit, ``(<fit label>, N_dat, "")``, then
+        ``(<fit label>, chi2/N_dat, <point>)``."""
+        return pd.MultiIndex.from_tuples(
+            [
+                column
+                for label in self.labels
+                for column in [(label, _NDAT, "")]
+                + [(label, _CHI2_PER_POINT, header) for header in self.points.values()]
+            ]
+        )
+
+
+@table
+def datasets_chi2_comparison_table(
+    fits,
+    fits_datasets_chi2_values,
+    latex_label,
+    round_val=3,
+    show_baseline_chi2=True,
+):
+    r"""Compare the chi2 per data point of each dataset across fits, in blocks
+    by data group.
+
+    Each fit's chi2 is rebuilt from its own setup and evaluated at its stored
+    best-fit point and at its own baseline, the ``baseline_value`` of its free
+    coefficients (:func:`smefit.dataset_chi2.datasets_chi2_values`): a runcard
+    needs only ``fits:``, and fits with different baselines are each compared
+    with theirs. Each dataset is evaluated on its own block of
+    the fit's covariance matrix, so correlations between datasets are left out,
+    of the totals too. Datasets without a ``group:`` are tabulated under
+    ``Other``. One table rather than one per group, so that every group is
+    drawn at the same column widths. :func:`data_groups_chi2_comparison_table`
+    is the same with only the group totals.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+    fits_datasets_chi2_values : list of pd.DataFrame
+        :func:`smefit.dataset_chi2.datasets_chi2_values` of each fit, in the
+        order of ``fits``.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    round_val : int, optional
+        Number of decimals of each chi2 per data point.
+    show_baseline_chi2 : bool, optional
+        Whether to quote each fit at its baseline too, beside its best fit.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = (group label, dataset label): a block per group, in order of
+        first appearance and ``Other`` last, listing the datasets any fit has
+        in it and ending in a ``Total`` row, blocks separated by a blank row
+        ``("", "")``; then ``(All, Total)`` over every dataset. Columns, for
+        each fit: ``(<fit label>, N_dat, "")``, ``(<fit label>, chi2/N_dat,
+        best fit)`` and, with ``show_baseline_chi2``, ``(<fit label>,
+        chi2/N_dat, baseline)``. Each fit has its own ``N_dat``, since fits may
+        differ in their datasets or in their points; all its cells are empty
+        on a dataset it lacks. A ``Total`` is the summed chi2 over the summed
+        points of the datasets the fit has, and its ``N_dat`` is those points.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty or two fits share a label.
+    """
+    comparison = _Chi2Comparison(fits, fits_datasets_chi2_values, show_baseline_chi2)
+
+    # a list, not a dict: a dataset or group may be called "Total" or "All"
+    index, cells = [], []
+    for group in comparison.groups:
+        in_group = comparison.in_group(group)
+        # a dataset two fits group differently is listed under both groups
+        names = comparison.datasets(in_group)
+        for name in names:
+            index.append((latex_label(group), latex_label(name)))
+            cells.append(
+                comparison.line(in_group[in_group["dataset"] == name], round_val)
+            )
+        index.append((latex_label(group), _TOTAL))
+        cells.append(comparison.line(in_group, round_val))
+        index.append(("", ""))
+        cells.append(comparison.blank())
+    # ...but counts once in the overall total
+    index.append((_ALL, _TOTAL))
+    cells.append(comparison.total(round_val))
+
+    return pd.DataFrame(
+        cells, index=pd.MultiIndex.from_tuples(index), columns=comparison.columns()
+    )
+
+
+@table
+def data_groups_chi2_comparison_table(
+    fits,
+    fits_datasets_chi2_values,
+    latex_label,
+    round_val=3,
+    show_baseline_chi2=True,
+):
+    r"""Compare the chi2 per data point of each data group across fits.
+
+    :func:`datasets_chi2_comparison_table` with only its ``Total`` rows: one
+    row per group, then the overall total. The chi2, the baselines, the
+    grouping and the totals are those of that table, so the two agree line for
+    line.
+
+    Parameters
+    ----------
+    fits : list of smefit.fit_result.Fit
+    fits_datasets_chi2_values : list of pd.DataFrame
+        :func:`smefit.dataset_chi2.datasets_chi2_values` of each fit, in the
+        order of ``fits``.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    round_val : int, optional
+        Number of decimals of each chi2 per data point.
+    show_baseline_chi2 : bool, optional
+        Whether to quote each fit at its baseline too, beside its best fit.
+
+    Returns
+    -------
+    pd.DataFrame
+        Index = group labels, in order of first appearance and ``Other`` last,
+        then ``Total`` over every dataset. Columns as in
+        :func:`datasets_chi2_comparison_table`: each fit's ``N_dat`` and
+        chi2/N_dat are over the datasets of the group it has, all empty for a
+        fit with none.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty or two fits share a label.
+    """
+    comparison = _Chi2Comparison(fits, fits_datasets_chi2_values, show_baseline_chi2)
+
+    # a list, not a dict: a group may be called "Total"
+    index, cells = [], []
+    for group in comparison.groups:
+        in_group = comparison.in_group(group)
+        index.append(latex_label(group))
+        cells.append(comparison.line(in_group, round_val))
+    index.append(_TOTAL)
+    cells.append(comparison.total(round_val))
+
+    return pd.DataFrame(cells, index=pd.Index(index), columns=comparison.columns())
 
 
 @table

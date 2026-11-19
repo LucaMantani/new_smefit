@@ -66,8 +66,12 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Tabulate the confidence bounds of several fits side by side.
 - `coefficient_bounds_table(fit, latex_label, params_to_plot=None, round_val=3, bounds_levels=None, interval_types=None) -> 'pd.DataFrame'`
   - Tabulate the confidence bounds of one fit.
+- `data_groups_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
+  - Compare the chi2 per data point of each data group across fits.
 - `dataset_table(dataset_info)`
   - The datasets of the runcard, as :func:`write_dataset_table` lists them.
+- `datasets_chi2_comparison_table(fits, fits_datasets_chi2_values, latex_label, round_val=3, show_baseline_chi2=True)`
+  - Compare the chi2 per data point of each dataset across fits, in blocks by data group.
 - `fisher_diagonals_normalised(aggregate_fisher_information_matrices, latex_label, params_to_plot=None)`
   - Extract row-normalised diagonals of per-source Fisher matrices.
 - `global_information_table(global_information_matrix, latex_label, params_to_plot=None)`
@@ -187,6 +191,11 @@ names in tracebacks. They are resolved for you.
   - Compute the constraining power of each source on each coefficient.
 - `total_fisher_information_matrix(chi2, best_fit_point)`
   - Fisher information matrix of the full likelihood at the best-fit point.
+
+### `smefit.dataset_chi2`
+
+- `datasets_chi2_values(datasets_chi2, best_fit_point, coefficients, data_groups)`
+  - The chi2 of each dataset at ``best_fit_point`` and at the baseline of ``coefficients``, with its group and size.
 
 ### `smefit.pca`
 

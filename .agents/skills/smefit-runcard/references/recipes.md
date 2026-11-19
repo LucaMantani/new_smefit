@@ -587,6 +587,63 @@ template_text: |
 - Written to `tables/coefficient_bounds_comparison_table.csv`. The per-fit CSVs
   are only written if the report also asks for `coefficient_bounds_table`.
 
+#### The chi2 of each dataset, fit by fit
+
+`datasets_chi2_comparison_table` compares how well each fit describes its
+data: the chi2 per data point of every dataset, at each fit's stored best-fit
+point and at its baseline. Like the bounds comparison it takes the whole
+`fits:` list and goes
+**outside** any `{@with fits@}` loop; a runcard of `fits:` alone is enough,
+since each fit's likelihood is rebuilt from its own setup (as under
+`fits::fitcontext`):
+
+```yaml
+template_text: |
+  # Dataset chi2
+  {@datasets_chi2_comparison_table@}
+```
+
+- One table, in a block per data group, from the `group:` of each dataset
+  (and external chi2) in each fit's own runcard; datasets without one are under
+  `Other`, last. A dataset two fits put in different groups is listed under
+  both. A single table rather than one per group, so that every group is drawn
+  at the same column widths.
+- Columns: a block per fit, headed by its label: its own `N_dat`, then its
+  `chi2/N_dat` in two sub-columns, `best fit` and `baseline`. `N_dat` is per
+  fit because fits may differ in their datasets (or their points, e.g. with
+  different `data_path`s). The baseline is the
+  fit's own (the `baseline_value` of its free coefficients, zero unless set, so
+  the SM by default), so fits with different baselines are each compared with
+  theirs and no SM fit is needed. `show_baseline_chi2: false` (a top-level
+  key, or an action argument) leaves the `baseline` columns out. A dataset a fit does not have is empty in all
+  of that fit's columns.
+  `round_val` (default 3) sets the decimals.
+- Each block ends in a `Total` row, the group's summed chi2 over its summed
+  data points, fit by fit; the last row, `All` / `Total`, is the same over
+  every dataset. A blank row separates the blocks (index `("", "")` in the
+  CSV, so drop those rows when reading it back).
+- In a `Total`, each fit's `N_dat` and `chi2/N_dat` are over the datasets of
+  the block it has.
+- Each dataset is evaluated on its own block of the fit covariance matrix:
+  correlations between datasets are left out, of the totals too.
+- Written to `tables/datasets_chi2_comparison_table.csv`.
+- Fits run one coefficient at a time (`run_individual_*_fits`) are refused:
+  their best-fit values are not one point of the likelihood.
+
+`data_groups_chi2_comparison_table` is the same comparison with only the
+group totals: one row per data group (in the same order, `Other` last), then
+`Total` over every dataset. It takes the same keys (`show_baseline_chi2`,
+`round_val`), and its rows are exactly the `Total` rows of
+`datasets_chi2_comparison_table`, so the two can go in one report:
+
+```yaml
+template_text: |
+  # Chi2 by data group
+  {@data_groups_chi2_comparison_table@}
+```
+
+Written to `tables/data_groups_chi2_comparison_table.csv` (no blank rows).
+
 ### Configuring an action
 
 There is no settings block for how a figure looks, and none is needed: an

@@ -479,7 +479,7 @@ which runcard keys each action ultimately needs.
 - `optimizer`(optimizer_settings) — Build and return an optax optimizer from optimizer_settings.
 - `pcabasis`(fit, coefficients) — A fit in the basis of its principal components, as a namespace.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
-- `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
+- `pseudodata`(data, theory, pseudodata_settings, scale_masks, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
 - `scale_masks`(datasets, theory_path, max_scale) — Per dataset under a cut, the mask of the points whose theory-file
 - `theory`(datasets, theory_path, scale_masks) — Produce theory group object, cut to ``scale_masks``.

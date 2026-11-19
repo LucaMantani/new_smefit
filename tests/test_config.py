@@ -529,11 +529,13 @@ def test_parse_blackjax_log_dir_is_a_known_key(cfg, tmp_path, caplog):
 # ---------------------------------------------------------------------------
 
 _TESTDATA = [{"name": "TESTDATA", "order": "NLO"}]
+# data and theory are cached on the identity of scale_masks: share one, uncut
+_NO_CUT: dict = {}
 
 
 def test_produce_data_caching(cfg, fixtures_data_path):
-    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
-    second = cfg.produce_data(_TESTDATA, fixtures_data_path)
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path, _NO_CUT)
+    second = cfg.produce_data(_TESTDATA, fixtures_data_path, _NO_CUT)
     assert first is second
 
 
@@ -545,16 +547,16 @@ def test_produce_data_cached_per_data_path(cfg, fixtures_data_path, tmp_path):
     dataset["data_central"] = [3.0, 1.0, 5.0]
     (shifted / "TESTDATA.yaml").write_text(yaml.dump(dataset))
 
-    first = cfg.produce_data(_TESTDATA, fixtures_data_path)
-    second = cfg.produce_data(_TESTDATA, shifted)
+    first = cfg.produce_data(_TESTDATA, fixtures_data_path, _NO_CUT)
+    second = cfg.produce_data(_TESTDATA, shifted, _NO_CUT)
 
     assert first is not second
     assert not jnp.allclose(first.cv, second.cv)
 
 
 def test_produce_theory_caching(cfg, fixtures_theory_path):
-    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
-    second = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path, _NO_CUT)
+    second = cfg.produce_theory(_TESTDATA, fixtures_theory_path, _NO_CUT)
     assert first is second
 
 
@@ -566,8 +568,8 @@ def test_produce_theory_cached_per_theory_path(cfg, fixtures_theory_path, tmp_pa
         (fixtures_theory_path / "TESTDATA.json").read_text()
     )
 
-    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path)
-    second = cfg.produce_theory(_TESTDATA, other)
+    first = cfg.produce_theory(_TESTDATA, fixtures_theory_path, _NO_CUT)
+    second = cfg.produce_theory(_TESTDATA, other, _NO_CUT)
 
     assert first is not second
 

@@ -442,6 +442,41 @@ def test_unknown_theory_cov_is_rejected(tmp_path):
     assert "theory_cov 'aggressive' not in theory file" in out
 
 
+def test_max_scale_is_a_known_key_in_both_forms(tmp_path):
+    """The global key and the dataset-entry key, with the fixture's points
+    (all at 100 GeV) kept by the cut."""
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": 200}],
+    )
+    assert code == 0, out
+    assert "OK (0 warning(s))" in out
+
+
+def test_max_scale_removing_every_point_is_rejected(tmp_path):
+    code, out = validate(tmp_path, max_scale=50.0)
+    assert code == 1, out
+    assert "removes every data point" in out
+
+
+def test_null_max_scale_exempts_a_dataset(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=50.0,
+        datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": None}],
+    )
+    assert code == 0, out
+
+
+def test_non_positive_max_scale_is_rejected(tmp_path):
+    code, out = validate(
+        tmp_path, datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": -1}]
+    )
+    assert code == 1, out
+    assert "positive number" in out
+
+
 def test_runcard_without_any_data_is_rejected(tmp_path):
     code, out = validate(tmp_path, datasets=None, data_path=None, theory_path=None)
     assert code == 1, out

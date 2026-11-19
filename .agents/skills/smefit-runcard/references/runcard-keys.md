@@ -43,7 +43,7 @@ and then use them in runcards the same way:
 
 ## Keys consumed directly from the runcard (no dedicated parser)
 
-- `datasets` (consumed by `data`, `data_groups`, `prior`, `theory`)
+- `datasets` (consumed by `data`, `data_groups`, `prior`, `scale_masks`, `theory`)
 - `use_quad` — default: `False` (consumed by `eft_model`, `individual_eft_model`, `individual_mass_eft_model`)
 - `use_t0` — default: `False` (consumed by `fit_covmat`)
 - `use_theory_covmat` — default: `False` (consumed by `fit_covmat`, `pseudodata`)
@@ -51,7 +51,10 @@ and then use them in runcards the same way:
 Notes:
 
 - `datasets` is a list of entries `{name, order, theory_cov (optional, default
-  'current'), group (optional, for report/Fisher aggregation)}`.
+  'current'), stat_unc / syst_unc (optional, 'current' or 'zero'), group
+  (optional, for report/Fisher aggregation), max_scale (optional, GeV: drops
+  the points whose theory-file scale is above it; overrides the global
+  `max_scale` for that dataset, `null` exempts it)}`.
 
 ## reportengine keys
 
@@ -310,6 +313,14 @@ An entry overrides the built-in label
 is typeset as it is written. Reports read the result through
 :meth:`produce_latex_label`.
 
+### `max_scale`
+
+The cut (GeV) on the scale of the data points; see
+:meth:`produce_scale_masks`.
+
+Also parses the key on a ``datasets`` entry, where ``null`` exempts the
+dataset: reportengine resolves every key of an entry against the config.
+
 ### `optimizer_settings`
 
 Parse the optimizer_settings block.
@@ -445,7 +456,7 @@ reportengine builds these nodes on demand; they are listed so you can trace
 which runcard keys each action ultimately needs.
 
 - `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
-- `data`(datasets, data_path) — Produce data group object.
+- `data`(datasets, data_path, scale_masks) — Produce data group object, cut to ``scale_masks``.
 - `data_groups`(datasets, external_chi2) — Build data_groups from inline group: keys on datasets and external chi2s.
 - `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
 - `eft_model`(theory, coefficients, rge_matrix, use_quad) — Produce EFT model mapping coefficients to theory predictions.
@@ -470,5 +481,6 @@ which runcard keys each action ultimately needs.
 - `prior`(coefficients, datasets, external_chi2, whitening, bayesian_update) — Produce joint prior over all free coefficients.
 - `pseudodata`(data, theory, pseudodata_settings, use_theory_covmat, eft_model) — Produce a pseudodata DataGroup via projections.
 - `rge_matrix`(coefficients, theory, rge, output_path) — Produce the stacked RGE matrix for all data points.
-- `theory`(datasets, theory_path) — Produce theory group object.
+- `scale_masks`(datasets, theory_path, max_scale) — Per dataset under a cut, the mask of the points whose theory-file
+- `theory`(datasets, theory_path, scale_masks) — Produce theory group object, cut to ``scale_masks``.
 - `whitening_transformation`(whitening) — Dispatch to the correct whitening-transform builder.

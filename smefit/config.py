@@ -35,7 +35,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.fisher import _fisher_in_pca_basis
 from smefit.fit_result import CONTOUR_STYLES, Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
-from smefit.loader import load_dataset, load_theory
+from smefit.loader import load_dataset, load_scales, load_theory
 from smefit.model import EFTModel
 from smefit.paths import resolve_fit_dir, resolve_path
 from smefit.priors import JointPrior, Prior
@@ -60,6 +60,7 @@ _FIT_SETUP_KEYS = (
     "data_path",
     "theory_path",
     "datasets",
+    "max_scale",
     "coefficients",
     "external_chi2",
     "rge",
@@ -124,12 +125,83 @@ class smefitConfig(Config):
             cache[full_key] = (build(), tuple(by_identity))
         return cache[full_key][0]
 
-    def produce_data(self, datasets, data_path):
-        """Produce data group object."""
+    def parse_max_scale(self, max_scale: int | float | None):
+        """The cut (GeV) on the scale of the data points; see
+        :meth:`produce_scale_masks`.
+
+        Also parses the key on a ``datasets`` entry, where ``null`` exempts the
+        dataset: reportengine resolves every key of an entry against the config.
+        """
+        if max_scale is not None and max_scale <= 0:
+            raise ConfigError(f"max_scale must be positive, got {max_scale!r}.")
+        return max_scale
+
+    def produce_scale_masks(self, datasets, theory_path=None, max_scale=None):
+        """Per dataset under a cut, the mask of the points whose theory-file
+        ``scales`` entry is at or below it.
+
+        A dataset's cut is its entry's ``max_scale`` if present (``null``: no
+        cut), else the global one. Uncut datasets are left out, so with no cut
+        no theory file is read and ``theory_path`` may be absent. ``data`` and
+        ``theory`` both take it, so the two lose the same points. A cut emptying
+        a dataset raises rather than drop it.
+        """
+        cuts = {}
+        for ds in datasets:
+            cut = ds["max_scale"] if "max_scale" in ds else max_scale
+            if cut is not None:
+                cuts[ds["name"]] = cut
+        if cuts and theory_path is None:
+            raise ConfigError(
+                "max_scale cuts on the scales of the theory files, so it "
+                "requires theory_path."
+            )
+        # cached even when empty: data and theory are cached on its identity
+        return self._cached(
+            "scale_masks",
+            (str(theory_path), tuple(sorted(cuts.items()))),
+            lambda: self._build_scale_masks(theory_path, cuts),
+        )
+
+    @staticmethod
+    def _build_scale_masks(theory_path, cuts):
+        """The worker of :meth:`produce_scale_masks`."""
+        masks = {}
+        emptied = []
+        for name, cut in cuts.items():
+            scales = load_scales(theory_path, name)
+            keep = scales <= cut
+            if not keep.any():
+                emptied.append(f"{name} (scales {scales.min():g}-{scales.max():g})")
+            log.info(
+                "max_scale %g GeV keeps %d of %d points of %s.",
+                cut,
+                keep.sum(),
+                keep.size,
+                name,
+            )
+            masks[name] = keep
+        if emptied:
+            raise ConfigError(
+                "max_scale removes every data point of: "
+                + ", ".join(emptied)
+                + ". Drop these datasets from the runcard, or exempt them "
+                "with max_scale: null on their entry."
+            )
+        return masks
+
+    def produce_data(self, datasets, data_path, scale_masks):
+        """Produce data group object, cut to ``scale_masks``."""
         return self._cached(
             "data",
             (str(data_path), repr(datasets)),
-            lambda: DataGroup([load_dataset(data_path, ds) for ds in datasets]),
+            lambda: DataGroup(
+                [
+                    load_dataset(data_path, ds, keep=scale_masks.get(ds["name"]))
+                    for ds in datasets
+                ]
+            ),
+            by_identity=(scale_masks,),
         )
 
     def produce_data_groups(self, datasets=None, external_chi2=None):
@@ -285,12 +357,18 @@ class smefitConfig(Config):
         )
         return rge_matrix
 
-    def produce_theory(self, datasets, theory_path):
-        """Produce theory group object."""
+    def produce_theory(self, datasets, theory_path, scale_masks):
+        """Produce theory group object, cut to ``scale_masks``."""
         return self._cached(
             "theory",
             (str(theory_path), repr(datasets)),
-            lambda: TheoryGroup([load_theory(theory_path, ds) for ds in datasets]),
+            lambda: TheoryGroup(
+                [
+                    load_theory(theory_path, ds, keep=scale_masks.get(ds["name"]))
+                    for ds in datasets
+                ]
+            ),
+            by_identity=(scale_masks,),
         )
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):

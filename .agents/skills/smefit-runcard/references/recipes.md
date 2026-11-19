@@ -267,6 +267,32 @@ coefficient (the mass), with every Wilson coefficient tied to it through an
   `produce_individual_mass_ext_chi2_func`), so `rge.init_scale` in the runcard
   stays in GeV like everywhere else.
 
+## Cutting data points above an energy scale
+
+`max_scale` (GeV) drops every data point whose scale — the `scales` entry of its
+theory file, the scale `rge.obs_scale: dynamic` runs to — is above the cut, from
+the commondata and the theory alike (central values, errors, systematics,
+predictions, theory covmat). A point exactly at the cut is kept.
+
+```yaml
+max_scale: 3000.0            # global cut, all datasets
+datasets:
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD, max_scale: 1500}  # own cut
+  - {name: FCCee_240_H_HADR, order: LO, max_scale: null}                     # exempt
+  - {name: CMS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}                     # global cut
+```
+
+- The entry's `max_scale` overrides the global one; `null` on an entry exempts
+  that dataset. Either form alone is fine.
+- A cut that removes every point of a dataset is an error, not a silent drop:
+  remove the dataset or exempt it. `validate_runcard.py` catches this up front.
+- A cut needs `theory_path`, as the scales live in the theory files.
+- `max_scale` is a fit setup key, so it is recorded with the fit and
+  `fits::fitcontext` rebuilds the cut likelihood.
+- The scale is whatever the theory file records per point; check it is the
+  variable you mean to cut on (for a binned distribution, which point of the bin
+  it stands for).
+
 ## Pseudodata / projections
 
 ```yaml

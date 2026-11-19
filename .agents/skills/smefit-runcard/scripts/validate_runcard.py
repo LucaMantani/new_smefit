@@ -342,6 +342,10 @@ def check_coefficients_against_theory(coefficients, operators, rep):
             )
 
 
+def _is_positive_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
 def check_datasets(runcard, keys, rep, resolver):
     operators = set()  # union of operator keys across the selected datasets/orders
     datasets = runcard.get("datasets")
@@ -368,6 +372,10 @@ def check_datasets(runcard, keys, rep, resolver):
 
     entry_keys = set(keys["dataset_entry_keys"]) if keys else set()
 
+    global_cut = runcard.get("max_scale")
+    if global_cut is not None and not _is_positive_number(global_cut):
+        rep.error(f"max_scale must be a positive number (GeV), got {global_cut!r}")
+
     for i, entry in enumerate(datasets):
         label = f"datasets[{i}]"
         if not isinstance(entry, dict) or "name" not in entry:
@@ -380,6 +388,9 @@ def check_datasets(runcard, keys, rep, resolver):
                 rep.warn(f"{label}: unknown key '{k}' (known: {sorted(entry_keys)})")
         if "order" not in entry:
             rep.error(f"{label}: missing 'order' (e.g. LO or NLO_QCD)")
+        cut = entry.get("max_scale")
+        if cut is not None and not _is_positive_number(cut):
+            rep.error(f"{label}: max_scale must be a positive number (GeV) or null")
         if data_dir and not (data_dir / f"{name}.yaml").exists():
             rep.error(f"{label}: no commondata file {data_dir / (name + '.yaml')}")
         if theory_dir:
@@ -409,6 +420,16 @@ def check_datasets(runcard, keys, rep, resolver):
                 block = theory[entry["order"]]
                 if isinstance(block, dict):
                     operators.update(k for k in block if k != "SM" and "*" not in k)
+            # max_scale: the entry's (null exempting it), else the global one.
+            cut = entry["max_scale"] if "max_scale" in entry else global_cut
+            scales = theory.get("scales")
+            if _is_positive_number(cut) and isinstance(scales, list) and scales:
+                if all(float(scale) > cut for scale in scales):
+                    rep.error(
+                        f"{label}: max_scale {cut:g} removes every data point "
+                        f"(scales {min(scales):g}-{max(scales):g}); drop the "
+                        "dataset or set max_scale: null on its entry"
+                    )
             cov = entry.get("theory_cov", "current")
             if f"theory_cov_{cov}" not in theory:
                 available = sorted(

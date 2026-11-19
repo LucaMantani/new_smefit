@@ -8,6 +8,7 @@ import json
 import logging
 
 import jax.numpy as jnp
+import numpy as np
 import yaml
 
 from smefit.core import Dataset, Theory
@@ -16,8 +17,9 @@ from smefit.utils import ensure_list
 log = logging.getLogger(__name__)
 
 
-def load_dataset(data_path, dataset_dict):
-    """Load dataset from given path."""
+def load_dataset(data_path, dataset_dict, keep=None):
+    """Load dataset from given path, restricted to the points where the
+    boolean mask ``keep`` is true, if given."""
     dataset_name = dataset_dict["name"]
     dataset_path = data_path / f"{dataset_name}.yaml"
     if not dataset_path.exists():
@@ -97,7 +99,7 @@ def load_dataset(data_path, dataset_dict):
     else:
         luminosity = jnp.full(num_data, jnp.nan)
 
-    return Dataset(
+    dataset = Dataset(
         name=name,
         num_data=num_data,
         central_values=central_values,
@@ -107,10 +109,27 @@ def load_dataset(data_path, dataset_dict):
         sys_types=sys_types,
         luminosity=luminosity,
     )
+    return dataset if keep is None else dataset.select(keep)
 
 
-def load_theory(theory_path, dataset_dict):
-    """Load theory predictions from given path."""
+def load_scales(theory_path, dataset_name):
+    """The per-point energy scales (GeV) of a dataset, from its theory file.
+
+    Read on their own, without building the predictions, so that the cut on
+    them can be applied to the commondata as well as to the theory.
+    """
+    theory_file = theory_path / f"{dataset_name}.json"
+    if not theory_file.exists():
+        raise FileNotFoundError(
+            f"Theory predictions for dataset {dataset_name} not found in {theory_path}"
+        )
+    with open(theory_file) as file:
+        return np.atleast_1d(np.asarray(json.load(file)["scales"], dtype=float))
+
+
+def load_theory(theory_path, dataset_dict, keep=None):
+    """Load theory predictions from given path, restricted to the points where
+    the boolean mask ``keep`` is true, if given."""
     dataset_name = dataset_dict["name"]
     order = dataset_dict["order"]
     th_cov_type = dataset_dict.get("theory_cov", "current")
@@ -162,7 +181,7 @@ def load_theory(theory_path, dataset_dict):
 
     operators = sorted(linear_keys | ops_in_quadratic)
 
-    return Theory(
+    theory = Theory(
         name=dataset_name,
         order=order,
         sm_pred=sm_pred,
@@ -171,3 +190,4 @@ def load_theory(theory_path, dataset_dict):
         scales=scales,
         operators=operators,
     )
+    return theory if keep is None else theory.select(keep)

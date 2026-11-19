@@ -30,9 +30,13 @@ rge:
 
 # # Datasets to include
 datasets:
-  - {name: LEP1_EWPOs_2006, order: LO}
+  - {name: LEP1_EWPOs_2006, order: LO, group: LEP}
+  - {name: LEP_Bhabha_2013, order: LO, group: LEP}
+  - {name: LEP_eeWW_182GeV, order: LO, group: LEP}
     # ATLAS_CMS
-  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD}
+  - {name: ATLAS_CMS_SSinc_RunI, order: NLO_QCD, group: Higgs}
+  - {name: ATLAS_SSinc_RunII, order: NLO_QCD, group: Higgs}
+  - {name: CMS_SSinc_RunII, order: NLO_QCD, group: Higgs}
 
 # Coefficients to fit
 coefficients:
@@ -59,6 +63,7 @@ coefficients:
 external_chi2:
   CMS_DYMee_13TeV:
       path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+      group: Drell-Yan
       use_quad: True
       order: NLO_QCD
       # save_rge_path: "./CMS_DYMee_rge_matrix"

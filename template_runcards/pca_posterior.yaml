@@ -1,8 +1,9 @@
 # 1D confidence bounds of each fit along the principal components of its own
-# Fisher matrix, as a plot and as a table, the posterior correlations of those
-# components, and the share of each component's Fisher information coming from
-# each dataset: no fit is run here, the posterior samples are read back from
-# fit_results.json and rotated into the PCA basis.
+# Fisher matrix, as a plot and as a table, the marginal posteriors, contours and
+# posterior correlations of those components, and the share of each
+# component's Fisher information coming from each dataset: no fit is run here,
+# the posterior samples are read back from fit_results.json and rotated into
+# the PCA basis.
 #
 # Run analytical_fit.yaml and ultranest_fit.yaml first, from this directory.
 fits:
@@ -26,7 +27,8 @@ interval_types: [eti, hdi]
 
 # `fits::fitcontext` gives every fit its own setup, hence its own PCA, and
 # `pcabasis` below it rotates the fit by that PCA: the routines are those of
-# coefficient_bounds_plot.yaml, coefficient_bounds_table.yaml and
+# coefficient_bounds_plot.yaml, coefficient_bounds_table.yaml,
+# posterior_histograms.yaml, posterior_contours.yaml and
 # posterior_correlations.yaml, reading the rotated fit. PC1 is a different
 # direction in each fit, so there is no comparison across fits.
 #
@@ -48,16 +50,32 @@ template_text: |
     {@with fits::fitcontext@}
     {@fit@}
     ---------
+
     {@with pcabasis@}
-    PCA bounds
+    ### Bounds
+
     {@plot_coefficient_bounds@}
+
     {@coefficient_bounds_table@}
+
+    ### Marginal posteriors
+
+    {@plot_posterior_histograms@}
+
+    ### Contours
+
     {@plot_posterior_contours@}
-    PCA correlations
+
+    ### Correlations
+
     {@plot_posterior_correlations@}
-    PCA Fisher information
+
+    ### Fisher information
+
     {@fisher_diagonals_normalised@}
+
     {@plot_fisher_diagonals_heatmap@}
+
     {@endwith@}
     {@endwith@}
 

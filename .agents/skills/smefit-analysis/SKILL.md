@@ -96,7 +96,11 @@ in a `{@with fits@}`…`{@endwith@}` block — `{@fit@}` heads each section with
 the fit's name, without which the report gives no clue which output belongs to
 which fit. `plot_posterior_correlations` is the action, drawing the posterior
 correlations of each fit's free coefficients. Template:
-`posterior_correlations.yaml`.
+`posterior_correlations.yaml`. `plot_posterior_histograms` draws one fit's
+marginal posteriors the same way, one panel per free or constrained
+coefficient, and `plot_posterior_histograms_comparison` takes the whole list at
+once and overlays every fit's — called plainly, outside `{@with fits@}`. One
+runcard can do both. Template: `posterior_histograms.yaml`.
 
 Any action that would otherwise need the fit's setup — Fisher and global
 information, PCA, … — runs on finished fits under the `fitcontext` namespace:
@@ -134,6 +138,15 @@ one table, the bounds columns of each fit grouped under its `label` (or its
 directory name), rows the union of their coefficients. It sits outside the
 `{@with fits@}` loop and is written to
 `tables/coefficient_bounds_comparison_table.csv`.
+
+`datasets_chi2_comparison_table` compares the fits on their data instead:
+chi2/N_dat of each dataset at each fit's best fit and at its own baseline
+(`baseline_value`, the SM by default), in a block per data group
+ending in the group total, empty where a fit lacks the dataset, and the overall
+total last (written to `tables/datasets_chi2_comparison_table.csv`).
+`data_groups_chi2_comparison_table` keeps only the group totals, a row per
+group and the overall total.
+`recipes.md` has the details.
 
 Both heatmaps take `cmap`, `value_fmt` and `colorbar` as ordinary keyword
 parameters, so a runcard sets them with no settings block — as a top-level key

@@ -528,6 +528,17 @@ def check_rge_rg_matrix(value, label, resolver, rep):
         rep.error(f"{label}: {RGE_MATRIX_FILENAME} not found in {resolved}")
 
 
+def _has_scale_cut(runcard):
+    """Whether a max_scale cut applies to any dataset of the runcard."""
+    global_cut = runcard.get("max_scale")
+    datasets = runcard.get("datasets") or []
+    return any(
+        (entry["max_scale"] if "max_scale" in entry else global_cut) is not None
+        for entry in datasets
+        if isinstance(entry, dict)
+    )
+
+
 def check_actions(runcard, rep, nonlinear_exprs=()):
     actions = runcard.get("actions_")
     if not actions:
@@ -551,6 +562,11 @@ def check_actions(runcard, rep, nonlinear_exprs=()):
         ):
             rep.error(
                 "actions_: 'report' requires a 'template_text' (or 'template') key"
+            )
+        if action == "write_pseudodata" and _has_scale_cut(runcard):
+            rep.error(
+                "actions_: 'write_pseudodata' generates the pseudodata uncut — "
+                "remove max_scale and apply it in the fits that use it"
             )
         if action in ULTRANEST_ACTIONS and "bayesian_update" in runcard:
             rep.error(

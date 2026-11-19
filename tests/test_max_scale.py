@@ -221,3 +221,28 @@ def test_max_scale_is_a_fit_setup_key():
     from smefit.config import _FIT_SETUP_KEYS
 
     assert "max_scale" in _FIT_SETUP_KEYS
+
+
+def test_pseudodata_refuses_a_cut(database):
+    """Pseudodata is generated on every point; the cut belongs in the fit."""
+    data_path, theory_path = database
+    runcard = _runcard(data_path, theory_path, max_scale=250.0, pseudodata_settings={})
+    with pytest.raises(ConfigError, match="generated uncut"):
+        smefitAPI.pseudodata(**runcard)
+
+
+def test_pseudodata_exempt_datasets_are_not_a_cut(database):
+    data_path, theory_path = database
+    datasets = [{"name": "TESTDATA", "order": "NLO", "max_scale": None}]
+    runcard = _runcard(
+        data_path,
+        theory_path,
+        datasets=datasets,
+        max_scale=250.0,
+        pseudodata_settings={},
+    )
+    # pseudodata evaluates the model at fixed coefficients
+    runcard["coefficients"] = {
+        name: {"free": False, "value": 0.0} for name in ("OpA", "OpB")
+    }
+    assert smefitAPI.pseudodata(**runcard).num_data == 3

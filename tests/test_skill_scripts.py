@@ -477,6 +477,17 @@ def test_non_positive_max_scale_is_rejected(tmp_path):
     assert "positive number" in out
 
 
+def test_max_scale_with_write_pseudodata_is_rejected(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        pseudodata_settings={},
+        actions_=["write_pseudodata"],
+    )
+    assert code == 1, out
+    assert "generates the pseudodata uncut" in out
+
+
 def test_runcard_without_any_data_is_rejected(tmp_path):
     code, out = validate(tmp_path, datasets=None, data_path=None, theory_path=None)
     assert code == 1, out

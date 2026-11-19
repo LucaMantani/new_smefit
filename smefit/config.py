@@ -1045,10 +1045,21 @@ class smefitConfig(Config):
         data,
         theory,
         pseudodata_settings,
+        scale_masks,
         use_theory_covmat=False,
         eft_model=None,
     ):
-        """Produce a pseudodata DataGroup via projections."""
+        """Produce a pseudodata DataGroup via projections.
+
+        Pseudodata is generated on every point: a ``max_scale`` cut is refused
+        here, and belongs in the fits that use it.
+        """
+        if scale_masks:
+            raise ConfigError(
+                "Pseudodata is generated uncut: remove max_scale from this "
+                "runcard and apply it in the fits that use the pseudodata. Cut "
+                f"here: {', '.join(sorted(scale_masks))}."
+            )
         return Projection(
             data=data,
             theory=theory,

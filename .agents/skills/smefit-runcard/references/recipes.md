@@ -287,6 +287,8 @@ datasets:
 - A cut that removes every point of a dataset is an error, not a silent drop:
   remove the dataset or exempt it. `validate_runcard.py` catches this up front.
 - A cut needs `theory_path`, as the scales live in the theory files.
+- Pseudodata is generated uncut: `write_pseudodata` refuses a runcard with a
+  cut. Generate on every point and apply `max_scale` in the fits that use it.
 - `max_scale` is a fit setup key, so it is recorded with the fit and
   `fits::fitcontext` rebuilds the cut likelihood.
 - The scale is whatever the theory file records per point; check it is the

@@ -5,7 +5,7 @@ Core module of smefit, containing the main data classes for the framework.
 """
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
@@ -70,6 +70,23 @@ class Dataset:
     def syst_err_mult(self) -> jnp.ndarray:
         """Systematic uncertainties as percentage of central values."""
         return self.syst_err / self.central_values[None, :]
+
+    def select(self, keep) -> "Dataset":
+        """The dataset restricted to the points where ``keep`` is true.
+
+        ``keep`` is a boolean mask over the data points. Every systematic is
+        kept, cut down to the surviving points, so a systematic shared with
+        another dataset stays correlated with it.
+        """
+        keep = np.asarray(keep, dtype=bool)
+        return replace(
+            self,
+            num_data=int(keep.sum()),
+            central_values=self.central_values[keep],
+            stat_err=self.stat_err[keep],
+            syst_err=self.syst_err[:, keep],
+            luminosity=self.luminosity[keep],
+        )
 
 
 @dataclass
@@ -145,6 +162,27 @@ class Theory:
         self.eft_quad_pred = jnp.asarray(eft_quad_pred)
         # Define operator index mapping
         self.op_index = {op: i for i, op in enumerate(self.operators)}
+
+    def select(self, keep) -> "Theory":
+        """The predictions restricted to the points where ``keep`` is true.
+
+        ``keep`` is a boolean mask over the data points; it cuts the SM and EFT
+        predictions, the scales and both axes of the theory covariance. The
+        operator list is left as it is, even if an operator no longer
+        contributes to any surviving point.
+        """
+        keep = np.asarray(keep, dtype=bool)
+        return replace(
+            self,
+            sm_pred=self.sm_pred[keep],
+            eft_pred={
+                key: np.atleast_1d(np.asarray(val))[keep]
+                for key, val in self.eft_pred.items()
+            },
+            sm_covmat=self.sm_covmat[np.ix_(keep, keep)],
+            scales=self.scales[keep],
+            operators=list(self.operators),
+        )
 
 
 @dataclass

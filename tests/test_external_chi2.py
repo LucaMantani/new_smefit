@@ -188,3 +188,91 @@ def test_module_not_found(tmp_path, coeff_group):
     external_chi2 = {"FakeChi2": {"path": str(tmp_path / "nonexistent.py")}}
     with pytest.raises(ModuleNotFoundError):
         load_external_chi2(external_chi2, coeff_group, {})
+
+
+# ---------------------------------------------------------------------------
+# max_scale: resolved per entry against the global cut, forwarded when set
+# ---------------------------------------------------------------------------
+
+
+# num_data reports the cut the constructor received, 0 for none
+FAKE_CHI2_WITH_CUT = """\
+class {name}:
+    def __init__(self, coefficients, rge_dict, max_scale=None):
+        self.num_data = 0 if max_scale is None else int(max_scale)
+
+    def compute_chi2(self, c):
+        return 0.0
+"""
+
+
+def _cut_module(tmp_path, name):
+    module = tmp_path / f"{name.lower()}.py"
+    module.write_text(FAKE_CHI2_WITH_CUT.format(name=name))
+    return str(module)
+
+
+def test_global_max_scale_is_forwarded(tmp_path, coeff_group):
+    external_chi2 = {"CutGlobal": {"path": _cut_module(tmp_path, "CutGlobal")}}
+    result = load_external_chi2(external_chi2, coeff_group, None, max_scale=700.0)
+    assert result[0].num_data == 700
+
+
+def test_entry_max_scale_overrides_global(tmp_path, coeff_group):
+    path = _cut_module(tmp_path, "CutOwn")
+    external_chi2 = {"CutOwn": {"path": path, "max_scale": 300.0}}
+    result = load_external_chi2(external_chi2, coeff_group, None, max_scale=700.0)
+    assert result[0].num_data == 300
+
+
+def test_entry_max_scale_without_global(tmp_path, coeff_group):
+    path = _cut_module(tmp_path, "CutOnlyOwn")
+    external_chi2 = {"CutOnlyOwn": {"path": path, "max_scale": 300.0}}
+    result = load_external_chi2(external_chi2, coeff_group, None)
+    assert result[0].num_data == 300
+
+
+def test_null_max_scale_exempts_an_entry(tmp_path, coeff_group):
+    """Exempt, the module gets no max_scale at all: one taking none loads."""
+    module = tmp_path / "kwarg_chi2_exempt.py"
+    module.write_text(FAKE_CHI2_WITH_KWARG.replace("KwargChi2", "KwargChi2Exempt"))
+    external_chi2 = {"KwargChi2Exempt": {"path": str(module), "max_scale": None}}
+    result = load_external_chi2(external_chi2, coeff_group, None, max_scale=700.0)
+    assert result[0].num_data == 3
+
+
+def test_cut_on_a_module_taking_no_max_scale_raises(tmp_path, coeff_group):
+    from reportengine.configparser import ConfigError
+
+    module = tmp_path / "kwarg_chi2_uncuttable.py"
+    module.write_text(FAKE_CHI2_WITH_KWARG.replace("KwargChi2", "KwargChi2Uncut"))
+    external_chi2 = {"KwargChi2Uncut": {"path": str(module)}}
+    with pytest.raises(ConfigError, match="takes no max_scale argument"):
+        load_external_chi2(external_chi2, coeff_group, None, max_scale=700.0)
+
+
+def test_parse_external_chi2_rejects_a_non_positive_max_scale(tmp_path):
+    from reportengine.configparser import ConfigError
+
+    from smefit.config import smefitConfig
+
+    cfg = smefitConfig.__new__(smefitConfig)
+    with pytest.raises(ConfigError, match="must be positive"):
+        cfg.parse_external_chi2({"X": {"path": str(tmp_path), "max_scale": -1}})
+
+
+def test_drell_yan_module_applies_the_cut(coeff_group):
+    """A shipped module cuts its own bins: 17 of CMS_DYMee_13TeV's 79 are at
+    or below 1000 GeV."""
+    from pathlib import Path
+
+    path = (
+        Path(__file__).parents[1] / "external_chi2" / "drell_yan" / "CMS_DYMee_13TeV.py"
+    )
+    entry = {"path": str(path), "use_quad": False, "order": "LO"}
+    uncut = load_external_chi2({"CMS_DYMee_13TeV": entry}, coeff_group, None)
+    cut = load_external_chi2(
+        {"CMS_DYMee_13TeV": entry}, coeff_group, None, max_scale=1000.0
+    )
+    assert uncut[0].num_data == 79
+    assert cut[0].num_data == 17

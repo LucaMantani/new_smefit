@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import pytest
 import yaml
 
-from smefit.loader import load_dataset, load_theory
+from smefit.loader import load_dataset, load_scales, load_theory
 
 # ---------------------------------------------------------------------------
 # load_dataset
@@ -149,3 +149,18 @@ def test_load_theory_zero_cov_type(fixtures_theory_path):
 def test_load_theory_not_found(fixtures_theory_path):
     with pytest.raises(FileNotFoundError):
         load_theory(fixtures_theory_path, {"name": "NONEXISTENT", "order": "NLO"})
+
+
+# ---------------------------------------------------------------------------
+# load_scales
+# ---------------------------------------------------------------------------
+
+
+def test_load_scales(fixtures_theory_path):
+    scales = load_scales(fixtures_theory_path, "TESTDATA")
+    assert scales.tolist() == [100.0, 100.0, 100.0]
+
+
+def test_load_scales_not_found(fixtures_theory_path):
+    with pytest.raises(FileNotFoundError, match="NONEXISTENT"):
+        load_scales(fixtures_theory_path, "NONEXISTENT")

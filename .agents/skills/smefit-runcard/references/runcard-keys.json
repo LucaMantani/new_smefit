@@ -15,7 +15,10 @@
     "name",
     "order",
     "theory_cov",
-    "group"
+    "stat_unc",
+    "syst_unc",
+    "group",
+    "max_scale"
   ],
   "derived_keys": [
     "chi2",
@@ -44,6 +47,7 @@
     "prior",
     "pseudodata",
     "rge_matrix",
+    "scale_masks",
     "theory",
     "whitening_transformation"
   ],
@@ -115,6 +119,7 @@
         "data",
         "data_groups",
         "prior",
+        "scale_masks",
         "theory"
       ]
     },
@@ -256,6 +261,10 @@
       "defaults": {},
       "known_keys": null
     },
+    "max_scale": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -366,6 +375,7 @@
     "interval_types",
     "latex_labels",
     "lin_thr",
+    "max_scale",
     "meta",
     "n_bins",
     "n_cols",

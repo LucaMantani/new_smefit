@@ -1,4 +1,5 @@
-"""Unit tests for smefit.plot_utils — select_params and set_plot_style."""
+"""Unit tests for smefit.plot_utils — select_params, rescale_exponents and
+set_plot_style."""
 
 import json
 import logging
@@ -8,7 +9,7 @@ import sys
 import matplotlib
 import pytest
 
-from smefit.plot_utils import select_params, set_plot_style
+from smefit.plot_utils import rescale_exponents, select_params, set_plot_style
 
 
 def test_select_params_without_a_list_keeps_everything():
@@ -57,6 +58,67 @@ def test_select_params_rejects_an_empty_selection():
     for, so it says what was available instead of drawing an empty figure."""
     with pytest.raises(ValueError, match="OpA"):
         select_params(["OpA", "OpB"], ["OpTypo"])
+
+
+# ---------------------------------------------------------------------------
+# rescale_exponents
+# ---------------------------------------------------------------------------
+
+
+def test_rescale_exponents_brings_every_row_within_a_decade_of_the_widest():
+    """The widest row is the reference; each other one gets the largest power
+    of ten that keeps it inside the range the reference sets."""
+    extents = [1.0, 0.3, 0.03, 0.0002]
+
+    exponents = rescale_exponents(extents)
+
+    assert exponents == [0, 0, 1, 3]
+    rescaled = [extent * 10**k for extent, k in zip(extents, exponents)]
+    assert all(0.1 < value <= 1.0 for value in rescaled)
+
+
+def test_rescale_exponents_does_not_depend_on_the_order_of_the_rows():
+    """The reference is the widest row wherever it sits, so reordering the
+    rows with params_to_plot does not change their factors."""
+    assert rescale_exponents([0.0002, 1.0, 0.03, 0.3]) == [3, 0, 1, 0]
+
+
+def test_rescale_exponents_leaves_comparable_rows_alone():
+    """Rows within a decade of each other are readable as they are: the plot
+    is the one drawn without any rescaling."""
+    assert rescale_exponents([0.5, 0.2, 0.06]) == [0, 0, 0]
+
+
+def test_rescale_exponents_only_depends_on_the_ratios():
+    """Nothing is special about bounds of order one."""
+    assert rescale_exponents([3.0e-4, 6.0e-7]) == rescale_exponents([3.0e4, 6.0e1])
+    assert rescale_exponents([3.0e-4, 6.0e-7]) == [0, 2]
+
+
+def test_rescale_exponents_leaves_a_numerically_zero_row_alone():
+    """A row that is zero up to rounding is not a narrow row: magnifying it
+    would draw the noise. Neither is an exact zero, whose ratio is infinite."""
+    assert rescale_exponents([1.0, 1.0e-13, 0.0, 0.002]) == [0, 0, 0, 2]
+
+
+def test_rescale_exponents_floor_sets_what_counts_as_zero():
+    assert rescale_exponents([1.0, 2.0e-5]) == [0, 4]
+    assert rescale_exponents([1.0, 2.0e-5], floor=1.0e-3) == [0, 0]
+
+
+@pytest.mark.parametrize("extents", [[], [0.0], [0.0, 0.0]])
+def test_rescale_exponents_with_nothing_to_compare_rescales_nothing(extents):
+    """No rows, or rows that are all zero: there is no reference to scale to."""
+    assert rescale_exponents(extents) == [0] * len(extents)
+
+
+def test_rescale_exponents_returns_plain_ints():
+    """The exponents are written into labels, where a numpy integer would do
+    but a float would read 10^{2.0}."""
+    exponents = rescale_exponents(iter([1.0, 0.004]))
+
+    assert exponents == [0, 2]
+    assert all(type(k) is int for k in exponents)
 
 
 # ---------------------------------------------------------------------------

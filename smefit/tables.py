@@ -394,10 +394,10 @@ _CHI2_POINTS = {"chi2_best_fit": "best fit", "chi2_baseline": "baseline"}
 class _Chi2Comparison:
     """The per-dataset chi2 of every fit, pooled for the chi2 comparison tables.
 
-    Validates the fits once (distinct labels, one ``N_dat`` per dataset) and
-    holds what both tables share: the fit labels, the points each fit is quoted
-    at, one row per (fit, dataset), the groups in table order, and the rule
-    by which a selection of rows becomes one line of the table.
+    Validates the fits once (distinct labels) and holds what both tables
+    share: the fit labels, the points each fit is quoted at, one row per (fit,
+    dataset), the groups in table order, and the rule by which a selection of
+    rows becomes one line of the table.
     """
 
     def __init__(self, fits, fits_datasets_chi2_values, show_baseline_chi2):
@@ -413,19 +413,6 @@ class _Chi2Comparison:
         )
         self.rows = rows.reset_index()
 
-        ndat = self.rows.groupby("dataset", sort=False)["ndat"].unique()
-        differing = ndat[ndat.map(len) > 1]
-        if len(differing):
-            raise ValueError(
-                "The fits disagree on the number of data points of "
-                + ", ".join(
-                    f"'{name}' ({', '.join(map(str, n))})"
-                    for name, n in differing.items()
-                )
-                + ": the chi2 comparison quotes one N_dat per dataset."
-            )
-        self.ndat = ndat.map(lambda n: int(n[0]))
-
         groups = list(dict.fromkeys(self.rows["group"]))
         if UNGROUPED in groups:
             groups.append(groups.pop(groups.index(UNGROUPED)))
@@ -438,37 +425,41 @@ class _Chi2Comparison:
         """The datasets of ``selected``, each once, in order of appearance."""
         return list(dict.fromkeys(selected["dataset"]))
 
-    def line(self, selected, n, round_val):
-        """``N_dat``, then each fit's summed chi2 over its summed points at each
-        of its points; empty for a fit with none of ``selected`` (or no point to
-        divide by)."""
+    def line(self, selected, round_val):
+        """For each fit, its summed points over ``selected``, then its summed
+        chi2 over them at each of its points; all empty for a fit with none of
+        ``selected``, the ratios empty for one with no point to divide by."""
         by_fit = selected.groupby("fit")[["ndat", *self.points]].sum()
-        return [str(n)] + [
-            (
-                _number(by_fit.at[label, point] / by_fit.at[label, "ndat"], round_val)
-                if label in by_fit.index and by_fit.at[label, "ndat"] > 0
-                else ""
-            )
-            for label in self.labels
-            for point in self.points
-        ]
+        cells = []
+        for label in self.labels:
+            if label not in by_fit.index:
+                cells += [""] * (1 + len(self.points))
+                continue
+            ndat = by_fit.at[label, "ndat"]
+            cells.append(str(int(ndat)))
+            cells += [
+                _number(by_fit.at[label, point] / ndat, round_val) if ndat > 0 else ""
+                for point in self.points
+            ]
+        return cells
 
     def blank(self):
-        return [""] * (1 + len(self.labels) * len(self.points))
+        return [""] * (len(self.labels) * (1 + len(self.points)))
 
     def total(self, round_val):
         """The line over every dataset, each counted once however many groups
         list it."""
-        return self.line(self.rows, self.ndat.sum(), round_val)
+        return self.line(self.rows, round_val)
 
     def columns(self):
-        """``(N_dat, "", "")``, then ``(chi2/N_dat, <fit label>, <point>)``."""
+        """For each fit, ``(<fit label>, N_dat, "")``, then
+        ``(<fit label>, chi2/N_dat, <point>)``."""
         return pd.MultiIndex.from_tuples(
-            [(_NDAT, "", "")]
-            + [
-                (_CHI2_PER_POINT, label, header)
+            [
+                column
                 for label in self.labels
-                for header in self.points.values()
+                for column in [(label, _NDAT, "")]
+                + [(label, _CHI2_PER_POINT, header) for header in self.points.values()]
             ]
         )
 
@@ -514,22 +505,20 @@ def datasets_chi2_comparison_table(
         Index = (group label, dataset label): a block per group, in order of
         first appearance and ``Other`` last, listing the datasets any fit has
         in it and ending in a ``Total`` row, blocks separated by a blank row
-        ``("", "")``; then ``(All, Total)`` over every dataset. Columns
-        ``(N_dat, "", "")``, then ``(chi2/N_dat, <fit label>, best fit)`` and, with
-        ``show_baseline_chi2``, ``(chi2/N_dat, <fit label>, baseline)`` for
-        each fit. A ``Total`` is the
-        summed chi2 over the summed points of the datasets the fit has; its
-        ``N_dat`` counts every dataset listed, so a fit missing one (an empty
-        cell) is divided by fewer.
+        ``("", "")``; then ``(All, Total)`` over every dataset. Columns, for
+        each fit: ``(<fit label>, N_dat, "")``, ``(<fit label>, chi2/N_dat,
+        best fit)`` and, with ``show_baseline_chi2``, ``(<fit label>,
+        chi2/N_dat, baseline)``. Each fit has its own ``N_dat``, since fits may
+        differ in their datasets or in their points; all its cells are empty
+        on a dataset it lacks. A ``Total`` is the summed chi2 over the summed
+        points of the datasets the fit has, and its ``N_dat`` is those points.
 
     Raises
     ------
     ValueError
-        If ``fits`` is empty, two fits share a label, or two fits disagree on
-        the number of points of a dataset.
+        If ``fits`` is empty or two fits share a label.
     """
     comparison = _Chi2Comparison(fits, fits_datasets_chi2_values, show_baseline_chi2)
-    ndat = comparison.ndat
 
     # a list, not a dict: a dataset or group may be called "Total" or "All"
     index, cells = [], []
@@ -540,12 +529,10 @@ def datasets_chi2_comparison_table(
         for name in names:
             index.append((latex_label(group), latex_label(name)))
             cells.append(
-                comparison.line(
-                    in_group[in_group["dataset"] == name], ndat[name], round_val
-                )
+                comparison.line(in_group[in_group["dataset"] == name], round_val)
             )
         index.append((latex_label(group), _TOTAL))
-        cells.append(comparison.line(in_group, ndat[names].sum(), round_val))
+        cells.append(comparison.line(in_group, round_val))
         index.append(("", ""))
         cells.append(comparison.blank())
     # ...but counts once in the overall total
@@ -590,16 +577,14 @@ def data_groups_chi2_comparison_table(
     pd.DataFrame
         Index = group labels, in order of first appearance and ``Other`` last,
         then ``Total`` over every dataset. Columns as in
-        :func:`datasets_chi2_comparison_table`. A group's ``N_dat`` counts every
-        dataset any fit has in it; each fit's chi2/N_dat is over the datasets
-        of the group it has, so a fit missing one is divided by fewer, and is
-        empty for a fit with none.
+        :func:`datasets_chi2_comparison_table`: each fit's ``N_dat`` and
+        chi2/N_dat are over the datasets of the group it has, all empty for a
+        fit with none.
 
     Raises
     ------
     ValueError
-        If ``fits`` is empty, two fits share a label, or two fits disagree on
-        the number of points of a dataset.
+        If ``fits`` is empty or two fits share a label.
     """
     comparison = _Chi2Comparison(fits, fits_datasets_chi2_values, show_baseline_chi2)
 
@@ -607,9 +592,8 @@ def data_groups_chi2_comparison_table(
     index, cells = [], []
     for group in comparison.groups:
         in_group = comparison.in_group(group)
-        names = comparison.datasets(in_group)
         index.append(latex_label(group))
-        cells.append(comparison.line(in_group, comparison.ndat[names].sum(), round_val))
+        cells.append(comparison.line(in_group, round_val))
     index.append(_TOTAL)
     cells.append(comparison.total(round_val))
 

@@ -117,15 +117,18 @@ def test_datasets_chi2_values_without_groups_puts_all_in_ungrouped() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _ndat_col(label: str) -> tuple[str, str, str]:
+    return (label, _NDAT, "")
+
+
 def _chi2_col(label: str) -> tuple[str, str, str]:
-    return (_CHI2_PER_POINT, label, "best fit")
+    return (label, _CHI2_PER_POINT, "best fit")
 
 
 def _baseline_col(label: str) -> tuple[str, str, str]:
-    return (_CHI2_PER_POINT, label, "baseline")
+    return (label, _CHI2_PER_POINT, "baseline")
 
 
-_NDAT_COL = (_NDAT, "", "")
 _BLANK = ("", "")
 
 
@@ -159,7 +162,7 @@ def test_comparison_table_separates_the_blocks_by_a_blank_row() -> None:
     assert table.iloc[2].tolist() == [""] * len(table.columns)
 
 
-def test_comparison_table_quotes_one_ndat_and_each_fit_chi2_per_point() -> None:
+def test_comparison_table_quotes_each_fit_ndat_and_chi2_per_point() -> None:
     table = _table(
         [
             {"A": ("Top", 4, 2.0), "B": ("Top", 6, 9.0)},
@@ -168,14 +171,16 @@ def test_comparison_table_quotes_one_ndat_and_each_fit_chi2_per_point() -> None:
     )
 
     assert table.columns.tolist() == [
-        _NDAT_COL,
+        _ndat_col("fit0"),
         _chi2_col("fit0"),
         _baseline_col("fit0"),
+        _ndat_col("fit1"),
         _chi2_col("fit1"),
         _baseline_col("fit1"),
     ]
     rows = table[[index != _BLANK for index in table.index]]
-    assert rows[_NDAT_COL].tolist() == ["4", "6", "10", "10"]
+    assert rows[_ndat_col("fit0")].tolist() == ["4", "6", "10", "10"]
+    assert rows[_ndat_col("fit1")].tolist() == ["4", "6", "10", "10"]
     # the total is the summed chi2 over the summed points, not a mean of ratios
     assert rows[_chi2_col("fit0")].tolist() == ["0.500", "1.500", "1.100", "1.100"]
     assert rows[_chi2_col("fit1")].tolist() == ["1.000"] * 4
@@ -201,9 +206,14 @@ def test_comparison_table_hides_the_baseline_when_asked() -> None:
 
     table = _table(fits_rows, show_baseline_chi2=False)
 
-    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("fit0"), _chi2_col("fit1")]
+    assert table.columns.tolist() == [
+        _ndat_col("fit0"),
+        _chi2_col("fit0"),
+        _ndat_col("fit1"),
+        _chi2_col("fit1"),
+    ]
     # the blank separator rows follow the columns
-    assert {len(row) for row in table.values.tolist()} == {3}
+    assert {len(row) for row in table.values.tolist()} == {4}
     shown = _table(fits_rows)
     assert table[_chi2_col("fit0")].tolist() == shown[_chi2_col("fit0")].tolist()
 
@@ -216,10 +226,12 @@ def test_comparison_table_leaves_a_dataset_a_fit_lacks_empty() -> None:
         ]
     )
 
-    assert _at(table, ("Top", "B"), _NDAT_COL) == "2"
+    assert _at(table, ("Top", "B"), _ndat_col("fit0")) == "2"
+    assert _at(table, ("Top", "B"), _ndat_col("fit1")) == ""
     assert _at(table, ("Top", "B"), _chi2_col("fit1")) == ""
     # each fit's total is over the datasets it has
-    assert _at(table, ("Top", _TOTAL), _NDAT_COL) == "6"
+    assert _at(table, ("Top", _TOTAL), _ndat_col("fit0")) == "6"
+    assert _at(table, ("Top", _TOTAL), _ndat_col("fit1")) == "4"
     assert _at(table, ("Top", _TOTAL), _chi2_col("fit0")) == "0.667"
     assert _at(table, ("Top", _TOTAL), _chi2_col("fit1")) == "1.000"
 
@@ -238,7 +250,8 @@ def test_comparison_table_overall_total_is_over_every_dataset_of_each_fit() -> N
         ]
     )
     total = (_ALL, _TOTAL)
-    assert _at(table, total, _NDAT_COL) == "20"
+    assert _at(table, total, _ndat_col("fit0")) == "10"
+    assert _at(table, total, _ndat_col("fit1")) == "14"
     assert _at(table, total, _chi2_col("fit0")) == "1.100"
     assert _at(table, total, _chi2_col("fit1")) == "0.643"
 
@@ -246,7 +259,7 @@ def test_comparison_table_overall_total_is_over_every_dataset_of_each_fit() -> N
 def test_comparison_table_overall_total_counts_a_dataset_grouped_twice_once() -> None:
     table = _table([{"A": ("Top", 4, 2.0)}, {"A": ("Higgs", 4, 2.0)}])
     assert {("Top", "A"), ("Higgs", "A")} <= set(table.index.tolist())
-    assert _at(table, (_ALL, _TOTAL), _NDAT_COL) == "4"
+    assert _at(table, (_ALL, _TOTAL), _ndat_col("fit0")) == "4"
     assert _at(table, (_ALL, _TOTAL), _chi2_col("fit0")) == "0.500"
 
 
@@ -261,17 +274,21 @@ def test_comparison_table_keeps_rows_named_like_the_totals() -> None:
         _BLANK,
         (_ALL, _TOTAL),
     ]
-    assert table[_NDAT_COL].tolist() == ["4", "4", "", "6", "6", "", "10"]
+    assert table[_ndat_col("fit0")].tolist() == ["4", "4", "", "6", "6", "", "10"]
 
 
-def test_comparison_table_rejects_fits_disagreeing_on_ndat() -> None:
-    with pytest.raises(ValueError, match=r"'A' \(4, 5\)"):
-        _table([{"A": ("Top", 4, 2.0)}, {"A": ("Top", 5, 2.0)}])
+def test_comparison_table_quotes_each_fit_at_its_own_ndat() -> None:
+    table = _table([{"A": ("Top", 4, 2.0)}, {"A": ("Top", 5, 2.0)}])
+    for row in [("Top", "A"), ("Top", _TOTAL), (_ALL, _TOTAL)]:
+        assert _at(table, row, _ndat_col("fit0")) == "4"
+        assert _at(table, row, _ndat_col("fit1")) == "5"
+        assert _at(table, row, _chi2_col("fit0")) == "0.500"
+        assert _at(table, row, _chi2_col("fit1")) == "0.400"
 
 
 def test_comparison_table_has_no_ratio_for_a_source_without_data_points() -> None:
     table = _table([{"ext": (UNGROUPED, 0, 2.0)}])
-    assert _at(table, (UNGROUPED, "ext"), _NDAT_COL) == "0"
+    assert _at(table, (UNGROUPED, "ext"), _ndat_col("fit0")) == "0"
     assert _at(table, (UNGROUPED, "ext"), _chi2_col("fit0")) == ""
 
 
@@ -310,7 +327,8 @@ def test_groups_table_rows_are_the_totals_of_the_datasets_table() -> None:
 
 def test_groups_table_values() -> None:
     table = _groups_table(_GROUP_FITS)
-    assert table[_NDAT_COL].tolist() == ["6", "6", "10", "22"]
+    assert table[_ndat_col("fit0")].tolist() == ["4", "6", "10", "20"]
+    assert table[_ndat_col("fit1")].tolist() == ["6", "", "10", "16"]
     assert table[_chi2_col("fit0")].tolist() == ["0.500", "1.500", "0.500", "0.800"]
     assert table[_baseline_col("fit0")].tolist()[0] == "2.000"
     # fit1 has no Higgs dataset, and only A of the Top ones fit0 has
@@ -319,24 +337,31 @@ def test_groups_table_values() -> None:
 
 def test_groups_table_hides_the_baseline_when_asked() -> None:
     table = _groups_table(_GROUP_FITS, show_baseline_chi2=False)
-    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("fit0"), _chi2_col("fit1")]
+    assert table.columns.tolist() == [
+        _ndat_col("fit0"),
+        _chi2_col("fit0"),
+        _ndat_col("fit1"),
+        _chi2_col("fit1"),
+    ]
 
 
 def test_groups_table_counts_a_dataset_grouped_twice_once_in_the_total() -> None:
     table = _groups_table([{"A": ("Top", 4, 2.0)}, {"A": ("Higgs", 4, 2.0)}])
     assert table.index.tolist() == ["Top", "Higgs", _TOTAL]
-    assert table.loc[_TOTAL, _NDAT_COL] == "4"
+    assert table.loc[_TOTAL, _ndat_col("fit0")] == "4"
+    assert table.loc[_TOTAL, _ndat_col("fit1")] == "4"
 
 
 def test_groups_table_keeps_a_group_named_like_the_total() -> None:
     table = _groups_table([{"A": ("Total", 4, 2.0), "B": ("Top", 6, 3.0)}])
     assert table.index.tolist() == ["Total", "Top", _TOTAL]
-    assert table[_NDAT_COL].tolist() == ["4", "6", "10"]
+    assert table[_ndat_col("fit0")].tolist() == ["4", "6", "10"]
 
 
-def test_groups_table_rejects_fits_disagreeing_on_ndat() -> None:
-    with pytest.raises(ValueError, match=r"'A' \(4, 5\)"):
-        _groups_table([{"A": ("Top", 4, 2.0)}, {"A": ("Top", 5, 2.0)}])
+def test_groups_table_quotes_each_fit_at_its_own_ndat() -> None:
+    table = _groups_table([{"A": ("Top", 4, 2.0)}, {"A": ("Top", 5, 2.0)}])
+    assert table[_ndat_col("fit0")].tolist() == ["4", "4"]
+    assert table[_ndat_col("fit1")].tolist() == ["5", "5"]
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +452,8 @@ def test_comparison_table_resolves_from_fits_alone_and_uses_each_fit_setup(
     other = (rf"$\mathrm{{{UNGROUPED}}}$", _TOTAL)
     assert _at(table, other, _chi2_col("P")) == expected
     assert _at(table, other, _chi2_col("G")) == ""
-    assert _at(table, (_ALL, _TOTAL), _NDAT_COL) == str(chi2.num_data)
+    assert _at(table, (_ALL, _TOTAL), _ndat_col("G")) == str(chi2.num_data)
+    assert _at(table, (_ALL, _TOTAL), _ndat_col("P")) == str(chi2.num_data)
     assert _at(table, (_ALL, _TOTAL), _chi2_col("G")) == expected
     assert _at(table, (_ALL, _TOTAL), _chi2_col("P")) == expected
     # each fit at its own baseline
@@ -444,7 +470,7 @@ def test_comparison_table_takes_show_baseline_chi2_from_the_runcard(
 
     table = _resolve_table(fits, show_baseline_chi2=False)
 
-    assert table.columns.tolist() == [_NDAT_COL, _chi2_col("F")]
+    assert table.columns.tolist() == [_ndat_col("F"), _chi2_col("F")]
 
 
 def test_groups_table_resolves_from_fits_alone(

@@ -924,19 +924,12 @@ def test_plot_coefficient_bounds_writes_a_factor_of_ten_without_an_exponent() ->
 def test_plot_coefficient_bounds_rescaling_can_be_switched_off() -> None:
     """Without it every row is drawn as the fit has it, under its plain label."""
     fit = _unit_and_narrow_fit(0.003)
-    [(fig, _)] = list(
-        figures_mod._coefficient_bounds(
-            [fit],
-            latex_label=_plain,
-            params_to_plot=None,
-            bounds_levels=95,
-            interval_types=None,
-            x_log=False,
-            lin_thr=1e-2,
-            x_min=None,
-            x_max=None,
-            rescale_bounds=False,
-        )
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        fit,
+        latex_label=_plain,
+        bounds_levels=95,
+        rescale_bounds=False,
     )
 
     ax = fig.axes[0]
@@ -1013,6 +1006,25 @@ def test_plot_coefficient_bounds_comparison_rescales_a_row_by_one_factor() -> No
     for (_, low, high, _), fit in [(upper, loose), (lower, tight)]:
         expected = [10.0 * edge for edge in fit.confidence_bounds(95.0)["OpZZ"][0]]
         assert [low, high] == pytest.approx(expected)
+
+
+def test_plot_coefficient_bounds_comparison_rescaling_can_be_switched_off() -> None:
+    loose = _unit_and_narrow_fit(0.03, fit_name="loose")
+    tight = _unit_and_narrow_fit(0.003, fit_name="tight")
+
+    fig = _one_figure(
+        plot_coefficient_bounds_comparison,
+        [loose, tight],
+        latex_label=_plain,
+        bounds_levels=95,
+        rescale_bounds=False,
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
+    upper, lower = sorted(_row_bars(ax, "OpZZ"), key=lambda bar: -bar[0])
+    for (_, low, high, _), fit in [(upper, loose), (lower, tight)]:
+        assert (low, high) == pytest.approx(fit.confidence_bounds(95.0)["OpZZ"][0])
 
 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:

@@ -412,7 +412,7 @@ def _coefficient_bounds(
     lin_thr,
     x_min,
     x_max,
-    rescale_bounds=True,
+    rescale_bounds,
 ):
     """The shared core of :func:`plot_coefficient_bounds` and
     :func:`plot_coefficient_bounds_comparison`.
@@ -540,6 +540,7 @@ def plot_coefficient_bounds(
     lin_thr=1e-2,
     x_min=None,
     x_max=None,
+    rescale_bounds=True,
 ):
     """Plot the confidence bounds of one fit, one coefficient per row.
 
@@ -570,6 +571,12 @@ def plot_coefficient_bounds(
         Ignored unless ``x_log``.
     x_min, x_max : float, optional
         Axis limits, chosen from the intervals drawn by default.
+    rescale_bounds : bool, optional
+        Multiply a row much narrower than the widest one by a power of ten,
+        written in its label as ``(x10^2)``, so that bounds decades apart are
+        all readable on the one linear axis. One factor per row, shared by
+        every fit and level drawn on it; rows within a decade of the widest
+        are left as they are. On by default, and ignored with ``x_log``.
 
     """
     return _coefficient_bounds(
@@ -582,6 +589,7 @@ def plot_coefficient_bounds(
         lin_thr,
         x_min,
         x_max,
+        rescale_bounds,
     )
 
 
@@ -596,6 +604,7 @@ def plot_coefficient_bounds_comparison(
     lin_thr=1e-2,
     x_min=None,
     x_max=None,
+    rescale_bounds=True,
 ):
     """Overlay the confidence bounds of several fits, one coefficient per row.
 
@@ -621,6 +630,7 @@ def plot_coefficient_bounds_comparison(
         lin_thr,
         x_min,
         x_max,
+        rescale_bounds,
     )
 
 

@@ -292,6 +292,14 @@ def test_comparison_table_has_no_ratio_for_a_source_without_data_points() -> Non
     assert _at(table, (UNGROUPED, "ext"), _chi2_col("fit0")) == ""
 
 
+def test_comparison_table_shows_a_nan_chi2_rather_than_dropping_it() -> None:
+    table = _table([{"A": ("Top", 4, float("nan")), "B": ("Top", 6, 3.0)}])
+    assert _at(table, ("Top", "A"), _chi2_col("fit0")) == "nan"
+    assert _at(table, ("Top", _TOTAL), _chi2_col("fit0")) == "nan"
+    assert _at(table, (_ALL, _TOTAL), _chi2_col("fit0")) == "nan"
+    assert _at(table, ("Top", "B"), _chi2_col("fit0")) == "0.500"
+
+
 def test_comparison_table_rejects_fits_sharing_a_label() -> None:
     with pytest.raises(ValueError, match="share the column label"):
         _table([{"A": ("G", 1, 1.0)}, {"A": ("G", 1, 1.0)}], labels=["x", "x"])

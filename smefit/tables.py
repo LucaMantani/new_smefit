@@ -429,7 +429,8 @@ class _Chi2Comparison:
         """For each fit, its summed points over ``selected``, then its summed
         chi2 over them at each of its points; all empty for a fit with none of
         ``selected``, the ratios empty for one with no point to divide by."""
-        by_fit = selected.groupby("fit")[["ndat", *self.points]].sum()
+        # skipna=False: a NaN chi2 must show as one, not be summed as zero
+        by_fit = selected.groupby("fit")[["ndat", *self.points]].sum(skipna=False)
         cells = []
         for label in self.labels:
             if label not in by_fit.index:

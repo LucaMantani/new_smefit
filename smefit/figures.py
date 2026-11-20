@@ -12,7 +12,7 @@ import numpy as np
 import scipy.stats
 from matplotlib.lines import Line2D
 from matplotlib.patches import Ellipse, Patch
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
@@ -821,6 +821,220 @@ def plot_coefficient_bounds_comparison(
         x_min,
         x_max,
         rescale_bounds,
+    )
+
+
+def _reach_from_pieces(pieces):
+    """The mass reach, in TeV, of one coefficient's credible region.
+
+    ``pieces`` are the ``(low, high)`` intervals on :math:`c_i/\\Lambda^2`, in
+    :math:`\\mathrm{TeV}^{-2}`, that :meth:`Fit.confidence_bounds` returns. The
+    reach is :math:`1/\\sqrt{\\delta c}`, :math:`\\delta c` the half-width of
+    the region from its lowest edge to its highest: a measure of sensitivity,
+    meaningful whether or not the region contains zero. A region in several
+    pieces counts the gaps between them as part of its width. NaN when there
+    is no region, or it has no width (a coefficient held at one value).
+    """
+    if not pieces:
+        return np.nan
+    half_width = (max(high for _, high in pieces) - min(low for low, _ in pieces)) / 2
+    if not half_width > 0:
+        return np.nan
+    return 1.0 / np.sqrt(half_width)
+
+
+def _mass_reach(
+    fits,
+    latex_label,
+    params_to_plot,
+    bounds_levels,
+    interval_types,
+    y_log,
+    y_min,
+    y_max,
+):
+    """The shared core of :func:`plot_mass_reach` and
+    :func:`plot_mass_reach_comparison`.
+
+    One figure per interval type, yielded as ``(figure, interval_type)``. One
+    group of bars per coefficient, left to right; every fit a bar of its own
+    colour within the group; every level drawn over the same bar, the
+    narrowest interval (the highest reach) faintest underneath, so each wider
+    one reads as a solid bar on top of it.
+    """
+    if not fits:
+        raise ValueError("fits is empty: list at least one fit under 'fits:'.")
+    bounds_levels, interval_types = bounds_settings(bounds_levels, interval_types)
+    # narrowest first: tallest bar, drawn first and faintest, under the others
+    levels = sorted(set(bounds_levels))
+
+    names = list(dict.fromkeys(name for fit in fits for name in fit.bounded_parameters))
+    context = ", ".join(fit.fit_name for fit in fits)
+    names = select_params(names, params_to_plot, context=context)
+
+    alphas = np.linspace(0.35, 1.0, len(levels)) if len(levels) > 1 else [1.0]
+    # the fits of one group fill 80% of it, leaving a gap between coefficients
+    bar_width = 0.8 / len(fits)
+    shifts = (np.arange(len(fits)) - (len(fits) - 1) / 2) * bar_width
+    cols = np.arange(len(names))
+
+    for interval_type in interval_types:
+        set_plot_style()
+        fig, ax = plt.subplots(
+            figsize=(max(6.0, len(names) * (0.4 + 0.25 * len(fits))), 5.0)
+        )
+
+        drawn_reach = []
+        for fit_idx, fit in enumerate(fits):
+            color = f"C{fit_idx}"
+            for level, alpha in zip(levels, alphas):
+                bounds = fit.confidence_bounds(level, interval_type, params=names)
+                reach = np.array(
+                    [_reach_from_pieces(bounds.get(name, [])) for name in names]
+                )
+                drawn = np.isfinite(reach)
+                drawn_reach.extend(reach[drawn])
+                ax.bar(
+                    cols[drawn] + shifts[fit_idx],
+                    reach[drawn],
+                    width=bar_width,
+                    color=color,
+                    alpha=alpha,
+                    edgecolor=color,
+                    linewidth=0.5,
+                )
+
+        ax.set_xticks(cols, [latex_label(name) for name in names], rotation=90)
+        ax.set_xlim(-0.6, len(names) - 0.4)
+        bottom = y_min
+        if y_log:
+            ax.set_yscale("log")
+            ax.yaxis.set_major_formatter(FormatStrFormatter(r"$%g$"))
+            ax.yaxis.set_minor_formatter(FormatStrFormatter(""))
+            # a bar on a log scale has no zero to start from: autoscaling would
+            # cut it at the shortest one, so it starts a power of ten below
+            # instead (the 0.5 factor keeps bars on or near a power of ten visible)
+            if bottom is None and drawn_reach:
+                bottom = 10.0 ** np.floor(np.log10(min(drawn_reach) * 0.5))
+        ax.set_ylim(bottom, y_max)
+        ax.grid(True, which="both", ls="dashed", axis="y", lw=0.5)
+        ax.set_axisbelow(True)
+        ax.set_ylabel(r"$\Lambda/\sqrt{|c_i|}\ ({\rm TeV})$", fontsize=20)
+
+        handles = [Patch(color=f"C{i}") for i in range(len(fits))]
+        labels = [fit.plot_label for fit in fits]
+        for level, alpha in zip(levels, alphas):
+            handles.append(Patch(color="grey", alpha=alpha))
+            labels.append(
+                rf"${level:.10g}\%\ \mathrm{{CL}}\ (\mathrm{{{interval_type.upper()}}})$"
+            )
+        ax.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0, 1.02, 1.0, 0.05),
+            frameon=False,
+            fontsize=14,
+            ncol=2,
+        )
+        fig.tight_layout()
+        yield fig, interval_type
+
+
+@figuregen
+def plot_mass_reach(
+    fit,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    interval_types=None,
+    y_log=True,
+    y_min=None,
+    y_max=None,
+):
+    """Plot the mass reach :math:`\\Lambda/\\sqrt{|c_i|}` of one fit, one bar
+    per coefficient.
+
+    The reach is :math:`1/\\sqrt{\\delta c_i}`, in TeV, with
+    :math:`\\delta c_i` the half-width of the credible region on
+    :math:`c_i/\\Lambda^2` (:math:`\\mathrm{TeV}^{-2}`), from its lowest edge
+    to its highest. A half-width measures how tightly the data constrain the
+    coefficient, so the reach does not depend on where the region is centred,
+    and stays defined when it excludes zero. A coefficient with no region
+    (no samples), or one of no width, has no bar.
+
+    Parameters
+    ----------
+    fit : smefit.fit_result.Fit
+        A previously run fit, loaded from disk.
+    latex_label : Callable[[str], str]
+        Writes a name in LaTeX (the ``latex_label`` resource).
+    params_to_plot : list of str, optional
+        Restrict the bars to these coefficients, in this order, left to right.
+        All of them by default.
+    bounds_levels : float or list of float, optional
+        The confidence levels drawn, in percent, 68 and 95 by default — the
+        same key the bounds plots and tables read. All are drawn over the same
+        bar: the narrowest interval, hence the highest reach, faintest.
+    interval_types : str or list of str, optional
+        ``eti`` (the default) and/or ``hdi``, as for
+        :func:`plot_coefficient_bounds`. One figure per type, each yielded
+        with the type as its suffix.
+    y_log : bool, optional
+        Draw the reach on a log scale, the default: reaches typically span
+        from below 1 to tens of TeV.
+    y_min, y_max : float, optional
+        Axis limits, chosen from the bars drawn by default; on a log scale
+        the lower one is the power of ten below the shortest bar, so every
+        bar is seen from its base.
+
+    """
+    return _mass_reach(
+        [fit],
+        latex_label,
+        params_to_plot,
+        bounds_levels,
+        interval_types,
+        y_log,
+        y_min,
+        y_max,
+    )
+
+
+@figuregen
+def plot_mass_reach_comparison(
+    fits,
+    latex_label,
+    params_to_plot=None,
+    bounds_levels=None,
+    interval_types=None,
+    y_log=True,
+    y_min=None,
+    y_max=None,
+):
+    """Compare the mass reach of several fits, one group of bars per
+    coefficient.
+
+    One figure for the whole ``fits`` list, every fit a bar of its own colour
+    within each group, legend-labelled with the ``label`` of its ``fits``
+    entry (its name otherwise). The groups are the union of the fits'
+    coefficients; one a fit did not sample has no bar from it. The reach and
+    the parameters are those of :func:`plot_mass_reach`.
+
+    Raises
+    ------
+    ValueError
+        If ``fits`` is empty, or for any reason :func:`plot_mass_reach` raises.
+    """
+    return _mass_reach(
+        fits,
+        latex_label,
+        params_to_plot,
+        bounds_levels,
+        interval_types,
+        y_log,
+        y_min,
+        y_max,
     )
 
 

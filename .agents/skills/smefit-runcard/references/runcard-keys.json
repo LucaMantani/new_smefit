@@ -58,6 +58,8 @@
     "datasets_chi2_comparison_table",
     "plot_coefficient_bounds",
     "plot_coefficient_bounds_comparison",
+    "plot_mass_reach",
+    "plot_mass_reach_comparison",
     "plot_posterior_contours",
     "plot_posterior_contours_comparison",
     "plot_posterior_correlations",
@@ -111,7 +113,10 @@
     "value_fmt",
     "x_log",
     "x_max",
-    "x_min"
+    "x_min",
+    "y_log",
+    "y_max",
+    "y_min"
   ],
   "raw_keys": {
     "datasets": {
@@ -404,6 +409,9 @@
     "whitening",
     "x_log",
     "x_max",
-    "x_min"
+    "x_min",
+    "y_log",
+    "y_max",
+    "y_min"
   ]
 }

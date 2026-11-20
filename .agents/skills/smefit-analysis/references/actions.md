@@ -95,6 +95,10 @@ reportengine (see runcard-keys.md for what each resource needs).
   - Plot the Fisher diagonals matrix as a heatmap.
 - `plot_global_information_heatmap(global_information_table, cmap='Blues', value_fmt='{:.1f}', colorbar=False)`
   - Plot the global information matrix as a heatmap.
+- `plot_mass_reach(fit, latex_label, params_to_plot=None, bounds_levels=None, interval_types=None, y_log=True, y_min=None, y_max=None)`
+  - Plot the mass reach :math:`\Lambda/\sqrt{|c_i|}` of one fit, one bar per coefficient.
+- `plot_mass_reach_comparison(fits, latex_label, params_to_plot=None, bounds_levels=None, interval_types=None, y_log=True, y_min=None, y_max=None)`
+  - Compare the mass reach of several fits, one group of bars per coefficient.
 - `plot_pca_components_heatmap(pca_components, cmap='RdBu_r', value_fmt='{:.2f}', colorbar=True)`
   - Plot the principal-direction weights as a heatmap.
 - `plot_pca_spectrum(pca, latex_label)`

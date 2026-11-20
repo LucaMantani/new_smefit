@@ -581,8 +581,7 @@ def plot_posterior_histograms_comparison(
 
 
 def _scale_label(label, exponent):
-    """*label* with the power of ten its row is multiplied by, if any, in front.
-    """
+    """*label* with the power of ten its row is multiplied by, if any, in front."""
     if exponent == 0:
         return label
     power = "10" if exponent == 1 else f"10^{{{exponent}}}"

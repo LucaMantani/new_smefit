@@ -424,9 +424,10 @@ def _coefficient_bounds(
     level as a bar of its own width, the widest interval thinnest so the
     narrower ones read on top of it.
 
-    With ``rescale_bounds`` a row much narrower than the widest one is
-    multiplied by a power of ten, written in its label, so bounds decades apart
-    are all readable on the one linear axis (:func:`rescale_exponents`).
+    With ``rescale_bounds`` a row reaching much less far from zero than the
+    furthest-reaching one is multiplied by a power of ten, written in its
+    label, so bounds decades apart are all readable on the one linear axis
+    (:func:`rescale_exponents`).
     """
     if not fits:
         raise ValueError("fits is empty: list at least one fit under 'fits:'.")
@@ -573,11 +574,14 @@ def plot_coefficient_bounds(
     x_min, x_max : float, optional
         Axis limits, chosen from the intervals drawn by default.
     rescale_bounds : bool, optional
-        Multiply a row much narrower than the widest one by a power of ten,
-        written in front of its label as ``10^2 c``, so that bounds decades apart are
-        all readable on the one linear axis. One factor per row, shared by
-        every fit and level drawn on it; rows within a decade of the widest
-        are left as they are. On by default, and ignored with ``x_log``.
+        Multiply a row reaching much less far from zero than the
+        furthest-reaching one by a power of ten, written in front of its label
+        as ``10^2 c``, so that bounds decades apart are all readable on the one
+        linear axis. What counts is the largest absolute edge of a row, not the
+        width of its intervals: a tight interval far from zero is left alone.
+        One factor per row, shared by every fit and level drawn on it; rows
+        within a decade of the furthest-reaching one are left as they are. On
+        by default, and ignored with ``x_log``.
 
     """
     return _coefficient_bounds(

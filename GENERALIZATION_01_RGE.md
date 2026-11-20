@@ -357,8 +357,8 @@ This commit only moves files and fixes imports. Behaviour does not change.
 - **Runcard placement of runner-specific keys.** PR 2 settles it: the `rge:`
   block holds the generic keys plus the options of the chosen model's runner.
 - **`external_chi2/low_energy/superallowed_beta_decay.py`** imports
-  `smefit.rge.rge`, which does not exist on `main`. It is already broken and
-  should be fixed separately.
+  `smefit.rge.rge`, which does not exist on `main`. It is already broken, and
+  PR 4 ports it to the current contract.
 
 ## Open questions
 

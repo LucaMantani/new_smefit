@@ -126,7 +126,7 @@ its own package under `smefit/models/`.
 | `analytic_fit.py` | Checks linearity through `eft_model.use_quad` | Ask the model whether it is linear | 2 |
 | `core.py` | `Theory`/`TheoryGroup` store exactly an SM, a linear and a quadratic term, under EFT names (`sm_pred`, `eft_lin_pred`, `eft_quad_pred`, `operators`). They have one scale per data point, and the theory covmat is fixed as block-diagonal when the group is built. | A theory container shaped after POPxf: polynomials of any degree in named parameters, combined per observable by an expression (designed; only the identity is implemented). Today's arrays become views of it. The stored data and the results stay the same. | 3 |
 | `loader.py` | `load_theory` only reads the SMEFiT JSON layout, and names the parsed predictions `eft_pred` | A lookup of theory formats, with the SMEFiT JSON layout as its only entry. The JSON layout stays. | 3 |
-| `external_chi2.py` | Plugins are built as `cls(coefficients=…, rge_dict=…)` | Pass the model's settings, staying compatible with existing modules | 4 |
+| `external_chi2.py` | Plugins are built as `cls(coefficients=…, rge_dict=…)` and know nothing of the model | Pass the model (`model_spec=`) to plugins that ask for it, and let plugins declare the models they support. Existing plugins keep working. | 4 |
 | `chi2.py`, `projections.py`, `individual_fit.py` | `eft_model` argument and resource names | Rename to `model` | 5 |
 
 ## Decisions so far
@@ -201,15 +201,15 @@ its own package under `smefit/models/`.
 
 ## Daughter PRs
 
-PRs 1 and 2 have detailed plans. The scope of the others is preliminary, and
-each gets its own plan file before work on it starts.
+PRs 1, 2 and 4 have detailed plans. The scope of the others is preliminary,
+and each gets its own plan file before work on it starts.
 
 | # | Topic | Main files | Depends on | Plan |
 |---|---|---|---|---|
 | 1 | Generic RGE runner, SMEFT runner | `rge/`; `wcxf.py` and `constants.py` (moved to `models/smeft/`); `config.py` (RGE part); `external_chi2/` callers | none | [GENERALIZATION_01_RGE.md](GENERALIZATION_01_RGE.md) |
 | 2 | Model interface and selection | `models/` (from `model.py`), `config.py`, `analytic_fit.py`, `fit_result.py`, the reference generator and `validate_runcard.py`, the template runcards | 1 | [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md) |
 | 3 | Theory container and loader interface | `core.py`, `loader.py`, `projections.py`, `config.py` (t0), `models/smeft/model.py`, the new expression module, `external_chi2/drell_yan/` | 2 | to be written |
-| 4 | External chi2 contract | `external_chi2.py`, `external_chi2/` | 1, 2 | to be written |
+| 4 | External chi2 contract | `external_chi2.py`, `config.py` (the `*ext_chi2_func` producers, `parse_external_chi2`), `external_chi2/` | 1, 2 | [GENERALIZATION_04_EXTERNAL_CHI2.md](GENERALIZATION_04_EXTERNAL_CHI2.md) |
 | 5 | `eft_model` → `model` naming pass | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, skills, docs | 2 | to be written |
 
 **PR 2, model interface and selection.** See
@@ -310,10 +310,26 @@ changes is how the theory is held in memory and how it is loaded.
 - **Neutral names** replace `sm_pred`, `eft_lin_pred`, `eft_quad_pred` and
   `operators`.
 
-**PR 4, external chi2 contract.** Plugins receive the model's settings instead
-of a dedicated `rge_dict`, and existing modules keep working. The `smefit-dev`
-skill, which states the current contract (`coefficients=`, `rge_dict=`), is
-updated in the same PR.
+**PR 4, external chi2 contract.** See
+[GENERALIZATION_04_EXTERNAL_CHI2.md](GENERALIZATION_04_EXTERNAL_CHI2.md). In
+short:
+
+- **Plugins can learn the model.** They receive the runcard's model as
+  `model_spec=`, but only when their constructor names it, in addition to
+  `rge_dict`. After PR 2 `rge_dict` is no longer SMEFT-specific.
+- **Plugins declare the models they support** in `SUPPORTED_MODELS`.
+  smefit checks it when it loads them.
+- **Three bugs in the plugin loader are fixed first, in a bugfix PR against
+  `main`.**:
+  - an entry without `path`, or a plugin constructor raising a `KeyError`,
+    makes the fit quietly run without that likelihood;
+  - two plugin files with the same name in different folders are confused.
+
+  The fix to those bugs will be incorporated into this master PR via a merge main after they have been applied on main.
+- **The in-repo plugins conform to the contract**, including the two legacy
+  `low_energy` ones, and their results do not change.
+- **The docs match the code.** The `smefit-dev` skill and `recipes.md` drop
+  `param_names`, which smefit never reads.
 
 **PR 5, naming pass.**
 
@@ -340,6 +356,7 @@ updated in the same PR.
 | Tables in the Warsaw basis (POPxf `basis.wcxf`) | PR 1: the runner's rows follow the basis of the theory tables. The SMEFT runner already computes in the Warsaw basis before mapping to SMEFiT. PR 3: the basis is stored on the container. | Warsaw-basis output from the SMEFT runner, or translating the tables with `wcxf.py` |
 | SM reference of a combined observable (σ_SM × BR_SM), for t0 and the projections | PR 3: `reference_prediction`, at the theory's reference point, which is zero by default | Nothing |
 | Theory files supplied by others | PR 3: expressions checked with `ast` before they are compiled | Nothing |
+| External likelihoods that only make sense for some models | PR 4: plugins declare `SUPPORTED_MODELS`, and can receive the runcard's model as `model_spec` | Nothing |
 | Model options such as "expand the product again" | PR 2: options of the `model:` block | Nothing |
 | Predictions that are not linear | PR 2: `is_linear` stops the analytic fit from being used on them | Nothing |
 | POPxf uncertainties and correlation files | PR 3: the theory covmat comes from the container | Uncertainties that depend on the parameters, which make the chi2 covariance depend on the parameters too |

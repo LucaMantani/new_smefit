@@ -272,7 +272,7 @@ class WarsawMap:
 
         inverse = np.zeros((len(ops), len(warsaw)))
         for cols in _blocks(matrix):
-            read = []
+            read: list[int] = []
             for r in np.flatnonzero(matrix[:, cols].any(axis=1)):
                 if np.linalg.matrix_rank(matrix[np.ix_([*read, r], cols)]) > len(read):
                     read.append(r)

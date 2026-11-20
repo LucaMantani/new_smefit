@@ -4,26 +4,25 @@ smefit.tables.py
 This module contains functions for producing tables for reports.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
 from reportengine.table import table
 
+from smefit.core import CoefficientGroup
 from smefit.credible_intervals import bounds_settings
 from smefit.dataset_chi2 import UNGROUPED
+from smefit.fisher import AggregateFisherNode
+from smefit.fit_result import Fit, FitNode
+from smefit.pca import PCA
 from smefit.plot_utils import select_params
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-
-    from smefit.fit_result import Fit
 
 
 @table
-def chi2_scan_table(individual_chi2_scans, latex_label):
+def chi2_scan_table(
+    individual_chi2_scans: Sequence, latex_label: Callable
+) -> pd.DataFrame:
     """Per-coefficient 1D chi2 scan results as a table.
 
     Parameters
@@ -56,8 +55,11 @@ def chi2_scan_table(individual_chi2_scans, latex_label):
 
 @table
 def mass_scan_table(
-    coefficients, individual_mass_scales, individual_mass_scan_points, latex_label
-):
+    coefficients: CoefficientGroup,
+    individual_mass_scales: Sequence,
+    individual_mass_scan_points: Sequence,
+    latex_label: Callable,
+) -> pd.DataFrame:
     """Mass scan results as a table.
 
     Parameters
@@ -82,8 +84,10 @@ def mass_scan_table(
 
 @table
 def fisher_diagonals_normalised(
-    aggregate_fisher_information_matrices, latex_label, params_to_plot=None
-):
+    aggregate_fisher_information_matrices: AggregateFisherNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+) -> pd.DataFrame:
     """Extract row-normalised diagonals of per-source Fisher matrices.
 
     Parameters
@@ -115,8 +119,10 @@ def fisher_diagonals_normalised(
 
 @table
 def global_information_table(
-    global_information_matrix, latex_label, params_to_plot=None
-):
+    global_information_matrix: pd.DataFrame,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+) -> pd.DataFrame:
     """Share of each coefficient's variance contributed by each source.
 
     Parameters
@@ -193,7 +199,7 @@ def _bounds_by_coefficient(
     ]
 
     # every entry covers the same coefficients, so any one will do
-    names = next(iter(bounds.values()))
+    names = list(next(iter(bounds.values())))
     rows = {
         name: [
             " ∪ ".join(
@@ -210,7 +216,7 @@ def _bounds_by_coefficient(
 def _coefficient_bounds_table(
     fit: Fit,
     latex_label: Callable[[str], str],
-    params_to_plot: list[str] | str | None,
+    params_to_plot: Sequence[str] | str | None,
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
     interval_types: str | Sequence[str] | None,
@@ -227,12 +233,12 @@ def _coefficient_bounds_table(
 
 @table
 def coefficient_bounds_table(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    round_val=3,
-    bounds_levels=None,
-    interval_types=None,
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    round_val: int = 3,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of one fit.
 
@@ -270,8 +276,6 @@ def coefficient_bounds_table(
         If ``bounds_levels`` or ``interval_types`` is empty, or holds a value
         :meth:`Fit.confidence_bounds` rejects.
     """
-    # parameters unannotated: reportengine isinstance-checks every annotated
-    # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_table(
         fit, latex_label, params_to_plot, round_val, bounds_levels, interval_types
     )
@@ -302,7 +306,7 @@ def _fit_column_labels(fits: Sequence[Fit]) -> list[str]:
 def _coefficient_bounds_comparison_table(
     fits: Sequence[Fit],
     latex_label: Callable[[str], str],
-    params_to_plot: list[str] | str | None,
+    params_to_plot: Sequence[str] | str | None,
     round_val: int,
     bounds_levels: float | Sequence[float] | None,
     interval_types: str | Sequence[str] | None,
@@ -334,12 +338,12 @@ def _coefficient_bounds_comparison_table(
 
 @table
 def coefficient_bounds_comparison_table(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    round_val=3,
-    bounds_levels=None,
-    interval_types=None,
+    fits: Sequence,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    round_val: int = 3,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
 ) -> pd.DataFrame:
     """Tabulate the confidence bounds of several fits side by side.
 
@@ -376,8 +380,6 @@ def coefficient_bounds_comparison_table(
         nothing from any fit, or ``bounds_levels`` or ``interval_types`` is
         empty or holds a value :meth:`Fit.confidence_bounds` rejects.
     """
-    # parameters unannotated: reportengine isinstance-checks every annotated
-    # one, which fails on the string annotations of `from __future__`
     return _coefficient_bounds_comparison_table(
         fits, latex_label, params_to_plot, round_val, bounds_levels, interval_types
     )
@@ -400,7 +402,12 @@ class _Chi2Comparison:
     rows becomes one line of the table.
     """
 
-    def __init__(self, fits, fits_datasets_chi2_values, show_baseline_chi2):
+    def __init__(
+        self,
+        fits: Sequence[Fit],
+        fits_datasets_chi2_values: Sequence[pd.DataFrame],
+        show_baseline_chi2: bool,
+    ) -> None:
         self.labels = _fit_column_labels(fits)
         self.points = {
             point: header
@@ -418,14 +425,14 @@ class _Chi2Comparison:
             groups.append(groups.pop(groups.index(UNGROUPED)))
         self.groups = groups
 
-    def in_group(self, group):
+    def in_group(self, group: str) -> pd.DataFrame:
         return self.rows[self.rows["group"] == group]
 
-    def datasets(self, selected):
+    def datasets(self, selected: pd.DataFrame) -> list[str]:
         """The datasets of ``selected``, each once, in order of appearance."""
         return list(dict.fromkeys(selected["dataset"]))
 
-    def line(self, selected, round_val):
+    def line(self, selected: pd.DataFrame, round_val: int) -> list[str]:
         """For each fit, its summed points over ``selected``, then its summed
         chi2 over them at each of its points; all empty for a fit with none of
         ``selected``, the ratios empty for one with no point to divide by."""
@@ -444,15 +451,15 @@ class _Chi2Comparison:
             ]
         return cells
 
-    def blank(self):
+    def blank(self) -> list[str]:
         return [""] * (len(self.labels) * (1 + len(self.points)))
 
-    def total(self, round_val):
+    def total(self, round_val: int) -> list[str]:
         """The line over every dataset, each counted once however many groups
         list it."""
         return self.line(self.rows, round_val)
 
-    def columns(self):
+    def columns(self) -> pd.MultiIndex:
         """For each fit, ``(<fit label>, N_dat, "")``, then
         ``(<fit label>, chi2/N_dat, <point>)``."""
         return pd.MultiIndex.from_tuples(
@@ -467,12 +474,12 @@ class _Chi2Comparison:
 
 @table
 def datasets_chi2_comparison_table(
-    fits,
-    fits_datasets_chi2_values,
-    latex_label,
-    round_val=3,
-    show_baseline_chi2=True,
-):
+    fits: Sequence,
+    fits_datasets_chi2_values: Sequence,
+    latex_label: Callable,
+    round_val: int = 3,
+    show_baseline_chi2: bool = True,
+) -> pd.DataFrame:
     r"""Compare the chi2 per data point of each dataset across fits, in blocks
     by data group.
 
@@ -547,12 +554,12 @@ def datasets_chi2_comparison_table(
 
 @table
 def data_groups_chi2_comparison_table(
-    fits,
-    fits_datasets_chi2_values,
-    latex_label,
-    round_val=3,
-    show_baseline_chi2=True,
-):
+    fits: Sequence,
+    fits_datasets_chi2_values: Sequence,
+    latex_label: Callable,
+    round_val: int = 3,
+    show_baseline_chi2: bool = True,
+) -> pd.DataFrame:
     r"""Compare the chi2 per data point of each data group across fits.
 
     :func:`datasets_chi2_comparison_table` with only its ``Total`` rows: one
@@ -602,7 +609,7 @@ def data_groups_chi2_comparison_table(
 
 
 @table
-def dataset_table(dataset_info):
+def dataset_table(dataset_info: Sequence) -> pd.DataFrame:
     """The datasets of the runcard, as :func:`write_dataset_table` lists them.
 
     The report counterpart of the LaTeX table: the same rows in the same
@@ -641,7 +648,7 @@ def dataset_table(dataset_info):
 
 
 @table
-def pca_components(pca, latex_label):
+def pca_components(pca: PCA, latex_label: Callable) -> pd.DataFrame:
     """Weight of each coefficient in each principal direction.
 
     Parameters
@@ -662,7 +669,7 @@ def pca_components(pca, latex_label):
 
 
 @table
-def pca_spectrum(pca, latex_label):
+def pca_spectrum(pca: PCA, latex_label: Callable) -> pd.DataFrame:
     """One row per principal direction, strongest first.
 
     Parameters

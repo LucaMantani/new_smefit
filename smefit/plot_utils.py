@@ -9,6 +9,7 @@ reportengine resolves.
 """
 
 import logging
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 from matplotlib import rc
@@ -16,7 +17,7 @@ from matplotlib import rc
 log = logging.getLogger(__name__)
 
 
-def set_plot_style():
+def set_plot_style() -> None:
     """Apply the shared matplotlib style, LaTeX text rendering included.
 
     Call this before building a figure. It is deliberately *not* done at import
@@ -31,7 +32,11 @@ def set_plot_style():
     rc("text.latex", preamble=r"\usepackage{amssymb}")
 
 
-def select_params(names, params_to_plot, context=None):
+def select_params(
+    names: Iterable[str],
+    params_to_plot: Sequence[str] | str | None,
+    context: str | None = None,
+) -> list[str]:
     """Return the subset of *names* to show, in ``params_to_plot`` order.
 
     Parameters
@@ -87,7 +92,7 @@ def select_params(names, params_to_plot, context=None):
     return selected
 
 
-def rescale_exponents(extents, floor=1e-10):
+def rescale_exponents(extents: Iterable[float], floor: float = 1e-10) -> list[int]:
     """Return the power of ten each row of a plot is multiplied by to be read
     next to the widest one.
 
@@ -113,9 +118,9 @@ def rescale_exponents(extents, floor=1e-10):
         One non-negative exponent ``k`` per row, in the order given: the row
         is to be multiplied by ``10**k``.
     """
-    extents = np.asarray(list(extents), dtype=float)
-    exponents = np.zeros(len(extents), dtype=int)
-    reference = extents.max(initial=0.0)
-    nonzero = extents > floor * reference
-    exponents[nonzero] = np.floor(np.log10(reference / extents[nonzero]))
+    extents_arr = np.asarray(list(extents), dtype=float)
+    exponents = np.zeros(len(extents_arr), dtype=int)
+    reference = extents_arr.max(initial=0.0)
+    nonzero = extents_arr > floor * reference
+    exponents[nonzero] = np.floor(np.log10(reference / extents_arr[nonzero]))
     return exponents.tolist()

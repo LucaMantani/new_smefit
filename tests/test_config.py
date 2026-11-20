@@ -745,6 +745,7 @@ def test_build_chi2_ext_only(cfg):
     assert isinstance(result, Chi2)
     assert result.num_data == 7
     assert result.has_external
+    assert float(result(jnp.array([2.0]))) == pytest.approx(4.0)
 
 
 def test_build_chi2_baseline_from_coefficients(cfg):
@@ -799,6 +800,7 @@ def test_build_chi2_combined(cfg):
         )
     assert result.num_data == 12  # 5 + 7
     assert result.has_external
+    assert float(result(jnp.array([2.0]))) == pytest.approx(8.0)
 
 
 # ---------------------------------------------------------------------------

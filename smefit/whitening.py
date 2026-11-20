@@ -6,11 +6,22 @@ reparametrise free coefficients into a better-conditioned space for sampling.
 """
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol, TypeAlias, runtime_checkable
 
 import jax
 import jax.numpy as jnp
 from reportengine.configparser import ExplicitNode
+
+
+@runtime_checkable
+class _Chi2Like(Protocol):
+    nparam: int
+    baseline: jnp.ndarray
+
+    def __call__(self, coeffs: jnp.ndarray) -> jnp.ndarray: ...
+
 
 log = logging.getLogger(__name__)
 
@@ -55,10 +66,15 @@ class WhitenTransform:
 # holds the ExplicitNode wrapper, and reportengine's check_types runs
 # isinstance(value, annotation) against it. Once the node executes, the
 # provider receives a WhitenTransform or None.
-WhitenTransformNode = WhitenTransform | ExplicitNode | None
+if TYPE_CHECKING:
+    WhitenTransformNode: TypeAlias = WhitenTransform | None
+else:
+    WhitenTransformNode = WhitenTransform | ExplicitNode | None
 
 
-def _build_matrix(chi2, whitening, center):
+def _build_matrix(
+    chi2: _Chi2Like, whitening: Mapping, center: jnp.ndarray
+) -> jnp.ndarray:
     """Hessian-of-chi2 whitening matrix, evaluated at *center*.
 
     H = d²chi2/dc² |_{center} + eps*I = L L^T (Cholesky); returns W = L^{-T},
@@ -108,7 +124,7 @@ def _build_matrix(chi2, whitening, center):
     return jnp.linalg.solve(L.T, jnp.eye(chi2.nparam))
 
 
-def _whitening_baseline_shift(chi2, whitening):
+def _whitening_baseline_shift(chi2: _Chi2Like, whitening: Mapping) -> WhitenTransform:
     """Hessian evaluated at the coefficients' baseline point.
 
     Reached when whitening["shift"] == "baseline" (the default).
@@ -119,7 +135,9 @@ def _whitening_baseline_shift(chi2, whitening):
     )
 
 
-def _whitening_gradient_descent_shift(chi2, gd_best_fit, whitening):
+def _whitening_gradient_descent_shift(
+    chi2: _Chi2Like, gd_best_fit: jnp.ndarray, whitening: Mapping
+) -> WhitenTransform:
     """Hessian evaluated at the gradient-descent best-fit point.
 
     Only reached when whitening["shift"] == "gradient_descent".

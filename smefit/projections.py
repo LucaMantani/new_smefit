@@ -5,13 +5,16 @@ Module for generating pseudodata projections.
 """
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
-from smefit.core import DataGroup, Dataset
+from smefit.core import DataGroup, Dataset, TheoryGroup
 from smefit.data_utils import covmat_from_systematics
+from smefit.model import EFTModel
 
 log = logging.getLogger(__name__)
 
@@ -20,8 +23,13 @@ class Projection:
     """Generates pseudodata by projecting central values and uncertainties."""
 
     def __init__(
-        self, data, theory, pseudodata_settings, use_theory_covmat=False, eft_model=None
-    ):
+        self,
+        data: DataGroup,
+        theory: TheoryGroup,
+        pseudodata_settings: Mapping[str, Any],
+        use_theory_covmat: bool = False,
+        eft_model: EFTModel | None = None,
+    ) -> None:
         self.data = data
         self.theory = theory
         self.lumi_new = pseudodata_settings["lumi_new"]
@@ -32,7 +40,7 @@ class Projection:
         self.use_theory_covmat = use_theory_covmat
         self.eft_model = eft_model
 
-    def compute_cv_projection(self):
+    def compute_cv_projection(self) -> np.ndarray:
         """Return theory predictions (SM or SM+EFT) as central values.
 
         When eft_model is set, evaluates at the fixed coefficient values encoded
@@ -43,7 +51,7 @@ class Projection:
         return np.asarray(self.eft_model.forward_map(jnp.array([])))
 
     @staticmethod
-    def rescale_sys(sys, fred):
+    def rescale_sys(sys: pd.DataFrame, fred: float) -> pd.DataFrame:
         """Reduce systematic uncertainties by fred.
 
         For artificial (square, negative-entry) covariance decompositions,
@@ -58,11 +66,15 @@ class Projection:
         return sys * fred
 
     @staticmethod
-    def rescale_stat(stat, lumi_old, lumi_new):
+    def rescale_stat(
+        stat: np.ndarray, lumi_old: np.ndarray, lumi_new: float
+    ) -> np.ndarray:
         """Scale statistical uncertainties from lumi_old to lumi_new."""
         return stat * np.sqrt(lumi_old / lumi_new)
 
-    def _apply_t0(self, ds, cv_theory):
+    def _apply_t0(
+        self, ds: Dataset, cv_theory: np.ndarray
+    ) -> tuple[np.ndarray, list[str]]:
         """Convert MULT systematics to absolute using the theory CV.
 
         Returns the (n_sys, n_data) array after t0 and the list of sys names.
@@ -78,7 +90,9 @@ class Projection:
         scale = np.where(is_mult[:, None], mult_scale[None, :], 1.0)
         return sys_add * scale, list(ds.sys_names)
 
-    def _rescale_uncertainties(self, ds, stat, sys_df):
+    def _rescale_uncertainties(
+        self, ds: Dataset, stat: np.ndarray, sys_df: pd.DataFrame
+    ) -> tuple[np.ndarray, pd.DataFrame, jnp.ndarray]:
         """Return (stat_red, sys_red, new_lumi) after applying lumi and fred factors."""
         if self.lumi_new is None:
             return stat, sys_df, ds.luminosity
@@ -100,7 +114,12 @@ class Projection:
             new_lumi,
         )
 
-    def _project_dataset(self, ds, cv_theory, sm_covmat_block):
+    def _project_dataset(
+        self,
+        ds: Dataset,
+        cv_theory: np.ndarray,
+        sm_covmat_block: np.ndarray | None,
+    ) -> Dataset:
         """Build a single projected Dataset from one input dataset."""
         n = ds.num_data
         central_values = np.asarray(ds.central_values)
@@ -136,7 +155,7 @@ class Projection:
             luminosity=new_lumi,
         )
 
-    def build_data_group(self):
+    def build_data_group(self) -> DataGroup:
         """Build a DataGroup with projected central values and uncertainties."""
         if self.seed is not None:
             np.random.seed(self.seed)

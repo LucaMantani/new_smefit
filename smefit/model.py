@@ -6,10 +6,15 @@ Model module of smefit, where the prediction model is defined.
 
 import logging
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+if TYPE_CHECKING:
+    from smefit.core import CoefficientGroup, TheoryGroup
+    from smefit.rge import RGEMatrix
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +51,13 @@ class BaseModel(ABC):
 class EFTModel(BaseModel):
     """EFT model mapping Wilson coefficients to theory predictions."""
 
-    def __init__(self, theory, coefficients, use_quad=False, rge_matrix=None):
+    def __init__(
+        self,
+        theory: "TheoryGroup",
+        coefficients: "CoefficientGroup",
+        use_quad: bool = False,
+        rge_matrix: "RGEMatrix | None" = None,
+    ) -> None:
         self.theory = theory
         self.coefficients = coefficients
         self.use_quad = use_quad
@@ -56,7 +67,7 @@ class EFTModel(BaseModel):
         else:
             self._setup_direct(theory)
 
-    def _setup_direct(self, theory):
+    def _setup_direct(self, theory: "TheoryGroup") -> None:
         """Set up lin/quad corrections by intersecting theory and declared coefficients."""
         coefficients = self.coefficients
         theory_params = set(theory.operators)
@@ -102,7 +113,7 @@ class EFTModel(BaseModel):
             [coefficients.coeff_index[name] for name in active_names], dtype=int
         )
 
-    def _apply_rge(self, theory, rge_matrix):
+    def _apply_rge(self, theory: "TheoryGroup", rge_matrix: "RGEMatrix") -> None:
         """Set up lin/quad corrections by contracting theory tables with RGE matrices."""
         coeff_names = self.coefficients.names
         rge_obs_ops = rge_matrix.obs_operators

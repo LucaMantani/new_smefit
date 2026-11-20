@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -58,7 +59,11 @@ class _CompileError(Exception):
     """A LaTeX tool that failed, with what it said about it."""
 
 
-def _run_tool(command, cwd, ok_codes=(0,)):
+def _run_tool(
+    command: Sequence[str],
+    cwd: pathlib.Path,
+    ok_codes: Sequence[int] = (0,),
+) -> None:
     """Run one LaTeX tool in *cwd*, raising :class:`_CompileError` on failure.
 
     bibtex exits with 1 on a mere warning (an INSPIRE entry with no author,
@@ -79,8 +84,11 @@ def _run_tool(command, cwd, ok_codes=(0,)):
 
 
 def compile_preview(
-    folder, preview: str, source: str, bibliography: Optional[str] = None
-):
+    folder: str | pathlib.Path,
+    preview: str,
+    source: str,
+    bibliography: Optional[str] = None,
+) -> None:
     """Compile ``<preview>.tex`` of *folder* into ``<preview>.pdf`` next to it.
 
     ``<preview>.tex`` is a document from :func:`preview_tex`, reading
@@ -109,8 +117,8 @@ def compile_preview(
     pdflatex = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error"]
     pdflatex.append(f"{preview}.tex")
 
-    with tempfile.TemporaryDirectory() as scratch:
-        scratch = pathlib.Path(scratch)
+    with tempfile.TemporaryDirectory() as scratch_str:
+        scratch = pathlib.Path(scratch_str)
         for name in sources:
             shutil.copy(folder / name, scratch)
         latex_log = scratch / f"{preview}.log"

@@ -5,15 +5,18 @@ Gradient-descent minimisation utility built on optax.
 """
 
 import logging
+from collections.abc import Callable, Mapping
 
 import jax
 import jax.numpy as jnp
 import optax
 
+from smefit.chi2 import Chi2
+
 log = logging.getLogger(__name__)
 
 
-def best_fit_point(gd_best_fit):
+def best_fit_point(gd_best_fit: jnp.ndarray) -> jnp.ndarray:
     """The point at which nodes evaluate the likelihood around its best fit.
 
     The Fisher information matrices, and through them the PCA, are evaluated
@@ -26,7 +29,11 @@ def best_fit_point(gd_best_fit):
     return gd_best_fit
 
 
-def gd_best_fit(chi2, optimizer, gradient_descent_settings):
+def gd_best_fit(
+    chi2: Chi2,
+    optimizer: optax.GradientTransformation,
+    gradient_descent_settings: Mapping,
+) -> jnp.ndarray:
     """Determine the best-fit coefficient vector via gradient descent.
 
     This function is a reportengine provider node: its return value is
@@ -52,15 +59,21 @@ def gd_best_fit(chi2, optimizer, gradient_descent_settings):
     if sm_solution:
         log.info("GD best-fit: using baseline point.")
         return start
-    n_steps = gradient_descent_settings.get("n_steps")
-    tol = gradient_descent_settings.get("tol")
+    n_steps = int(gradient_descent_settings.get("n_steps", 2000))
+    tol = float(gradient_descent_settings.get("tol", 1e-8))
     log.info(
         "GD best-fit: running gradient descent (max_steps=%d) from baseline.", n_steps
     )
     return gd_minimize(chi2, optimizer, start, n_steps=n_steps, tol=tol)
 
 
-def gd_minimize(chi2, optimizer, start, n_steps=2000, tol=1e-8):
+def gd_minimize(
+    chi2: Callable,
+    optimizer: optax.GradientTransformation,
+    start: jnp.ndarray,
+    n_steps: int = 2000,
+    tol: int | float = 1e-8,
+) -> jnp.ndarray:
     """Minimise ``chi2`` via gradient descent using an optax optimizer.
 
     Parameters

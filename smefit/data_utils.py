@@ -11,7 +11,7 @@ import pandas as pd
 INTRA_DATASET_SYS_NAME = ("UNCORR", "CORR", "THEORYUNCORR", "THEORYCORR")
 
 
-def construct_covmat(stat_errors: jnp.ndarray, sys_errors: pd.DataFrame):
+def construct_covmat(stat_errors: jnp.ndarray, sys_errors: pd.DataFrame) -> jnp.ndarray:
     """
     Basic function to construct a covariance matrix (covmat), given the
     statistical error and a dataframe of systematics.
@@ -51,7 +51,9 @@ def construct_covmat(stat_errors: jnp.ndarray, sys_errors: pd.DataFrame):
     return jnp.diag(diagonal) + corr_sys_mat @ corr_sys_mat.T
 
 
-def covmat_from_systematics(stat_errors: list, sys_errors: list):
+def covmat_from_systematics(
+    stat_errors: list[jnp.ndarray], sys_errors: list[pd.DataFrame]
+) -> jnp.ndarray:
     """Given two lists containing the statistic and systematic errors,
     construct the full covariance matrix.
 

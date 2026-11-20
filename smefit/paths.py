@@ -127,7 +127,7 @@ def fetch_fit_if_missing(resolved_path: pathlib.Path) -> None:
         ) from e
 
 
-def resolve_fit_dir(name: str, path=None) -> pathlib.Path:
+def resolve_fit_dir(name: str, path: str | pathlib.Path | None = None) -> pathlib.Path:
     """Locate the directory of a fit called *name*, downloading it if missing.
 
     Parameters

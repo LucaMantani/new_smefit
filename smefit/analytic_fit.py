@@ -9,13 +9,23 @@ import logging
 import jax
 import jax.numpy as jnp
 
+from smefit.chi2 import Chi2
+from smefit.core import DataGroup
 from smefit.fit_result import FitResult
+from smefit.model import EFTModel
 from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
 
-def analytic_fit(eft_model, data, fit_covmat, chi2, n_samples=10000, seed=42):
+def analytic_fit(
+    eft_model: EFTModel,
+    data: DataGroup,
+    fit_covmat: jnp.ndarray,
+    chi2: Chi2,
+    n_samples: int = 10000,
+    seed: int = 42,
+) -> FitResult:
     """Compute the analytic best-fit point and Gaussian uncertainty for a linear EFT model.
 
     This function is a reportengine provider node: its arguments are resolved by

@@ -107,20 +107,47 @@ def _isinstance_rejects(annotation):
 
 
 def _explicit_node_resources():
-    """Resource names produced by an @explicit_node produce_ on smefitConfig."""
-    return {
+    """Resource names produced as an ExplicitNode by smefitConfig.
+
+    Includes both ``@explicit_node`` producers (e.g. ``whitening_transformation``)
+    and namespace entries constructed with ``ExplicitNode(...)`` (``fit`` and
+    ``aggregate_fisher_information_matrices`` under ``pcabasis``).
+    """
+    resources = {
         name.removeprefix("produce_")
         for name, method in inspect.getmembers(smefitConfig, inspect.isfunction)
         if name.startswith("produce_")
         and method.__code__.co_qualname.startswith("explicit_node.")
     }
+    resources.update({"fit", "aggregate_fisher_information_matrices"})
+    return resources
+
+
+def _explicit_node_workers():
+    """Private worker functions handed to reportengine via ExplicitNode."""
+    from smefit.fisher import _fisher_in_pca_basis
+    from smefit.fit_result import _fit_in_pca_basis
+    from smefit.whitening import (
+        _whitening_baseline_shift,
+        _whitening_gradient_descent_shift,
+    )
+
+    return [
+        ("smefit.whitening._whitening_baseline_shift", _whitening_baseline_shift),
+        (
+            "smefit.whitening._whitening_gradient_descent_shift",
+            _whitening_gradient_descent_shift,
+        ),
+        ("smefit.fit_result._fit_in_pca_basis", _fit_in_pca_basis),
+        ("smefit.fisher._fisher_in_pca_basis", _fisher_in_pca_basis),
+    ]
 
 
 def test_provider_annotations_accepted_by_isinstance():
     """No parametrised generics (Mapping[str, Any], list[str], ...) on providers."""
     bad = [
         f"{qualname}({param.name}: {param.annotation})"
-        for qualname, func in _provider_functions()
+        for qualname, func in list(_provider_functions()) + _explicit_node_workers()
         for param in inspect.signature(func).parameters.values()
         if param.annotation is not param.empty and _isinstance_rejects(param.annotation)
     ]

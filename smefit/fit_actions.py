@@ -8,40 +8,43 @@ was computed from, so that a later rebuild of the fit can tell whether they
 changed (see :mod:`smefit.input_manifest`).
 """
 
+import pathlib
+from collections.abc import Sequence
+
 import yaml
 
-from smefit.fit_result import FitResultGroup
+from smefit.fit_result import FitResult, FitResultGroup
 from smefit.input_manifest import InputManifest
 
 
-def _write_input_manifest(output_path):
+def _write_input_manifest(output_path: pathlib.Path) -> None:
     """Record the input files of the runcard reportengine copied into the fit directory."""
     runcard = yaml.safe_load((output_path / "input" / "runcard.yaml").read_text())
     InputManifest.from_runcard(runcard or {}).write(output_path)
 
 
-def run_ultranest_fit(ultranest_fit, output_path):
+def run_ultranest_fit(ultranest_fit: FitResult, output_path: pathlib.Path) -> None:
     """Print and save the result of the UltraNest nested-sampling fit."""
     ultranest_fit.print_summary()
     ultranest_fit.write(output_path)
     _write_input_manifest(output_path)
 
 
-def run_analytic_fit(analytic_fit, output_path):
+def run_analytic_fit(analytic_fit: FitResult, output_path: pathlib.Path) -> None:
     """Print and save the result of the analytic fit."""
     analytic_fit.print_summary()
     analytic_fit.write(output_path)
     _write_input_manifest(output_path)
 
 
-def run_blackjax_fit(blackjax_fit, output_path):
+def run_blackjax_fit(blackjax_fit: FitResult, output_path: pathlib.Path) -> None:
     """Print and save the result of the BlackJAX nested-sampling fit."""
     blackjax_fit.print_summary()
     blackjax_fit.write(output_path)
     _write_input_manifest(output_path)
 
 
-def run_hessian_fit(hessian_fit, output_path):
+def run_hessian_fit(hessian_fit: FitResult, output_path: pathlib.Path) -> None:
     """Print and save the result of the Hessian fit."""
     hessian_fit.print_summary()
     hessian_fit.write(output_path)
@@ -53,7 +56,9 @@ def run_hessian_fit(hessian_fit, output_path):
 # ------------------------------------------------------------------
 
 
-def run_individual_analytic_fits(individual_analytic_fits, output_path):
+def run_individual_analytic_fits(
+    individual_analytic_fits: Sequence, output_path: pathlib.Path
+) -> None:
     """Print and save individual analytic fit results."""
     group = FitResultGroup(individual_analytic_fits)
     group.print_summary()
@@ -61,7 +66,9 @@ def run_individual_analytic_fits(individual_analytic_fits, output_path):
     _write_input_manifest(output_path)
 
 
-def run_individual_ultranest_fits(individual_ultranest_fits, output_path):
+def run_individual_ultranest_fits(
+    individual_ultranest_fits: Sequence, output_path: pathlib.Path
+) -> None:
     """Print and save individual ultranest fit results."""
     group = FitResultGroup(individual_ultranest_fits)
     group.print_summary()
@@ -69,7 +76,9 @@ def run_individual_ultranest_fits(individual_ultranest_fits, output_path):
     _write_input_manifest(output_path)
 
 
-def run_individual_blackjax_fits(individual_blackjax_fits, output_path):
+def run_individual_blackjax_fits(
+    individual_blackjax_fits: Sequence, output_path: pathlib.Path
+) -> None:
     """Print and save individual BlackJAX fit results."""
     group = FitResultGroup(individual_blackjax_fits)
     group.print_summary()
@@ -77,7 +86,9 @@ def run_individual_blackjax_fits(individual_blackjax_fits, output_path):
     _write_input_manifest(output_path)
 
 
-def run_individual_hessian_fits(individual_hessian_fits, output_path):
+def run_individual_hessian_fits(
+    individual_hessian_fits: Sequence, output_path: pathlib.Path
+) -> None:
     """Print and save individual Hessian fit results."""
     group = FitResultGroup(individual_hessian_fits)
     group.print_summary()

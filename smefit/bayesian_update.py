@@ -10,7 +10,7 @@ import jax
 from reportengine.configparser import ConfigError
 
 from smefit.core import CoefficientGroup
-from smefit.fit_result import Fit
+from smefit.fit_result import Fit, FitResult
 from smefit.priors import ExactPosteriorPrior, WhitenedToPhysicalPrior
 
 
@@ -46,6 +46,7 @@ def build_exact_posterior_prior(
         )
 
     prev = prev_fit.fit_results
+    assert isinstance(prev, FitResult)
 
     if prev.free_parameters != coefficients.free_names:
         raise ConfigError(

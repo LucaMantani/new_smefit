@@ -898,7 +898,7 @@ def test_plot_coefficient_bounds_rescales_a_row_much_narrower_than_the_widest() 
     )
 
     ax = fig.axes[0]
-    scaled = r"OpZZ $(\times 10^{2})$"
+    scaled = r"$10^{2}$ OpZZ"
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", scaled]
     for label, name, factor in [("OpA", "OpA", 1.0), (scaled, "OpZZ", 100.0)]:
         drawn = [
@@ -918,7 +918,7 @@ def test_plot_coefficient_bounds_writes_a_factor_of_ten_without_an_exponent() ->
     )
 
     labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
-    assert labels == ["OpA", r"OpZZ $(\times 10)$"]
+    assert labels == ["OpA", r"$10$ OpZZ"]
 
 
 def test_plot_coefficient_bounds_rescaling_can_be_switched_off() -> None:
@@ -999,7 +999,7 @@ def test_plot_coefficient_bounds_comparison_rescales_a_row_by_one_factor() -> No
     )
 
     ax = fig.axes[0]
-    scaled = r"OpZZ $(\times 10)$"
+    scaled = r"$10$ OpZZ"
     assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", scaled]
     # the first fit sits on the upper offset of the row
     upper, lower = sorted(_row_bars(ax, scaled), key=lambda bar: -bar[0])

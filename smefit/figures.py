@@ -395,11 +395,12 @@ def plot_posterior_correlations(
 
 
 def _scale_label(label, exponent):
-    """*label* followed by the power of ten its row is multiplied by, if any."""
+    """*label* with the power of ten its row is multiplied by, if any, in front.
+    """
     if exponent == 0:
         return label
     power = "10" if exponent == 1 else f"10^{{{exponent}}}"
-    return rf"{label} $(\times {power})$"
+    return rf"${power}$ {label}"
 
 
 def _coefficient_bounds(
@@ -573,7 +574,7 @@ def plot_coefficient_bounds(
         Axis limits, chosen from the intervals drawn by default.
     rescale_bounds : bool, optional
         Multiply a row much narrower than the widest one by a power of ten,
-        written in its label as ``(x10^2)``, so that bounds decades apart are
+        written in front of its label as ``10^2 c``, so that bounds decades apart are
         all readable on the one linear axis. One factor per row, shared by
         every fit and level drawn on it; rows within a decade of the widest
         are left as they are. On by default, and ignored with ``x_log``.

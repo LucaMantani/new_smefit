@@ -21,31 +21,41 @@ Team members must run the setup once to configure their credentials:
 
 ```bash
 # From a privately-shared credentials file (recommended)
-smefit_server setup my_credentials.yaml
+smefit_server setup my_credentials.yaml --name Alice
 
 # Or interactively
 smefit_server setup
 
 # Overwrite an existing config
-smefit_server setup my_credentials.yaml --force
+smefit_server setup my_credentials.yaml --name Alice --force
 ```
 
 The credentials file format (include only the profiles you have access to):
 
 ```yaml
+name: Alice  # optional — shown in the registry next to what you upload or delete
 public:
   webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
   webdav_login:    <write-token>
   webdav_password: <password>
-  name:            Alice  # optional — shown in the registry next to uploaded fits
 private:
   webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
   webdav_login:    <private-token>
   webdav_password: <password>
-  name:            Alice
 ```
 
-Credentials are saved to `~/.config/smefit/server.yaml` (mode 600).
+`name` is one per user: the same on both servers, and for local uploads
+(`smefit_upload --local`). It is personal, so a shared credentials file normally
+leaves it out; the setup takes it from `--name`, or asks for it. Without a name
+your OS login is recorded. A `name` under a profile, the older format, is still
+read when there is no top-level one (the private profile first).
+
+Credentials are saved to `.config/server.yaml` in the repository root (mode 600),
+next to `paths.yaml`. The folder is machine-specific and listed in `.gitignore`,
+so the file is never committed; each clone of the repository needs its own setup.
+
+Credentials used to live in `~/.config/smefit/server.yaml`. A file left there is
+still read, with a warning: move it to `.config/server.yaml` to silence it.
 
 ---
 

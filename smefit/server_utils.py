@@ -4,10 +4,15 @@ Tools to upload/download resources to/from the Nikhef SURFdrive server via WebDA
 Two server profiles are supported:
   public  – read-only credentials are bundled with the package (no setup needed).
              Team members with write access store their credentials under the
-             'public' key in ~/.config/smefit/server.yaml.
-  private – requires a 'private' key in ~/.config/smefit/server.yaml.
+             'public' key in <new_smefit>/.config/server.yaml.
+  private – requires a 'private' key in <new_smefit>/.config/server.yaml.
 
-Config file format (~/.config/smefit/server.yaml):
+The credentials sit next to paths.yaml in the repository's .config/ folder, which
+is machine-specific and listed in .gitignore. A file left at the previous
+location, ~/.config/smefit/server.yaml, is still read, with a warning.
+
+Config file format (<new_smefit>/.config/server.yaml):
+    name: <shown in the registry next to what you upload>   # optional
     public:
       webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
       webdav_login:    <write-token>
@@ -29,6 +34,7 @@ records which fits have one.
 """
 
 import datetime
+import getpass
 import json
 import logging
 import pathlib
@@ -36,6 +42,8 @@ import tarfile
 import tempfile
 
 import yaml
+
+from smefit.paths import USER_PATHS_CONFIG
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +75,12 @@ _REMOTE_DIRS = {
     "misc": "misc",
 }
 
-CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
+# Repo-local config, in the same .gitignore'd folder as paths.yaml
+CONFIG_PATH = USER_PATHS_CONFIG.parent / "server.yaml"
+# Where the credentials lived before they moved into the repository. Still read
+# when CONFIG_PATH is absent, so an existing setup keeps working until it is moved.
+LEGACY_CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
+_legacy_config_warned = False
 
 # Read-only credentials for the public server — safe to bundle since they grant read access only.
 _BUNDLED_PUBLIC_SERVER = {
@@ -81,12 +94,62 @@ class ServerError(Exception):
     pass
 
 
+def _config_file() -> pathlib.Path | None:
+    """Return the credentials file to read, or None if there is none.
+
+    CONFIG_PATH wins. LEGACY_CONFIG_PATH is the fallback, and using it logs a
+    warning, once per process, saying where the file belongs now.
+    """
+    global _legacy_config_warned
+    if CONFIG_PATH.exists():
+        return CONFIG_PATH
+    if not LEGACY_CONFIG_PATH.exists():
+        return None
+    if not _legacy_config_warned:
+        _legacy_config_warned = True
+        log.warning(
+            "Server credentials read from %s, a deprecated location. "
+            "Move the file to %s, or re-run 'smefit_setup_server'.",
+            LEGACY_CONFIG_PATH,
+            CONFIG_PATH,
+        )
+    return LEGACY_CONFIG_PATH
+
+
 def _load_config() -> dict:
-    """Load ~/.config/smefit/server.yaml, returning an empty dict if absent."""
-    if not CONFIG_PATH.exists():
+    """Load the server credentials, returning an empty dict if there are none."""
+    path = _config_file()
+    if path is None:
         return {}
-    with open(CONFIG_PATH) as f:
+    with open(path) as f:
         return yaml.safe_load(f) or {}
+
+
+def _configured_name(config: dict) -> str | None:
+    """Return the user name set in the credentials file, or None.
+
+    The top-level ``name`` is the one to set. A ``name`` under a profile is the
+    older format, still honoured so that an existing file keeps its name: the
+    private profile first, then the public one.
+    """
+    if config.get("name"):
+        return str(config["name"])
+    for server in ("private", "public"):
+        profile = config.get(server)
+        if isinstance(profile, dict) and profile.get("name"):
+            return str(profile["name"])
+    return None
+
+
+def user_name(config: dict | None = None) -> str:
+    """Return the name recorded next to what the user uploads or deletes.
+
+    There is one per user: the same on either server and for local uploads. It
+    is the name set in the credentials file, and the OS login without one.
+    """
+    if config is None:
+        config = _load_config()
+    return _configured_name(config) or getpass.getuser()
 
 
 def _auto_server(config: dict, need_write: bool) -> str:
@@ -505,7 +568,7 @@ def trash(
     resolved_server = (
         server if server is not None else _auto_server(config, need_write=True)
     )
-    deleter_name = config.get(resolved_server, {}).get("name")
+    deleter_name = user_name(config)
     client = _get_client(server, need_write=True)
 
     remote = _remote_path(resource_type, resource_name)
@@ -652,7 +715,7 @@ class Uploader:
         )
         self._client = _get_client(server, need_write=True)
         self._server = resolved_server
-        self._uploader_name = config.get(resolved_server, {}).get("name")
+        self._uploader_name = user_name(config)
 
     def _ensure_remote_dir(self, resource_type: str) -> None:
         remote_dir = _REMOTE_DIRS[resource_type]

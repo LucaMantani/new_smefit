@@ -10,13 +10,12 @@ SMEFiT server management.
 """
 
 import argparse
-import getpass
 import logging
-import pathlib
 import sys
 
-import yaml
 from reportengine import colors
+
+from smefit.scripts import smefit_setup_server
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -52,59 +51,6 @@ def _dim(s):
 
 def _green(s):
     return _c(s, _GREEN)
-
-
-# ---------------------------------------------------------------------------
-# setup helpers (from smefit_setup_server)
-# ---------------------------------------------------------------------------
-_CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
-_REQUIRED_KEYS = ("webdav_hostname", "webdav_login", "webdav_password")
-_PROFILES = ("public", "private")
-
-
-def _validate(config: dict) -> None:
-    if not isinstance(config, dict):
-        raise ValueError("Credentials file must be a YAML mapping.")
-    unknown = set(config) - set(_PROFILES)
-    if unknown:
-        raise ValueError(
-            f"Unknown profile(s): {', '.join(sorted(unknown))}. "
-            f"Expected: {', '.join(_PROFILES)}"
-        )
-    if not config:
-        raise ValueError("Credentials file contains no profiles.")
-    for profile, values in config.items():
-        if not isinstance(values, dict):
-            raise ValueError(f"Profile '{profile}' must be a YAML mapping.")
-        for key in _REQUIRED_KEYS:
-            if key not in values:
-                raise ValueError(f"Missing key '{key}' under '{profile}:'.")
-
-
-def _prompt_profile(profile: str) -> dict | None:
-    print(f"\n--- {profile.upper()} server ---")
-    if input(f"Configure '{profile}' profile? [y/N] ").strip().lower() != "y":
-        return None
-    hostname = input("  webdav_hostname: ").strip()
-    login = input("  webdav_login:    ").strip()
-    password = getpass.getpass("  webdav_password: ")
-    name = input("  name (shown in registry, optional): ").strip()
-    result = {
-        "webdav_hostname": hostname,
-        "webdav_login": login,
-        "webdav_password": password,
-    }
-    if name:
-        result["name"] = name
-    return result
-
-
-def _write_config(config: dict) -> None:
-    _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(_CONFIG_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
-    _CONFIG_PATH.chmod(0o600)
-    log.info("Credentials written to %s", _CONFIG_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -165,18 +111,7 @@ def main():
 
     # setup
     p_setup = sub.add_parser("setup", help="Configure server credentials.")
-    p_setup.add_argument(
-        "credentials_yaml",
-        nargs="?",
-        default=None,
-        metavar="CREDENTIALS_YAML",
-        help="Path to a YAML credentials file. Prompts interactively if omitted.",
-    )
-    p_setup.add_argument(
-        "--force",
-        action="store_true",
-        help=f"Overwrite {_CONFIG_PATH} if it already exists.",
-    )
+    smefit_setup_server.add_arguments(p_setup)
 
     # storage
     p_storage = sub.add_parser("storage", help="Show free/used space on the server.")
@@ -203,31 +138,7 @@ def main():
 
     try:
         if args.command == "setup":
-            if _CONFIG_PATH.exists() and not args.force:
-                log.error("%s already exists. Use --force to overwrite.", _CONFIG_PATH)
-                sys.exit(1)
-            if args.credentials_yaml is not None:
-                src = pathlib.Path(args.credentials_yaml)
-                if not src.exists():
-                    log.error("File not found: %s", src)
-                    sys.exit(1)
-                with open(src) as f:
-                    config = yaml.safe_load(f)
-                try:
-                    _validate(config)
-                except ValueError as e:
-                    log.error("%s", e)
-                    sys.exit(1)
-            else:
-                config = {}
-                for profile in _PROFILES:
-                    result = _prompt_profile(profile)
-                    if result is not None:
-                        config[profile] = result
-                if not config:
-                    log.error("No profiles configured. Exiting without writing.")
-                    sys.exit(1)
-            _write_config(config)
+            smefit_setup_server.run(args)
 
         elif args.command == "storage":
             from smefit.server_utils import ServerError, get_free_space

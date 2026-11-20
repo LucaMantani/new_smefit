@@ -30,7 +30,7 @@ description: Use this skill when working on the SMEFiT server infrastructure —
 | `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
 | `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
 | `smefit_setup_local` | Interactive local setup: writes `.config/paths.yaml`, offers to clone `smefit_database` |
-| `smefit_setup_server` | Configure server credentials (`~/.config/smefit/server.yaml`), from a shared YAML or interactively |
+| `smefit_setup_server` | Configure server credentials (`.config/server.yaml` in the repo, next to `paths.yaml`), from a shared YAML or interactively |
 | `smefit_sync_registry` | Rebuild `registry.json` from scratch (preserving `projects`) |
 | `smefit_mkdir` | Create a directory under `misc/` |
 | `view_report` | Download + open a report in the browser |
@@ -121,6 +121,8 @@ Key is `"<resource_type>/<resource_name>"`. `_read_bin_registry` / `_write_bin_r
 6. **Fit sub-files**: rge and runcard are stored separately and must be moved/deleted/trashed alongside the main archive.
 7. **`sync_registry` rebuilds from scratch** but must preserve the managed lists — `projects` survives via the `_empty_registry` merge. Any new managed list needs the same treatment.
 8. **`Uploader.upload()` takes an optional `project` kwarg**, stored in the registry entry.
+9. **One name per user**: `uploaded_by` / `deleted_by` always come from `user_name()` — the top-level `name` of `.config/server.yaml`, else the OS login — on either server and for `smefit_upload --local`. Never read a name off a server profile or call `getpass.getuser()` directly.
+10. **One setup implementation**: `smefit_setup_server.py` owns it (`add_arguments` / `run`); `smefit_server setup` calls the same two functions.
 
 ## How to add a new metadata field
 

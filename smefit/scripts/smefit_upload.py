@@ -48,7 +48,6 @@ def _prompt_project(projects: list) -> str | None:
 def _local_upload(args, message: str | None) -> None:
     """Move a resource folder into smefit_results/ and update the local registry."""
     import datetime
-    import getpass
     import pathlib
     import shutil
 
@@ -61,6 +60,7 @@ def _local_upload(args, message: str | None) -> None:
         _read_local_registry,
         _write_local_registry,
         list_local_projects,
+        user_name,
     )
 
     if args.resource_type not in ("fit", "report"):
@@ -117,7 +117,7 @@ def _local_upload(args, message: str | None) -> None:
 
     entry = {
         "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
-        "uploaded_by": getpass.getuser(),
+        "uploaded_by": user_name(),
     }
     if args.resource_type == "fit":
         has_rge = _detect_has_rge(dest)

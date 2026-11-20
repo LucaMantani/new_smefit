@@ -10,6 +10,7 @@ reportengine resolves.
 
 import logging
 
+import numpy as np
 from matplotlib import rc
 
 log = logging.getLogger(__name__)
@@ -84,3 +85,37 @@ def select_params(names, params_to_plot, context=None):
             f"asked for {requested}, available are {names}."
         )
     return selected
+
+
+def rescale_exponents(extents, floor=1e-10):
+    """Return the power of ten each row of a plot is multiplied by to be read
+    next to the widest one.
+
+    The widest row is the reference and is left alone. Every other row gets the
+    largest power of ten that keeps it inside the range the reference sets, so
+    all of them end up between a tenth of that range and the whole of it. Rows
+    already larger than a tenth of the widest are left alone too, hence a plot
+    whose rows are comparable is not rescaled at all.
+
+    Parameters
+    ----------
+    extents : iterable of float
+        How far each row reaches from zero — the largest absolute value drawn
+        on it — in the order of the rows.
+    floor : float, optional
+        A row whose extent is below this fraction of the widest is numerical
+        zero rather than a narrow row, and is left alone: rescaling it would
+        only magnify rounding noise.
+
+    Returns
+    -------
+    list of int
+        One non-negative exponent ``k`` per row, in the order given: the row
+        is to be multiplied by ``10**k``.
+    """
+    extents = np.asarray(list(extents), dtype=float)
+    exponents = np.zeros(len(extents), dtype=int)
+    reference = extents.max(initial=0.0)
+    nonzero = extents > floor * reference
+    exponents[nonzero] = np.floor(np.log10(reference / extents[nonzero]))
+    return exponents.tolist()

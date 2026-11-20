@@ -1103,6 +1103,90 @@ def test_plot_coefficient_bounds_symlog_axis_and_limits() -> None:
     assert ax.get_xlim() == (-5.0, 5.0)
 
 
+def _unit_and_narrow_fit(narrow_width: float, fit_name: str = "my_fit") -> Fit:
+    """``OpA`` uniform on [0, 1] and ``OpZZ`` uniform on [0, narrow_width]: the
+    second row is that much narrower than the first."""
+    unit = np.linspace(0.0, 1.0, 1001)
+    return _bounds_fit(
+        samples={"OpA": list(unit), "OpZZ": list(narrow_width * unit)},
+        fit_name=fit_name,
+    )
+
+
+def _row_bars(
+    ax: matplotlib.axes.Axes, label: str
+) -> list[tuple[float, float, float, float]]:
+    """The bars of the row labelled *label*, thinnest (widest level) first."""
+    ticks = dict(zip([t.get_text() for t in ax.get_yticklabels()], ax.get_yticks()))
+    row = [bar for bar in _bars(ax) if abs(bar[0] - ticks[label]) < 0.5]
+    return sorted(row, key=lambda bar: bar[3])
+
+
+def test_plot_coefficient_bounds_rescales_a_row_much_narrower_than_the_widest() -> None:
+    """A row 300 times narrower than the widest would be a dot on its axis:
+    it is drawn 100 times larger, every level by the same factor, and its
+    label says so. The widest row is the reference and is left alone."""
+    fit = _unit_and_narrow_fit(0.003)
+    fig = _one_figure(
+        plot_coefficient_bounds, fit, latex_label=_plain, bounds_levels=[68, 95]
+    )
+
+    ax = fig.axes[0]
+    scaled = r"$10^{2}$ OpZZ"
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", scaled]
+    for label, name, factor in [("OpA", "OpA", 1.0), (scaled, "OpZZ", 100.0)]:
+        drawn = [
+            edge for _, low, high, _ in _row_bars(ax, label) for edge in (low, high)
+        ]
+        expected = [
+            factor * edge
+            for level in (95.0, 68.0)
+            for edge in fit.confidence_bounds(level)[name][0]
+        ]
+        assert drawn == pytest.approx(expected)
+
+
+def test_plot_coefficient_bounds_writes_a_factor_of_ten_without_an_exponent() -> None:
+    fig = _one_figure(
+        plot_coefficient_bounds, _unit_and_narrow_fit(0.03), latex_label=_plain
+    )
+
+    labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
+    assert labels == ["OpA", r"$10$ OpZZ"]
+
+
+def test_plot_coefficient_bounds_rescaling_can_be_switched_off() -> None:
+    """Without it every row is drawn as the fit has it, under its plain label."""
+    fit = _unit_and_narrow_fit(0.003)
+    fig = _one_figure(
+        plot_coefficient_bounds,
+        fit,
+        latex_label=_plain,
+        bounds_levels=95,
+        rescale_bounds=False,
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
+    [(_, low, high, _)] = _row_bars(ax, "OpZZ")
+    assert (low, high) == pytest.approx(fit.confidence_bounds(95.0)["OpZZ"][0])
+
+
+def test_plot_coefficient_bounds_does_not_rescale_on_a_symlog_axis() -> None:
+    """The symmetric log axis is the other way to read bounds decades apart:
+    rows keep their values there, or the axis would no longer mean anything."""
+    fit = _unit_and_narrow_fit(0.003)
+    fig = _one_figure(
+        plot_coefficient_bounds, fit, latex_label=_plain, bounds_levels=95, x_log=True
+    )
+
+    ax = fig.axes[0]
+    assert ax.get_xscale() == "symlog"
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
+    [(_, low, high, _)] = _row_bars(ax, "OpZZ")
+    assert (low, high) == pytest.approx(fit.confidence_bounds(95.0)["OpZZ"][0])
+
+
 def test_plot_coefficient_bounds_rejects_empty_levels() -> None:
     with pytest.raises(ValueError, match="bounds_levels"):
         _one_figure(
@@ -1132,6 +1216,49 @@ def test_plot_coefficient_bounds_comparison_rows_are_the_union_of_the_fits() -> 
     assert len(set(colors)) == 2
     legend = [t.get_text() for t in ax.get_legend().get_texts()]
     assert legend[:2] == ["$\\mathrm{Both}$", "only_b"]
+
+
+def test_plot_coefficient_bounds_comparison_rescales_a_row_by_one_factor() -> None:
+    """Two fits on the same row are there to be compared, so they share the
+    row's factor: the one its widest fit needs. On its own the tighter fit
+    would have been drawn 100 times larger, and looked as loose as the other."""
+    loose = _unit_and_narrow_fit(0.03, fit_name="loose")
+    tight = _unit_and_narrow_fit(0.003, fit_name="tight")
+
+    fig = _one_figure(
+        plot_coefficient_bounds_comparison,
+        [loose, tight],
+        latex_label=_plain,
+        bounds_levels=95,
+    )
+
+    ax = fig.axes[0]
+    scaled = r"$10$ OpZZ"
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", scaled]
+    # the first fit sits on the upper offset of the row
+    upper, lower = sorted(_row_bars(ax, scaled), key=lambda bar: -bar[0])
+    for (_, low, high, _), fit in [(upper, loose), (lower, tight)]:
+        expected = [10.0 * edge for edge in fit.confidence_bounds(95.0)["OpZZ"][0]]
+        assert [low, high] == pytest.approx(expected)
+
+
+def test_plot_coefficient_bounds_comparison_rescaling_can_be_switched_off() -> None:
+    loose = _unit_and_narrow_fit(0.03, fit_name="loose")
+    tight = _unit_and_narrow_fit(0.003, fit_name="tight")
+
+    fig = _one_figure(
+        plot_coefficient_bounds_comparison,
+        [loose, tight],
+        latex_label=_plain,
+        bounds_levels=95,
+        rescale_bounds=False,
+    )
+
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["OpA", "OpZZ"]
+    upper, lower = sorted(_row_bars(ax, "OpZZ"), key=lambda bar: -bar[0])
+    for (_, low, high, _), fit in [(upper, loose), (lower, tight)]:
+        assert (low, high) == pytest.approx(fit.confidence_bounds(95.0)["OpZZ"][0])
 
 
 def test_plot_coefficient_bounds_comparison_rejects_no_fits() -> None:

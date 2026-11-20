@@ -30,7 +30,7 @@ description: Use this skill when working on the SMEFiT server infrastructure —
 | `smefit_manage_project` | Manage the project list (add/rename/remove/list) |
 | `smefit_server` | Server management: setup credentials, check storage, sync registry, tutorial |
 | `smefit_setup_local` | Interactive local setup: writes `.config/paths.yaml`, offers to clone `smefit_database` |
-| `smefit_setup_server` | Configure server credentials (`~/.config/smefit/server.yaml`), from a shared YAML or interactively |
+| `smefit_setup_server` | Configure server credentials (`.config/server.yaml` in the repo, next to `paths.yaml`), from a shared YAML or interactively |
 | `smefit_sync_registry` | Rebuild `registry.json` from scratch (preserving `projects`) |
 | `smefit_mkdir` | Create a directory under `misc/` |
 | `view_report` | Download + open a report in the browser |

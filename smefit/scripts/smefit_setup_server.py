@@ -4,7 +4,7 @@ Configure SMEFiT server credentials.
     smefit_setup_server [CREDENTIALS_YAML]
 
 If CREDENTIALS_YAML is provided, its contents are validated and written to
-~/.config/smefit/server.yaml. This is the recommended workflow for team members:
+<new_smefit>/.config/server.yaml. This is the recommended workflow for team members:
 share a credentials template privately, then each member runs:
 
     smefit_setup_server my_credentials.yaml
@@ -32,11 +32,12 @@ import sys
 import yaml
 from reportengine import colors
 
+from smefit import server_utils
+
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 log.addHandler(colors.ColorHandler())
 
-CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
 _REQUIRED_KEYS = ("webdav_hostname", "webdav_login", "webdav_password")
 _PROFILES = ("public", "private")
 
@@ -80,11 +81,12 @@ def _prompt_profile(profile: str) -> dict | None:
 
 
 def _write_config(config: dict) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w") as f:
+    path = server_utils.CONFIG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
-    CONFIG_PATH.chmod(0o600)
-    log.info("Credentials written to %s", CONFIG_PATH)
+    path.chmod(0o600)
+    log.info("Credentials written to %s", path)
 
 
 def main():
@@ -102,12 +104,14 @@ def main():
     parser.add_argument(
         "--force",
         action="store_true",
-        help=f"Overwrite {CONFIG_PATH} if it already exists.",
+        help=f"Overwrite {server_utils.CONFIG_PATH} if it already exists.",
     )
     args = parser.parse_args()
 
-    if CONFIG_PATH.exists() and not args.force:
-        log.error("%s already exists. Use --force to overwrite.", CONFIG_PATH)
+    if server_utils.CONFIG_PATH.exists() and not args.force:
+        log.error(
+            "%s already exists. Use --force to overwrite.", server_utils.CONFIG_PATH
+        )
         sys.exit(1)
 
     if args.credentials_yaml is not None:

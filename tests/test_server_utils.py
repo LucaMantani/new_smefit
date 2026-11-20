@@ -11,12 +11,14 @@ operation the real server rejects.
 from __future__ import annotations
 
 import datetime
+import importlib
 import json
+import logging
 import pathlib
 import shutil
 import tarfile
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -28,7 +30,7 @@ from webdav3.exceptions import (
     ResponseErrorCode,
 )
 
-from smefit import server_utils
+from smefit import paths, server_utils
 from smefit.server_utils import Downloader, ServerError, Uploader
 
 PRIVATE_PROFILE = {
@@ -170,8 +172,25 @@ def write_config(path: pathlib.Path, **profiles: dict[str, str]) -> None:
 def config_path(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> pathlib.Path:
+    """The credentials file, redirected to a temporary folder.
+
+    The legacy location is redirected too, to a file that does not exist, so a
+    test never reads the credentials of whoever runs the suite.
+    """
     path = tmp_path / "server.yaml"
     monkeypatch.setattr(server_utils, "CONFIG_PATH", path)
+    monkeypatch.setattr(
+        server_utils, "LEGACY_CONFIG_PATH", tmp_path / "legacy" / "server.yaml"
+    )
+    monkeypatch.setattr(server_utils, "_legacy_config_warned", False)
+    return path
+
+
+@pytest.fixture
+def legacy_config_path(config_path: pathlib.Path) -> pathlib.Path:
+    """The pre-move credentials file, in a folder that exists."""
+    path = server_utils.LEGACY_CONFIG_PATH
+    path.parent.mkdir()
     return path
 
 
@@ -251,6 +270,45 @@ class TestConfig:
         write_config(config_path, private=PRIVATE_PROFILE)
         assert server_utils._load_config() == {"private": PRIVATE_PROFILE}
 
+    def test_config_lives_next_to_paths_yaml(self) -> None:
+        repo_config = pathlib.Path(server_utils.__file__).parents[1] / ".config"
+        assert server_utils.CONFIG_PATH == repo_config / "server.yaml"
+        assert server_utils.CONFIG_PATH.parent == paths.USER_PATHS_CONFIG.parent
+
+    def test_legacy_config_is_read_with_a_warning(
+        self,
+        config_path: pathlib.Path,
+        legacy_config_path: pathlib.Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        write_config(legacy_config_path, private=PRIVATE_PROFILE)
+        with caplog.at_level(logging.WARNING, logger=server_utils.__name__):
+            assert server_utils._load_config() == {"private": PRIVATE_PROFILE}
+        (record,) = caplog.records
+        assert str(legacy_config_path) in record.getMessage()
+        assert str(config_path) in record.getMessage()
+
+    def test_legacy_config_warns_once(
+        self, legacy_config_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        write_config(legacy_config_path, private=PRIVATE_PROFILE)
+        with caplog.at_level(logging.WARNING, logger=server_utils.__name__):
+            server_utils._load_config()
+            server_utils._load_config()
+        assert len(caplog.records) == 1
+
+    def test_repo_config_wins_over_legacy(
+        self,
+        config_path: pathlib.Path,
+        legacy_config_path: pathlib.Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        write_config(config_path, private=PRIVATE_PROFILE)
+        write_config(legacy_config_path, public=PUBLIC_PROFILE)
+        with caplog.at_level(logging.WARNING, logger=server_utils.__name__):
+            assert server_utils._load_config() == {"private": PRIVATE_PROFILE}
+        assert not caplog.records
+
     @pytest.mark.parametrize(
         ("config", "need_write", "expected"),
         [
@@ -269,6 +327,71 @@ class TestConfig:
     def test_auto_server_write_without_credentials(self) -> None:
         with pytest.raises(ServerError, match="No server credentials"):
             server_utils._auto_server({}, need_write=True)
+
+
+@pytest.fixture
+def root_logger_restored() -> Iterator[None]:
+    """Undo the handler the setup scripts attach to the root logger on import."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    yield
+    root.handlers[:] = handlers
+    root.setLevel(level)
+
+
+@pytest.mark.usefixtures("root_logger_restored")
+@pytest.mark.parametrize(
+    ("module", "argv"),
+    [
+        ("smefit.scripts.smefit_setup_server", ["smefit_setup_server"]),
+        ("smefit.scripts.smefit_server", ["smefit_server", "setup"]),
+    ],
+)
+class TestSetupScripts:
+    """Both entry points that write the credentials file."""
+
+    def run(
+        self,
+        module: str,
+        argv: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        *extra: str,
+    ) -> None:
+        monkeypatch.setattr("sys.argv", [*argv, *extra])
+        importlib.import_module(module).main()
+
+    def test_writes_the_repo_config(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        legacy_config_path: pathlib.Path,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        source = tmp_path / "shared_credentials.yaml"
+        write_config(source, private=PRIVATE_PROFILE)
+        self.run(module, argv, monkeypatch, str(source))
+        assert yaml.safe_load(config_path.read_text()) == {"private": PRIVATE_PROFILE}
+        assert config_path.stat().st_mode & 0o777 == 0o600
+        assert not legacy_config_path.exists()
+
+    def test_refuses_to_overwrite_without_force(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        source = tmp_path / "shared_credentials.yaml"
+        write_config(source, private=PRIVATE_PROFILE)
+        write_config(config_path, public=PUBLIC_PROFILE)
+        with pytest.raises(SystemExit):
+            self.run(module, argv, monkeypatch, str(source))
+        assert yaml.safe_load(config_path.read_text()) == {"public": PUBLIC_PROFILE}
+        self.run(module, argv, monkeypatch, str(source), "--force")
+        assert yaml.safe_load(config_path.read_text()) == {"private": PRIVATE_PROFILE}
 
 
 class TestGetClient:

@@ -4,10 +4,14 @@ Tools to upload/download resources to/from the Nikhef SURFdrive server via WebDA
 Two server profiles are supported:
   public  – read-only credentials are bundled with the package (no setup needed).
              Team members with write access store their credentials under the
-             'public' key in ~/.config/smefit/server.yaml.
-  private – requires a 'private' key in ~/.config/smefit/server.yaml.
+             'public' key in <new_smefit>/.config/server.yaml.
+  private – requires a 'private' key in <new_smefit>/.config/server.yaml.
 
-Config file format (~/.config/smefit/server.yaml):
+The credentials sit next to paths.yaml in the repository's .config/ folder, which
+is machine-specific and listed in .gitignore. A file left at the previous
+location, ~/.config/smefit/server.yaml, is still read, with a warning.
+
+Config file format (<new_smefit>/.config/server.yaml):
     public:
       webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
       webdav_login:    <write-token>
@@ -36,6 +40,8 @@ import tarfile
 import tempfile
 
 import yaml
+
+from smefit.paths import USER_PATHS_CONFIG
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +73,12 @@ _REMOTE_DIRS = {
     "misc": "misc",
 }
 
-CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
+# Repo-local config, in the same .gitignore'd folder as paths.yaml
+CONFIG_PATH = USER_PATHS_CONFIG.parent / "server.yaml"
+# Where the credentials lived before they moved into the repository. Still read
+# when CONFIG_PATH is absent, so an existing setup keeps working until it is moved.
+LEGACY_CONFIG_PATH = pathlib.Path.home() / ".config" / "smefit" / "server.yaml"
+_legacy_config_warned = False
 
 # Read-only credentials for the public server — safe to bundle since they grant read access only.
 _BUNDLED_PUBLIC_SERVER = {
@@ -81,11 +92,34 @@ class ServerError(Exception):
     pass
 
 
+def _config_file() -> pathlib.Path | None:
+    """Return the credentials file to read, or None if there is none.
+
+    CONFIG_PATH wins. LEGACY_CONFIG_PATH is the fallback, and using it logs a
+    warning, once per process, saying where the file belongs now.
+    """
+    global _legacy_config_warned
+    if CONFIG_PATH.exists():
+        return CONFIG_PATH
+    if not LEGACY_CONFIG_PATH.exists():
+        return None
+    if not _legacy_config_warned:
+        _legacy_config_warned = True
+        log.warning(
+            "Server credentials read from %s, a deprecated location. "
+            "Move the file to %s, or re-run 'smefit_setup_server'.",
+            LEGACY_CONFIG_PATH,
+            CONFIG_PATH,
+        )
+    return LEGACY_CONFIG_PATH
+
+
 def _load_config() -> dict:
-    """Load ~/.config/smefit/server.yaml, returning an empty dict if absent."""
-    if not CONFIG_PATH.exists():
+    """Load the server credentials, returning an empty dict if there are none."""
+    path = _config_file()
+    if path is None:
         return {}
-    with open(CONFIG_PATH) as f:
+    with open(path) as f:
         return yaml.safe_load(f) or {}
 
 

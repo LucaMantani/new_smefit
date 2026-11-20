@@ -10,10 +10,17 @@ import shutil
 import numpy as np
 import yaml
 
+from smefit.core import DataGroup
+from smefit.dataset_info import Bibliography
 from smefit.latex_preview import compile_preview, preview_tex
+from smefit.pca import PCA
 
 
-def write_pseudodata(pseudodata, theory_path, output_path):
+def write_pseudodata(
+    pseudodata: DataGroup,
+    theory_path: str | pathlib.Path,
+    output_path: str | pathlib.Path,
+) -> None:
     """Write pseudodata DataGroup to YAML files under output_path/pseudodata/.
 
     For datasets with a '_proj' suffix, the corresponding theory JSON is also
@@ -54,15 +61,18 @@ def write_pseudodata(pseudodata, theory_path, output_path):
                 shutil.copy(src, th_dir / f"{ds.name}.json")
 
 
-def run_pca(pca, output_path):
+def run_pca(pca: PCA, output_path: str | pathlib.Path) -> None:
     """Print the principal-component analysis and save it."""
     pca.print_summary()
     pca.write(output_path)
 
 
 def write_dataset_table(
-    dataset_table_tex, dataset_bibliography, output_path, compile_pdf=False
-):
+    dataset_table_tex: str,
+    dataset_bibliography: Bibliography,
+    output_path: str | pathlib.Path,
+    compile_pdf: bool = False,
+) -> None:
     """Write the LaTeX table of the runcard's datasets, for a paper's appendix.
 
     ``dataset_table.tex`` holds the table. With ``fetch_bibtex: true`` the

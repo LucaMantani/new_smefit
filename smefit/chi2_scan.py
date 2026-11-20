@@ -6,27 +6,31 @@ Each free coefficient gets its own namespace via ``individual_fit_coefficients``
 """
 
 import logging
+from collections.abc import Mapping
 
 import jax.numpy as jnp
 import numpy as np
 from reportengine import collect
 
+from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup
+
 log = logging.getLogger(__name__)
 
 
 def individual_chi2_scan(
-    individual_chi2,
-    individual_coefficients,
-    individual_fit_coefficient,
-    chi2_scan_settings=None,
-):
+    individual_chi2: Chi2,
+    individual_coefficients: CoefficientGroup,
+    individual_fit_coefficient: str,
+    chi2_scan_settings: Mapping | None = None,
+) -> dict[str, dict[str, list[float]]]:
     """Scan the chi2 along one free coefficient, holding all others at zero.
 
     Returns a dict ``{coeff_name: {"points": [...], "chi2": [...]}}`` to be
     collected by ``individual_chi2_scans`` and rendered by ``chi2_scan_table``
     / ``plot_chi2_scan``.
     """
-    n_points = chi2_scan_settings.get("n_points")
+    n_points = (chi2_scan_settings or {}).get("n_points", 50)
     spec = individual_coefficients.prior_specs().get(individual_fit_coefficient)
 
     if spec is not None and spec.get("dist") == "uniform":
@@ -54,7 +58,9 @@ individual_chi2_scans = collect(
 )
 
 
-def individual_mass_scan_point(individual_mass_chi2, individual_mass_scale):
+def individual_mass_scan_point(
+    individual_mass_chi2: Chi2, individual_mass_scale: int | float
+) -> float:
     """Evaluate chi2 at a single mass scan point."""
     return float(individual_mass_chi2(jnp.array([float(individual_mass_scale)])))
 

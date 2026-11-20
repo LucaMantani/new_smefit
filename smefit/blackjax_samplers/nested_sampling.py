@@ -87,7 +87,7 @@ def _nested_sampling_diagnostics(
     logl_p, _ = _stat("logL_P")
     d_g, d_g_std = _stat("d_G")
 
-    diagnostics = {
+    diagnostics: dict[str, Any] = {
         "algorithm": "nested_sampling",
         "n_live": int(n_live),
         "n_dead": int(n_dead),

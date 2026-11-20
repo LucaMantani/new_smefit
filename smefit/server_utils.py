@@ -34,6 +34,7 @@ import logging
 import pathlib
 import tarfile
 import tempfile
+from typing import Any
 
 import yaml
 
@@ -107,7 +108,7 @@ def _auto_server(config: dict, need_write: bool) -> str:
     return "public"
 
 
-def _get_client(server: str | None, need_write: bool = False):
+def _get_client(server: str | None, need_write: bool = False) -> Any:
     """Return an authenticated WebDAV client for *server*.
 
     When *server* is None the best available server is chosen automatically:
@@ -165,7 +166,7 @@ def _compress(
     log.info("Compressing %s ...", source)
     _strip = {pathlib.PurePosixPath(p) for p in (strip_paths or [])}
 
-    def _filter(tarinfo):
+    def _filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
         p = pathlib.PurePosixPath(tarinfo.name)
         if _strip and len(p.parts) > 1:
             rel = pathlib.PurePosixPath(*p.parts[1:])
@@ -183,7 +184,7 @@ def _extract(archive_path: pathlib.Path, dest: pathlib.Path) -> None:
         tar.extractall(dest)
 
 
-def _ensure_remote_path(client, path: str) -> None:
+def _ensure_remote_path(client: Any, path: str) -> None:
     """Create every directory component of *path* on the server if missing."""
     parts = pathlib.PurePosixPath(path).parts
     for i in range(1, len(parts) + 1):
@@ -207,7 +208,7 @@ def _empty_registry() -> dict:
     return {"fits": {}, "reports": {}, "projects": []}
 
 
-def _read_registry(client) -> dict:
+def _read_registry(client: Any) -> dict:
     """Download and parse the registry; return an empty registry if absent.
 
     Migrates the old flat format {name: meta} to {"fits": {name: meta}, "reports": {}}.
@@ -223,7 +224,7 @@ def _read_registry(client) -> dict:
     return {**_empty_registry(), **data}
 
 
-def _write_registry(client, registry: dict) -> None:
+def _write_registry(client: Any, registry: dict) -> None:
     """Serialize and upload the fit registry."""
     with tempfile.TemporaryDirectory(prefix="smefit_registry_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry.json"
@@ -256,7 +257,7 @@ def _write_local_registry(local_results_dir: pathlib.Path, registry: dict) -> No
     path.write_text(json.dumps(registry, indent=2, sort_keys=True))
 
 
-def _read_misc_registry(client) -> dict:
+def _read_misc_registry(client: Any) -> dict:
     """Download and parse misc/registry_misc.json; return {} if absent."""
     if not client.check(MISC_REGISTRY_PATH):
         return {}
@@ -266,7 +267,7 @@ def _read_misc_registry(client) -> dict:
         return json.loads(tmp.read_text())
 
 
-def _write_misc_registry(client, registry: dict) -> None:
+def _write_misc_registry(client: Any, registry: dict) -> None:
     """Serialize and upload misc/registry_misc.json."""
     with tempfile.TemporaryDirectory(prefix="smefit_misc_reg_") as tmpdir:
         tmp = pathlib.Path(tmpdir) / "registry_misc.json"
@@ -280,7 +281,7 @@ def _write_misc_registry(client, registry: dict) -> None:
         client.upload_sync(remote_path=MISC_REGISTRY_PATH, local_path=str(tmp))
 
 
-def _read_bin_registry(client) -> dict:
+def _read_bin_registry(client: Any) -> dict:
     """Download and parse bin/registry_bin.json; return {} if absent."""
     if not client.check(BIN_REGISTRY_PATH):
         return {}
@@ -290,7 +291,7 @@ def _read_bin_registry(client) -> dict:
         return json.loads(tmp.read_text())
 
 
-def _write_bin_registry(client, registry: dict) -> None:
+def _write_bin_registry(client: Any, registry: dict) -> None:
     """Serialize and upload bin/registry_bin.json."""
     _ensure_remote_path(client, BIN_DIR)
     with tempfile.TemporaryDirectory(prefix="smefit_bin_reg_") as tmpdir:
@@ -305,7 +306,7 @@ def _write_bin_registry(client, registry: dict) -> None:
         client.upload_sync(remote_path=BIN_REGISTRY_PATH, local_path=str(tmp))
 
 
-def _list_resource_names(client, resource_type: str) -> list[str]:
+def _list_resource_names(client: Any, resource_type: str) -> list[str]:
     """Return all resource names of *resource_type* from the remote directory."""
     remote_dir = _REMOTE_DIRS[resource_type]
     if not client.check(remote_dir):
@@ -374,7 +375,9 @@ def download_rge(
                 raise ServerError(
                     f"Fit '{fit_name}' does not contain a {RGE_FILENAME} file."
                 )
-            dest.write_bytes(tar.extractfile(rge_member).read())
+            extracted = tar.extractfile(rge_member)
+            assert extracted is not None
+            dest.write_bytes(extracted.read())
     log.info("Download complete: %s", dest)
     return dest
 
@@ -707,8 +710,9 @@ class Uploader:
 
         if resource_type == "misc":
             if local_path is None:
-                local_path = pathlib.Path(resource_name).name
-            local_path = pathlib.Path(local_path)
+                local_path = pathlib.Path(pathlib.Path(resource_name).name)
+            else:
+                local_path = pathlib.Path(local_path)
             if not local_path.exists():
                 raise ServerError(f"Local path does not exist: {local_path}")
             remote = _remote_path("misc", resource_name)

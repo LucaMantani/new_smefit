@@ -5,15 +5,34 @@ This module contains functions for computing Fisher information matrices.
 """
 
 import logging
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, TypeAlias
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+from reportengine.configparser import ExplicitNode
+
+from smefit.chi2 import Chi2
+from smefit.fit_result import Fit
+from smefit.pca import PCA
 
 log = logging.getLogger(__name__)
 
+# Annotation for a provider parameter filled by
+# ``aggregate_fisher_information_matrices``: under ``pcabasis``,
+# ``produce_pcabasis`` replaces it with an ``ExplicitNode`` whose worker
+# rotates the per-source Fisher matrices once ``pca`` runs.
+if TYPE_CHECKING:
+    AggregateFisherNode: TypeAlias = dict[str, pd.DataFrame]
+else:
+    AggregateFisherNode = dict | ExplicitNode
 
-def fisher_information_matrices(datasets_chi2, best_fit_point):
+
+def fisher_information_matrices(
+    datasets_chi2: Sequence, best_fit_point: jnp.ndarray
+) -> dict[str, pd.DataFrame]:
     """Compute per-dataset Fisher information matrices at the best-fit point.
 
     For each source (data-based dataset or external chi2), the Fisher matrix is
@@ -51,7 +70,9 @@ def fisher_information_matrices(datasets_chi2, best_fit_point):
     return result
 
 
-def total_fisher_information_matrix(chi2, best_fit_point):
+def total_fisher_information_matrix(
+    chi2: Chi2, best_fit_point: jnp.ndarray
+) -> pd.DataFrame:
     """Fisher information matrix of the full likelihood at the best-fit point.
 
     ``F = 0.5 * H``, with ``H`` the Hessian of the total chi2.
@@ -75,7 +96,9 @@ def total_fisher_information_matrix(chi2, best_fit_point):
     return pd.DataFrame(F, index=chi2.param_names, columns=chi2.param_names)
 
 
-def _resolve_groups(source_names, data_groups):
+def _resolve_groups(
+    source_names: Sequence[str], data_groups: Mapping[str, Sequence[str]]
+) -> list[tuple[str, list[int]]]:
     """Map source_names to grouped (name, indices) pairs according to data_groups.
 
     Declared groups come first (in data_groups order), followed by ungrouped
@@ -107,8 +130,8 @@ def _resolve_groups(source_names, data_groups):
 
 
 def aggregate_fisher_information_matrices(
-    fisher_information_matrices, data_groups=None
-):
+    fisher_information_matrices: dict, data_groups: Mapping | None = None
+) -> dict[str, pd.DataFrame]:
     """Aggregate Fisher matrices by summing within each group.
 
     Parameters
@@ -135,7 +158,12 @@ def aggregate_fisher_information_matrices(
     }
 
 
-def _fisher_in_pca_basis(fisher_information_matrices, data_groups, pca, unrotated_fit):
+def _fisher_in_pca_basis(
+    fisher_information_matrices: dict,
+    data_groups: Mapping | None,
+    pca: PCA,
+    unrotated_fit: Fit,
+) -> dict[str, pd.DataFrame]:
     """The ``aggregate_fisher_information_matrices`` of ``pcabasis``: each
     source's Fisher matrix rotated into the principal components, ``V^T F_k V``.
 
@@ -203,7 +231,7 @@ _FLAT_NAME_WEIGHT = 0.1
 _NEGATIVE_SHARE_TOL = 1e-6
 
 
-def _warn_on_negative_shares(gim):
+def _warn_on_negative_shares(gim: pd.DataFrame) -> None:
     """Log the entries of ``gim`` that are negative beyond rounding.
 
     Parameters
@@ -226,7 +254,7 @@ def _warn_on_negative_shares(gim):
     )
 
 
-def _check_invertible(fisher, coeff_names):
+def _check_invertible(fisher: np.ndarray, coeff_names: Sequence[str]) -> None:
     """Raise if ``fisher`` has a flat or negative-curvature direction.
 
     Along such a direction the total Fisher matrix is no covariance's inverse,
@@ -272,7 +300,9 @@ def _check_invertible(fisher, coeff_names):
     )
 
 
-def global_information_matrix(aggregate_fisher_information_matrices):
+def global_information_matrix(
+    aggregate_fisher_information_matrices: AggregateFisherNode,
+) -> pd.DataFrame:
     """Compute the constraining power of each source on each coefficient.
 
     Given the per-source Fisher matrices F_k, forms the total Fisher matrix

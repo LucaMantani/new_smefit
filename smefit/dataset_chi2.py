@@ -5,14 +5,24 @@ The chi2 of each dataset of a fit at its best-fit point and at its baseline, and
 the same for every fit of a runcard, for the tables comparing them.
 """
 
+from collections.abc import Mapping, Sequence
+
+import jax.numpy as jnp
 import pandas as pd
 from reportengine import collect
+
+from smefit.core import CoefficientGroup
 
 # The group of a dataset the runcard gives no ``group:`` to.
 UNGROUPED = "Other"
 
 
-def datasets_chi2_values(datasets_chi2, best_fit_point, coefficients, data_groups):
+def datasets_chi2_values(
+    datasets_chi2: Sequence,
+    best_fit_point: jnp.ndarray,
+    coefficients: CoefficientGroup,
+    data_groups: Mapping | None,
+) -> pd.DataFrame:
     """The chi2 of each dataset at ``best_fit_point`` and at the baseline of
     ``coefficients``, with its group and size.
 

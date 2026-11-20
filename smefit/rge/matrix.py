@@ -82,7 +82,7 @@ class RGEMatrix:
             :attr:`settings` under the ``'rge_settings'`` key, plus one
             ``pandas.DataFrame`` per unique scale keyed by that scale.
         """
-        to_dump = {"rge_settings": self.settings}
+        to_dump: dict[str | float, Any] = {"rge_settings": self.settings}
         for scale, matrix in zip(self.scales, self.stacked_mats):
             to_dump[scale] = pd.DataFrame(
                 np.asarray(matrix, dtype=float),

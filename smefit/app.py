@@ -4,7 +4,10 @@ smefit.app.py
 Module contains the main class for the smefit app.
 """
 
+import argparse
 import pathlib
+from collections.abc import Sequence
+from typing import Any
 
 from reportengine.app import App
 
@@ -36,11 +39,11 @@ class smefitApp(App):
     config_class = smefitConfig
     environment_class = smefitEnvironment
 
-    def __init__(self, name="smefit", providers=[]):
-        super().__init__(name, smefit_providers + providers)
+    def __init__(self, name: str = "smefit", providers: Sequence[str] = ()) -> None:
+        super().__init__(name, smefit_providers + list(providers))
 
     @property
-    def argparser(self):
+    def argparser(self) -> argparse.ArgumentParser:
         """Parser arguments for smefit."""
         parser = super().argparser
 
@@ -61,7 +64,9 @@ class smefitApp(App):
 
         return parser
 
-    def get_commandline_arguments(self, cmdline=None):
+    def get_commandline_arguments(
+        self, cmdline: Sequence[str] | None = None
+    ) -> dict[str, Any]:
         """Get commandline arguments"""
         args = super().get_commandline_arguments(cmdline)
         if args["output"] is None:
@@ -69,7 +74,7 @@ class smefitApp(App):
         return args
 
 
-def main():
+def main() -> None:
     a = smefitApp(name="smefit")
     a.main()
 

@@ -7,8 +7,8 @@ Config module of smefit
 import logging
 import os
 import pathlib
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, TypeVar
 
 import jax.numpy as jnp
 import numpy as np
@@ -53,6 +53,8 @@ from smefit.whitening import (
 
 log = logging.getLogger(__name__)
 
+_T = TypeVar("_T")
+
 # The runcard keys saying what a fit was fitted on, as opposed to how it was
 # fitted (optimizer, sampler, whitening) or reported: what produce_fitcontext
 # takes over from a fit.
@@ -74,7 +76,7 @@ _FIT_SETUP_KEYS = (
 class smefitConfig(Config):
     """smefit Config class."""
 
-    def parse_data_path(self, data_path):
+    def parse_data_path(self, data_path: str | pathlib.Path) -> pathlib.Path:
         """Parse `data_path`, the commondata directory holding `<dataset>.yaml`.
 
         Accepts an absolute path, or the shareable prefix form
@@ -82,15 +84,14 @@ class smefitConfig(Config):
         `<new_smefit>/.config/paths.yaml` written by `smefit_setup_local`.
         Raises if the resolved directory does not exist.
         """
-        data_path = resolve_path(data_path)
-        data_path = pathlib.Path(data_path)
-        if not data_path.exists():
-            log.error(f"data_path {data_path} does not exist.")
-            raise ValueError(f"data_path {data_path} does not exist.")
-        log.info(f"Using data path: {data_path}")
-        return data_path
+        resolved = pathlib.Path(resolve_path(str(data_path)))
+        if not resolved.exists():
+            log.error(f"data_path {resolved} does not exist.")
+            raise ValueError(f"data_path {resolved} does not exist.")
+        log.info(f"Using data path: {resolved}")
+        return resolved
 
-    def parse_theory_path(self, theory_path):
+    def parse_theory_path(self, theory_path: str | pathlib.Path) -> pathlib.Path:
         """Parse `theory_path`, the directory holding `<dataset>.json` predictions.
 
         Same resolution rules as `data_path`: absolute, or the shareable
@@ -98,15 +99,20 @@ class smefitConfig(Config):
         `<new_smefit>/.config/paths.yaml`. Every dataset listed in the runcard
         needs a matching JSON here, with the requested `order` as a key.
         """
-        theory_path = resolve_path(theory_path)
-        theory_path = pathlib.Path(theory_path)
-        if not theory_path.exists():
-            log.error(f"theory_path {theory_path} does not exist.")
-            raise ValueError(f"theory_path {theory_path} does not exist.")
-        log.info(f"Using theory path: {theory_path}")
-        return theory_path
+        resolved = pathlib.Path(resolve_path(str(theory_path)))
+        if not resolved.exists():
+            log.error(f"theory_path {resolved} does not exist.")
+            raise ValueError(f"theory_path {resolved} does not exist.")
+        log.info(f"Using theory path: {resolved}")
+        return resolved
 
-    def _cached(self, resource, key, build, by_identity=()):
+    def _cached(
+        self,
+        resource: str,
+        key: Any,
+        build: Callable[[], _T],
+        by_identity: Sequence[Any] = (),
+    ) -> _T:
         """``build()``, computed once per ``resource`` and ``key``.
 
         The heavy inputs of a likelihood (data, theory, covariance, RGE matrix)
@@ -125,7 +131,7 @@ class smefitConfig(Config):
             cache[full_key] = (build(), tuple(by_identity))
         return cache[full_key][0]
 
-    def parse_max_scale(self, max_scale: int | float | None):
+    def parse_max_scale(self, max_scale: int | float | None) -> int | float | None:
         """The cut (GeV) on the scale of the data points; see
         :meth:`produce_scale_masks`.
 
@@ -136,7 +142,12 @@ class smefitConfig(Config):
             raise ConfigError(f"max_scale must be positive, got {max_scale!r}.")
         return max_scale
 
-    def produce_scale_masks(self, datasets, theory_path=None, max_scale=None):
+    def produce_scale_masks(
+        self,
+        datasets: Sequence[Mapping[str, Any]],
+        theory_path: pathlib.Path | None = None,
+        max_scale: int | float | None = None,
+    ) -> dict[str, np.ndarray]:
         """Per dataset under a cut, the mask of the points whose theory-file
         ``scales`` entry is at or below it.
 
@@ -146,7 +157,7 @@ class smefitConfig(Config):
         ``theory`` both take it, so the two lose the same points. A cut emptying
         a dataset raises rather than drop it.
         """
-        cuts = {}
+        cuts: dict[str, int | float] = {}
         for ds in datasets:
             cut = ds["max_scale"] if "max_scale" in ds else max_scale
             if cut is not None:
@@ -164,11 +175,14 @@ class smefitConfig(Config):
         )
 
     @staticmethod
-    def _build_scale_masks(theory_path, cuts):
+    def _build_scale_masks(
+        theory_path: pathlib.Path | None, cuts: Mapping[str, int | float]
+    ) -> dict[str, np.ndarray]:
         """The worker of :meth:`produce_scale_masks`."""
-        masks = {}
+        masks: dict[str, np.ndarray] = {}
         emptied = []
         for name, cut in cuts.items():
+            assert theory_path is not None
             scales = load_scales(theory_path, name)
             keep = scales <= cut
             if not keep.any():
@@ -190,7 +204,12 @@ class smefitConfig(Config):
             )
         return masks
 
-    def produce_data(self, datasets, data_path, scale_masks):
+    def produce_data(
+        self,
+        datasets: Sequence[Mapping[str, Any]],
+        data_path: pathlib.Path,
+        scale_masks: Mapping[str, np.ndarray],
+    ) -> DataGroup:
         """Produce data group object, cut to ``scale_masks``."""
         return self._cached(
             "data",
@@ -204,12 +223,16 @@ class smefitConfig(Config):
             by_identity=(scale_masks,),
         )
 
-    def produce_data_groups(self, datasets=None, external_chi2=None):
+    def produce_data_groups(
+        self,
+        datasets: Sequence[Mapping[str, Any]] | None = None,
+        external_chi2: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> dict[str, list[str]] | None:
         """Build data_groups from inline group: keys on datasets and external chi2s.
 
         Both keys are optional, as a runcard may have only one of them.
         """
-        groups: dict = {}
+        groups: dict[str, list[str]] = {}
         for ds in datasets or []:
             group = ds.get("group")
             if group is not None:
@@ -220,7 +243,7 @@ class smefitConfig(Config):
                 groups.setdefault(group, []).append(name)
         return groups if groups else None
 
-    def parse_latex_labels(self, latex_labels):
+    def parse_latex_labels(self, latex_labels: object) -> dict[str, str]:
         r"""Parse the optional map from a displayed name to its LaTeX label.
 
         .. code-block:: yaml
@@ -249,7 +272,9 @@ class smefitConfig(Config):
                 )
         return dict(latex_labels)
 
-    def produce_latex_label(self, latex_labels=None):
+    def produce_latex_label(
+        self, latex_labels: Mapping[str, str] | None = None
+    ) -> Callable[[str], str]:
         """The function report tables and figures use to write a name in LaTeX.
 
         Takes only an optional key, so it resolves for any runcard. The key is
@@ -258,7 +283,7 @@ class smefitConfig(Config):
         """
         return make_latex_label(latex_labels)
 
-    def parse_rge(self, rge):
+    def parse_rge(self, rge: Mapping) -> dict[str, Any]:
         """Parse and validate RGE settings.
 
         `rg_matrix` reuses a precomputed RGE matrix, and is resolved here to
@@ -300,21 +325,28 @@ class smefitConfig(Config):
                 sorted(ALLOWED_YUKAWA),
                 display_alternatives="all",
             )
-        if rge.get("rg_matrix"):
+        parsed = dict(rge)
+        if parsed.get("rg_matrix"):
             # One resolver for every form `rg_matrix` takes (fit name,
             # directory, file), so a wrong one fails here and external chi2
             # modules receive a concrete file path in their rge_dict.
             try:
-                rge["rg_matrix"] = str(RGEMatrix.locate(rge["rg_matrix"]))
+                parsed["rg_matrix"] = str(RGEMatrix.locate(parsed["rg_matrix"]))
             except FileNotFoundError as e:
                 raise ConfigError(str(e)) from e
-        return rge
+        return parsed
 
-    def produce_init_scale(self, rge):
+    def produce_init_scale(self, rge: Mapping[str, Any]) -> float:
         """Produce the initial scale (in GeV) at which Wilson coefficients are defined."""
         return float(rge["init_scale"])
 
-    def produce_rge_matrix(self, coefficients, theory, rge=None, output_path=None):
+    def produce_rge_matrix(
+        self,
+        coefficients: CoefficientGroup,
+        theory: TheoryGroup,
+        rge: Mapping[str, Any] | None = None,
+        output_path: pathlib.Path | None = None,
+    ) -> RGEMatrix | None:
         """Produce the stacked RGE matrix for all data points.
 
         Returns ``None`` when the runcard has no ``rge:`` block.
@@ -343,7 +375,9 @@ class smefitConfig(Config):
         return rge_matrix
 
     @staticmethod
-    def _build_rge_matrix(rge, coeff_list, theory):
+    def _build_rge_matrix(
+        rge: Mapping[str, Any], coeff_list: list[str], theory: TheoryGroup
+    ) -> RGEMatrix:
         """The worker of :meth:`produce_rge_matrix`."""
         rge_matrix = build_rge_matrix(
             rge_dict=rge,
@@ -357,7 +391,12 @@ class smefitConfig(Config):
         )
         return rge_matrix
 
-    def produce_theory(self, datasets, theory_path, scale_masks):
+    def produce_theory(
+        self,
+        datasets: Sequence[Mapping[str, Any]],
+        theory_path: pathlib.Path,
+        scale_masks: Mapping[str, np.ndarray],
+    ) -> TheoryGroup:
         """Produce theory group object, cut to ``scale_masks``."""
         return self._cached(
             "theory",
@@ -371,7 +410,13 @@ class smefitConfig(Config):
             by_identity=(scale_masks,),
         )
 
-    def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
+    def produce_fit_covmat(
+        self,
+        data: DataGroup,
+        theory: TheoryGroup,
+        use_t0: bool = False,
+        use_theory_covmat: bool = False,
+    ) -> jnp.ndarray:
         """Produce the covariance matrix to be used in the fit."""
         return self._cached(
             "fit_covmat",
@@ -381,7 +426,12 @@ class smefitConfig(Config):
         )
 
     @staticmethod
-    def _build_fit_covmat(data, theory, use_t0, use_theory_covmat):
+    def _build_fit_covmat(
+        data: DataGroup,
+        theory: TheoryGroup,
+        use_t0: bool,
+        use_theory_covmat: bool,
+    ) -> jnp.ndarray:
         """The worker of :meth:`produce_fit_covmat`."""
         if data.names != theory.names:
             raise ValueError(
@@ -424,7 +474,7 @@ class smefitConfig(Config):
 
         return covmat
 
-    def parse_coefficients(self, coefficients):
+    def parse_coefficients(self, coefficients: Mapping) -> CoefficientGroup:
         """Parse the `coefficients:` mapping into a CoefficientGroup.
 
         Each entry is `Name: {…}`, whose sub-keys are passed verbatim to
@@ -453,7 +503,7 @@ class smefitConfig(Config):
         group = CoefficientGroup(coeffs)
         return group
 
-    def parse_whitening(self, whitening):
+    def parse_whitening(self, whitening: Mapping) -> dict[str, Any]:
         """Parse and validate the optional whitening block."""
         known_keys = {"sigma_prior", "eps", "shift"}
         for k in set(whitening.keys()) - known_keys:
@@ -472,7 +522,9 @@ class smefitConfig(Config):
         }
 
     @explicit_node
-    def produce_whitening_transformation(self, whitening=None):
+    def produce_whitening_transformation(
+        self, whitening: Mapping[str, Any] | None = None
+    ) -> Callable[..., Any]:
         """Dispatch to the correct whitening-transform builder.
 
         This must stay an ExplicitNode-returning method on smefitConfig (not
@@ -492,7 +544,13 @@ class smefitConfig(Config):
         log.info("Whitening: centering on the coefficients' baseline point.")
         return _whitening_baseline_shift
 
-    def produce_eft_model(self, theory, coefficients, rge_matrix, use_quad=False):
+    def produce_eft_model(
+        self,
+        theory: TheoryGroup,
+        coefficients: CoefficientGroup,
+        rge_matrix: RGEMatrix | None,
+        use_quad: bool = False,
+    ) -> EFTModel:
         """Produce EFT model mapping coefficients to theory predictions.
 
         ``rge_matrix`` is deliberately required: giving it a ``None`` default
@@ -502,7 +560,7 @@ class smefitConfig(Config):
         """
         return EFTModel(theory, coefficients, use_quad, rge_matrix)
 
-    def parse_external_chi2(self, external_chi2):
+    def parse_external_chi2(self, external_chi2: Mapping) -> dict[str, dict[str, Any]]:
         """Parse the `external_chi2:` mapping of custom likelihood modules.
 
         Each entry is `ClassName: {path: …, …}`, where `path` points at the
@@ -530,8 +588,12 @@ class smefitConfig(Config):
         return cleaned
 
     def produce_ext_chi2_func(
-        self, coefficients, external_chi2, rge=None, max_scale=None
-    ):
+        self,
+        coefficients: CoefficientGroup,
+        external_chi2: Mapping[str, Mapping[str, Any]],
+        rge: Mapping[str, Any] | None = None,
+        max_scale: int | float | None = None,
+    ) -> list[Chi2]:
         """Load and wrap external chi2 modules into Chi2 objects."""
         return load_external_chi2(
             external_chi2, coefficients, rge_dict=rge, max_scale=max_scale
@@ -539,12 +601,12 @@ class smefitConfig(Config):
 
     def _build_chi2_impl(
         self,
-        eft_model=None,
-        data=None,
-        fit_covmat=None,
-        ext_chi2_func=None,
-        coefficients=None,
-    ):
+        eft_model: EFTModel | None = None,
+        data: DataGroup | None = None,
+        fit_covmat: jnp.ndarray | None = None,
+        ext_chi2_func: Sequence[Chi2] | None = None,
+        coefficients: CoefficientGroup | None = None,
+    ) -> Chi2:
         """Shared chi2 build logic used by both joint and individual producers."""
 
         if data is None and ext_chi2_func is None:
@@ -563,21 +625,24 @@ class smefitConfig(Config):
                     "It is possible that an error occurred in producing one of these nodes, "
                     "so check for errors in their production."
                 )
-            base_chi2 = build_chi2(eft_model, data, fit_covmat)
+            base_chi2: Callable[[jnp.ndarray], jnp.ndarray] | None = build_chi2(
+                eft_model, data, fit_covmat
+            )
         else:
             base_chi2 = None
 
-        free_names = (
-            eft_model.coefficients.free_names
-            if eft_model is not None
-            else ext_chi2_func[0].param_names
-        )
+        if eft_model is not None:
+            free_names = eft_model.coefficients.free_names
+        else:
+            assert ext_chi2_func is not None
+            free_names = ext_chi2_func[0].param_names
 
         # baseline ("default") values of the free coefficients; a property of the
         # coefficients dictionary, so it applies to external-chi2-only fits too.
         baseline = coefficients.baseline_free if coefficients is not None else None
 
         if ext_chi2_func is None:
+            assert base_chi2 is not None and data is not None
             return Chi2(
                 base_chi2,
                 param_names=free_names,
@@ -585,15 +650,23 @@ class smefitConfig(Config):
                 baseline=baseline,
             )
 
+        ext_list = ext_chi2_func
         if base_chi2 is None:
 
-            def total_fn(coeffs):
-                return sum(ext(coeffs) for ext in ext_chi2_func)
+            def total_fn_ext(coeffs: jnp.ndarray) -> jnp.ndarray:
+                return sum((ext(coeffs) for ext in ext_list), jnp.array(0.0))
+
+            total_fn: Callable[[jnp.ndarray], jnp.ndarray] = total_fn_ext
 
         else:
+            base_fn = base_chi2
 
-            def total_fn(coeffs):
-                return base_chi2(coeffs) + sum(ext(coeffs) for ext in ext_chi2_func)
+            def total_fn_both(coeffs: jnp.ndarray) -> jnp.ndarray:
+                return base_fn(coeffs) + sum(
+                    (ext(coeffs) for ext in ext_list), jnp.array(0.0)
+                )
+
+            total_fn = total_fn_both
 
         tot_num_data = (data.num_data if data else 0) + sum(
             ext.num_data for ext in ext_chi2_func
@@ -609,12 +682,12 @@ class smefitConfig(Config):
 
     def produce_chi2(
         self,
-        eft_model=None,
-        data=None,
-        fit_covmat=None,
-        ext_chi2_func=None,
-        coefficients=None,
-    ):
+        eft_model: EFTModel | None = None,
+        data: DataGroup | None = None,
+        fit_covmat: jnp.ndarray | None = None,
+        ext_chi2_func: Sequence[Chi2] | None = None,
+        coefficients: CoefficientGroup | None = None,
+    ) -> Chi2:
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
@@ -626,11 +699,11 @@ class smefitConfig(Config):
 
     def produce_datasets_chi2(
         self,
-        eft_model=None,
-        data=None,
-        fit_covmat=None,
-        ext_chi2_func=None,
-    ):
+        eft_model: EFTModel | None = None,
+        data: DataGroup | None = None,
+        fit_covmat: jnp.ndarray | None = None,
+        ext_chi2_func: Sequence[Chi2] | None = None,
+    ) -> list[Chi2]:
         """Produce a list of per-dataset chi2 objects.
 
         Regular datasets each get their own chi2 (diagonal block of fit_covmat).
@@ -646,9 +719,9 @@ class smefitConfig(Config):
 
     def parse_ultranest_settings(
         self,
-        settings,
-        output_path=None,
-    ):
+        settings: Mapping,
+        output_path: pathlib.Path | None = None,
+    ) -> dict[str, Any]:
         """For a Nested Sampling fit, parses the ultranest_settings namespace from the runcard,
         and ensures the choice of settings is valid.
 
@@ -801,7 +874,7 @@ class smefitConfig(Config):
 
         return blackjax_settings
 
-    def parse_optimizer_settings(self, settings):
+    def parse_optimizer_settings(self, settings: Mapping) -> dict[str, Any]:
         """Parse the optimizer_settings block.
 
         Keys
@@ -822,7 +895,9 @@ class smefitConfig(Config):
             log.warning("Unknown key '%s' in optimizer_settings.", k)
         return dict(settings)
 
-    def produce_optimizer(self, optimizer_settings=None):
+    def produce_optimizer(
+        self, optimizer_settings: Mapping[str, Any] | None = None
+    ) -> optax.GradientTransformation:
         """Build and return an optax optimizer from optimizer_settings.
 
         When ``optimizer_settings`` is absent from the runcard, falls back to
@@ -860,7 +935,7 @@ class smefitConfig(Config):
         )
         return base_opt
 
-    def parse_gradient_descent_settings(self, settings):
+    def parse_gradient_descent_settings(self, settings: Mapping) -> dict[str, Any]:
         """Parse optional settings for the gradient-descent best-fit node.
 
         Keys
@@ -882,7 +957,7 @@ class smefitConfig(Config):
             "tol": float(settings.get("tol", 1e-8)),
         }
 
-    def parse_hessian_settings(self, settings):
+    def parse_hessian_settings(self, settings: Mapping) -> dict[str, int]:
         """Parse optional settings for the Hessian fit.
 
         Keys
@@ -900,7 +975,7 @@ class smefitConfig(Config):
             "seed": int(settings.get("seed", 42)),
         }
 
-    def parse_pca_settings(self, settings):
+    def parse_pca_settings(self, settings: Mapping | None) -> dict[str, float]:
         """Parse the settings for the principal component analysis.
 
         Keys
@@ -934,7 +1009,7 @@ class smefitConfig(Config):
             )
         return parsed
 
-    def parse_chi2_scan_settings(self, chi2_scan_settings):
+    def parse_chi2_scan_settings(self, chi2_scan_settings: Mapping) -> dict[str, int]:
         """Parse optional chi2 scan settings.
 
         Keys
@@ -947,7 +1022,7 @@ class smefitConfig(Config):
             log.warning("Unknown key '%s' in chi2_scan_settings.", k)
         return {"n_points": int(chi2_scan_settings.get("n_points", 50))}
 
-    def parse_bayesian_update(self, bayesian_update: str | Mapping):
+    def parse_bayesian_update(self, bayesian_update: str | Mapping) -> dict[str, Any]:
         """Parse and validate the previous fit used as prior for a Bayesian update.
 
         The entry is the name of the fit, or a mapping
@@ -964,7 +1039,7 @@ class smefitConfig(Config):
         Returns the entry with ``path`` replaced by the resolved directory of
         the fit itself, so downstream nodes read it straight off the mapping.
         """
-        entry = (
+        entry: dict[str, Any] = (
             {"name": bayesian_update}
             if isinstance(bayesian_update, str)
             else dict(bayesian_update)
@@ -990,10 +1065,12 @@ class smefitConfig(Config):
 
     def _build_prior_impl(self, coefficients: CoefficientGroup) -> Prior:
         """Shared prior build logic used by both joint and individual producers."""
-        specs = coefficients.prior_specs()
-        for name, spec in specs.items():
+        raw_specs = coefficients.prior_specs()
+        specs: dict[str, Mapping[str, Any]] = {}
+        for name, spec in raw_specs.items():
             if spec is None:
                 raise ValueError(f"Free coefficient '{name}' has no prior defined.")
+            specs[name] = spec
         return Prior.from_specs(specs, coefficients.free_names)
 
     def produce_prior(
@@ -1032,7 +1109,7 @@ class smefitConfig(Config):
 
         return self._build_prior_impl(coefficients)
 
-    def parse_pseudodata_settings(self, pseudodata_settings):
+    def parse_pseudodata_settings(self, pseudodata_settings: Mapping) -> dict[str, Any]:
         """Parse pseudodata projection settings."""
         known_keys = {"lumi_new", "noise", "seed", "fred_tot", "fred_sys"}
         for k in set(pseudodata_settings.keys()) - known_keys:
@@ -1050,13 +1127,13 @@ class smefitConfig(Config):
 
     def produce_pseudodata(
         self,
-        data,
-        theory,
-        pseudodata_settings,
-        scale_masks,
-        use_theory_covmat=False,
-        eft_model=None,
-    ):
+        data: DataGroup,
+        theory: TheoryGroup,
+        pseudodata_settings: Mapping[str, Any],
+        scale_masks: Mapping[str, np.ndarray],
+        use_theory_covmat: bool = False,
+        eft_model: EFTModel | None = None,
+    ) -> DataGroup:
         """Produce a pseudodata DataGroup via projections.
 
         Pseudodata is generated on every point: a ``max_scale`` cut is refused
@@ -1145,7 +1222,7 @@ class smefitConfig(Config):
                 f"Could not load fit '{entry['name']}' from {path}: {e}"
             ) from e
 
-    def produce_fitcontext(self, fit):
+    def produce_fitcontext(self, fit: Fit) -> dict[str, Any]:
         """The setup of a fit already run, as a namespace: ``fits::fitcontext``.
 
         Under it, any node reads the fit's own setup keys — datasets,
@@ -1189,6 +1266,9 @@ class smefitConfig(Config):
         context = dict(
             type(self)(setup, environment=self.environment).process_all_params()
         )
+        from smefit.fit_result import FitResult
+
+        assert isinstance(fit.fit_results, FitResult)
         best_fit_point = fit.fit_results.best_fit_point
         # stands in for the gradient descent of the nodes evaluated at a best fit
         context["best_fit_point"] = jnp.array(
@@ -1196,7 +1276,9 @@ class smefitConfig(Config):
         )
         return context
 
-    def produce_pcabasis(self, fit, coefficients=None):
+    def produce_pcabasis(
+        self, fit: Fit, coefficients: CoefficientGroup | None = None
+    ) -> dict[str, Any]:
         """A fit in the basis of its principal components, as a namespace.
 
         Under ``fits::fitcontext::pcabasis`` every node takes as ``fit`` the fit
@@ -1262,17 +1344,25 @@ class smefitConfig(Config):
     # Individual-fit producers — one free coefficient at a time
     # ------------------------------------------------------------------
 
-    def produce_individual_fit_coefficients(self, coefficients):
+    def produce_individual_fit_coefficients(
+        self, coefficients: CoefficientGroup
+    ) -> NSList:
         """Produce an NSList of free coefficient names for individual fits."""
         return NSList(coefficients.free_names, nskey="individual_fit_coefficient")
 
-    def produce_individual_coefficients(self, coefficients, individual_fit_coefficient):
+    def produce_individual_coefficients(
+        self, coefficients: CoefficientGroup, individual_fit_coefficient: str
+    ) -> CoefficientGroup:
         """Produce a single-free-parameter coefficient group for individual fits."""
         return coefficients.single_free(individual_fit_coefficient)
 
     def produce_individual_eft_model(
-        self, theory, individual_coefficients, rge_matrix, use_quad=False
-    ):
+        self,
+        theory: TheoryGroup,
+        individual_coefficients: CoefficientGroup,
+        rge_matrix: RGEMatrix | None,
+        use_quad: bool = False,
+    ) -> EFTModel:
         """Produce EFT model for a single-free-parameter individual fit.
 
         ``rge_matrix`` is required for the same reason as in
@@ -1281,8 +1371,12 @@ class smefitConfig(Config):
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(
-        self, individual_coefficients, external_chi2, rge=None, max_scale=None
-    ):
+        self,
+        individual_coefficients: CoefficientGroup,
+        external_chi2: Mapping[str, Mapping[str, Any]],
+        rge: Mapping[str, Any] | None = None,
+        max_scale: int | float | None = None,
+    ) -> list[Chi2]:
         """Load and wrap external chi2 modules for a single-free-parameter individual fit."""
         return load_external_chi2(
             external_chi2, individual_coefficients, rge_dict=rge, max_scale=max_scale
@@ -1290,12 +1384,12 @@ class smefitConfig(Config):
 
     def produce_individual_chi2(
         self,
-        individual_eft_model=None,
-        data=None,
-        fit_covmat=None,
-        individual_ext_chi2_func=None,
-        individual_coefficients=None,
-    ):
+        individual_eft_model: EFTModel | None = None,
+        data: DataGroup | None = None,
+        fit_covmat: jnp.ndarray | None = None,
+        individual_ext_chi2_func: Sequence[Chi2] | None = None,
+        individual_coefficients: CoefficientGroup | None = None,
+    ) -> Chi2:
         """Produce chi2 for a single-free-parameter individual fit."""
         return self._build_chi2_impl(
             individual_eft_model,
@@ -1305,7 +1399,9 @@ class smefitConfig(Config):
             individual_coefficients,
         )
 
-    def produce_individual_prior(self, individual_coefficients):
+    def produce_individual_prior(
+        self, individual_coefficients: CoefficientGroup
+    ) -> Prior:
         """Produce prior for a single-free-parameter individual fit."""
         return self._build_prior_impl(individual_coefficients)
 
@@ -1313,7 +1409,11 @@ class smefitConfig(Config):
     # Mass-scan producers
     # ------------------------------------------------------------------
 
-    def produce_individual_mass_scales(self, coefficients, chi2_scan_settings):
+    def produce_individual_mass_scales(
+        self,
+        coefficients: CoefficientGroup,
+        chi2_scan_settings: Mapping[str, Any],
+    ) -> NSList:
         """Produce an NSList of mass scan points from the single free coefficient's prior."""
         free_names = coefficients.free_names
         if len(free_names) != 1:
@@ -1337,8 +1437,12 @@ class smefitConfig(Config):
         return NSList(scan_points, nskey="individual_mass_scale")
 
     def produce_individual_mass_rge_matrix(
-        self, rge, coefficients, theory, individual_mass_scale
-    ):
+        self,
+        rge: Mapping[str, Any],
+        coefficients: CoefficientGroup,
+        theory: TheoryGroup,
+        individual_mass_scale: int | float,
+    ) -> RGEMatrix:
         """Produce RGE matrix with init_scale set to the current mass scan point.
 
         Scan points are masses in TeV, matching the TeV^-2 Wilson coefficients
@@ -1354,19 +1458,23 @@ class smefitConfig(Config):
         )
 
     def produce_individual_mass_eft_model(
-        self, theory, coefficients, individual_mass_rge_matrix, use_quad=False
-    ):
+        self,
+        theory: TheoryGroup,
+        coefficients: CoefficientGroup,
+        individual_mass_rge_matrix: RGEMatrix,
+        use_quad: bool = False,
+    ) -> EFTModel:
         """Produce EFT model for a single mass scan point."""
         return EFTModel(theory, coefficients, use_quad, individual_mass_rge_matrix)
 
     def produce_individual_mass_ext_chi2_func(
         self,
-        coefficients,
-        external_chi2,
-        individual_mass_scale,
-        rge=None,
-        max_scale=None,
-    ):
+        coefficients: CoefficientGroup,
+        external_chi2: Mapping[str, Mapping[str, Any]],
+        individual_mass_scale: int | float,
+        rge: Mapping[str, Any] | None = None,
+        max_scale: int | float | None = None,
+    ) -> list[Chi2]:
         """Load external chi2 for a single mass scan point with init_scale overridden.
 
         Same TeV (scan point) -> GeV (``init_scale``) conversion as
@@ -1382,11 +1490,11 @@ class smefitConfig(Config):
 
     def produce_individual_mass_chi2(
         self,
-        individual_mass_eft_model=None,
-        data=None,
-        fit_covmat=None,
-        individual_mass_ext_chi2_func=None,
-    ):
+        individual_mass_eft_model: EFTModel | None = None,
+        data: DataGroup | None = None,
+        fit_covmat: jnp.ndarray | None = None,
+        individual_mass_ext_chi2_func: Sequence[Chi2] | None = None,
+    ) -> Chi2:
         """Produce the total chi2 for a single mass scan point."""
         return self._build_chi2_impl(
             individual_mass_eft_model,

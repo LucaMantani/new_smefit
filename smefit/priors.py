@@ -135,7 +135,7 @@ class _GaussianDist(_Distribution):
         return jnp.zeros_like(u, dtype=jnp.result_type(float))
 
 
-_DIST_REGISTRY = {
+_DIST_REGISTRY: dict[str, type[Any]] = {
     "uniform": _UniformDist,
     "gaussian": _GaussianDist,
     "normal": _GaussianDist,

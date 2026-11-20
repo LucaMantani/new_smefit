@@ -6,6 +6,8 @@ UltraNest nested-sampling fitting routine, returning a FitResult node.
 
 import logging
 import time
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -13,20 +15,24 @@ import numpy as np
 import ultranest
 import ultranest.stepsampler as ustepsampler
 
+from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup
 from smefit.fit_result import FitResult
+from smefit.priors import JointPrior
 from smefit.utils import resolve_posterior
+from smefit.whitening import WhitenTransformNode
 
 log = logging.getLogger(__name__)
 
 
 def ultranest_fit(
-    prior,
-    chi2,
-    coefficients,
-    ultranest_settings,
-    whitening_transformation=None,
-    n_samples=10000,
-):
+    prior: JointPrior,
+    chi2: Chi2,
+    coefficients: CoefficientGroup,
+    ultranest_settings: Mapping,
+    whitening_transformation: WhitenTransformNode = None,
+    n_samples: int = 10000,
+) -> FitResult:
     """Run UltraNest nested sampling and return a FitResult.
 
     Reportengine provider node: arguments resolved by name from the DAG.
@@ -66,32 +72,41 @@ def ultranest_fit(
     # set the ultranest seed
     np.random.seed(ultranest_settings["ultranest_seed"])
 
+    log_likelihood_fn: Callable[[np.ndarray], Any]
+    prior_transform_fn: Callable[[np.ndarray], np.ndarray]
+
     if ultranest_settings["ReactiveNS_settings"]["vectorized"]:
         _logl_vmap = jax.jit(jax.vmap(lambda p: -_chi2(p) / 2.0))
 
-        def log_likelihood(params_batch):
+        def log_likelihood_vec(params_batch: np.ndarray) -> np.ndarray:
             return np.array(_logl_vmap(jnp.array(params_batch)), dtype=np.float64)
 
         _pt_vmap = jax.jit(jax.vmap(prior.prior_transform))
 
-        def prior_transform(unit_cubes):
+        def prior_transform_vec(unit_cubes: np.ndarray) -> np.ndarray:
             return np.array(_pt_vmap(jnp.array(unit_cubes)), dtype=np.float64)
+
+        log_likelihood_fn = log_likelihood_vec
+        prior_transform_fn = prior_transform_vec
 
     else:
         _logl_jit = jax.jit(lambda p: -_chi2(p) / 2.0)
 
-        def log_likelihood(params):
+        def log_likelihood_single(params: np.ndarray) -> float:
             return float(_logl_jit(jnp.array(params)))
 
         _pt_jit = jax.jit(prior.prior_transform)
 
-        def prior_transform(unit_cube):
+        def prior_transform_single(unit_cube: np.ndarray) -> np.ndarray:
             return np.array(_pt_jit(jnp.array(unit_cube)), dtype=np.float64)
+
+        log_likelihood_fn = log_likelihood_single
+        prior_transform_fn = prior_transform_single
 
     sampler = ultranest.ReactiveNestedSampler(
         prior.param_names,
-        log_likelihood,
-        prior_transform,
+        log_likelihood_fn,
+        prior_transform_fn,
         **ultranest_settings["ReactiveNS_settings"],
     )
 

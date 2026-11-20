@@ -79,12 +79,11 @@ def patched_smeftpar(*args: Any, **kwargs: Any) -> dict[str, Any]:
     # check if C is passed as a keyword argument
     if "C" in kwargs:
         kwargs["C"] = C_patch
+        return original_smeftpar(*args, **kwargs)
     # otherwise, check if it is passed as a positional argument
-    else:
-        args = list(args)
-        args[1] = C_patch
-
-    return original_smeftpar(*args, **kwargs)
+    args_list = list(args)
+    args_list[1] = C_patch
+    return original_smeftpar(*args_list, **kwargs)
 
 
 # Apply the monkey patch
@@ -96,7 +95,7 @@ wilson.run.smeft.smpar.smeftpar = patched_smeftpar
 # Monkey patch flavour rotation
 # Define the new method
 def _to_wcxf_no_rotation(
-    self, C_out: dict[str, Any], scale_out: float
+    self: Any, C_out: dict[str, Any], scale_out: float
 ) -> "wilson.wcxf.WC":
     """Return the Wilson coefficients `C_out` as a wcxf.WC instance, without rotation."""
     # Skip the self._rotate_defaultbasis line

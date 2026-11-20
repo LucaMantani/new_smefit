@@ -15,7 +15,7 @@ along a direction is ``sigma_i = 1 / sqrt(lambda_i)``.
 import json
 import logging
 import pathlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import List
 
@@ -28,7 +28,7 @@ from rich.table import Table
 log = logging.getLogger(__name__)
 
 
-def _fix_signs(vectors):
+def _fix_signs(vectors: np.ndarray) -> np.ndarray:
     """Make the largest-magnitude entry of each column positive.
 
     An eigenvector is defined only up to an overall sign, and LAPACK's choice is
@@ -43,7 +43,7 @@ def _fix_signs(vectors):
     return vectors * signs
 
 
-def _warn_on_degeneracy(eigenvalues, flat_mask):
+def _warn_on_degeneracy(eigenvalues: np.ndarray, flat_mask: np.ndarray) -> None:
     """Warn when two constrained directions share an eigenvalue.
 
     Eigenvectors of a degenerate eigenvalue are not unique — only the subspace
@@ -300,7 +300,7 @@ class PCA:
             "min_weight": self.min_weight,
         }
 
-    def write(self, output_path) -> None:
+    def write(self, output_path: str | pathlib.Path) -> None:
         """Serialise this analysis to ``pca.json`` under *output_path*."""
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -308,7 +308,7 @@ class PCA:
             json.dump(self.to_dict(), f, indent=2)
 
 
-def pca(total_fisher_information_matrix, pca_settings) -> PCA:
+def pca(total_fisher_information_matrix: pd.DataFrame, pca_settings: Mapping) -> PCA:
     """Diagonalise the total Fisher matrix.
 
     Parameters

@@ -138,14 +138,14 @@ class InputManifest:
             )
         return changed, notes
 
-    def write(self, fit_dir) -> None:
+    def write(self, fit_dir: str | pathlib.Path) -> None:
         """Write the manifest to ``input/manifest.json`` in *fit_dir*."""
         path = pathlib.Path(fit_dir) / self.RELATIVE_PATH
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(asdict(self), indent=2, sort_keys=True))
 
     @classmethod
-    def load(cls, fit_dir) -> Optional["InputManifest"]:
+    def load(cls, fit_dir: str | pathlib.Path) -> Optional["InputManifest"]:
         """The manifest of *fit_dir*; None for a fit written before manifests."""
         path = pathlib.Path(fit_dir) / cls.RELATIVE_PATH
         if not path.is_file():

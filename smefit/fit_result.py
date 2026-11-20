@@ -30,31 +30,43 @@ import json
 import logging
 import pathlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeAlias,
+    Union,
+)
 
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import yaml
+from reportengine.configparser import ExplicitNode
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
 from smefit.credible_intervals import _INTERVAL_TYPES, Bounds
 from smefit.input_manifest import InputManifest
+from smefit.pca import PCA
 from smefit.priors import build_dist
 from smefit.whitening import WhitenTransform
 
 if TYPE_CHECKING:
-    from smefit.pca import PCA
     from smefit.rge import RGECache
 
 log = logging.getLogger(__name__)
 
 
-def _load_json(path) -> Dict:
+def _load_json(path: str | pathlib.Path) -> Dict[str, Any]:
     """Decode a JSON file, naming it when it will not parse.
 
     A decoder locates a fault *within* a file but never names the file itself,
@@ -73,7 +85,7 @@ def _load_json(path) -> Dict:
         raise ValueError(f"'{path}' is not valid JSON: {e}") from e
 
 
-def _load_yaml(path) -> Dict:
+def _load_yaml(path: str | pathlib.Path) -> Dict[str, Any]:
     """Decode a YAML file, naming it when it will not parse.
 
     The counterpart of :func:`_load_json`, and it fails the same way. An empty
@@ -200,7 +212,7 @@ def _prior_bounds(
         if isinstance(fit_results, FitResultGroup)
         else [fit_results]
     )
-    bounds = {}
+    bounds: Dict[str, Bounds] = {}
     for result in results:
         if result.whitening_active or not result.prior_specs:
             continue
@@ -242,7 +254,7 @@ class FitResult:
     num_data: int
     logz: Optional[float] = None
     samples: Optional[Dict[str, jnp.ndarray]] = None
-    prior_specs: Optional[Dict[str, Mapping]] = None
+    prior_specs: Optional[Mapping[str, Mapping[str, Any]]] = None
     whitening_transformation: Optional[WhitenTransform] = None
     whitening_active: bool = False
 
@@ -348,7 +360,7 @@ class FitResult:
             u = unc.get(name, float("nan"))
             kind = "free" if name in self.free_parameters else "derived"
             row = [name, f"{val:.6f}", f"{u:.6f}", kind]
-            if show_prior:
+            if show_prior and self.prior_specs is not None:
                 row.append(_format_prior(self.prior_specs.get(name)))
             table.add_row(*row)
 
@@ -359,7 +371,7 @@ class FitResult:
     # I/O
     # ------------------------------------------------------------------
 
-    def write(self, output_path) -> None:
+    def write(self, output_path: str | pathlib.Path) -> None:
         """Serialise this result to JSON and write it to *output_path*."""
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -397,7 +409,7 @@ class FitResult:
             json.dump(payload, f, indent=2)
 
     @classmethod
-    def from_json(cls, path) -> "FitResult":
+    def from_json(cls, path: str | pathlib.Path) -> "FitResult":
         """Load a FitResult from a directory containing fit_results.json."""
         return cls.from_payload(_load_json(pathlib.Path(path) / "fit_results.json"))
 
@@ -447,8 +459,8 @@ class FitResultGroup:
         ``None`` when no individual fit kept any, as for :class:`FitResult`.
     """
 
-    def __init__(self, results: List[FitResult]):
-        self.results = results
+    def __init__(self, results: Sequence[FitResult]) -> None:
+        self.results = list(results)
         self.free_parameters: List[str] = [
             result.free_parameters[0] for result in results
         ]
@@ -494,7 +506,7 @@ class FitResultGroup:
         console.print(table)
         console.rule(style="dim")
 
-    def write_results(self, output_path) -> None:
+    def write_results(self, output_path: str | pathlib.Path) -> None:
         """Write each FitResult to its own subdirectory and a combined summary."""
         base = pathlib.Path(output_path) / "individual_fits"
         for result in self.results:
@@ -502,7 +514,7 @@ class FitResultGroup:
             result.write(base / name)
         self.write_summary(output_path)
 
-    def write_summary(self, output_path) -> None:
+    def write_summary(self, output_path: str | pathlib.Path) -> None:
         """Write a combined fit_results.json aggregating all individual fits."""
         output_path = pathlib.Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1043,10 @@ class Fit:
 
     @classmethod
     def from_folder(
-        cls, path, label: Optional[str] = None, contours: str = "kde"
+        cls,
+        path: str | pathlib.Path,
+        label: Optional[str] = None,
+        contours: str = "kde",
     ) -> "Fit":
         """Load a Fit from a fit directory.
 
@@ -1097,13 +1112,24 @@ class Fit:
         )
 
 
-def _fit_in_pca_basis(unrotated_fit, pca) -> Fit:
+# Annotation for a provider parameter filled by ``fit``: under ``pcabasis``,
+# ``produce_pcabasis`` replaces ``fit`` with an ``ExplicitNode`` whose worker
+# rotates the fit once ``pca`` runs. Reportengine's ``check_types`` runs
+# ``isinstance(val, annotation)`` while building the graph, before that node
+# runs; once it runs, the provider receives a ``Fit``.
+if TYPE_CHECKING:
+    FitNode: TypeAlias = Fit
+else:
+    FitNode = Fit | ExplicitNode
+
+
+def _fit_in_pca_basis(unrotated_fit: Fit, pca: PCA) -> Fit:
     """The ``fit`` of the ``pcabasis`` namespace: ``unrotated_fit`` rotated by
     ``pca``.
 
     The worker ``smefitConfig.produce_pcabasis`` hands to reportengine, which
     resolves its parameters as resources: hence the fit read under another
-    name, and no annotations, which reportengine would check at runtime.
+    name, and plain runtime-checkable annotations.
 
     Parameters
     ----------

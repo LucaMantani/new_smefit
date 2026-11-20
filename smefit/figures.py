@@ -6,16 +6,23 @@ Functions for creating figures and plots.
 
 import itertools
 import logging
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.stats
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Ellipse, Patch
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
+from smefit.fit_result import Fit, FitNode, FitResult
+from smefit.pca import PCA
 from smefit.plot_utils import rescale_exponents, select_params, set_plot_style
 
 log = logging.getLogger(__name__)
@@ -42,18 +49,18 @@ _LEVEL_LINESTYLE_CYCLE = ("dashed", "dotted", "dashdot")
 
 
 def _plot_heatmap(
-    matrix,
-    coeff_names,
-    source_names,
-    vmin=None,
-    vmax=None,
-    cmap="Blues",
-    mask_zeros=True,
-    value_fmt="{:.1f}",
-    aspect="auto",
-    colorbar=False,
-    title=None,
-):
+    matrix: Any,
+    coeff_names: Sequence[str],
+    source_names: Sequence[str],
+    vmin: float | None = None,
+    vmax: float | None = None,
+    cmap: str = "Blues",
+    mask_zeros: bool = True,
+    value_fmt: str = "{:.1f}",
+    aspect: str = "auto",
+    colorbar: bool = False,
+    title: str | None = None,
+) -> Figure:
     """Render a (n_coeffs, n_sources) matrix as a heatmap and save to PDF.
 
     Parameters
@@ -107,9 +114,9 @@ def _plot_heatmap(
     if mask_zeros:
         masked = np.ma.masked_equal(masked, 0.0)
 
-    cmap = plt.get_cmap(cmap).copy()
-    cmap.set_bad("black", 0.7)
-    im = ax.imshow(masked, aspect=aspect, cmap=cmap, vmin=vmin, vmax=vmax)
+    cmap_obj = plt.get_cmap(cmap).copy()
+    cmap_obj.set_bad("black", 0.7)
+    im = ax.imshow(masked, aspect=aspect, cmap=cmap_obj, vmin=vmin, vmax=vmax)
     if colorbar:
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
@@ -141,7 +148,9 @@ def _plot_heatmap(
 
 
 @figuregen
-def plot_chi2_scan(individual_chi2_scans, latex_label):
+def plot_chi2_scan(
+    individual_chi2_scans: Sequence, latex_label: Callable
+) -> Iterator[tuple[Figure, str]]:
     """Plot the 1D chi2 scan for each free coefficient.
 
     Yields one ``(figure, coeff_name)`` per scanned coefficient, with the
@@ -169,11 +178,11 @@ def plot_chi2_scan(individual_chi2_scans, latex_label):
 
 @figure
 def plot_fisher_diagonals_heatmap(
-    fisher_diagonals_normalised,
-    cmap="Blues",
-    value_fmt="{:.1f}",
-    colorbar=False,
-):
+    fisher_diagonals_normalised: pd.DataFrame,
+    cmap: str = "Blues",
+    value_fmt: str = "{:.1f}",
+    colorbar: bool = False,
+) -> Figure:
     """Plot the Fisher diagonals matrix as a heatmap.
 
     Parameters
@@ -204,11 +213,11 @@ def plot_fisher_diagonals_heatmap(
 
 @figure
 def plot_pca_components_heatmap(
-    pca_components,
-    cmap="RdBu_r",
-    value_fmt="{:.2f}",
-    colorbar=True,
-):
+    pca_components: pd.DataFrame,
+    cmap: str = "RdBu_r",
+    value_fmt: str = "{:.2f}",
+    colorbar: bool = True,
+) -> Figure:
     """Plot the principal-direction weights as a heatmap.
 
     Reading it: a column is one principal direction, and the coloured cells say
@@ -244,7 +253,7 @@ def plot_pca_components_heatmap(
 
 
 @figure
-def plot_pca_spectrum(pca, latex_label):
+def plot_pca_spectrum(pca: PCA, latex_label: Callable) -> Figure:
     """Plot the eigenvalue spectrum, with the flat-direction threshold marked.
 
     The one picture of the whole analysis: bars falling below the dashed line
@@ -332,13 +341,13 @@ def plot_pca_spectrum(pca, latex_label):
 
 @figure
 def plot_posterior_correlations(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    cmap="RdBu_r",
-    value_fmt="{:.2f}",
-    colorbar=True,
-):
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    cmap: str = "RdBu_r",
+    value_fmt: str = "{:.2f}",
+    colorbar: bool = True,
+) -> Figure:
     """Plot the posterior correlations of one fit's free coefficients.
 
     Takes a single ``fit``, so a runcard listing several under ``fits:`` gets
@@ -376,6 +385,7 @@ def plot_posterior_correlations(
             "posterior to correlate."
         )
 
+    assert isinstance(fit.fit_results, FitResult)
     corr = fit.fit_results.correlations
     selected = select_params(corr.index, params_to_plot, context=fit.fit_name)
     corr = corr.loc[selected, selected]
@@ -396,8 +406,13 @@ def plot_posterior_correlations(
 
 
 def _posterior_histograms(
-    fits, latex_label, params_to_plot, n_bins, shared_bins, n_cols
-):
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: Sequence[str] | str | None,
+    n_bins: int,
+    shared_bins: bool,
+    n_cols: int,
+) -> Figure:
     """The shared core of :func:`plot_posterior_histograms` and
     :func:`plot_posterior_histograms_comparison`.
 
@@ -496,12 +511,12 @@ def _posterior_histograms(
 
 @figure
 def plot_posterior_histograms(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    n_bins=30,
-    n_cols=4,
-):
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    n_bins: int = 30,
+    n_cols: int = 4,
+) -> Figure:
     """Plot the marginal posterior of every coefficient of one fit.
 
     One panel per coefficient, on a grid ``n_cols`` wide. The histograms are
@@ -541,13 +556,13 @@ def plot_posterior_histograms(
 
 @figure
 def plot_posterior_histograms_comparison(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    n_bins=30,
-    shared_bins=False,
-    n_cols=4,
-):
+    fits: Sequence,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    n_bins: int = 30,
+    shared_bins: bool = False,
+    n_cols: int = 4,
+) -> Figure:
     """Overlay the marginal posteriors of several fits, one panel per coefficient.
 
     One figure for the whole ``fits`` list, every fit in its own colour and
@@ -580,7 +595,7 @@ def plot_posterior_histograms_comparison(
     )
 
 
-def _scale_label(label, exponent):
+def _scale_label(label: str, exponent: int) -> str:
     """*label* with the power of ten its row is multiplied by, if any, in front."""
     if exponent == 0:
         return label
@@ -589,17 +604,17 @@ def _scale_label(label, exponent):
 
 
 def _coefficient_bounds(
-    fits,
-    latex_label,
-    params_to_plot,
-    bounds_levels,
-    interval_types,
-    x_log,
-    lin_thr,
-    x_min,
-    x_max,
-    rescale_bounds,
-):
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: Sequence[str] | str | None,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+    x_log: bool,
+    lin_thr: float,
+    x_min: float | None,
+    x_max: float | None,
+    rescale_bounds: bool,
+) -> Iterator[tuple[Figure, str]]:
     """The shared core of :func:`plot_coefficient_bounds` and
     :func:`plot_coefficient_bounds_comparison`.
 
@@ -718,17 +733,17 @@ def _coefficient_bounds(
 
 @figuregen
 def plot_coefficient_bounds(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    interval_types=None,
-    x_log=False,
-    lin_thr=1e-2,
-    x_min=None,
-    x_max=None,
-    rescale_bounds=True,
-):
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
+    x_log: bool = False,
+    lin_thr: int | float = 1e-2,
+    x_min: int | float | None = None,
+    x_max: int | float | None = None,
+    rescale_bounds: bool = True,
+) -> Iterator[tuple[Figure, str]]:
     """Plot the confidence bounds of one fit, one coefficient per row.
 
     Parameters
@@ -785,17 +800,17 @@ def plot_coefficient_bounds(
 
 @figuregen
 def plot_coefficient_bounds_comparison(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    interval_types=None,
-    x_log=False,
-    lin_thr=1e-2,
-    x_min=None,
-    x_max=None,
-    rescale_bounds=True,
-):
+    fits: Sequence,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
+    x_log: bool = False,
+    lin_thr: int | float = 1e-2,
+    x_min: int | float | None = None,
+    x_max: int | float | None = None,
+    rescale_bounds: bool = True,
+) -> Iterator[tuple[Figure, str]]:
     """Overlay the confidence bounds of several fits, one coefficient per row.
 
     One figure for the whole ``fits`` list, every fit on its own offset within
@@ -824,7 +839,7 @@ def plot_coefficient_bounds_comparison(
     )
 
 
-def _reach_from_pieces(pieces):
+def _reach_from_pieces(pieces: Sequence[tuple[float, float]]) -> float:
     """The mass reach, in TeV, of one coefficient's credible region.
 
     ``pieces`` are the ``(low, high)`` intervals on :math:`c_i/\\Lambda^2`, in
@@ -844,15 +859,15 @@ def _reach_from_pieces(pieces):
 
 
 def _mass_reach(
-    fits,
-    latex_label,
-    params_to_plot,
-    bounds_levels,
-    interval_types,
-    y_log,
-    y_min,
-    y_max,
-):
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: Sequence[str] | str | None,
+    bounds_levels: float | Sequence[float] | None,
+    interval_types: str | Sequence[str] | None,
+    y_log: bool,
+    y_min: float | None,
+    y_max: float | None,
+) -> Iterator[tuple[Figure, str]]:
     """The shared core of :func:`plot_mass_reach` and
     :func:`plot_mass_reach_comparison`.
 
@@ -943,15 +958,15 @@ def _mass_reach(
 
 @figuregen
 def plot_mass_reach(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    interval_types=None,
-    y_log=True,
-    y_min=None,
-    y_max=None,
-):
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
+    y_log: bool = True,
+    y_min: int | float | None = None,
+    y_max: int | float | None = None,
+) -> Iterator[tuple[Figure, str]]:
     """Plot the mass reach :math:`\\Lambda/\\sqrt{|c_i|}` of one fit, one bar
     per coefficient.
 
@@ -1003,15 +1018,15 @@ def plot_mass_reach(
 
 @figuregen
 def plot_mass_reach_comparison(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    interval_types=None,
-    y_log=True,
-    y_min=None,
-    y_max=None,
-):
+    fits: Sequence,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    interval_types: str | Sequence | None = None,
+    y_log: bool = True,
+    y_min: int | float | None = None,
+    y_max: int | float | None = None,
+) -> Iterator[tuple[Figure, str]]:
     """Compare the mass reach of several fits, one group of bars per
     coefficient.
 
@@ -1038,7 +1053,9 @@ def plot_mass_reach_comparison(
     )
 
 
-def _kde_grid(x, y, bw_adjust=1.5):
+def _kde_grid(
+    x: np.ndarray, y: np.ndarray, bw_adjust: float = 1.5
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Evaluate a 2D Gaussian KDE of the samples ``(x, y)`` on a regular grid.
 
     Returns ``(xx, yy, density, sample_density)``: the first three are the
@@ -1079,7 +1096,7 @@ def _kde_grid(x, y, bw_adjust=1.5):
     return xx, yy, density, sample_density
 
 
-def _density_level(sample_density, level):
+def _density_level(sample_density: np.ndarray, level: float) -> float:
     """The iso-density value enclosing ``level`` percent of the joint 2D
     posterior of the pair.
 
@@ -1091,7 +1108,9 @@ def _density_level(sample_density, level):
     return float(np.quantile(sample_density, 1.0 - level / 100.0))
 
 
-def _gaussian_ellipse(x, y):
+def _gaussian_ellipse(
+    x: np.ndarray, y: np.ndarray
+) -> tuple[tuple[float, float], np.ndarray, float]:
     """The Gaussian of the samples ``(x, y)``, as the shape of its ellipses.
 
     Returns ``(center, axes, angle)``: the samples' mean — the point their
@@ -1115,7 +1134,7 @@ def _gaussian_ellipse(x, y):
     return center, 2 * np.sqrt(eig_val[::-1]), angle
 
 
-def _inner_linestyles(n_inner):
+def _inner_linestyles(n_inner: int) -> list[str]:
     """The line styles of the ``n_inner`` levels inside the filled one, widest
     first: :data:`_LEVEL_LINESTYLE_CYCLE` in order, repeated past its end."""
     return [
@@ -1124,13 +1143,13 @@ def _inner_linestyles(n_inner):
     ]
 
 
-def _level_legend(levels):
+def _level_legend(levels: Sequence[float]) -> tuple[list[Any], list[str]]:
     """The legend entries of the confidence ``levels`` (percent, widest first),
     as ``(handles, labels)``: in grey, as they are drawn for every fit — a
     filled patch with a solid outline for the widest, a line in its own style
     for each narrower one."""
     filled, *inner = levels
-    handles = [Patch(facecolor="grey", edgecolor="grey", alpha=0.3, lw=1.5)]
+    handles: list[Any] = [Patch(facecolor="grey", edgecolor="grey", alpha=0.3, lw=1.5)]
     handles += [
         Line2D([], [], color="grey", ls=style, lw=1.5)
         for style in _inner_linestyles(len(inner))
@@ -1140,7 +1159,15 @@ def _level_legend(levels):
     return handles, [rf"${level:.10g}\%\ \mathrm{{CL}}$" for level in levels]
 
 
-def _draw_pair(ax, x, y, color, levels, contours, hatch):
+def _draw_pair(
+    ax: Axes,
+    x: np.ndarray,
+    y: np.ndarray,
+    color: str,
+    levels: Sequence[float],
+    contours: str,
+    hatch: str | None,
+) -> tuple[Patch, ...]:
     """Draw one fit's 2D posterior of the samples ``(x, y)`` on ``ax``.
 
     ``levels`` are in percent, widest first: the widest region is filled
@@ -1157,7 +1184,7 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
     if contours == "kde":
         xx, yy, density, sample_density = _kde_grid(x, y)
 
-        def region(level, **kwargs):
+        def region(level: float, **kwargs: Any) -> Any:
             low = _density_level(sample_density, level)
             # the level comes from the samples, the fill from the grid, which
             # need not resolve the very peak: nudge the top past the level so
@@ -1165,7 +1192,7 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
             top = float(np.nextafter(max(float(density.max()), low), np.inf))
             return ax.contourf(xx, yy, density, levels=[low, top], **kwargs)
 
-        def outline(level, **kwargs):
+        def outline(level: float, **kwargs: Any) -> Any:
             low = _density_level(sample_density, level)
             return ax.contour(xx, yy, density, levels=[low], colors=[color], **kwargs)
 
@@ -1180,7 +1207,7 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
         # one Gaussian per fit and panel, every level and layer a scaling of it
         center, axes, angle = _gaussian_ellipse(x, y)
 
-        def draw_ellipse(level, **kwargs):
+        def draw_ellipse(level: float, **kwargs: Any) -> None:
             scale = np.sqrt(scipy.stats.chi2.ppf(level / 100.0, 2))
             ax.add_patch(Ellipse(center, *(scale * axes), angle=angle, **kwargs))
 
@@ -1202,7 +1229,13 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
     )
 
 
-def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch):
+def _posterior_contours(
+    fits: Sequence[Fit],
+    latex_label: Callable[[str], str],
+    params_to_plot: Sequence[str] | str | None,
+    bounds_levels: float | Sequence[float] | None,
+    hatch: bool,
+) -> Figure:
     """The shared core of :func:`plot_posterior_contours` and
     :func:`plot_posterior_contours_comparison`.
 
@@ -1247,13 +1280,16 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     # fixed and derived ones, and a coefficient free in one fit but fixed in
     # another would otherwise draw the latter as a constant — a singular KDE —
     # and pull its value into the pooled limits
-    samples = [
-        {
-            name: np.asarray(fit.fit_results.samples[name], dtype=float)
-            for name in fit.bounded_parameters
-        }
-        for fit in fits
-    ]
+    samples = []
+    for fit in fits:
+        fit_samples_dict = fit.fit_results.samples
+        assert fit_samples_dict is not None
+        samples.append(
+            {
+                name: np.asarray(fit_samples_dict[name], dtype=float)
+                for name in fit.bounded_parameters
+            }
+        )
     hatches = [
         _HATCH_CYCLE[idx % len(_HATCH_CYCLE)] if hatch else None
         for idx in range(len(fits))
@@ -1281,7 +1317,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     fig = plt.figure(figsize=(n_cols * subplot_size, n_cells * subplot_size))
     grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
 
-    handles = [None] * len(fits)
+    handles: list[tuple[Patch, ...] | None] = [None] * len(fits)
     for i, j in itertools.combinations(range(n_par), 2):
         x_name, y_name = names[i], names[j]
         ax = fig.add_subplot(grid[j - 1, i])
@@ -1319,7 +1355,7 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     # a fit every panel left out (it sampled no pair of the selection) has
     # nothing to stand for in the legend
     drawn = [idx for idx, handle in enumerate(handles) if handle is not None]
-    legend_handles = [handles[idx] for idx in drawn]
+    legend_handles: list[Any] = [handles[idx] for idx in drawn]
     legend_labels = [fits[idx].plot_label for idx in drawn]
     # then the levels, which every fit shares: which outline is which
     level_handles, level_labels = _level_legend(levels)
@@ -1364,12 +1400,12 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
 
 @figure
 def plot_posterior_contours(
-    fit,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    hatch=True,
-):
+    fit: FitNode,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    hatch: bool = True,
+) -> Figure:
     """Plot the pairwise 2D posterior contours of one fit, as a corner plot.
 
     The regions are kernel density contours, or Gaussian ellipses built from
@@ -1404,12 +1440,12 @@ def plot_posterior_contours(
 
 @figure
 def plot_posterior_contours_comparison(
-    fits,
-    latex_label,
-    params_to_plot=None,
-    bounds_levels=None,
-    hatch=True,
-):
+    fits: Sequence,
+    latex_label: Callable,
+    params_to_plot: Sequence | str | None = None,
+    bounds_levels: int | float | Sequence | None = None,
+    hatch: bool = True,
+) -> Figure:
     """Overlay the pairwise 2D posterior contours of several fits.
 
     One figure for the whole ``fits`` list, one colour (and hatch) per fit,
@@ -1425,11 +1461,11 @@ def plot_posterior_contours_comparison(
 
 @figure
 def plot_global_information_heatmap(
-    global_information_table,
-    cmap="Blues",
-    value_fmt="{:.1f}",
-    colorbar=False,
-):
+    global_information_table: pd.DataFrame,
+    cmap: str = "Blues",
+    value_fmt: str = "{:.1f}",
+    colorbar: bool = False,
+) -> Figure:
     """Plot the global information matrix as a heatmap.
 
     Parameters

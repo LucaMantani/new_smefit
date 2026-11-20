@@ -6,6 +6,9 @@ Loader module of smefit
 
 import json
 import logging
+import pathlib
+from collections.abc import Mapping
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -17,7 +20,11 @@ from smefit.utils import ensure_list
 log = logging.getLogger(__name__)
 
 
-def load_dataset(data_path, dataset_dict, keep=None):
+def load_dataset(
+    data_path: pathlib.Path,
+    dataset_dict: Mapping[str, Any],
+    keep: np.ndarray | None = None,
+) -> Dataset:
     """Load dataset from given path, restricted to the points where the
     boolean mask ``keep`` is true, if given."""
     dataset_name = dataset_dict["name"]
@@ -112,7 +119,7 @@ def load_dataset(data_path, dataset_dict, keep=None):
     return dataset if keep is None else dataset.select(keep)
 
 
-def load_scales(theory_path, dataset_name):
+def load_scales(theory_path: pathlib.Path, dataset_name: str) -> np.ndarray:
     """The per-point energy scales (GeV) of a dataset, from its theory file.
 
     Read on their own, without building the predictions, so that the cut on
@@ -127,7 +134,11 @@ def load_scales(theory_path, dataset_name):
         return np.atleast_1d(np.asarray(json.load(file)["scales"], dtype=float))
 
 
-def load_theory(theory_path, dataset_dict, keep=None):
+def load_theory(
+    theory_path: pathlib.Path,
+    dataset_dict: Mapping[str, Any],
+    keep: np.ndarray | None = None,
+) -> Theory:
     """Load theory predictions from given path, restricted to the points where
     the boolean mask ``keep`` is true, if given."""
     dataset_name = dataset_dict["name"]

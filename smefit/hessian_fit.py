@@ -10,17 +10,25 @@ the chi2 evaluated at the best-fit point.
 """
 
 import logging
+from collections.abc import Mapping
 
 import jax
 import jax.numpy as jnp
 
+from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup
 from smefit.fit_result import FitResult
 from smefit.utils import resolve_posterior
 
 log = logging.getLogger(__name__)
 
 
-def hessian_fit(coefficients, chi2, gd_best_fit, hessian_settings):
+def hessian_fit(
+    coefficients: CoefficientGroup,
+    chi2: Chi2,
+    gd_best_fit: jnp.ndarray,
+    hessian_settings: Mapping,
+) -> FitResult:
     """Approximate the posterior with a Gaussian around the chi2 minimum.
 
     This function is a reportengine provider node: its arguments are resolved

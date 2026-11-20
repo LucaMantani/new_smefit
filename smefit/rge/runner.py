@@ -232,7 +232,7 @@ class RGE:
             operators it feeds into to their coefficients. External couplings
             map to an empty dict.
         """
-        rge_matrix_dict = {}
+        rge_matrix_dict: dict[str, dict[str, float]] = {}
         with _wilson_params(self.yukawa, self.adm_QCD):
             for wc_name, wc_vals in self.RGEbasis.items():
                 # External couplings map to the null vector: evolving them is a no-op,
@@ -317,7 +317,7 @@ class RGE:
         # computes the translation from the smefit basis to the Warsaw basis
         # as expected by the Wilson package
         basis_map = warsaw_map(evolve_gs(self.init_scale))
-        wc_basis = {}
+        wc_basis: dict[str, dict[str, float]] = {}
         for wc_name in self.wc_names:
             if wc_name not in SMEFIT_TO_WARSAW:
                 _logger.warning(

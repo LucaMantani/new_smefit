@@ -67,3 +67,17 @@ markers = ["slow: marks tests that call real external samplers or RGE evolution"
 filterwarnings = [
     "ignore::DeprecationWarning:importlib",
 ]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["smefit"]
+exclude = ["^smefit/scripts/"]
+explicit_package_bases = true
+namespace_packages = true
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true

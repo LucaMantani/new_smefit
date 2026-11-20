@@ -155,37 +155,65 @@ Machinery, if you need to check behaviour: `explicit_node`/`ExplicitNode` in
 `reportengine/configparser.py`, consumed in `ResourceBuilder._process_requirement`
 → `_make_node((name, val.value))` → `_make_callspec`.
 
-## Type annotations are checked at runtime
+## Explicit type annotations and runtime checking
+
+Every function and method in library modules under `smefit/` (excluding
+`smefit/scripts/`) must have **explicit parameter and return type annotations**.
+This is enforced by `mypy` (`disallow_untyped_defs = true` and
+`disallow_incomplete_defs = true` in `pyproject.toml`), run via the `mypy` hook
+in `.pre-commit-config.yaml`.
 
 reportengine does not treat annotations as documentation. It runs
-`isinstance(value, annotation)` in two places:
+`isinstance(value, annotation)` in three places:
 
-- on the input of every `parse_*` (`_parse_func` in
-  `reportengine/configparser.py`);
+- on the input (first parameter after `self`) of every `parse_*` (`_parse_func`
+  in `reportengine/configparser.py`);
 - while building the graph, on every provider parameter whose value the config
   has **already produced** (`check_types` in `reportengine/resourcebuilder.py`).
   That means runcard keys and `parse_`/`produce_` results such as `prior`,
   `chi2`, `coefficients` and `blackjax_settings`, but not other providers'
-  outputs, which do not exist yet at that point.
+  outputs, which do not exist yet at that point;
+- on every `@explicit_node` / `ExplicitNode` worker function when it is bound
+  into the graph.
 
-Two rules follow:
+Four rules follow for those runtime-checked parameters:
 
-- **Plain classes only.** `isinstance` rejects parametrised generics, so
-  `Mapping[str, Any]`, `list[str]` or `Sequence[Mapping[str, Any]] | None` crash
-  the graph build with `TypeError: isinstance() argument 2 cannot be a
-  parameterized generic`. Write `Mapping`, `list`, `Sequence | None`, and put
-  the detail in the docstring.
-- **An `@explicit_node` resource is an `ExplicitNode` when it is checked.** The
+- **Plain runtime-checkable classes only.** `isinstance` rejects parametrised
+  generics (`Mapping[str, Any]`, `list[str]`, `Callable[[str], str]`) and
+  `typing.Any` with `TypeError`. Write plain classes (`Mapping`, `Sequence`,
+  `list`, `dict`, `Callable`, `str | Sequence | None`, `int | float | None`),
+  use `object` when any value is accepted, and put the element-type detail in
+  the docstring. Return annotations, non-provider helpers, dataclass fields,
+  and `produce_*` methods are not `isinstance`-checked and should use full
+  parametrised types.
+- **No `from __future__ import annotations` in `config.py` or provider
+  modules.** PEP 563 turns annotations into strings, which `isinstance` rejects.
+- **An `ExplicitNode` resource is an `ExplicitNode` when it is checked.** The
   config's value is the wrapper around the chosen worker; the real value exists
-  only after that node runs. Annotate such a parameter with a union that admits
-  `ExplicitNode`, as `smefit.whitening.WhitenTransformNode` (`WhitenTransform |
-  ExplicitNode | None`) does for `whitening_transformation`, or leave it
-  unannotated. `WhitenTransform | None` fails with `BadInputType`.
+  only after that node runs. Annotate such a parameter with a `TYPE_CHECKING`
+  alias that admits `ExplicitNode` at runtime while exposing the resolved type
+  to `mypy`:
 
-Unit tests that call a provider directly skip both checks, which is how
-`Mapping[str, Any]` on `blackjax_fit` broke every `run_blackjax_fit` (issue
-#138). `tests/test_app.py` scans every provider and `parse_` statically for
-both rules, and `test_blackjax_fit_graph_resolves` in
+  ```python
+  if TYPE_CHECKING:
+      FitNode: TypeAlias = Fit
+  else:
+      FitNode = Fit | ExplicitNode
+  ```
+
+  Use `smefit.whitening.WhitenTransformNode` for `whitening_transformation`,
+  `smefit.fit_result.FitNode` for `fit`, and
+  `smefit.fisher.AggregateFisherNode` for
+  `aggregate_fisher_information_matrices`. Annotating `fit: Fit` or
+  `whitening_transformation: WhitenTransform | None` fails with `BadInputType`.
+- **Duck-typing in `smefit.utils`.** Because `smefit/utils.py` cannot import
+  other `smefit` modules, annotate domain-shaped parameters there with
+  `@runtime_checkable` `Protocol` classes rather than adding imports.
+
+Unit tests that call a provider directly skip reportengine's checks, which is
+how `Mapping[str, Any]` on `blackjax_fit` broke every `run_blackjax_fit` (issue
+#138). `tests/test_app.py` scans every provider, `parse_`, and `ExplicitNode`
+worker statically for these rules, and `test_blackjax_fit_graph_resolves` in
 `tests/test_blackjax_fit.py` shows how to resolve a target's graph on
 `tests/fixtures/` without executing it. Add the same kind of test for a new
 action.
@@ -496,13 +524,14 @@ this kind:
   result would overwrite the coefficient-basis matrices there. Pin with
   `unrotated_fit`, not the rotated `fit`: that would make the Fisher depend on
   the posterior samples, and fail for a fit stored without them.
-- **The worker is a private, unannotated module-level function** next to the
-  feature (`_fit_in_pca_basis`, `smefit/fit_result.py`;
-  `_fisher_in_pca_basis`, `smefit/fisher.py`), as for any `@explicit_node`
-  worker.
+- **The worker is a private module-level function** next to the feature
+  (`_fit_in_pca_basis`, `smefit/fit_result.py`; `_fisher_in_pca_basis`,
+  `smefit/fisher.py`), annotated with plain runtime-checkable classes, as for
+  any `@explicit_node` worker.
 - **A consumer annotating `fit: Fit` would fail under it**: the value is an
-  `ExplicitNode` when reportengine type-checks (see "Type annotations are
-  checked at runtime"). Report routines take `fit` unannotated.
+  `ExplicitNode` when reportengine type-checks (see "Explicit type annotations
+  and runtime checking"). Report routines annotate `fit: FitNode` and
+  `aggregate_fisher_information_matrices: AggregateFisherNode`.
 - **Refuse the namespaces it cannot work in, in the `produce_`.** It takes
   `coefficients=None` only to raise a `ConfigError` when there is no likelihood
   to take the PCA of; left to the graph, that failure is unreadable.
@@ -614,7 +643,7 @@ enforces it.
   a `Fit`, a `Prior`, a `CoefficientGroup` used for more than a type hint. The
   Bayesian-update prior builder needs `Fit` and the prior classes, so it lives
   in `smefit/bayesian_update.py`, not `utils.py`. If the only smefit import
-  would be for an annotation, drop the annotation (or duck-type it) rather than
+  would be for an annotation, use a `@runtime_checkable` `Protocol` rather than
   add the import.
 - Do not reach for a function-local import to sneak a smefit module into
   `utils.py`: it hides the cycle instead of removing it, and the test above
@@ -648,7 +677,8 @@ added there too: an action that needs domain imports goes in
    Hand-written skill files it cannot generate — `coefficients.md`,
    `recipes.md`, `troubleshooting.md`, `output-layout.md` — are yours to update
    in the same commit.
-3. **Formatting**: `pre-commit run --all-files`.
+3. **Formatting and type checking**: `pre-commit run --all-files` (includes
+   `mypy` over library modules under `smefit/`).
 
 ## When reportengine will not resolve something
 

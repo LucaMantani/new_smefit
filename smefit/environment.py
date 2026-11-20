@@ -5,6 +5,7 @@ Environment module of smefit
 """
 
 import logging
+from typing import Any
 
 import jax
 from jax.extend import backend as jbackend
@@ -13,7 +14,7 @@ from reportengine.environment import Environment
 log = logging.getLogger(__name__)
 
 # The precision chosen explicitly by an environment in this process, if any.
-_chosen_float32 = None
+_chosen_float32: bool | None = None
 
 
 class smefitEnvironment(Environment):
@@ -26,7 +27,7 @@ class smefitEnvironment(Environment):
     must not switch the run to float64.
     """
 
-    def __init__(self, float32=None, *args, **kwargs):
+    def __init__(self, float32: bool | None = None, *args: Any, **kwargs: Any) -> None:
         global _chosen_float32
         super().__init__(*args, **kwargs)
 

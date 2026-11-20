@@ -71,7 +71,7 @@ class Dataset:
         """Systematic uncertainties as percentage of central values."""
         return self.syst_err / self.central_values[None, :]
 
-    def select(self, keep) -> "Dataset":
+    def select(self, keep: np.ndarray | jnp.ndarray | list[bool]) -> "Dataset":
         """The dataset restricted to the points where ``keep`` is true.
 
         ``keep`` is a boolean mask over the data points. Every systematic is
@@ -116,12 +116,12 @@ class Theory:
     name: str
     order: str
     sm_pred: jnp.ndarray
-    eft_pred: jnp.ndarray
+    eft_pred: Mapping[str, Any]
     sm_covmat: jnp.ndarray
     scales: jnp.ndarray
     operators: List[str]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # ensure operators are sorted
         self.operators.sort()
         # build linear eft prediction matrix of shape (ndata, n_ops),
@@ -163,7 +163,7 @@ class Theory:
         # Define operator index mapping
         self.op_index = {op: i for i, op in enumerate(self.operators)}
 
-    def select(self, keep) -> "Theory":
+    def select(self, keep: np.ndarray | jnp.ndarray | list[bool]) -> "Theory":
         """The predictions restricted to the points where ``keep`` is true.
 
         ``keep`` is a boolean mask over the data points; it cuts the SM and EFT
@@ -258,6 +258,7 @@ class Coefficient:
             return self.value
 
         fn = self._expr_fn
+        assert fn is not None
 
         return fn(*args)
 
@@ -302,7 +303,7 @@ class DataGroup:
         ]
         return jnp.array(covmat_from_systematics(stat_errors, sys_errors))
 
-    def t0_covmat(self, theory_predictions) -> jnp.ndarray:
+    def t0_covmat(self, theory_predictions: jnp.ndarray) -> jnp.ndarray:
         """Build t0 covariance matrix using theory predictions.
         This method constructs the t0 covariance matrix by replacing multiplicative
         systematic uncertainties with values derived from the provided theory predictions.
@@ -366,13 +367,13 @@ class TheoryGroup:
         self.eft_quad_pred = self._build_eft_quad_pred()
         self.scales = jnp.concatenate([th.scales for th in self.theories], axis=0)
 
-    def _operator_mapping(self, th):
+    def _operator_mapping(self, th: Theory) -> tuple[list[int], list[int]]:
         """Return (global_indices, local_indices) mapping theory operators to group operators."""
         global_idx = [g for g, op in enumerate(self.operators) if op in th.op_index]
         local_idx = [th.op_index[op] for op in self.operators if op in th.op_index]
         return global_idx, local_idx
 
-    def _build_eft_lin_pred(self):
+    def _build_eft_lin_pred(self) -> jnp.ndarray:
         # build concatenated linear eft prediction matrix of shape (ndata, n_ops)
         # if an operator is not present in a theory, its contribution is zero
         eft_lin_pred = np.zeros((self.n_data, self.n_ops))
@@ -386,7 +387,7 @@ class TheoryGroup:
             offset += n
         return jnp.asarray(eft_lin_pred)
 
-    def _build_eft_quad_pred(self):
+    def _build_eft_quad_pred(self) -> jnp.ndarray:
         # build concatenated quadratic eft prediction tensor of shape (ndata, n_ops, n_ops)
         # if an operator is not present in a theory, its contribution is zero
         # upper-triangular convention is preserved because both global and local
@@ -423,7 +424,7 @@ class CoefficientGroup:
         self.baseline_free = jnp.array([c.baseline_value for c in self.free_coeffs])
 
         # Whitening transform (set via whitened())
-        self._transform = None
+        self._transform: WhitenTransform | None = None
 
         # Precompute resolution mapping
         self._free_indices = [i for i, c in enumerate(self.coefficients) if c.free]
@@ -457,7 +458,7 @@ class CoefficientGroup:
                     dep_indices.append(self.coeff_index[v])
                 self._expr_specs.append((i, c.constrain, dep_indices))
 
-    def prior_specs(self) -> Dict[str, object]:
+    def prior_specs(self) -> Dict[str, Optional[Mapping[str, Any]]]:
         return {c.name: c.prior for c in self.free_coeffs}
 
     def whitened(self, transform: WhitenTransform) -> "CoefficientGroup":
@@ -533,7 +534,7 @@ class CoefficientGroup:
         needed_zero_vars = {
             var
             for c in self.coefficients
-            if c.name in kept_expr_names
+            if c.name in kept_expr_names and c.vars is not None
             for var in c.vars
             if var in free_set and var != target_name
         }

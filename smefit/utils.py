@@ -11,7 +11,10 @@ a prior, ...) belongs next to that object instead.
 
 import csv
 import logging
+import pathlib
 import time
+from collections.abc import Sequence
+from typing import Any, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
@@ -19,7 +22,26 @@ import jax.numpy as jnp
 log = logging.getLogger(__name__)
 
 
-def resolve_posterior(resolve_coeffs, posterior_free, best_free):
+@runtime_checkable
+class _ResolvableCoefficients(Protocol):
+    @property
+    def names(self) -> Sequence[str]: ...
+
+    def resolve(self, free_coeffs: jnp.ndarray) -> jnp.ndarray: ...
+
+
+@runtime_checkable
+class _Chi2Callable(Protocol):
+    nparam: int
+
+    def __call__(self, coeffs: jnp.ndarray) -> jnp.ndarray: ...
+
+
+def resolve_posterior(
+    resolve_coeffs: _ResolvableCoefficients,
+    posterior_free: jnp.ndarray,
+    best_free: jnp.ndarray,
+) -> tuple[dict[str, jnp.ndarray], dict[str, float]]:
     """Resolve posterior samples and best-fit point from free to full coefficient space.
 
     Returns (samples_dict, best_fit_dict).
@@ -34,7 +56,7 @@ def resolve_posterior(resolve_coeffs, posterior_free, best_free):
     return samples, best_fit_point
 
 
-def ensure_list(x):
+def ensure_list(x: object) -> list[Any]:
     """Ensure the input is a list.
     If the input is not a list, wrap it in a list.
     """
@@ -43,7 +65,7 @@ def ensure_list(x):
     return [x]
 
 
-def chi2_timing(chi2, n_eval=1000):
+def chi2_timing(chi2: _Chi2Callable, n_eval: int = 1000) -> None:
     """Time the evaluation of the chi2 function."""
     coeffs = jnp.zeros(chi2.nparam)
     # Trigger JIT compilation before timing
@@ -58,10 +80,10 @@ def chi2_timing(chi2, n_eval=1000):
 
 
 def time_chi2_vec(
-    chi2,
-    output_path,
-    batch_sample_sizes=None,
-):
+    chi2: _Chi2Callable,
+    output_path: pathlib.Path,
+    batch_sample_sizes: Sequence | None = None,
+) -> tuple[list[int], list[float]]:
     """
     Time the vectorized chi2 across different batch sizes.
 
@@ -83,7 +105,7 @@ def time_chi2_vec(
         sizes = [1, 10, 100, 1000, 5000, 10000, 20000, 50000, 100000]
         log.info("Using default batch sample sizes")
     else:
-        sizes = batch_sample_sizes
+        sizes = list(batch_sample_sizes)
         log.info(f"Using custom batch sample sizes: {sizes}")
 
     # Set up CSV file path

@@ -18,8 +18,9 @@ import pathlib
 import re
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import yaml
 
@@ -123,7 +124,7 @@ class Bibliography:
     texkeys: dict = field(default_factory=dict)
     bibtex: str = ""
 
-    def cite(self, references) -> str:
+    def cite(self, references: Sequence[str]) -> str:
         """The LaTeX that cites *references*: one ``\\cite`` for those with a
         key, then a link to each of the others.
 
@@ -180,7 +181,7 @@ def _parse_references(raw: Optional[str], dataset: str) -> Tuple[str, ...]:
     link. Anything else is left out with a warning, and so is an arXiv
     number that has lost its last digit.
     """
-    if _is_blank(raw):
+    if raw is None or _is_blank(raw):
         return ()
     references = []
     for token in re.split(r"[,;\s]+", raw.strip()):
@@ -218,7 +219,7 @@ def _parse_references(raw: Optional[str], dataset: str) -> Tuple[str, ...]:
     return tuple(dict.fromkeys(references))
 
 
-def _parse_luminosity(raw, dataset: str) -> Tuple[float, ...]:
+def _parse_luminosity(raw: Any, dataset: str) -> Tuple[float, ...]:
     """The distinct luminosities of a commondata ``luminosity`` field."""
     if not isinstance(raw, list) and _is_blank(raw):
         return ()
@@ -230,7 +231,9 @@ def _parse_luminosity(raw, dataset: str) -> Tuple[float, ...]:
         return ()
 
 
-def _load_dataset_info(data_path, dataset_entry) -> DatasetInfo:
+def _load_dataset_info(
+    data_path: str | pathlib.Path, dataset_entry: Mapping[str, Any]
+) -> DatasetInfo:
     """Read the provenance of one runcard ``datasets`` entry."""
     name = dataset_entry["name"]
     path = pathlib.Path(data_path) / f"{name}.yaml"
@@ -273,7 +276,7 @@ def _references_in_description(description: str, dataset: str) -> Tuple[str, ...
     return references
 
 
-def _inspire_query(terms, **params) -> bytes:
+def _inspire_query(terms: Sequence[str], **params: Any) -> bytes:
     """One INSPIRE literature search for any of *terms*."""
     query = urllib.parse.urlencode(
         {"q": " or ".join(terms), "size": len(terms), **params}
@@ -282,10 +285,10 @@ def _inspire_query(terms, **params) -> bytes:
         return response.read()
 
 
-def _with_urls(bibtex: str, urls) -> str:
+def _with_urls(bibtex: str, urls: Mapping[str, str]) -> str:
     """*bibtex* with a ``url`` field added to the entries keyed in *urls*."""
 
-    def add(match):
+    def add(match: re.Match[str]) -> str:
         url = urls.get(match.group(2))
         return f'{match.group(0)}\n    url = "{url}",' if url else match.group(0)
 
@@ -302,7 +305,7 @@ def _bibtex_entries(bibtex: str) -> List[Tuple[str, str]]:
     ]
 
 
-def _fetch_inspire_bibliography(references) -> Bibliography:
+def _fetch_inspire_bibliography(references: Sequence[str]) -> Bibliography:
     """Look *references* up on INSPIRE, in batches of ``_INSPIRE_BATCH``.
 
     Every entry links to the paper: through its ``doi`` to the journal, or,
@@ -315,9 +318,9 @@ def _fetch_inspire_bibliography(references) -> Bibliography:
     warns about a repeated entry.
     """
     references = list(dict.fromkeys(references))
-    found = {}
-    urls = {}
-    entries = {}
+    found: dict[str, str] = {}
+    urls: dict[str, str] = {}
+    entries: dict[str, str] = {}
     for start in range(0, len(references), _INSPIRE_BATCH):
         batch = references[start : start + _INSPIRE_BATCH]
         hits = json.loads(
@@ -413,7 +416,9 @@ def _latex_text(text: str) -> str:
     )
 
 
-def _by_group(infos) -> List[Tuple[Optional[str], List[DatasetInfo]]]:
+def _by_group(
+    infos: Sequence[DatasetInfo],
+) -> List[Tuple[Optional[str], List[DatasetInfo]]]:
     """*infos* split by group, groups in order of first appearance."""
     groups: dict = {}
     for info in infos:
@@ -421,7 +426,9 @@ def _by_group(infos) -> List[Tuple[Optional[str], List[DatasetInfo]]]:
     return list(groups.items())
 
 
-def dataset_info(datasets, data_path) -> List[DatasetInfo]:
+def dataset_info(
+    datasets: Sequence, data_path: str | pathlib.Path
+) -> List[DatasetInfo]:
     """The provenance of each dataset of the runcard, a group's datasets
     together: groups in order of first appearance, runcard order within one.
     Reads only the commondata files, a runcard with ``datasets`` and
@@ -445,7 +452,9 @@ def dataset_info(datasets, data_path) -> List[DatasetInfo]:
     return [info for _, members in _by_group(infos) for info in members]
 
 
-def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
+def dataset_bibliography(
+    dataset_info: Sequence, fetch_bibtex: bool = False
+) -> Bibliography:
     """Resolve the references of the datasets on INSPIRE, when asked to.
 
     Parameters
@@ -478,10 +487,10 @@ def dataset_bibliography(dataset_info, fetch_bibtex=False) -> Bibliography:
 
 
 def dataset_table_tex(
-    dataset_info,
-    dataset_bibliography,
-    dataset_table_caption="Datasets included in the fit.",
-    dataset_table_label="tab:datasets",
+    dataset_info: Sequence,
+    dataset_bibliography: Bibliography,
+    dataset_table_caption: str = "Datasets included in the fit.",
+    dataset_table_label: str = "tab:datasets",
 ) -> str:
     """The datasets as a LaTeX ``xltabular``, one section per ``group``.
 

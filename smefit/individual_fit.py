@@ -12,13 +12,21 @@ EFT model, chi2, and prior per namespace — the existing ``analytic_fit`` and
 import copy
 import logging
 import pathlib
+from collections.abc import Mapping
 
+import jax.numpy as jnp
+import optax
 from reportengine import collect
 
 from smefit.analytic_fit import analytic_fit
 from smefit.blackjax_fit import blackjax_fit
+from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup, DataGroup
+from smefit.fit_result import FitResult
 from smefit.gradient_descent import gd_best_fit
 from smefit.hessian_fit import hessian_fit
+from smefit.model import EFTModel
+from smefit.priors import JointPrior
 from smefit.ultranest_fit import ultranest_fit
 
 log = logging.getLogger(__name__)
@@ -30,8 +38,13 @@ log = logging.getLogger(__name__)
 
 
 def individual_analytic_fit(
-    individual_eft_model, data, fit_covmat, individual_chi2, n_samples=10000, seed=42
-):
+    individual_eft_model: EFTModel,
+    data: DataGroup,
+    fit_covmat: jnp.ndarray,
+    individual_chi2: Chi2,
+    n_samples: int = 10000,
+    seed: int = 42,
+) -> FitResult:
     """Analytic fit for a single free coefficient.
 
     Pure pass-through to ``analytic_fit`` — the DAG has already built an
@@ -43,18 +56,18 @@ def individual_analytic_fit(
 
 
 def individual_ultranest_fit(
-    individual_prior,
-    individual_chi2,
-    individual_coefficients,
-    ultranest_settings,
-    individual_fit_coefficient,
-):
+    individual_prior: JointPrior,
+    individual_chi2: Chi2,
+    individual_coefficients: CoefficientGroup,
+    ultranest_settings: Mapping,
+    individual_fit_coefficient: str,
+) -> FitResult:
     """UltraNest fit for a single free coefficient.
 
     Customises the log directory to a per-coefficient subdirectory, then
     delegates to ``ultranest_fit``.
     """
-    settings = copy.deepcopy(ultranest_settings)
+    settings = copy.deepcopy(dict(ultranest_settings))
     settings["ReactiveNS_settings"]["log_dir"] = str(
         pathlib.Path(settings["ReactiveNS_settings"]["log_dir"])
         / individual_fit_coefficient
@@ -67,18 +80,18 @@ def individual_ultranest_fit(
 
 
 def individual_blackjax_fit(
-    individual_prior,
-    individual_chi2,
-    individual_coefficients,
-    blackjax_settings,
-    individual_fit_coefficient,
-):
+    individual_prior: JointPrior,
+    individual_chi2: Chi2,
+    individual_coefficients: CoefficientGroup,
+    blackjax_settings: Mapping,
+    individual_fit_coefficient: str,
+) -> FitResult:
     """BlackJAX fit for a single free coefficient.
 
     Redirects log_dir to a per-coefficient subdirectory, then delegates
     to ``blackjax_fit``.
     """
-    settings = copy.deepcopy(blackjax_settings)
+    settings = copy.deepcopy(dict(blackjax_settings))
     settings["log_dir"] = str(
         pathlib.Path(settings["log_dir"]) / individual_fit_coefficient
     )
@@ -90,7 +103,11 @@ def individual_blackjax_fit(
     )
 
 
-def individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings):
+def individual_gd_best_fit(
+    individual_chi2: Chi2,
+    optimizer: optax.GradientTransformation,
+    gradient_descent_settings: Mapping,
+) -> jnp.ndarray:
     """Best-fit point for a single free coefficient.
 
     Pure pass-through to ``gd_best_fit`` — the DAG has already built an
@@ -100,8 +117,11 @@ def individual_gd_best_fit(individual_chi2, optimizer, gradient_descent_settings
 
 
 def individual_hessian_fit(
-    individual_coefficients, individual_chi2, individual_gd_best_fit, hessian_settings
-):
+    individual_coefficients: CoefficientGroup,
+    individual_chi2: Chi2,
+    individual_gd_best_fit: jnp.ndarray,
+    hessian_settings: Mapping,
+) -> FitResult:
     """Hessian fit for a single free coefficient.
 
     Pure pass-through to ``hessian_fit`` — the DAG has already built an

@@ -4,10 +4,13 @@ import inspect
 import logging
 import pathlib
 import sys
+from collections.abc import Mapping
+from typing import Any
 
 from reportengine.configparser import ConfigError
 
 from smefit.chi2 import Chi2
+from smefit.core import CoefficientGroup
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +20,7 @@ log = logging.getLogger(__name__)
 _EXT_CHI2_RESERVED_KEYS = frozenset({"path", "group"})
 
 
-def _accepts_max_scale(chi2_class):
+def _accepts_max_scale(chi2_class: Any) -> bool:
     """Whether the constructor of ``chi2_class`` takes a ``max_scale`` argument."""
     params = inspect.signature(chi2_class).parameters.values()
     return any(
@@ -25,7 +28,12 @@ def _accepts_max_scale(chi2_class):
     )
 
 
-def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
+def load_external_chi2(
+    external_chi2: Mapping[str, Mapping[str, Any]],
+    coefficients: CoefficientGroup,
+    rge_dict: Mapping[str, Any] | None,
+    max_scale: float | None = None,
+) -> list[Chi2]:
     """
     Loads the external chi2 modules.
     We assume that the external chi2 only need to know which coefficients we want to

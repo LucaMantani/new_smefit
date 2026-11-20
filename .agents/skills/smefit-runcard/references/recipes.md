@@ -196,7 +196,25 @@ auto-downloaded from the server when missing.
 
 Contract for the class: constructor accepts `coefficients=`, `rge_dict=`, plus
 the extra keys verbatim; instance exposes `compute_chi2(coeffs)`, `num_data`,
-and `param_names`. A runcard may have `external_chi2` with no `datasets:` at
+and `param_names`. To support an energy-scale cut, the constructor also takes
+`max_scale=None` and applies it to its data. If the module's data is in
+commondata/theory files, load it through the API as a one-dataset runcard, and
+the cut is the one `datasets` get (see "Cutting data points above an energy
+scale"):
+
+```python
+from smefit.api import smefitAPI
+
+spec = dict(
+    data_path=...,
+    theory_path=...,
+    datasets=[{"name": NAME, "order": order, "max_scale": max_scale}],
+)
+data = smefitAPI.data(**spec)  # DataGroup, already cut
+theory = smefitAPI.theory(**spec)  # TheoryGroup, cut the same way
+```
+
+The shipped Drell-Yan modules do exactly this. A runcard may have `external_chi2` with no `datasets:` at
 all — then the fit runs on external likelihoods alone.
 
 ## chi2 scans
@@ -266,6 +284,60 @@ coefficient (the mass), with every Wilson coefficient tied to it through an
   (`gev_per_tev` in `produce_individual_mass_rge_matrix` /
   `produce_individual_mass_ext_chi2_func`), so `rge.init_scale` in the runcard
   stays in GeV like everywhere else.
+
+## Cutting data points above an energy scale
+
+`max_scale` (GeV) drops every data point whose scale — the `scales` entry of its
+theory file, the scale `rge.obs_scale: dynamic` runs to — is above the cut, from
+the commondata and the theory alike (central values, errors, systematics,
+predictions, theory covmat). A point exactly at the cut is kept.
+
+```yaml
+max_scale: 3000.0            # global cut, all datasets
+datasets:
+  - {name: ATLAS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD, max_scale: 1500}  # own cut
+  - {name: FCCee_240_H_HADR, order: LO, max_scale: null}                     # exempt
+  - {name: CMS_tt_13TeV_ljets_2016_Mtt, order: NLO_QCD}                     # global cut
+```
+
+- The entry's `max_scale` overrides the global one; `null` on an entry exempts
+  that dataset. Either form alone is fine.
+- A cut that removes every point of a dataset is an error, not a silent drop:
+  remove the dataset or exempt it. `validate_runcard.py` catches this up front.
+- A cut needs `theory_path`, as the scales live in the theory files.
+- Pseudodata is generated uncut: `write_pseudodata` refuses a runcard with a
+  cut. Generate on every point and apply `max_scale` in the fits that use it.
+- `max_scale` is a fit setup key, so it is recorded with the fit and
+  `fits::fitcontext` rebuilds the cut likelihood.
+- The scale is whatever the theory file records per point; check it is the
+  variable you mean to cut on (for a binned distribution, which point of the bin
+  it stands for).
+
+External likelihoods take the cut the same way: an `external_chi2` entry's own
+`max_scale` overrides the global one, and `null` exempts it.
+
+```yaml
+max_scale: 1000.0
+external_chi2:
+  CMS_DYMee_13TeV:
+    path: new_smefit/external_chi2/drell_yan/CMS_DYMee_13TeV.py
+    order: NLO_QCD
+    max_scale: 2000.0          # own cut; omit it for the global one
+  FCCee_OO:
+    path: ...
+    max_scale: null            # exempt: the module takes no cut
+```
+
+- smefit works out the entry's cut and passes it to the module's constructor
+  as `max_scale=`, only when there is one. The module cuts its own data, so the
+  cut does whatever the module says it does: the shipped Drell-Yan modules drop
+  the bins above it, like `datasets`.
+- A cut that reaches a module whose constructor takes no `max_scale` is an
+  error, never left uncut: exempt the entry with `max_scale: null`. Only the
+  Drell-Yan modules take one at the moment, so a global cut together with any
+  other external chi2 needs that `null`. `validate_runcard.py` catches this up
+  front.
+- See `templates/ultranest_fit_with_scale_cut.yaml`.
 
 ## Pseudodata / projections
 
@@ -415,6 +487,42 @@ actions_:
   annotated with its value, so there is no separate table. It rejects a fit run
   with `run_individual_*_fits`: its coefficients were never sampled together.
 
+### Marginal posterior histograms
+
+`plot_posterior_histograms` draws the marginal posterior of every free and
+`expr`-constrained coefficient of one fit (fixed ones are left out), one panel
+each, so it goes inside `{@with fits@}`. `plot_posterior_histograms_comparison`
+overlays **every fit under `fits:`** in its own colour — one figure for the
+whole list, so it is called plainly. One runcard can do both.
+Template: `posterior_histograms.yaml`.
+
+```yaml
+fits:
+  - {name: analytical_fit, path: '.', label: '$\mathrm{Analytic}$'}
+  - {name: ultranest_fit, path: '.', label: '$\mathrm{UltraNest}$'}
+template_text: |
+  {@plot_posterior_histograms_comparison@}
+  {@with fits@}
+  ## {@fit@}
+  {@plot_posterior_histograms@}
+  {@endwith@}
+actions_:
+  - report(main=True)
+```
+
+- `n_bins` (default 30) bins per fit; `n_cols` (default 4) panels per row;
+  `params_to_plot` picks and orders the panels — in the comparison, on the
+  union of the fits' coefficients.
+- In the comparison each fit is binned over its own range, so a narrow
+  posterior beside a wide one keeps all its bins. `shared_bins: true` gives
+  every fit on a panel the same bins instead, so the bars line up. The
+  single-fit plot does not take it.
+- Histograms are normalised, so fits with different numbers of samples
+  compare directly. The legend names each fit by its `label`.
+- A coefficient one fit did not sample just has no histogram from it. Fits run
+  with `run_individual_*_fits` are accepted by both: the marginals are what
+  each sampled.
+
 ### Any action on a finished fit: `fitcontext`
 
 `fitcontext` puts a fit's own setup in scope, so an action that builds a
@@ -473,9 +581,10 @@ actions_:
 `pcabasis`, nested under `fitcontext`, rotates the fit's posterior into the
 principal components of its own Fisher matrix. The actions inside it are the
 ordinary ones — `plot_coefficient_bounds`, `coefficient_bounds_table`,
+`plot_posterior_histograms`, `plot_posterior_contours`,
 `plot_posterior_correlations`, `fisher_diagonals_normalised`,
-`plot_fisher_diagonals_heatmap` — now with one row per component. Template:
-`pca_posterior.yaml`.
+`plot_fisher_diagonals_heatmap` — now with one row (or panel) per component.
+Template: `pca_posterior.yaml`.
 
 ```yaml
 fits:
@@ -488,6 +597,7 @@ template_text: |
   {@with pcabasis@}
   {@plot_coefficient_bounds@}
   {@coefficient_bounds_table@}
+  {@plot_posterior_histograms@}
   {@plot_posterior_correlations@}
   {@fisher_diagonals_normalised@}
   {@plot_fisher_diagonals_heatmap@}
@@ -693,7 +803,7 @@ params_to_plot: [OtG, OtW, OpQM, OpQ3]
 
 It is the mechanism above, but the one key meant to be shared: sharing keeps a
 report's figures and tables talking about the same operators in the same order.
-Taken today by `plot_posterior_correlations`, `fisher_diagonals_normalised`,
+Taken today by `plot_posterior_correlations`, `plot_posterior_histograms(_comparison)`, `fisher_diagonals_normalised`,
 `global_information_table` and `coefficient_bounds_table` — so the Fisher and
 GIM tables' CSVs and the heatmaps drawn from them are restricted together, and a bounds table lists the same operators as
 the correlation heatmap beside it. An action argument still overrides it for one figure.

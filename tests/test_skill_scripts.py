@@ -442,6 +442,100 @@ def test_unknown_theory_cov_is_rejected(tmp_path):
     assert "theory_cov 'aggressive' not in theory file" in out
 
 
+def test_max_scale_is_a_known_key_in_both_forms(tmp_path):
+    """The global key and the dataset-entry key, with the fixture's points
+    (all at 100 GeV) kept by the cut."""
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": 200}],
+    )
+    assert code == 0, out
+    assert "OK (0 warning(s))" in out
+
+
+def test_max_scale_removing_every_point_is_rejected(tmp_path):
+    code, out = validate(tmp_path, max_scale=50.0)
+    assert code == 1, out
+    assert "removes every data point" in out
+
+
+def test_null_max_scale_exempts_a_dataset(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=50.0,
+        datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": None}],
+    )
+    assert code == 0, out
+
+
+def test_non_positive_max_scale_is_rejected(tmp_path):
+    code, out = validate(
+        tmp_path, datasets=[{"name": "TESTDATA", "order": "NLO", "max_scale": -1}]
+    )
+    assert code == 1, out
+    assert "positive number" in out
+
+
+def test_max_scale_with_write_pseudodata_is_rejected(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        pseudodata_settings={},
+        actions_=["write_pseudodata"],
+    )
+    assert code == 1, out
+    assert "generates the pseudodata uncut" in out
+
+
+def _external_module(tmp_path, takes_max_scale):
+    module = tmp_path / "ext.py"
+    extra = ", max_scale=None" if takes_max_scale else ""
+    module.write_text(
+        f"class Ext:\n    def __init__(self, coefficients, rge_dict{extra}):\n"
+        "        self.num_data = 1\n"
+    )
+    return str(module)
+
+
+def test_max_scale_on_an_external_chi2_taking_it_is_valid(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        external_chi2={"Ext": {"path": _external_module(tmp_path, True)}},
+    )
+    assert code == 0, out
+
+
+def test_max_scale_on_an_external_chi2_not_taking_it_is_rejected(tmp_path):
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        external_chi2={"Ext": {"path": _external_module(tmp_path, False)}},
+    )
+    assert code == 1, out
+    assert "takes no max_scale argument" in out
+
+
+def test_null_max_scale_exempts_an_external_chi2(tmp_path):
+    path = _external_module(tmp_path, False)
+    code, out = validate(
+        tmp_path,
+        max_scale=500.0,
+        external_chi2={"Ext": {"path": path, "max_scale": None}},
+    )
+    assert code == 0, out
+
+
+def test_non_positive_external_max_scale_is_rejected(tmp_path):
+    path = _external_module(tmp_path, True)
+    code, out = validate(
+        tmp_path, external_chi2={"Ext": {"path": path, "max_scale": 0}}
+    )
+    assert code == 1, out
+    assert "positive number" in out
+
+
 def test_runcard_without_any_data_is_rejected(tmp_path):
     code, out = validate(tmp_path, datasets=None, data_path=None, theory_path=None)
     assert code == 1, out

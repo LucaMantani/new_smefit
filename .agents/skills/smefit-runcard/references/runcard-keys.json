@@ -15,7 +15,10 @@
     "name",
     "order",
     "theory_cov",
-    "group"
+    "stat_unc",
+    "syst_unc",
+    "group",
+    "max_scale"
   ],
   "derived_keys": [
     "chi2",
@@ -44,6 +47,7 @@
     "prior",
     "pseudodata",
     "rge_matrix",
+    "scale_masks",
     "theory",
     "whitening_transformation"
   ],
@@ -57,6 +61,8 @@
     "plot_posterior_contours",
     "plot_posterior_contours_comparison",
     "plot_posterior_correlations",
+    "plot_posterior_histograms",
+    "plot_posterior_histograms_comparison",
     "report"
   ],
   "path_prefixes": [
@@ -90,6 +96,8 @@
     "fetch_bibtex",
     "hatch",
     "lin_thr",
+    "n_bins",
+    "n_cols",
     "n_eval",
     "n_samples",
     "n_steps",
@@ -97,6 +105,7 @@
     "rescale_bounds",
     "round_val",
     "seed",
+    "shared_bins",
     "show_baseline_chi2",
     "tol",
     "value_fmt",
@@ -111,6 +120,7 @@
         "data",
         "data_groups",
         "prior",
+        "scale_masks",
         "theory"
       ]
     },
@@ -252,6 +262,10 @@
       "defaults": {},
       "known_keys": null
     },
+    "max_scale": {
+      "defaults": {},
+      "known_keys": null
+    },
     "optimizer_settings": {
       "defaults": {},
       "known_keys": [
@@ -362,7 +376,10 @@
     "interval_types",
     "latex_labels",
     "lin_thr",
+    "max_scale",
     "meta",
+    "n_bins",
+    "n_cols",
     "n_eval",
     "n_samples",
     "n_steps",
@@ -374,6 +391,7 @@
     "rge",
     "round_val",
     "seed",
+    "shared_bins",
     "show_baseline_chi2",
     "template_text",
     "theory_path",

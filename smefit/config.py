@@ -35,7 +35,7 @@ from smefit.external_chi2 import load_external_chi2
 from smefit.fisher import _fisher_in_pca_basis
 from smefit.fit_result import CONTOUR_STYLES, Fit, _fit_in_pca_basis
 from smefit.latex_labels import make_latex_label
-from smefit.loader import load_dataset, load_theory
+from smefit.loader import load_dataset, load_scales, load_theory
 from smefit.model import EFTModel
 from smefit.paths import resolve_fit_dir, resolve_path
 from smefit.priors import JointPrior, Prior
@@ -60,6 +60,7 @@ _FIT_SETUP_KEYS = (
     "data_path",
     "theory_path",
     "datasets",
+    "max_scale",
     "coefficients",
     "external_chi2",
     "rge",
@@ -124,12 +125,83 @@ class smefitConfig(Config):
             cache[full_key] = (build(), tuple(by_identity))
         return cache[full_key][0]
 
-    def produce_data(self, datasets, data_path):
-        """Produce data group object."""
+    def parse_max_scale(self, max_scale: int | float | None):
+        """The cut (GeV) on the scale of the data points; see
+        :meth:`produce_scale_masks`.
+
+        Also parses the key on a ``datasets`` entry, where ``null`` exempts the
+        dataset: reportengine resolves every key of an entry against the config.
+        """
+        if max_scale is not None and max_scale <= 0:
+            raise ConfigError(f"max_scale must be positive, got {max_scale!r}.")
+        return max_scale
+
+    def produce_scale_masks(self, datasets, theory_path=None, max_scale=None):
+        """Per dataset under a cut, the mask of the points whose theory-file
+        ``scales`` entry is at or below it.
+
+        A dataset's cut is its entry's ``max_scale`` if present (``null``: no
+        cut), else the global one. Uncut datasets are left out, so with no cut
+        no theory file is read and ``theory_path`` may be absent. ``data`` and
+        ``theory`` both take it, so the two lose the same points. A cut emptying
+        a dataset raises rather than drop it.
+        """
+        cuts = {}
+        for ds in datasets:
+            cut = ds["max_scale"] if "max_scale" in ds else max_scale
+            if cut is not None:
+                cuts[ds["name"]] = cut
+        if cuts and theory_path is None:
+            raise ConfigError(
+                "max_scale cuts on the scales of the theory files, so it "
+                "requires theory_path."
+            )
+        # cached even when empty: data and theory are cached on its identity
+        return self._cached(
+            "scale_masks",
+            (str(theory_path), tuple(sorted(cuts.items()))),
+            lambda: self._build_scale_masks(theory_path, cuts),
+        )
+
+    @staticmethod
+    def _build_scale_masks(theory_path, cuts):
+        """The worker of :meth:`produce_scale_masks`."""
+        masks = {}
+        emptied = []
+        for name, cut in cuts.items():
+            scales = load_scales(theory_path, name)
+            keep = scales <= cut
+            if not keep.any():
+                emptied.append(f"{name} (scales {scales.min():g}-{scales.max():g})")
+            log.info(
+                "max_scale %g GeV keeps %d of %d points of %s.",
+                cut,
+                keep.sum(),
+                keep.size,
+                name,
+            )
+            masks[name] = keep
+        if emptied:
+            raise ConfigError(
+                "max_scale removes every data point of: "
+                + ", ".join(emptied)
+                + ". Drop these datasets from the runcard, or exempt them "
+                "with max_scale: null on their entry."
+            )
+        return masks
+
+    def produce_data(self, datasets, data_path, scale_masks):
+        """Produce data group object, cut to ``scale_masks``."""
         return self._cached(
             "data",
             (str(data_path), repr(datasets)),
-            lambda: DataGroup([load_dataset(data_path, ds) for ds in datasets]),
+            lambda: DataGroup(
+                [
+                    load_dataset(data_path, ds, keep=scale_masks.get(ds["name"]))
+                    for ds in datasets
+                ]
+            ),
+            by_identity=(scale_masks,),
         )
 
     def produce_data_groups(self, datasets=None, external_chi2=None):
@@ -285,12 +357,18 @@ class smefitConfig(Config):
         )
         return rge_matrix
 
-    def produce_theory(self, datasets, theory_path):
-        """Produce theory group object."""
+    def produce_theory(self, datasets, theory_path, scale_masks):
+        """Produce theory group object, cut to ``scale_masks``."""
         return self._cached(
             "theory",
             (str(theory_path), repr(datasets)),
-            lambda: TheoryGroup([load_theory(theory_path, ds) for ds in datasets]),
+            lambda: TheoryGroup(
+                [
+                    load_theory(theory_path, ds, keep=scale_masks.get(ds["name"]))
+                    for ds in datasets
+                ]
+            ),
+            by_identity=(scale_masks,),
         )
 
     def produce_fit_covmat(self, data, theory, use_t0=False, use_theory_covmat=False):
@@ -435,6 +513,8 @@ class smefitConfig(Config):
 
         `group` is the one exception: it is read by `data_groups` for the
         report/Fisher aggregation, and `load_external_chi2` does not forward it.
+        `max_scale` is forwarded resolved against the global one; see
+        `load_external_chi2`.
 
         A runcard may define `external_chi2` with no `datasets:` at all, in
         which case the fit runs on the external likelihoods alone.
@@ -444,12 +524,18 @@ class smefitConfig(Config):
             entry = dict(cfg)
             if "path" in entry:
                 entry["path"] = resolve_path(entry["path"])
+            if "max_scale" in entry:
+                entry["max_scale"] = self.parse_max_scale(entry["max_scale"])
             cleaned[name] = entry
         return cleaned
 
-    def produce_ext_chi2_func(self, coefficients, external_chi2, rge=None):
+    def produce_ext_chi2_func(
+        self, coefficients, external_chi2, rge=None, max_scale=None
+    ):
         """Load and wrap external chi2 modules into Chi2 objects."""
-        return load_external_chi2(external_chi2, coefficients, rge_dict=rge)
+        return load_external_chi2(
+            external_chi2, coefficients, rge_dict=rge, max_scale=max_scale
+        )
 
     def _build_chi2_impl(
         self,
@@ -967,10 +1053,21 @@ class smefitConfig(Config):
         data,
         theory,
         pseudodata_settings,
+        scale_masks,
         use_theory_covmat=False,
         eft_model=None,
     ):
-        """Produce a pseudodata DataGroup via projections."""
+        """Produce a pseudodata DataGroup via projections.
+
+        Pseudodata is generated on every point: a ``max_scale`` cut is refused
+        here, and belongs in the fits that use it.
+        """
+        if scale_masks:
+            raise ConfigError(
+                "Pseudodata is generated uncut: remove max_scale from this "
+                "runcard and apply it in the fits that use the pseudodata. Cut "
+                f"here: {', '.join(sorted(scale_masks))}."
+            )
         return Projection(
             data=data,
             theory=theory,
@@ -1184,10 +1281,12 @@ class smefitConfig(Config):
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(
-        self, individual_coefficients, external_chi2, rge=None
+        self, individual_coefficients, external_chi2, rge=None, max_scale=None
     ):
         """Load and wrap external chi2 modules for a single-free-parameter individual fit."""
-        return load_external_chi2(external_chi2, individual_coefficients, rge_dict=rge)
+        return load_external_chi2(
+            external_chi2, individual_coefficients, rge_dict=rge, max_scale=max_scale
+        )
 
     def produce_individual_chi2(
         self,
@@ -1261,7 +1360,12 @@ class smefitConfig(Config):
         return EFTModel(theory, coefficients, use_quad, individual_mass_rge_matrix)
 
     def produce_individual_mass_ext_chi2_func(
-        self, coefficients, external_chi2, individual_mass_scale, rge=None
+        self,
+        coefficients,
+        external_chi2,
+        individual_mass_scale,
+        rge=None,
+        max_scale=None,
     ):
         """Load external chi2 for a single mass scan point with init_scale overridden.
 
@@ -1272,7 +1376,9 @@ class smefitConfig(Config):
         if rge_dict is not None:
             # 1e3 converts the scan point from TeV to GeV
             rge_dict["init_scale"] = 1e3 * float(individual_mass_scale)
-        return load_external_chi2(external_chi2, coefficients, rge_dict=rge_dict)
+        return load_external_chi2(
+            external_chi2, coefficients, rge_dict=rge_dict, max_scale=max_scale
+        )
 
     def produce_individual_mass_chi2(
         self,

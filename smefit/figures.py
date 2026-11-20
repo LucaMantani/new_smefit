@@ -858,9 +858,10 @@ def _mass_reach(
             ax.yaxis.set_major_formatter(FormatStrFormatter(r"$%g$"))
             ax.yaxis.set_minor_formatter(FormatStrFormatter(""))
             # a bar on a log scale has no zero to start from: autoscaling would
-            # cut it at the shortest one, so it starts a decade below instead
+            # cut it at the shortest one, so it starts a power of ten below
+            # instead (the 0.5 factor keeps bars on or near a power of ten visible)
             if bottom is None and drawn_reach:
-                bottom = 10.0 ** np.floor(np.log10(min(drawn_reach)))
+                bottom = 10.0 ** np.floor(np.log10(min(drawn_reach) * 0.5))
         ax.set_ylim(bottom, y_max)
         ax.grid(True, which="both", ls="dashed", axis="y", lw=0.5)
         ax.set_axisbelow(True)

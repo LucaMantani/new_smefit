@@ -1229,8 +1229,17 @@ def test_plot_mass_reach_keeps_params_to_plot_and_axis_options() -> None:
     assert ax.get_ylim() == (0.0, 5.0)
 
 
+@pytest.mark.parametrize(
+    "shortest_interval, expected_bottom",
+    [
+        ((-0.04, 0.04), 1.0),  # 5 TeV -> starts at 1 TeV
+        ((-1.0, 1.0), 0.1),  # 1 TeV (on a power of 10) -> drops to 0.1 TeV
+    ],
+)
 def test_plot_mass_reach_log_axis_starts_a_decade_below_the_shortest_bar(
     monkeypatch: pytest.MonkeyPatch,
+    shortest_interval: tuple[float, float],
+    expected_bottom: float,
 ) -> None:
     """Autoscaling a log axis would cut every bar at the shortest one."""
     fit = _bounds_fit()
@@ -1238,14 +1247,14 @@ def test_plot_mass_reach_log_axis_starts_a_decade_below_the_shortest_bar(
         fit,
         "confidence_bounds",
         lambda level, interval_type, params: {
-            "OpA": [(-0.04, 0.04)],  # 5 TeV
+            "OpA": [shortest_interval],
             "OpZZ": [(-1e-4, 1e-4)],  # 100 TeV
         },
     )
 
     fig = _one_figure(plot_mass_reach, fit, latex_label=_plain, bounds_levels=95)
 
-    assert fig.axes[0].get_ylim()[0] == pytest.approx(1.0)
+    assert fig.axes[0].get_ylim()[0] == pytest.approx(expected_bottom)
 
 
 def test_plot_mass_reach_yields_one_figure_per_interval_type() -> None:

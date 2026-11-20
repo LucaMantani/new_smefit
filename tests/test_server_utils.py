@@ -10,11 +10,13 @@ operation the real server rejects.
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import importlib
 import json
 import logging
 import pathlib
+import re
 import shutil
 import tarfile
 import types
@@ -37,14 +39,14 @@ PRIVATE_PROFILE = {
     "webdav_hostname": "https://example.org/webdav/",
     "webdav_login": "private-login",
     "webdav_password": "private-password",
-    "name": "Private Tester",
 }
 PUBLIC_PROFILE = {
     "webdav_hostname": "https://example.org/public/",
     "webdav_login": "public-login",
     "webdav_password": "public-password",
-    "name": "Public Tester",
 }
+USER_NAME = "Tester"
+OS_LOGIN = "os-login"
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +166,13 @@ def _ticking_datetime() -> types.SimpleNamespace:
 # ---------------------------------------------------------------------------
 
 
-def write_config(path: pathlib.Path, **profiles: dict[str, str]) -> None:
-    path.write_text(yaml.safe_dump(profiles))
+def write_config(
+    path: pathlib.Path, name: str | None = None, **profiles: dict[str, str]
+) -> None:
+    config: dict[str, Any] = dict(profiles)
+    if name is not None:
+        config["name"] = name
+    path.write_text(yaml.safe_dump(config))
 
 
 @pytest.fixture
@@ -183,6 +190,7 @@ def config_path(
         server_utils, "LEGACY_CONFIG_PATH", tmp_path / "legacy" / "server.yaml"
     )
     monkeypatch.setattr(server_utils, "_legacy_config_warned", False)
+    monkeypatch.setattr(server_utils.getpass, "getuser", lambda: OS_LOGIN)
     return path
 
 
@@ -209,8 +217,8 @@ def fake_server(
 
 @pytest.fixture
 def remote(fake_server: FakeWebDAV, config_path: pathlib.Path) -> FakeWebDAV:
-    """The fake server with private write credentials configured."""
-    write_config(config_path, private=PRIVATE_PROFILE)
+    """The fake server with a user name and private write credentials configured."""
+    write_config(config_path, name=USER_NAME, private=PRIVATE_PROFILE)
     return fake_server
 
 
@@ -350,6 +358,26 @@ def root_logger_restored() -> Iterator[None]:
 class TestSetupScripts:
     """Both entry points that write the credentials file."""
 
+    @pytest.fixture
+    def source(self, tmp_path: pathlib.Path) -> pathlib.Path:
+        """A shared credentials file, which carries no personal name."""
+        path = tmp_path / "shared_credentials.yaml"
+        write_config(path, private=PRIVATE_PROFILE)
+        return path
+
+    @pytest.fixture
+    def answers(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Replies to the prompts, in order; an unexpected prompt fails the test."""
+        replies: list[str] = []
+
+        def reply(prompt: str = "") -> str:
+            assert replies, f"unexpected prompt: {prompt!r}"
+            return replies.pop(0)
+
+        monkeypatch.setattr("builtins.input", reply)
+        monkeypatch.setattr("getpass.getpass", reply)
+        return replies
+
     def run(
         self,
         module: str,
@@ -366,13 +394,15 @@ class TestSetupScripts:
         argv: list[str],
         config_path: pathlib.Path,
         legacy_config_path: pathlib.Path,
-        tmp_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        source = tmp_path / "shared_credentials.yaml"
-        write_config(source, private=PRIVATE_PROFILE)
-        self.run(module, argv, monkeypatch, str(source))
-        assert yaml.safe_load(config_path.read_text()) == {"private": PRIVATE_PROFILE}
+        self.run(module, argv, monkeypatch, str(source), "--name", USER_NAME)
+        assert yaml.safe_load(config_path.read_text()) == {
+            "name": USER_NAME,
+            "private": PRIVATE_PROFILE,
+        }
         assert config_path.stat().st_mode & 0o777 == 0o600
         assert not legacy_config_path.exists()
 
@@ -381,17 +411,217 @@ class TestSetupScripts:
         module: str,
         argv: list[str],
         config_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        write_config(config_path, public=PUBLIC_PROFILE)
+        with pytest.raises(SystemExit):
+            self.run(module, argv, monkeypatch, str(source), "--name", USER_NAME)
+        assert yaml.safe_load(config_path.read_text()) == {"public": PUBLIC_PROFILE}
+        self.run(module, argv, monkeypatch, str(source), "--name", USER_NAME, "--force")
+        assert server_utils._load_config()["private"] == PRIVATE_PROFILE
+
+    @pytest.mark.parametrize(
+        ("answer", "expected"), [("  Alice ", "Alice"), ("", None)]
+    )
+    def test_prompts_for_a_missing_name(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        answer: str,
+        expected: str | None,
+    ) -> None:
+        answers.append(answer)
+        self.run(module, argv, monkeypatch, str(source))
+        assert not answers
+        assert server_utils._load_config().get("name") == expected
+
+    @pytest.mark.parametrize(
+        "named",
+        [
+            {"name": USER_NAME, "private": PRIVATE_PROFILE},
+            {"private": {**PRIVATE_PROFILE, "name": USER_NAME}},
+        ],
+        ids=["top-level", "per-profile"],
+    )
+    def test_keeps_the_name_of_the_file(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        named: dict[str, Any],
+    ) -> None:
+        source.write_text(yaml.safe_dump(named))
+        self.run(module, argv, monkeypatch, str(source))
+        assert server_utils._load_config() == named
+        assert server_utils.user_name() == USER_NAME
+
+    def test_name_option_wins_over_the_file(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        write_config(source, name="Template", private=PRIVATE_PROFILE)
+        self.run(module, argv, monkeypatch, str(source), "--name", USER_NAME)
+        assert server_utils.user_name() == USER_NAME
+
+    def test_interactive_asks_the_name_once(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        for profile in (PUBLIC_PROFILE, PRIVATE_PROFILE):
+            answers += ["y", *profile.values()]
+        answers.append(USER_NAME)
+        self.run(module, argv, monkeypatch)
+        assert not answers
+        assert server_utils._load_config() == {
+            "name": USER_NAME,
+            "public": PUBLIC_PROFILE,
+            "private": PRIVATE_PROFILE,
+        }
+
+    @pytest.mark.parametrize(
+        ("config", "message"),
+        [
+            ({"name": USER_NAME}, "no profiles"),
+            (
+                {"private": PRIVATE_PROFILE, "nmae": USER_NAME},
+                r"Unknown key\(s\): nmae",
+            ),
+            ({"private": PRIVATE_PROFILE, "name": ""}, "non-empty string"),
+            ({"private": PRIVATE_PROFILE, "name": 3}, "non-empty string"),
+            ({"private": {"webdav_login": "x"}}, "Missing key 'webdav_hostname'"),
+        ],
+    )
+    def test_rejects_a_malformed_file(
+        self,
+        module: str,
+        argv: list[str],
+        config_path: pathlib.Path,
+        source: pathlib.Path,
+        answers: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        config: dict[str, Any],
+        message: str,
+    ) -> None:
+        source.write_text(yaml.safe_dump(config))
+        with pytest.raises(SystemExit):
+            self.run(module, argv, monkeypatch, str(source), "--name", USER_NAME)
+        assert not config_path.exists()
+        assert re.search(message, caplog.text)
+
+
+class TestUserName:
+    """One name per user: the same on both servers and for local uploads."""
+
+    def test_top_level_name(self, config_path: pathlib.Path) -> None:
+        write_config(config_path, name=USER_NAME, private=PRIVATE_PROFILE)
+        assert server_utils.user_name() == USER_NAME
+
+    def test_top_level_name_wins_over_profile_names(self) -> None:
+        config = {
+            "name": USER_NAME,
+            "private": {**PRIVATE_PROFILE, "name": "Old private"},
+            "public": {**PUBLIC_PROFILE, "name": "Old public"},
+        }
+        assert server_utils.user_name(config) == USER_NAME
+
+    @pytest.mark.parametrize(
+        ("named_profiles", "expected"),
+        [
+            (("private",), "Old private"),
+            (("public",), "Old public"),
+            (("private", "public"), "Old private"),
+        ],
+    )
+    def test_profile_names_are_still_read(
+        self, named_profiles: tuple[str, ...], expected: str
+    ) -> None:
+        config: dict[str, Any] = {
+            "private": dict(PRIVATE_PROFILE),
+            "public": dict(PUBLIC_PROFILE),
+        }
+        for profile in named_profiles:
+            config[profile]["name"] = f"Old {profile}"
+        assert server_utils.user_name(config) == expected
+
+    def test_os_login_without_a_name(self, config_path: pathlib.Path) -> None:
+        assert server_utils.user_name() == OS_LOGIN
+        write_config(config_path, private=PRIVATE_PROFILE)
+        assert server_utils.user_name() == OS_LOGIN
+
+    def test_same_name_on_both_servers(
+        self,
+        fake_server: FakeWebDAV,
+        config_path: pathlib.Path,
+        work: pathlib.Path,
+    ) -> None:
+        write_config(
+            config_path,
+            name=USER_NAME,
+            private={**PRIVATE_PROFILE, "name": "Old private"},
+            public={**PUBLIC_PROFILE, "name": "Old public"},
+        )
+        for server in server_utils.SERVERS:
+            Uploader(server).upload("report", server, make_report(work, server))
+            server_utils.trash("report", server, server=server)
+        entries = server_utils._read_bin_registry(fake_server).values()
+        assert [e["deleted_by"] for e in entries] == [USER_NAME, USER_NAME]
+        assert [e["original_meta"]["uploaded_by"] for e in entries] == [
+            USER_NAME,
+            USER_NAME,
+        ]
+
+    def test_upload_without_a_name_records_the_os_login(
+        self,
+        fake_server: FakeWebDAV,
+        config_path: pathlib.Path,
+        work: pathlib.Path,
+    ) -> None:
+        write_config(config_path, private=PRIVATE_PROFILE)
+        Uploader().upload("report", "r", make_report(work, "r"))
+        registry = server_utils._read_registry(fake_server)
+        assert registry["reports"]["r"]["uploaded_by"] == OS_LOGIN
+
+    @pytest.mark.usefixtures("root_logger_restored")
+    def test_local_upload_records_the_same_name(
+        self,
+        config_path: pathlib.Path,
+        work: pathlib.Path,
         tmp_path: pathlib.Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        source = tmp_path / "shared_credentials.yaml"
-        write_config(source, private=PRIVATE_PROFILE)
-        write_config(config_path, public=PUBLIC_PROFILE)
-        with pytest.raises(SystemExit):
-            self.run(module, argv, monkeypatch, str(source))
-        assert yaml.safe_load(config_path.read_text()) == {"public": PUBLIC_PROFILE}
-        self.run(module, argv, monkeypatch, str(source), "--force")
-        assert yaml.safe_load(config_path.read_text()) == {"private": PRIVATE_PROFILE}
+        write_config(config_path, name=USER_NAME, private=PRIVATE_PROFILE)
+        results = tmp_path / "smefit_results"
+        monkeypatch.setattr(paths, "get_local_results_dir", lambda: results)
+        smefit_upload = importlib.import_module("smefit.scripts.smefit_upload")
+        args = argparse.Namespace(
+            resource_type="fit",
+            resource_name="fit_a",
+            local_path=str(make_fit(work)),
+            project="some_project",
+            force=False,
+        )
+        smefit_upload._local_upload(args, message=None)
+        registry = server_utils._read_local_registry(results)
+        assert registry["fits"]["fit_a"]["uploaded_by"] == USER_NAME
 
 
 class TestGetClient:
@@ -633,7 +863,7 @@ class TestUploader:
         entry = server_utils._read_registry(remote)["fits"]["fit_a"]
         assert entry == {
             "created_at": entry["created_at"],
-            "uploaded_by": "Private Tester",
+            "uploaded_by": USER_NAME,
             "has_rge": True,
             "rge_path": "rge/rge_matrix.pkl",
             "runcard_path": "input/runcard.yaml",
@@ -729,7 +959,7 @@ class TestUploader:
         entry = server_utils._read_misc_registry(remote)["runs/run1/data.pkl"]
         assert entry == {
             "uploaded_at": entry["uploaded_at"],
-            "uploaded_by": "Private Tester",
+            "uploaded_by": USER_NAME,
             "comment": "m",
             "project": "proj",
         }
@@ -1062,7 +1292,7 @@ class TestTrashAndRestore:
         bin_entry = server_utils._read_bin_registry(remote)["fit/fit_a"]
         assert bin_entry == {
             "deleted_at": bin_entry["deleted_at"],
-            "deleted_by": "Private Tester",
+            "deleted_by": USER_NAME,
             "resource_type": "fit",
             "resource_name": "fit_a",
             "original_meta": original,
@@ -1111,12 +1341,13 @@ class TestTrashAndRestore:
         config_path: pathlib.Path,
         work: pathlib.Path,
     ) -> None:
-        write_config(config_path, public=PUBLIC_PROFILE)
+        write_config(config_path, name=USER_NAME, public=PUBLIC_PROFILE)
         Uploader().upload("report", "r", make_report(work, "r"))
         server_utils.trash("report", "r", server="public")
-        assert server_utils._read_bin_registry(fake_server)["report/r"][
-            "deleted_by"
-        ] == ("Public Tester")
+        assert (
+            server_utils._read_bin_registry(fake_server)["report/r"]["deleted_by"]
+            == USER_NAME
+        )
 
     def test_trash_missing(self, remote: FakeWebDAV) -> None:
         with pytest.raises(ServerError, match="not found"):
@@ -1216,7 +1447,7 @@ def test_sync_registry(remote: FakeWebDAV, work: pathlib.Path) -> None:
         "has_rge": True,
         "rge_path": "rge_matrix.pkl",
         "runcard_path": "input/runcard.yaml",
-        "uploaded_by": "Private Tester",
+        "uploaded_by": USER_NAME,
     }
     assert registry["fits"]["legacy_rge"]["has_rge"] is True
     assert registry["fits"]["legacy"]["has_rge"] is False
@@ -1224,7 +1455,7 @@ def test_sync_registry(remote: FakeWebDAV, work: pathlib.Path) -> None:
     assert registry["reports"] == {
         "rep": {
             "created_at": before["reports"]["rep"]["created_at"],
-            "uploaded_by": "Private Tester",
+            "uploaded_by": USER_NAME,
         }
     }
     assert registry["projects"] == []

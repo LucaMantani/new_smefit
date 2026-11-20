@@ -12,6 +12,7 @@ is machine-specific and listed in .gitignore. A file left at the previous
 location, ~/.config/smefit/server.yaml, is still read, with a warning.
 
 Config file format (<new_smefit>/.config/server.yaml):
+    name: <shown in the registry next to what you upload>   # optional
     public:
       webdav_hostname: https://surfdrive.surf.nl/public.php/webdav/
       webdav_login:    <write-token>
@@ -33,6 +34,7 @@ records which fits have one.
 """
 
 import datetime
+import getpass
 import json
 import logging
 import pathlib
@@ -121,6 +123,33 @@ def _load_config() -> dict:
         return {}
     with open(path) as f:
         return yaml.safe_load(f) or {}
+
+
+def _configured_name(config: dict) -> str | None:
+    """Return the user name set in the credentials file, or None.
+
+    The top-level ``name`` is the one to set. A ``name`` under a profile is the
+    older format, still honoured so that an existing file keeps its name: the
+    private profile first, then the public one.
+    """
+    if config.get("name"):
+        return str(config["name"])
+    for server in ("private", "public"):
+        profile = config.get(server)
+        if isinstance(profile, dict) and profile.get("name"):
+            return str(profile["name"])
+    return None
+
+
+def user_name(config: dict | None = None) -> str:
+    """Return the name recorded next to what the user uploads or deletes.
+
+    There is one per user: the same on either server and for local uploads. It
+    is the name set in the credentials file, and the OS login without one.
+    """
+    if config is None:
+        config = _load_config()
+    return _configured_name(config) or getpass.getuser()
 
 
 def _auto_server(config: dict, need_write: bool) -> str:
@@ -539,7 +568,7 @@ def trash(
     resolved_server = (
         server if server is not None else _auto_server(config, need_write=True)
     )
-    deleter_name = config.get(resolved_server, {}).get("name")
+    deleter_name = user_name(config)
     client = _get_client(server, need_write=True)
 
     remote = _remote_path(resource_type, resource_name)
@@ -686,7 +715,7 @@ class Uploader:
         )
         self._client = _get_client(server, need_write=True)
         self._server = resolved_server
-        self._uploader_name = config.get(resolved_server, {}).get("name")
+        self._uploader_name = user_name(config)
 
     def _ensure_remote_dir(self, resource_type: str) -> None:
         remote_dir = _REMOTE_DIRS[resource_type]

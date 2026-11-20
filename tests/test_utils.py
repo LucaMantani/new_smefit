@@ -1,6 +1,7 @@
 """Unit tests for pure functions in smefit.utils."""
 
 import ast
+import csv
 import inspect
 
 import jax
@@ -8,7 +9,7 @@ import jax.numpy as jnp
 
 from smefit import utils
 from smefit.core import Coefficient, CoefficientGroup
-from smefit.utils import ensure_list, resolve_posterior
+from smefit.utils import ensure_list, resolve_posterior, time_chi2_vec
 
 _PRIOR = {"dist": "uniform", "low": -5.0, "high": 5.0}
 
@@ -82,3 +83,31 @@ def test_resolve_posterior_shapes():
     for name in cg.names:
         assert name in best_fit_point
         assert isinstance(best_fit_point[name], float)
+
+
+# ---------------------------------------------------------------------------
+# time_chi2_vec
+# ---------------------------------------------------------------------------
+
+
+def test_time_chi2_vec_custom_batch_sizes(tmp_path):
+    """Custom batch sizes (including non-list sequences) are timed and saved to CSV."""
+
+    class _DummyChi2:
+        nparam = 2
+
+        def __call__(self, coeffs):
+            return jnp.sum(coeffs**2)
+
+    sizes, times = time_chi2_vec(_DummyChi2(), tmp_path, batch_sample_sizes=(2, 4))
+
+    assert sizes == [2, 4]
+    assert len(times) == 2
+    assert all(t >= 0.0 for t in times)
+
+    csv_path = tmp_path / "chi2_times.csv"
+    assert csv_path.exists()
+    with open(csv_path, newline="") as f:
+        rows = list(csv.reader(f))
+    assert rows[0] == ["batch_size", "time_seconds", "relative_time"]
+    assert [int(r[0]) for r in rows[1:]] == [2, 4]

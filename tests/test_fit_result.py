@@ -182,6 +182,33 @@ def test_correlations_of_a_frozen_parameter_are_nan():
 
 
 # ---------------------------------------------------------------------------
+# print_summary
+# ---------------------------------------------------------------------------
+
+
+def test_print_summary_with_prior(capsys):
+    fr = FitResult(
+        free_parameters=["OpA"],
+        best_fit_point={"OpA": 1.25, "OpDerived": 0.5},
+        max_loglikelihood=-3.0,
+        num_data=8,
+        logz=-10.5,
+        samples={
+            "OpA": jnp.array([1.0, 1.25, 1.5]),
+            "OpDerived": jnp.array([0.4, 0.5, 0.6]),
+        },
+        prior_specs={"OpA": {"dist": "uniform", "low": -2.0, "high": 2.0}},
+    )
+    fr.print_summary()
+    out = capsys.readouterr().out
+    assert "Fit Result" in out
+    assert "OpA" in out
+    assert "OpDerived" in out
+    assert "log Z" in out
+    assert "Prior" in out
+
+
+# ---------------------------------------------------------------------------
 # write / JSON round-trip
 # ---------------------------------------------------------------------------
 

@@ -124,10 +124,10 @@ its own package under `smefit/models/`.
 | `config.py` | Always builds `EFTModel`. `use_quad` and `rge` are top-level keys. The t0 covmat uses `theory.sm_pred`. Mass scans set the scan point as the RGE `init_scale` (TeV→GeV). | Model and runner chosen in one place | 1 (RGE part), 2 |
 | `model.py` | `BaseModel` only requires `forward_map`, but callers also use `.coefficients` and `.use_quad` | Extend the `BaseModel` contract | 2 |
 | `analytic_fit.py` | Checks linearity through `eft_model.use_quad` | Ask the model whether it is linear | 2 |
-| `core.py` | `Theory`/`TheoryGroup` store exactly an SM, a linear and a quadratic term, under EFT names (`sm_pred`, `eft_lin_pred`, `eft_quad_pred`, `operators`). They have one scale per data point, and the theory covmat is fixed as block-diagonal when the group is built. | A theory container shaped after POPxf: polynomials of any degree in named parameters, combined per observable by an expression (designed; only the identity is implemented). Today's arrays become views of it. The stored data and the results stay the same. | 3 |
+| `core.py` | `Theory`/`TheoryGroup` store exactly an SM, a linear and a quadratic term, under EFT names (`sm_pred`, `eft_lin_pred`, `eft_quad_pred`, `operators`). They have one scale per data point, and the theory covmat is fixed as block-diagonal when the group is built. | A format-neutral theory container, covering both the current SMEFiT layout and POPxf: polynomials of any degree in named parameters, combined per observable by an expression (designed; only the identity is implemented). Each file format is a loader translating into it. Today's arrays become views of it. The stored data and the results stay the same. | 3 |
 | `loader.py` | `load_theory` only reads the SMEFiT JSON layout, and names the parsed predictions `eft_pred` | A lookup of theory formats, with the SMEFiT JSON layout as its only entry. The JSON layout stays. | 3 |
 | `external_chi2.py` | Plugins are built as `cls(coefficients=…, rge_dict=…)` and know nothing of the model | Pass the model (`model_spec=`) to plugins that ask for it, and let plugins declare the models they support. Existing plugins keep working. | 4 |
-| `chi2.py`, `projections.py`, `individual_fit.py` | `eft_model` argument and resource names | Rename to `model` | 5 |
+| `chi2.py`, `projections.py`, `individual_fit.py` | `eft_model` argument and resource names | Rename to `physics_model` (`model` is the runcard key of PR 2) | 5 |
 
 ## Decisions so far
 
@@ -189,11 +189,15 @@ its own package under `smefit/models/`.
     through a new optional field (PR 3). POPxf 1.0 has no such field, so a
     POPxf theory uses zero unless a later loader reads one, for example from
     `misc`.
-- **PR 3 designs the theory for several polynomials per data point, but
-  implements only one.** Its interface allows several named polynomials per
-  data point, combined by an expression. Only the identity combination is
-  implemented. The first loader or model that produces such theories, POPxf's
-  function-of-polynomials mode or the σ×BR model, implements the rest.
+- **PR 3 designs the framework to support data points whose predictions are 
+  combinations of polynomials and elementary functions of polynomials.** A 
+  theory prediction holds a stack of polynomials (rows), shareable between 
+  data points as POPxf's are, and each data point is either a row or an 
+  expression combining rows through named variables. 
+  Only data points whose theory predictions map one-to-one to a row will be 
+  implemented by the moment this PR is merged. The first loader or model that
+  produces such theories, POPxf's function-of-polynomials mode or the σ×BR 
+  model, implements the rest.
 - **PR 3 moves the JAX expression compiler into its own module.** The code
   that turns a coefficient's `expr:` into a differentiable JAX function moves
   out of `Coefficient`, so that POPxf's `observable_expressions` can reuse it
@@ -201,16 +205,16 @@ its own package under `smefit/models/`.
 
 ## Daughter PRs
 
-PRs 1, 2 and 4 have detailed plans. The scope of the others is preliminary,
-and each gets its own plan file before work on it starts.
+Every daughter PR has a detailed plan. PR 5 should merge last, since it
+renames names that every other PR touches.
 
 | # | Topic | Main files | Depends on | Plan |
 |---|---|---|---|---|
 | 1 | Generic RGE runner, SMEFT runner | `rge/`; `wcxf.py` and `constants.py` (moved to `models/smeft/`); `config.py` (RGE part); `external_chi2/` callers | none | [GENERALIZATION_01_RGE.md](GENERALIZATION_01_RGE.md) |
 | 2 | Model interface and selection | `models/` (from `model.py`), `config.py`, `analytic_fit.py`, `fit_result.py`, the reference generator and `validate_runcard.py`, the template runcards | 1 | [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md) |
-| 3 | Theory container and loader interface | `core.py`, `loader.py`, `projections.py`, `config.py` (t0), `models/smeft/model.py`, the new expression module, `external_chi2/drell_yan/` | 2 | to be written |
+| 3 | Theory container and loader interface | `core.py`, `loader.py`, `projections.py`, `config.py` (t0), `models/smeft/model.py`, the new expression module, `external_chi2/drell_yan/` | 2 | [GENERALIZATION_03_THEORY.md](GENERALIZATION_03_THEORY.md) |
 | 4 | External chi2 contract | `external_chi2.py`, `config.py` (the `*ext_chi2_func` producers, `parse_external_chi2`), `external_chi2/` | 1, 2 | [GENERALIZATION_04_EXTERNAL_CHI2.md](GENERALIZATION_04_EXTERNAL_CHI2.md) |
-| 5 | `eft_model` → `model` naming pass | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, skills, docs | 2 | to be written |
+| 5 | `eft_model` → `physics_model` naming pass, and the RGE names PR 1 deferred | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, `analytic_fit.py`, `rge/`, skills, docs | 2 (merges last) | [GENERALIZATION_05_NAMING.md](GENERALIZATION_05_NAMING.md) |
 
 **PR 2, model interface and selection.** See
 [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md). In short:
@@ -225,7 +229,8 @@ and each gets its own plan file before work on it starts.
 - The reference generator documents each model's and runner's options from
   the lookup.
 
-**PR 3, theory container and loader interface.** The database files and their
+**PR 3, theory container and loader interface.** See
+[GENERALIZATION_03_THEORY.md](GENERALIZATION_03_THEORY.md). The database files and their
 keys (`best_sm`, the order keys, `a*b`) stay, and so do the results. What
 changes is how the theory is held in memory and how it is loaded.
 
@@ -236,10 +241,10 @@ changes is how the theory is held in memory and how it is loaded.
   parameters that the theory defines. The SMEFT model reads its linear and
   quadratic arrays as views of these polynomials. It raises a clear error for
   a theory it cannot use, such as one of degree above 2.
-- **One scale per polynomial.** Today each data point has one polynomial, so
+- **One scale per polynomial.** Today each data point is one polynomial, so
   this is still one scale per data point. `build_rge_matrix` only reads
   `scales` from the theory, so it computes one RGE matrix per polynomial with
-  no change.
+  no change, also when data points combine several.
 - **A `reference_prediction`**, the predictions at the theory's reference
   point. It replaces `sm_pred` in the t0 covmat and in the projections.
   - The reference point is zero for every parameter unless the theory file
@@ -256,11 +261,11 @@ changes is how the theory is held in memory and how it is loaded.
   in its own basis.
 - **A lookup of theory formats** dispatches on the file content (a POPxf file
   declares its `$schema`). The SMEFiT JSON layout is its only entry.
-- **Designed for several polynomials per data point.** The container's
-  interface allows several named polynomials per data point, combined by an
-  expression, as in POPxf's function-of-polynomials mode. Only the identity
-  combination is implemented, and no code path builds more than one polynomial
-  per data point.
+- **Designed for data points that combine polynomials.** The container holds
+  a stack of polynomials and, optionally, per data point an expression and the
+  variables mapping its names to polynomials, as in POPxf's
+  function-of-polynomials mode. Such theories can be stored, but not
+  evaluated, and no loader builds them yet.
 - **The JAX expression compiler gets its own module.** Today `Coefficient`
   compiles its `expr:` with `eval` over `_EXPR_NAMESPACE` in `core.py`. That
   compiler moves to its own module and takes the namespace as an argument.
@@ -303,10 +308,11 @@ changes is how the theory is held in memory and how it is loaded.
   - **In-repo callers.** The 9 Drell-Yan external chi2 modules call
     `load_theory`, build `TheoryGroup`, and read `theory_group.sm_pred` and
     `theory_group.sm_covmat`. They move to the new names.
-  - **Aliases.** `sm_pred`, `sm_covmat`, `eft_lin_pred`, `eft_quad_pred`,
-    `operators` and today's `load_theory(theory_path, dataset_dict)` stay
-    available with a `DeprecationWarning`, for modules outside the repo. PR 1
-    and PR 2 do the same for their renames.
+  - **Aliases.** `sm_pred`, `sm_covmat`, `eft_lin_pred`, `eft_quad_pred` and
+    `operators` stay available with a `DeprecationWarning` that clarifies they're
+    specific to the EFT model.
+    `load_theory(theory_path, dataset_dict)` keeps its signature, with the
+    format lookup behind it, so it needs no alias.
 - **Neutral names** replace `sm_pred`, `eft_lin_pred`, `eft_quad_pred` and
   `operators`.
 
@@ -331,17 +337,21 @@ short:
 - **The docs match the code.** The `smefit-dev` skill and `recipes.md` drop
   `param_names`, which smefit never reads.
 
-**PR 5, naming pass.**
+**PR 5, naming pass.** See
+[GENERALIZATION_05_NAMING.md](GENERALIZATION_05_NAMING.md). In short:
 
-- Rename the `eft_model` resource and its `individual_*` variants to `model`.
-  `smefitAPI.eft_model(...)` appears in the docs and skills.
+- Rename the `eft_model` resource and its `individual_*` variants to
+  `physics_model`. They cannot become `model`, which after PR 2 is the runcard
+  key of the `model:` block: reportengine would hand the `ModelSpec` to
+  anything asking for `model`.
 - This is an API change: resources are requested by name, by
   `smefitAPI.eft_model(...)`, report templates and users' scripts, and an
-  unknown name only fails with "cannot find a way to compute". Keep `eft_model`
-  and its variants as deprecated aliases for a while, or announce the break.
-- Update the argument names in `chi2.py`, `projections.py` and
-  `individual_fit.py`.
-- Regenerate the skill references.
+  unknown name only fails with "cannot find a way to compute". The old names
+  stay as deprecated alias producers, which log a warning.
+- Rename the arguments in `chi2.py`, `projections.py`, `analytic_fit.py` and
+  `individual_fit.py`, and the RGE names PR 1 left for this pass
+  (`obs_operators`, `init_operators`, `wc_names`, `RGEmatrix`).
+- "Coefficients" keeps its name.
 - PR 2 keeps the resource names, so this stays a separate PR.
 
 ## How the PRs prepare for the long-term goals
@@ -350,9 +360,9 @@ short:
 |---|---|---|
 | Polynomials of any degree in the theory parameters, as POPxf has | PR 3: the theory container keyed by monomials | The POPxf loader, and a model that evaluates degrees above 2 |
 | Predictions that are any function of the theory parameters, such as `a1 sin(x) + a2 cos(x - y) + a3 sin(x)**2 + a4 exp(x + y)` | PR 3: the container holds the polynomials (`x`, `y`, `x + y`, `x - y`) and is designed for an expression per observable, so the theory defines the function, as in POPxf. The shared JAX compiler compiles the expression. | Evaluating observable expressions, a model that uses them, and reading them from POPxf |
-| POPxf function-of-polynomials mode, and σ×BR products | PR 3: the container's interface allows several polynomials per data point | Combining several polynomials, and the σ×BR model itself |
+| POPxf function-of-polynomials mode, and σ×BR products | PR 3: the container holds polynomials shared between data points, and per data point an expression combining them | Evaluating the expressions, and the σ×BR model itself |
 | Expressions compiled to JAX, needed for POPxf `observable_expressions` | Exists already: coefficient `expr:` strings are compiled with a JAX namespace (`_EXPR_NAMESPACE` in `core.py`). PR 3 moves that compiler to its own module, taking the namespace as an argument. | The POPxf function namespace |
-| Production and decay at different scales, and POPxf per-polynomial scales | PR 1: one RGE matrix per entry of `scales`. PR 3: one scale per polynomial. | Nothing |
+| Production and decay at different scales, and POPxf per-polynomial scales | PR 1: one RGE matrix per entry of `scales`. PR 3: one scale per polynomial. | Contracting the matrices, in the model that combines the polynomials |
 | Tables in the Warsaw basis (POPxf `basis.wcxf`) | PR 1: the runner's rows follow the basis of the theory tables. The SMEFT runner already computes in the Warsaw basis before mapping to SMEFiT. PR 3: the basis is stored on the container. | Warsaw-basis output from the SMEFT runner, or translating the tables with `wcxf.py` |
 | SM reference of a combined observable (σ_SM × BR_SM), for t0 and the projections | PR 3: `reference_prediction`, at the theory's reference point, which is zero by default | Nothing |
 | Theory files supplied by others | PR 3: expressions checked with `ast` before they are compiled | Nothing |
@@ -372,6 +382,7 @@ short:
 - **Parameter naming.** The issue mentions theory parameters that are not
   Wilson coefficients, and POPxf calls them `parameters`. Should
   "coefficients" become "parameters" in the code and the runcard? Each one
-  stays fitted or fixed, as today. (PR 5 or later)
+  stays fitted or fixed, as today. (After the master PR: PR 5 keeps
+  "coefficients", since renaming the runcard key is a migration of its own.)
 - **These files after the merge.** Do the `GENERALIZATION_*.md` files stay in
   `main` once the master PR merges, move to `docs/`, or get removed?

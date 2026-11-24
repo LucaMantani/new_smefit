@@ -189,19 +189,21 @@ its own package under `smefit/models/`.
     through a new optional field (PR 3). POPxf 1.0 has no such field, so a
     POPxf theory uses zero unless a later loader reads one, for example from
     `misc`.
-- **PR 3 designs the framework to support data points whose predictions are 
-  combinations of polynomials and elementary functions of polynomials.** A 
-  theory prediction holds a stack of polynomials (rows), shareable between 
-  data points as POPxf's are, and each data point is either a row or an 
-  expression combining rows through named variables. 
-  Only data points whose theory predictions map one-to-one to a row will be 
+- **PR 3 designs the framework to support data points whose predictions are
+  combinations of polynomials and elementary functions of polynomials.** A
+  theory prediction holds a stack of polynomials (rows), shareable between
+  data points as POPxf's are, and each data point is either a row or an
+  expression combining rows through named variables.
+  Only data points whose theory predictions map one-to-one to a row will be
   implemented by the moment this PR is merged. The first loader or model that
-  produces such theories, POPxf's function-of-polynomials mode or the σ×BR 
+  produces such theories, POPxf's function-of-polynomials mode or the σ×BR
   model, implements the rest.
 - **PR 3 moves the JAX expression compiler into its own module.** The code
   that turns a coefficient's `expr:` into a differentiable JAX function moves
   out of `Coefficient`, so that POPxf's `observable_expressions` can reuse it
   later.
+- **Deprecated aliases are kept for a long time.** Legacy code and stored
+  results rely on the old names.
 
 ## Daughter PRs
 
@@ -214,7 +216,7 @@ renames names that every other PR touches.
 | 2 | Model interface and selection | `models/` (from `model.py`), `config.py`, `analytic_fit.py`, `fit_result.py`, the reference generator and `validate_runcard.py`, the template runcards | 1 | [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md) |
 | 3 | Theory container and loader interface | `core.py`, `loader.py`, `projections.py`, `config.py` (t0), `models/smeft/model.py`, the new expression module, `external_chi2/drell_yan/` | 2 | [GENERALIZATION_03_THEORY.md](GENERALIZATION_03_THEORY.md) |
 | 4 | External chi2 contract | `external_chi2.py`, `config.py` (the `*ext_chi2_func` producers, `parse_external_chi2`), `external_chi2/` | 1, 2 | [GENERALIZATION_04_EXTERNAL_CHI2.md](GENERALIZATION_04_EXTERNAL_CHI2.md) |
-| 5 | `eft_model` → `physics_model` naming pass, and the RGE names PR 1 deferred | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, `analytic_fit.py`, `rge/`, skills, docs | 2 (merges last) | [GENERALIZATION_05_NAMING.md](GENERALIZATION_05_NAMING.md) |
+| 5 | `eft_model` → `physics_model` naming pass, and `RGEMatrix`'s field names | `config.py`, `chi2.py`, `projections.py`, `individual_fit.py`, `analytic_fit.py`, `rge/`, skills, docs | 2 (merges last) | [GENERALIZATION_05_NAMING.md](GENERALIZATION_05_NAMING.md) |
 
 **PR 2, model interface and selection.** See
 [GENERALIZATION_02_MODEL.md](GENERALIZATION_02_MODEL.md). In short:
@@ -349,8 +351,9 @@ short:
   unknown name only fails with "cannot find a way to compute". The old names
   stay as deprecated alias producers, which log a warning.
 - Rename the arguments in `chi2.py`, `projections.py`, `analytic_fit.py` and
-  `individual_fit.py`, and the RGE names PR 1 left for this pass
-  (`obs_operators`, `init_operators`, `wc_names`, `RGEmatrix`).
+  `individual_fit.py`, and the `RGEMatrix` fields PR 1 left for this pass
+  (`obs_operators`, `init_operators`). PR 1 gives the new runner neutral
+  names (`names`, `matrix`, `matrix_dict`) from the start.
 - "Coefficients" keeps its name.
 - PR 2 keeps the resource names, so this stays a separate PR.
 

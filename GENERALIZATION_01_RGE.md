@@ -97,14 +97,14 @@ class RGERunner(ABC):
     #: (default, allowed values); None allows any value.
     OPTIONS: ClassVar[Mapping[str, tuple[Any, frozenset | None]]] = {}
 
-    def __init__(self, wc_names: Sequence[str], init_scale: float) -> None:
-        self.wc_names = sorted(wc_names)
+    def __init__(self, names: Sequence[str], init_scale: float) -> None:
+        self.names = sorted(names)
         self.init_scale = init_scale
 
     @classmethod
     @abstractmethod
     def from_rge_dict(
-        cls, rge_dict: Mapping[str, Any], wc_names: Sequence[str]
+        cls, rge_dict: Mapping[str, Any], names: Sequence[str]
     ) -> "RGERunner":
         """Build a runner from the runcard ``rge:`` block."""
 
@@ -119,14 +119,14 @@ class RGERunner(ABC):
         """Every name a matrix can have a row for."""
 
     @abstractmethod
-    def RGEmatrix_dict(self, scale: float) -> dict[str, dict[str, float]]:
-        """For each name in wc_names, the names it runs into at scale, with their coefficients."""
+    def matrix_dict(self, scale: float) -> dict[str, dict[str, float]]:
+        """For each name in names, the names it runs into at scale, with their coefficients."""
 
-    def RGEmatrix(self, scale: float) -> pd.DataFrame:
+    def matrix(self, scale: float) -> pd.DataFrame:
         """Moved unchanged from RGE: the matrix as a DataFrame, all-zero rows dropped."""
 
-    def clone_runner(self, wc_names: Sequence[str]) -> "RGERunner":
-        return type(self).from_rge_dict(self.settings, wc_names)
+    def clone_runner(self, names: Sequence[str]) -> "RGERunner":
+        return type(self).from_rge_dict(self.settings, names)
 ```
 
 Every runner must follow this contract, written in the base-class docstring
@@ -177,8 +177,8 @@ duplication, once the reference generator can document `OPTIONS`.
   its runner with `runner_cls.from_rge_dict(rge_dict, coeff_list)`. `None`
   falls back to `SMEFTRunner` through a lazy import and raises a
   `DeprecationWarning`, for external modules outside the repo.
-- `resolve_rge_matrices` keeps its logic and annotates the runner as
-  `RGERunner`.
+- `resolve_rge_matrices` keeps its logic, calls `runner.matrix(scale)`, and
+  annotates the runner as `RGERunner`.
 - `_resolve_scales` is unchanged. It reads `theory_group.scales`, and nothing
   else from the theory, and it should stay that way. PR 3 gives the theory one
   scale per polynomial. A σ×BR model, whose production and decay polynomials
@@ -221,12 +221,33 @@ versions.
 - These are the last EFT-specific choices on the RGE path. PR 2 replaces them
   with the model's runner.
 
-### Deprecation shims
+#### Neutral names from the start
+
+`RGERunner` is new, so it takes model-neutral names directly instead of
+waiting for the naming pass (PR 5):
+
+| On `main`'s `RGE` | On `RGERunner` |
+|---|---|
+| `wc_names` | `names` |
+| `RGEmatrix(scale)` | `matrix(scale)` |
+| `RGEmatrix_dict(scale)` | `matrix_dict(scale)`, the abstract method a runner implements |
+
+- **Callers keep the old names.** `RGERunner` keeps `wc_names`, `RGEmatrix`
+  and `RGEmatrix_dict` as deprecated aliases of the new ones, because modules
+  outside the repo may call them on `RGE`.
+- **Implementers get no shim.** Nobody outside the repo can have subclassed
+  `RGERunner`, since it reaches `main` only with the master PR. `SMEFTRunner`
+  implements `matrix_dict`.
+- **`RGEMatrix`'s fields are not renamed here.** `obs_operators` and
+  `init_operators` stay for PR 5.
+
+## Deprecation shims
 
 | Old usage | Behaviour after this PR |
 |---|---|
 | `from smefit.rge import RGE` (also `ALLOWED_YUKAWA`, `ALLOWED_SMEFT_ACCURACY`) | A module-level `__getattr__` (PEP 562) imports `smefit.models.smeft.rge` lazily, returns the object and raises a `DeprecationWarning` |
 | `build_rge_matrix(...)` without `runner_cls` | Uses `SMEFTRunner` and raises a `DeprecationWarning` |
+| `runner.wc_names`, `runner.RGEmatrix(scale)`, `runner.RGEmatrix_dict(scale)` | Aliases on `RGERunner` of `names`, `matrix` and `matrix_dict`, each raising a `DeprecationWarning` |
 
 There are no shims for `smefit.rge.runner` internals, `smefit.rge._patches`,
 `smefit.wcxf` or `smefit.constants`, since only tests import them.
@@ -276,7 +297,9 @@ This commit only moves files and fixes imports. Behaviour does not change.
 
 - Add `RGERunner` in `smefit/rge/runner.py`.
 - Rename `RGE` to `SMEFTRunner(RGERunner)` and add `OPTIONS`. Move `RGEmatrix`
-  and `clone_runner` up into the base class.
+  and `clone_runner` up into the base class, as `matrix` and `clone_runner`.
+- Apply the neutral names (`names`, `matrix`, `matrix_dict`) and add the three
+  deprecated aliases on `RGERunner`. Update the callers in `build.py`.
 - `build_rge_matrix` takes `runner_cls`, with the deprecated default.
 - `smefit/rge/__init__.py` exports `RGERunner` and the lazy aliases, and no
   longer imports anything from `smefit.models.smeft`.
@@ -318,13 +341,13 @@ This commit only moves files and fixes imports. Behaviour does not change.
 
 | File | Change |
 |---|---|
-| `tests/test_rge.py` | Keeps the generic tests: `_resolve_scales`, `_find_cached_scale`, `resolve_rge_matrices`, the `RGEMatrix` payload, `locate`, `RGECache`. The two precomputed-cache `build_rge_matrix` tests switch from the SMEFT settings to a toy runner. |
-| `tests/test_smeft_rge.py` (new) | Takes the SMEFT tests from `test_rge.py`: Yukawa validation, `evolve_gs`, `_wilson_params`, `RGEbasis`, `map_to_smefit`, `RGEmatrix_dict`, `clone_runner`, `RGEevolve`, and the slow `wilson` tests, with `build_rge_matrix_shape` passing `runner_cls=SMEFTRunner`. |
+| `tests/test_rge.py` | Keeps the generic tests: `_resolve_scales`, `_find_cached_scale`, `resolve_rge_matrices`, the `RGEMatrix` payload, `locate`, `RGECache`. The two precomputed-cache `build_rge_matrix` tests switch from the SMEFT settings to a toy runner. `_StubRunner` implements the new names. |
+| `tests/test_smeft_rge.py` (new) | Takes the SMEFT tests from `test_rge.py`: Yukawa validation, `evolve_gs`, `_wilson_params`, `RGEbasis`, `map_to_smefit`, `matrix_dict`, `clone_runner`, `RGEevolve`, and the slow `wilson` tests, with `build_rge_matrix_shape` passing `runner_cls=SMEFTRunner`. |
 | `tests/test_rge_patches.py` → `tests/test_smeft_patches.py` | Imports `_patches` from `smefit.models.smeft`, and its docstring says the patches apply on import of `smefit.models.smeft.rge`. |
 | `tests/test_wcxf.py` → `tests/test_smeft_wcxf.py`, `tests/test_constants.py` → `tests/test_smeft_constants.py` | New import paths and logger names |
 | `tests/test_config.py` | `runner_cls` in the `build_rge_matrix` call assertions, and the test keeping `parse_rge` in step with `SMEFTRunner.OPTIONS` |
 | New, generic | **Toy runner, end to end:** a scale-dependent diagonal matrix driving `build_rge_matrix` with a fresh computation and a cached one, without `wilson`. **Contract:** round trip of `from_rge_dict(settings)` and `clone_runner`, for both the toy runner and `SMEFTRunner`. **Isolation:** `import smefit.rge` in a subprocess leaves `wilson` out of `sys.modules`. **Settings guard:** a cache written by one runner is refused by the other. |
-| New, shims | `from smefit.rge import RGE` warns and returns `SMEFTRunner`; `build_rge_matrix` without `runner_cls` warns |
+| New, shims | `from smefit.rge import RGE` warns and returns `SMEFTRunner`; `build_rge_matrix` without `runner_cls` warns; `wc_names`, `RGEmatrix` and `RGEmatrix_dict` warn and return the same as the new names |
 | New, external modules | Import every `external_chi2/` module. `low_energy/superallowed_beta_decay.py` is marked `xfail`, since it is already broken on `main` (see below). |
 
 ## Verification
@@ -350,8 +373,9 @@ This commit only moves files and fixes imports. Behaviour does not change.
   the model declares its runner.
 - **Validating the runner options through `OPTIONS`** moves to PR 2, together
   with the generator change that documents them.
-- **Neutral names** for `wc_names`, `obs_operators`, `init_operators` and
-  `RGEmatrix` go in the naming pass, together with `eft_model` → `model`.
+- **Neutral names for `RGEMatrix`'s fields** (`obs_operators`,
+  `init_operators`) go in the naming pass (PR 5), together with
+  `eft_model` → `physics_model`. The runner's names are renamed here.
 - **The `rge_dict` argument of the external chi2 contract** is unchanged here
   and handled in PR 4.
 - **Runcard placement of runner-specific keys.** PR 2 settles it: the `rge:`
@@ -359,9 +383,3 @@ This commit only moves files and fixes imports. Behaviour does not change.
 - **`external_chi2/low_energy/superallowed_beta_decay.py`** imports
   `smefit.rge.rge`, which does not exist on `main`. It is already broken, and
   PR 4 ports it to the current contract.
-
-## Open questions
-
-- **Shims.** Keep the deprecation shims for out-of-repo external modules until
-  a later release, or make a clean break?
-- **Names.** `SMEFTRunner` in `smefit/models/smeft/rge.py`, or something else?

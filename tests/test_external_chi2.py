@@ -180,14 +180,110 @@ def test_prefix_relative_rg_matrix_kwarg_loads(tmp_path, coeff_group, rg_matrix)
 
 
 # ---------------------------------------------------------------------------
-# ModuleNotFoundError for bad path
+# Load failures: always a ValueError naming the plugin to avoid silent drops
+#
 # ---------------------------------------------------------------------------
 
 
 def test_module_not_found(tmp_path, coeff_group):
     external_chi2 = {"FakeChi2": {"path": str(tmp_path / "nonexistent.py")}}
-    with pytest.raises(ModuleNotFoundError):
+    with pytest.raises(ValueError, match="FakeChi2") as info:
         load_external_chi2(external_chi2, coeff_group, {})
+    assert isinstance(info.value.__cause__, ModuleNotFoundError)
+
+
+def test_module_raising_on_import(tmp_path, coeff_group):
+    module = tmp_path / "raises_on_import.py"
+    module.write_text("CONFIG = {}\nSCALE = CONFIG['scale']\n")
+    with pytest.raises(ValueError, match="FakeChi2") as info:
+        load_external_chi2({"FakeChi2": {"path": str(module)}}, coeff_group, {})
+    assert isinstance(info.value.__cause__, KeyError)
+
+
+def test_entry_without_path(coeff_group):
+    with pytest.raises(ValueError, match="FakeChi2.*'path'"):
+        load_external_chi2({"FakeChi2": {}}, coeff_group, {})
+
+
+def test_module_without_the_class(tmp_path, coeff_group):
+    module = tmp_path / "no_such_class.py"
+    module.write_text(FAKE_CHI2_CLASS)
+    with pytest.raises(ValueError, match="does not define .* Missing") as info:
+        load_external_chi2({"Missing": {"path": str(module)}}, coeff_group, {})
+    assert isinstance(info.value.__cause__, AttributeError)
+
+
+@pytest.mark.parametrize(
+    "stem, body",
+    [
+        ("missing_option", "self.scale = settings['scale']"),
+        ("missing_rge", "self.scale = rge_dict['init_scale']"),  # no rge: block
+    ],
+)
+def test_constructor_key_error(tmp_path, coeff_group, stem, body):
+    """The two cases of issue #174: neither may leave the loader a KeyError."""
+    module = tmp_path / f"ctor_key_error_{stem}.py"
+    module.write_text(
+        "class BrokenChi2:\n"
+        "    num_data = 2\n"
+        "    def __init__(self, coefficients, rge_dict=None, settings=None):\n"
+        "        settings = settings or {}\n"
+        "        rge_dict = rge_dict or {}\n"
+        f"        {body}\n"
+        "    def compute_chi2(self, c):\n"
+        "        return 0.0\n"
+    )
+    with pytest.raises(ValueError, match="BrokenChi2") as info:
+        load_external_chi2({"BrokenChi2": {"path": str(module)}}, coeff_group, None)
+    assert not isinstance(info.value, KeyError)
+    assert isinstance(info.value.__cause__, KeyError)
+
+
+_INTERFACE_TEMPLATE = """\
+import numpy as np
+
+class {name}:
+    num_data = {num_data}
+
+    def __init__(self, coefficients, rge_dict, **kwargs):
+        pass
+
+{compute}
+"""
+_COMPUTE = "    def compute_chi2(self, c):\n        return 0.0\n"
+
+
+@pytest.mark.parametrize(
+    "name, num_data, compute, match",
+    [
+        ("NoCompute", "2", "", "callable compute_chi2"),
+        ("AttrCompute", "2", "    compute_chi2 = 1.0\n", "callable compute_chi2"),
+        ("NoNumData", "None", _COMPUTE, "num_data to an integer"),
+        ("FloatNumData", "2.0", _COMPUTE, "num_data to an integer"),
+        ("BoolNumData", "True", _COMPUTE, "num_data to an integer"),
+    ],
+)
+def test_interface_is_checked(tmp_path, coeff_group, name, num_data, compute, match):
+    module = tmp_path / f"{name.lower()}.py"
+    module.write_text(
+        _INTERFACE_TEMPLATE.format(name=name, num_data=num_data, compute=compute)
+    )
+    with pytest.raises(ValueError, match=f"{name}.*{match}"):
+        load_external_chi2({name: {"path": str(module)}}, coeff_group, {})
+
+
+def test_numpy_integer_num_data_is_accepted(tmp_path, coeff_group):
+    """A module counting its points with an array's size returns a numpy int."""
+    module = tmp_path / "numpy_num_data.py"
+    module.write_text(
+        _INTERFACE_TEMPLATE.format(
+            name="NumpyNumData", num_data="np.int64(4)", compute=_COMPUTE
+        )
+    )
+    (ext,) = load_external_chi2(
+        {"NumpyNumData": {"path": str(module)}}, coeff_group, {}
+    )
+    assert ext.num_data == 4
 
 
 # ---------------------------------------------------------------------------

@@ -518,21 +518,38 @@ class smefitConfig(Config):
 
         A runcard may define `external_chi2` with no `datasets:` at all, in
         which case the fit runs on the external likelihoods alone.
+
+        An entry without `path` is refused here so the error points at the
+        runcard.
         """
         cleaned = {}
         for name, cfg in external_chi2.items():
             entry = dict(cfg)
-            if "path" in entry:
-                entry["path"] = resolve_path(entry["path"])
+            if "path" not in entry:
+                raise ConfigError(
+                    f"external_chi2 entry '{name}' has no 'path' to the Python "
+                    "module defining the class."
+                )
+            entry["path"] = resolve_path(entry["path"])
             if "max_scale" in entry:
                 entry["max_scale"] = self.parse_max_scale(entry["max_scale"])
             cleaned[name] = entry
         return cleaned
 
     def produce_ext_chi2_func(
-        self, coefficients, external_chi2, rge=None, max_scale=None
+        self, coefficients, external_chi2=None, rge=None, max_scale=None
     ):
-        """Load and wrap external chi2 modules into Chi2 objects."""
+        """Load and wrap external chi2 modules into Chi2 objects.
+
+        ``None`` when the runcard has no ``external_chi2:`` block -- the one
+        legitimate reason for there to be none. The default lives on
+        ``external_chi2`` and not on the consumers' ``ext_chi2_func``: there,
+        reportengine would swallow any ``KeyError`` raised while loading a
+        module (it takes one for an absent resource) and build the chi2
+        without that likelihood, silently (issue #174).
+        """
+        if external_chi2 is None:
+            return None
         return load_external_chi2(
             external_chi2, coefficients, rge_dict=rge, max_scale=max_scale
         )
@@ -609,16 +626,20 @@ class smefitConfig(Config):
 
     def produce_chi2(
         self,
+        ext_chi2_func,
         eft_model=None,
         data=None,
         fit_covmat=None,
-        ext_chi2_func=None,
         coefficients=None,
     ):
         """Produce the chi2 function, optionally combining with external chi2s.
 
         When no datasets are provided, base chi2 is skipped and only external
         contributions are summed.
+
+        ``ext_chi2_func`` has no default, unlike the other inputs, for the
+        reason given in :meth:`produce_ext_chi2_func`: with one, a module that
+        fails to load would be dropped from the likelihood without a word.
         """
         return self._build_chi2_impl(
             eft_model, data, fit_covmat, ext_chi2_func, coefficients
@@ -626,15 +647,19 @@ class smefitConfig(Config):
 
     def produce_datasets_chi2(
         self,
+        ext_chi2_func,
         eft_model=None,
         data=None,
         fit_covmat=None,
-        ext_chi2_func=None,
     ):
         """Produce a list of per-dataset chi2 objects.
 
         Regular datasets each get their own chi2 (diagonal block of fit_covmat).
         External chi2 contributions are appended as individual entries.
+
+        ``ext_chi2_func`` has no default, unlike the other inputs, for the
+        reason given in :meth:`produce_ext_chi2_func`: with one, a module that
+        fails to load would be dropped from the likelihood without a word.
         """
 
         chi2_list = build_datasets_chi2(eft_model, data, fit_covmat)
@@ -1281,22 +1306,34 @@ class smefitConfig(Config):
         return EFTModel(theory, individual_coefficients, use_quad, rge_matrix)
 
     def produce_individual_ext_chi2_func(
-        self, individual_coefficients, external_chi2, rge=None, max_scale=None
+        self, individual_coefficients, external_chi2=None, rge=None, max_scale=None
     ):
-        """Load and wrap external chi2 modules for a single-free-parameter individual fit."""
+        """Load and wrap external chi2 modules for a single-free-parameter individual fit.
+
+        ``None`` without an ``external_chi2:`` block; see
+        :meth:`produce_ext_chi2_func` for why the default lives here.
+        """
+        if external_chi2 is None:
+            return None
         return load_external_chi2(
             external_chi2, individual_coefficients, rge_dict=rge, max_scale=max_scale
         )
 
     def produce_individual_chi2(
         self,
+        individual_ext_chi2_func,
         individual_eft_model=None,
         data=None,
         fit_covmat=None,
-        individual_ext_chi2_func=None,
         individual_coefficients=None,
     ):
-        """Produce chi2 for a single-free-parameter individual fit."""
+        """Produce chi2 for a single-free-parameter individual fit.
+
+        ``individual_ext_chi2_func`` has no default, unlike the other inputs,
+        for the reason given in :meth:`produce_individual_ext_chi2_func`: with
+        one, a module that fails to load would be dropped from the likelihood
+        without a word.
+        """
         return self._build_chi2_impl(
             individual_eft_model,
             data,
@@ -1362,16 +1399,20 @@ class smefitConfig(Config):
     def produce_individual_mass_ext_chi2_func(
         self,
         coefficients,
-        external_chi2,
         individual_mass_scale,
+        external_chi2=None,
         rge=None,
         max_scale=None,
     ):
         """Load external chi2 for a single mass scan point with init_scale overridden.
 
         Same TeV (scan point) -> GeV (``init_scale``) conversion as
-        :meth:`produce_individual_mass_rge_matrix`.
+        :meth:`produce_individual_mass_rge_matrix`. ``None`` without an
+        ``external_chi2:`` block; see :meth:`produce_ext_chi2_func` for why the
+        default lives here.
         """
+        if external_chi2 is None:
+            return None
         rge_dict = dict(rge) if rge is not None else None
         if rge_dict is not None:
             # 1e3 converts the scan point from TeV to GeV
@@ -1382,12 +1423,18 @@ class smefitConfig(Config):
 
     def produce_individual_mass_chi2(
         self,
+        individual_mass_ext_chi2_func,
         individual_mass_eft_model=None,
         data=None,
         fit_covmat=None,
-        individual_mass_ext_chi2_func=None,
     ):
-        """Produce the total chi2 for a single mass scan point."""
+        """Produce the total chi2 for a single mass scan point.
+
+        ``individual_mass_ext_chi2_func`` has no default, unlike the other
+        inputs, for the reason given in
+        :meth:`produce_individual_mass_ext_chi2_func`: with one, a module that
+        fails to load would be dropped from the likelihood without a word.
+        """
         return self._build_chi2_impl(
             individual_mass_eft_model,
             data,

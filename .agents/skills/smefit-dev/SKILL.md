@@ -71,6 +71,13 @@ external-`chi2`-only runcard has no `datasets:`, so `eft_model` genuinely cannot
 resolve. It pays for that with an explicit check in `_build_chi2_impl` that
 raises when data *is* present but `eft_model` is `None`.
 
+The external likelihoods follow the rule: the chi2
+consumers require `ext_chi2_func` (and its `individual_`/`individual_mass_`
+variants), and the default lives on the runcard key, `external_chi2=None`,
+for which `produce_ext_chi2_func` returns `None`. `load_external_chi2` also
+re-raises every failure as a `ValueError` naming the plugin, so a `KeyError`
+can never leave it. `tests/test_config.py` pins both signatures.
+
 ## `output_path` is an environment value, not a node
 
 `output_path` is a reportengine **`Environment` attribute** — not a runcard key
@@ -590,6 +597,11 @@ this kind:
   the Drell-Yan modules do, so datasets and modules share one cut rule
   (`produce_scale_masks`) — do not reimplement it with the loader. A cut reaching a constructor without the argument raises
   (`_accepts_max_scale`) — never silently leave a likelihood uncut.
+  `path` is required (`parse_external_chi2` raises without it), and any
+  failure to import or construct a module, or a built object without a
+  callable `compute_chi2` and an integer `num_data` (`_check_interface`),
+  is a `ValueError` naming the class, chained to the cause. Keep it that way
+  when touching the loader: see "`=None` defaults turn failures silent".
 
 ## Keep it JAX-differentiable
 

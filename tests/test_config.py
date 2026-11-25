@@ -818,7 +818,7 @@ def test_produce_datasets_chi2_returns_list(cfg, dataset_a, theory_a):
     )
 
     result = cfg.produce_datasets_chi2(
-        eft_model=model, data=data, fit_covmat=jnp.eye(3)
+        eft_model=model, data=data, fit_covmat=jnp.eye(3), ext_chi2_func=None
     )
 
     assert isinstance(result, list)
@@ -1290,6 +1290,137 @@ def test_parse_external_chi2_resolves_prefix_path(cfg):
     )
 
 
+def test_parse_external_chi2_requires_path(cfg):
+    with pytest.raises(ConfigError, match="'MyExt' has no 'path'"):
+        cfg.parse_external_chi2({"MyExt": {"group": "G1"}})
+
+
+# ---------------------------------------------------------------------------
+# ext_chi2_func as a required dependency
+#
+# The chi2 consumers used to take `ext_chi2_func=None`, so a KeyError raised
+# while loading an external module (an entry with no path, a constructor
+# reading a missing option) was taken by reportengine for an absent resource:
+# the default was substituted and the fit ran without that likelihood, with
+# no error. The default now lives on `external_chi2` and the consumers
+# require the loaded modules.
+# ---------------------------------------------------------------------------
+
+_EXT_CHI2_PRODUCERS = [
+    "produce_ext_chi2_func",
+    "produce_individual_ext_chi2_func",
+    "produce_individual_mass_ext_chi2_func",
+]
+
+_EXT_CHI2_CONSUMERS = [
+    ("produce_chi2", "ext_chi2_func"),
+    ("produce_datasets_chi2", "ext_chi2_func"),
+    ("produce_individual_chi2", "individual_ext_chi2_func"),
+    ("produce_individual_mass_chi2", "individual_mass_ext_chi2_func"),
+]
+
+
+@pytest.mark.parametrize("method, param", _EXT_CHI2_CONSUMERS)
+def test_chi2_requires_ext_chi2_func(method, param):
+    """A default here would let reportengine swallow a failed external chi2."""
+    params = inspect.signature(getattr(smefitConfig, method)).parameters
+    assert params[param].default is inspect.Parameter.empty
+
+
+@pytest.mark.parametrize("method", _EXT_CHI2_PRODUCERS)
+def test_ext_chi2_func_none_without_external_chi2_block(cfg, method):
+    """No `external_chi2:` in the runcard is the one reason for there to be none."""
+    params = inspect.signature(getattr(smefitConfig, method)).parameters
+    assert params["external_chi2"].default is None
+    with patch("smefit.config.load_external_chi2") as load:
+        assert getattr(cfg, method)(MagicMock(), **_fanout_args(method)) is None
+    load.assert_not_called()
+
+
+def _fanout_args(method):
+    if method == "produce_individual_mass_ext_chi2_func":
+        return {"individual_mass_scale": 1.0}
+    return {}
+
+
+_BROKEN_EXT_CHI2 = """\
+class BrokenChi2:
+    num_data = 2
+
+    def __init__(self, coefficients, rge_dict=None, settings=None):
+        self.scale = (settings or {})["scale"]  # KeyError
+
+    def compute_chi2(self, c):
+        return 0.0
+"""
+
+
+@pytest.fixture
+def api_runcard(fixtures_data_path, fixtures_theory_path):
+    return {
+        "data_path": str(fixtures_data_path),
+        "theory_path": str(fixtures_theory_path),
+        "datasets": [{"name": "TESTDATA", "order": "NLO"}],  # 3 data points
+        "coefficients": {"OpA": {"free": True}, "OpB": {"free": True}},
+    }
+
+
+@pytest.mark.parametrize(
+    "resource, extra",
+    [
+        ("chi2", {}),
+        ("datasets_chi2", {}),
+        # the fan-out element, given in place of individual_fit_coefficients
+        ("individual_chi2", {"individual_fit_coefficient": "OpA"}),
+    ],
+)
+def test_failing_external_chi2_is_not_dropped(tmp_path, api_runcard, resource, extra):
+    """Resolved through reportengine, where the swallowing happened: the
+    constructor's KeyError must reach the caller, not vanish from the chi2."""
+    from smefit.api import smefitAPI
+
+    module = tmp_path / f"broken_ext_{resource}.py"
+    module.write_text(_BROKEN_EXT_CHI2.replace("BrokenChi2", f"Broken_{resource}"))
+    external_chi2 = {f"Broken_{resource}": {"path": str(module)}}
+
+    with pytest.raises(ValueError, match=f"Broken_{resource}"):
+        getattr(smefitAPI, resource)(
+            **api_runcard, external_chi2=external_chi2, **extra
+        )
+
+
+def test_external_chi2_entry_without_path_is_not_dropped(api_runcard):
+    from smefit.api import smefitAPI
+
+    with pytest.raises(ConfigError, match="'BrokenChi2' has no 'path'"):
+        smefitAPI.chi2(**api_runcard, external_chi2={"BrokenChi2": {}})
+
+
+def test_chi2_without_external_chi2_resolves(api_runcard):
+    """The required ext_chi2_func still resolves for a datasets-only runcard."""
+    from smefit.api import smefitAPI
+
+    chi2 = smefitAPI.chi2(**api_runcard)
+    assert chi2.num_data == 3
+    assert not chi2.has_external
+
+
+def test_chi2_with_external_chi2_counts_its_data(tmp_path, api_runcard):
+    from smefit.api import smefitAPI
+
+    module = tmp_path / "working_ext_chi2.py"
+    module.write_text(
+        _BROKEN_EXT_CHI2.replace("BrokenChi2", "WorkingChi2").replace(
+            '(settings or {})["scale"]  # KeyError', "settings"
+        )
+    )
+    chi2 = smefitAPI.chi2(
+        **api_runcard, external_chi2={"WorkingChi2": {"path": str(module)}}
+    )
+    assert chi2.num_data == 3 + 2
+    assert chi2.has_external
+
+
 # ---------------------------------------------------------------------------
 # Mass-scan producers
 # ---------------------------------------------------------------------------
@@ -1388,7 +1519,7 @@ def test_produce_individual_mass_ext_chi2_func_overrides_init_scale_when_rge_set
 
     with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
         result = cfg.produce_individual_mass_ext_chi2_func(
-            cg, ["ext_mod"], 42.0, rge=rge
+            cg, 42.0, external_chi2={"ext_mod": {}}, rge=rge
         )
 
     assert result == "EXT"
@@ -1403,7 +1534,7 @@ def test_produce_individual_mass_ext_chi2_func_no_rge(cfg):
 
     with patch("smefit.config.load_external_chi2", return_value="EXT") as mock_load:
         result = cfg.produce_individual_mass_ext_chi2_func(
-            cg, ["ext_mod"], 42.0, rge=None
+            cg, 42.0, external_chi2={"ext_mod": {}}, rge=None
         )
 
     assert result == "EXT"
@@ -1419,7 +1550,10 @@ def test_produce_individual_mass_chi2_delegates_to_build_chi2_impl(cfg):
 
     with patch("smefit.config.build_chi2", return_value=lambda c: jnp.sum(c**2)):
         result = cfg.produce_individual_mass_chi2(
-            individual_mass_eft_model=mock_eft, data=mock_data, fit_covmat=jnp.eye(3)
+            individual_mass_ext_chi2_func=None,
+            individual_mass_eft_model=mock_eft,
+            data=mock_data,
+            fit_covmat=jnp.eye(3),
         )
 
     assert isinstance(result, Chi2)

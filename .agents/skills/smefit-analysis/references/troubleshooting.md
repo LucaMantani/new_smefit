@@ -18,7 +18,10 @@ of the actual exceptions raised by the code.
 | `rge block requires 'init_scale'` | Add `init_scale:` (GeV) to the `rge` block. |
 | `Free coefficient '<name>' has no prior defined` | Every `free: True` coefficient needs a `prior` (unless whitening / bayesian_update is active). |
 | `<name>: free=True forbids 'value' and 'expr'` (and similar) | Coefficient kind invariants violated — see the smefit-runcard skill's `coefficients.md`. |
-| `Module <stem> not found in <path>` | `external_chi2` `path:` doesn't point at the module file (usually a stale `/path/to/smefit_database` placeholder). |
+| `Could not import the module <stem> of external chi2 <Class> from <path>` | `external_chi2` `path:` doesn't point at the module file (usually a stale `/path/to/smefit_database` placeholder), or the module itself — the chained traceback shows which. |
+| `external_chi2 entry '<Class>' has no 'path'` | Every `external_chi2` entry needs a `path:` to the module defining its class. |
+| `The constructor of external chi2 <Class> raised ...` | The module rejected its arguments: a missing option in the entry, or `rge_dict` read with no `rge:` block in the runcard. The chained traceback is the module's own error. |
+| `External chi2 <Class> has no callable compute_chi2 method` / `must set num_data to an integer` | The class does not implement the external chi2 interface. |
 | `No data provided and no external_chi2 configured` | Runcard has neither `datasets` nor `external_chi2`. |
 | `Could not find previous ultranest fit at <log_dir>` | `ReactiveNS_settings.resume: True` but no previous run in the output dir — drop `resume` or point `-o` at the old output. |
 | `fit_results.json not found at <path>` / `input/runcard.yaml not found` | The `bayesian_update` fit must be a *completed* smefit output directory. |

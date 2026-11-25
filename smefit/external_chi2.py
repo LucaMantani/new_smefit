@@ -2,6 +2,7 @@ import copy
 import importlib
 import inspect
 import logging
+import numbers
 import pathlib
 import sys
 
@@ -23,6 +24,27 @@ def _accepts_max_scale(chi2_class):
     return any(
         p.name == "max_scale" or p.kind is inspect.Parameter.VAR_KEYWORD for p in params
     )
+
+
+def _check_interface(chi2_ext, class_name):
+    """Raise unless ``chi2_ext`` exposes what smefit reads from an external chi2.
+
+    Checked here, at load time, so that a plugin missing either attribute fails
+    with its name.
+    """
+    compute = getattr(chi2_ext, "compute_chi2", None)
+    if not callable(compute):
+        raise ValueError(
+            f"External chi2 {class_name} has no callable compute_chi2 method."
+        )
+    num_data = getattr(chi2_ext, "num_data", None)
+    # numbers.Integral admits numpy integers, which a module counting its data
+    # with len() of an array may well return; bool is excluded explicitly
+    if not isinstance(num_data, numbers.Integral) or isinstance(num_data, bool):
+        raise ValueError(
+            f"External chi2 {class_name} must set num_data to an integer, "
+            f"got {num_data!r}."
+        )
 
 
 def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
@@ -57,6 +79,14 @@ def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
     -------
     ext_chi2_modules: list
          List of external chi2 objects that can be evaluated by passing a coefficients instance
+
+    Raises
+    ------
+    ValueError
+        When a module cannot be imported, does not define the class, or its
+        constructor raises, chained to the original exception; and when the
+        object built does not expose a callable ``compute_chi2`` and an integer
+        ``num_data``.
     """
     # dynamical import
     ext_chi2_modules = []
@@ -64,19 +94,28 @@ def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
     for class_name, module in external_chi2.items():
         log.info("Loading external chi2 module: %s", class_name)
 
-        module_path = module["path"]
-        path = pathlib.Path(module_path)
+        if "path" not in module:
+            raise ValueError(
+                f"external chi2 {class_name} has no 'path' to the module defining it."
+            )
+        path = pathlib.Path(module["path"])
         base_path, stem = path.parent, path.stem
         sys.path = [str(base_path)] + sys.path
         try:
             chi2_module = importlib.import_module(stem)
-        except ModuleNotFoundError:
-            log.error("Module %s not found in %s. Adjust and rerun.", stem, base_path)
-            raise ModuleNotFoundError(
-                f"Module {stem} not found in {base_path}. Adjust and rerun."
-            )
+        except Exception as exc:
+            raise ValueError(
+                f"Could not import the module {stem} of external chi2 "
+                f"{class_name} from {base_path}: {exc!r}"
+            ) from exc
 
-        my_chi2_class = getattr(chi2_module, class_name)
+        try:
+            my_chi2_class = getattr(chi2_module, class_name)
+        except AttributeError as exc:
+            raise ValueError(
+                f"The module {path} does not define the external chi2 class "
+                f"{class_name}."
+            ) from exc
 
         extra_keys = {
             key: value
@@ -96,9 +135,17 @@ def load_external_chi2(external_chi2, coefficients, rge_dict, max_scale=None):
                 )
             extra_keys["max_scale"] = cut
 
-        chi2_ext = my_chi2_class(
-            coefficients=coefficients, rge_dict=copy.deepcopy(rge_dict), **extra_keys
-        )
+        try:
+            chi2_ext = my_chi2_class(
+                coefficients=coefficients,
+                rge_dict=copy.deepcopy(rge_dict),
+                **extra_keys,
+            )
+        except Exception as exc:
+            raise ValueError(
+                f"The constructor of external chi2 {class_name} raised {exc!r}."
+            ) from exc
+        _check_interface(chi2_ext, class_name)
 
         ext_chi2_modules.append(
             Chi2(

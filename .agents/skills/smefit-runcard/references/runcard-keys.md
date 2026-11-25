@@ -209,6 +209,9 @@ report/Fisher aggregation, and `load_external_chi2` does not forward it.
 A runcard may define `external_chi2` with no `datasets:` at all, in
 which case the fit runs on the external likelihoods alone.
 
+An entry without `path` is refused here so the error points at the
+runcard.
+
 ### `fits` / `fit`
 
 Load one previously run fit from disk into a :class:`Fit`.
@@ -457,22 +460,22 @@ Recognized sub-keys (unknown sub-keys only produce a warning):
 reportengine builds these nodes on demand; they are listed so you can trace
 which runcard keys each action ultimately needs.
 
-- `chi2`(eft_model, data, fit_covmat, ext_chi2_func, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
+- `chi2`(ext_chi2_func, eft_model, data, fit_covmat, coefficients) — Produce the chi2 function, optionally combining with external chi2s.
 - `data`(datasets, data_path, scale_masks) — Produce data group object, cut to ``scale_masks``.
 - `data_groups`(datasets, external_chi2) — Build data_groups from inline group: keys on datasets and external chi2s.
-- `datasets_chi2`(eft_model, data, fit_covmat, ext_chi2_func) — Produce a list of per-dataset chi2 objects.
+- `datasets_chi2`(ext_chi2_func, eft_model, data, fit_covmat) — Produce a list of per-dataset chi2 objects.
 - `eft_model`(theory, coefficients, rge_matrix, use_quad) — Produce EFT model mapping coefficients to theory predictions.
 - `ext_chi2_func`(coefficients, external_chi2, rge, max_scale) — Load and wrap external chi2 modules into Chi2 objects.
 - `fit_covmat`(data, theory, use_t0, use_theory_covmat) — Produce the covariance matrix to be used in the fit.
 - `fitcontext`(fit) — The setup of a fit already run, as a namespace: ``fits::fitcontext``.
-- `individual_chi2`(individual_eft_model, data, fit_covmat, individual_ext_chi2_func, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
+- `individual_chi2`(individual_ext_chi2_func, individual_eft_model, data, fit_covmat, individual_coefficients) — Produce chi2 for a single-free-parameter individual fit.
 - `individual_coefficients`(coefficients, individual_fit_coefficient) — Produce a single-free-parameter coefficient group for individual fits.
 - `individual_eft_model`(theory, individual_coefficients, rge_matrix, use_quad) — Produce EFT model for a single-free-parameter individual fit.
 - `individual_ext_chi2_func`(individual_coefficients, external_chi2, rge, max_scale) — Load and wrap external chi2 modules for a single-free-parameter individual fit.
 - `individual_fit_coefficients`(coefficients) — Produce an NSList of free coefficient names for individual fits.
-- `individual_mass_chi2`(individual_mass_eft_model, data, fit_covmat, individual_mass_ext_chi2_func) — Produce the total chi2 for a single mass scan point.
+- `individual_mass_chi2`(individual_mass_ext_chi2_func, individual_mass_eft_model, data, fit_covmat) — Produce the total chi2 for a single mass scan point.
 - `individual_mass_eft_model`(theory, coefficients, individual_mass_rge_matrix, use_quad) — Produce EFT model for a single mass scan point.
-- `individual_mass_ext_chi2_func`(coefficients, external_chi2, individual_mass_scale, rge, max_scale) — Load external chi2 for a single mass scan point with init_scale overridden.
+- `individual_mass_ext_chi2_func`(coefficients, individual_mass_scale, external_chi2, rge, max_scale) — Load external chi2 for a single mass scan point with init_scale overridden.
 - `individual_mass_rge_matrix`(rge, coefficients, theory, individual_mass_scale) — Produce RGE matrix with init_scale set to the current mass scan point.
 - `individual_mass_scales`(coefficients, chi2_scan_settings) — Produce an NSList of mass scan points from the single free coefficient's prior.
 - `individual_prior`(individual_coefficients) — Produce prior for a single-free-parameter individual fit.

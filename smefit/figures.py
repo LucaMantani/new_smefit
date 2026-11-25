@@ -10,7 +10,9 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
+from matplotlib import patheffects
 from matplotlib.lines import Line2D
+from matplotlib.markers import MarkerStyle
 from matplotlib.patches import Ellipse, Patch
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from reportengine.figure import figure, figuregen
@@ -39,6 +41,23 @@ _HATCH_CYCLE = ("///", "\\\\\\", "---", "|||", "...", "+++", "ooo")
 # the widest down, so each level reads as its own contour; the filled level's
 # outline is solid. As for the hatches, the cycle repeats past its end.
 _LEVEL_LINESTYLE_CYCLE = ("dashed", "dotted", "dashdot")
+
+# The cross marking a best fit is drawn in its fit's colour, on the filled
+# region of that same colour: a thin black outline keeps it readable there. A
+# line marker has no edge of its own, so the outline is a wider black stroke
+# under the line, showing as half the difference of the two widths either side.
+# Both are drawn with projecting caps, which lengthen a line by half its width
+# at each end: the stroke then passes the tips of the cross by as much as it
+# passes its sides, and the outline closes around them.
+_BEST_FIT_LINEWIDTH = 1.5
+_BEST_FIT_CAPSTYLE = "projecting"
+_BEST_FIT_OUTLINE = [
+    patheffects.withStroke(
+        linewidth=_BEST_FIT_LINEWIDTH + 1.0,
+        foreground="black",
+        capstyle=_BEST_FIT_CAPSTYLE,
+    )
+]
 
 
 def _plot_heatmap(
@@ -1329,6 +1348,9 @@ def _posterior_contours(
                     color=f"C{idx}",
                     marker="x",
                     s=50,
+                    linewidths=_BEST_FIT_LINEWIDTH,
+                    capstyle=_BEST_FIT_CAPSTYLE,
+                    path_effects=_BEST_FIT_OUTLINE,
                     zorder=10,
                 )
 
@@ -1361,7 +1383,18 @@ def _posterior_contours(
     if show_best_fit:
         # in grey, like the levels: the cross means the same for every fit,
         # and each one is drawn in its fit's colour
-        legend_handles.append(Line2D([], [], color="grey", marker="x", ls="none", ms=7))
+        legend_handles.append(
+            Line2D(
+                [],
+                [],
+                color="grey",
+                marker=MarkerStyle("x", capstyle=_BEST_FIT_CAPSTYLE),
+                ls="none",
+                ms=7,
+                mew=_BEST_FIT_LINEWIDTH,
+                path_effects=_BEST_FIT_OUTLINE,
+            )
+        )
         legend_labels.append(r"$\mathrm{Best\ fit}$")
 
     # the levels are in the legend; the title says which kind they are

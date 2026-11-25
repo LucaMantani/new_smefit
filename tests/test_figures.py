@@ -2087,6 +2087,12 @@ def test_plot_posterior_contours_mark_the_stored_best_fit_on_every_panel() -> No
         assert matplotlib.colors.to_hex(cross.get_facecolor()[0]) == (
             matplotlib.colors.to_hex("C0")
         )
+        # outlined in black, to read on the fill of its own colour
+        [outline] = cross.get_path_effects()
+        assert outline._gc["foreground"] == "black"
+        assert outline._gc["linewidth"] > cross.get_linewidths()[0]
+        # ... all the way round its tips: stroke and cross share projecting caps
+        assert outline._gc["capstyle"] == cross.get_capstyle() == "projecting"
 
 
 def test_plot_posterior_contours_comparison_mark_each_fit_where_it_is_drawn() -> None:

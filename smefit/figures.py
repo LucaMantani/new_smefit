@@ -1202,7 +1202,9 @@ def _draw_pair(ax, x, y, color, levels, contours, hatch):
     )
 
 
-def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch):
+def _posterior_contours(
+    fits, latex_label, params_to_plot, bounds_levels, hatch, show_best_fit
+):
     """The shared core of :func:`plot_posterior_contours` and
     :func:`plot_posterior_contours_comparison`.
 
@@ -1210,7 +1212,9 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     column ``i`` has coefficient ``i`` on the x-axis and ``j`` on the y-axis.
     Every fit is drawn in every panel whose two coefficients it sampled; one it
     did not sample leaves that fit out of the panel. Each fit is drawn in
-    the style its ``fits`` entry sets with ``contours``.
+    the style its ``fits`` entry sets with ``contours``. With
+    ``show_best_fit`` its stored best-fit point is marked on those same
+    panels, a cross in the fit's colour.
     The legend and title go in
     the free upper-right cell, or inside the axes for a single panel.
     """
@@ -1259,11 +1263,30 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
         for idx in range(len(fits))
     ]
 
+    # the point each fit marks, over the same coefficients as its samples;
+    # empty when no best fit is to be marked
+    best_fits = [
+        (
+            {
+                name: float(fit.fit_results.best_fit_point[name])
+                for name in fit_samples
+                if name in fit.fit_results.best_fit_point
+            }
+            if show_best_fit
+            else {}
+        )
+        for fit, fit_samples in zip(fits, samples)
+    ]
+
     # one range per coefficient, wherever it appears: the pooled samples of
-    # every fit, padded by 10%
+    # every fit, padded by 10%. A marked best fit is pooled with them: a
+    # sampler's best point need not be among the samples it stored
     limits = {}
     for name in names:
-        values = np.concatenate([s[name] for s in samples if name in s])
+        values = np.concatenate(
+            [s[name] for s in samples if name in s]
+            + [[best[name]] for best in best_fits if name in best]
+        )
         low, high = float(values.min()), float(values.max())
         pad = 0.1 * (high - low) if high > low else abs(low) or 1.0
         limits[name] = (low - pad, high + pad)
@@ -1298,6 +1321,16 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
                 fits[idx].contours,
                 hatches[idx],
             )
+            best = best_fits[idx]
+            if x_name in best and y_name in best:
+                ax.scatter(
+                    best[x_name],
+                    best[y_name],
+                    color=f"C{idx}",
+                    marker="x",
+                    s=50,
+                    zorder=10,
+                )
 
         ax.set_xlim(*limits[x_name])
         ax.set_ylim(*limits[y_name])
@@ -1325,6 +1358,11 @@ def _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
     level_handles, level_labels = _level_legend(levels)
     legend_handles += level_handles
     legend_labels += level_labels
+    if show_best_fit:
+        # in grey, like the levels: the cross means the same for every fit,
+        # and each one is drawn in its fit's colour
+        legend_handles.append(Line2D([], [], color="grey", marker="x", ls="none", ms=7))
+        legend_labels.append(r"$\mathrm{Best\ fit}$")
 
     # the levels are in the legend; the title says which kind they are
     title = r"$\mathrm{2D\ marginalised\ posterior}$"
@@ -1369,6 +1407,7 @@ def plot_posterior_contours(
     params_to_plot=None,
     bounds_levels=None,
     hatch=True,
+    show_best_fit=False,
 ):
     """Plot the pairwise 2D posterior contours of one fit, as a corner plot.
 
@@ -1398,8 +1437,16 @@ def plot_posterior_contours(
     hatch : bool, optional
         Hatch the filled region, one pattern per fit, so it reads in print
         and greyscale. On by default.
+    show_best_fit : bool, optional
+        Mark the fit's best-fit point with a cross in its colour, off by
+        default. It is the point the fit stored: the minimum of the chi2 for
+        an analytic or Hessian fit, the best sample for a sampler. It
+        maximises the likelihood, not the 2D marginal drawn, so it need not
+        sit at the centre of the contours.
     """
-    return _posterior_contours([fit], latex_label, params_to_plot, bounds_levels, hatch)
+    return _posterior_contours(
+        [fit], latex_label, params_to_plot, bounds_levels, hatch, show_best_fit
+    )
 
 
 @figure
@@ -1409,18 +1456,22 @@ def plot_posterior_contours_comparison(
     params_to_plot=None,
     bounds_levels=None,
     hatch=True,
+    show_best_fit=False,
 ):
     """Overlay the pairwise 2D posterior contours of several fits.
 
     One figure for the whole ``fits`` list, one colour (and hatch) per fit,
     legend-labelled with the ``label`` of its ``fits`` entry (its name
     otherwise). The coefficients are the union of the fits'; a fit is left
-    out of every panel showing a coefficient it did not sample, and each fit
-    is drawn in the style of its own ``contours``. The
+    out of every panel showing a coefficient it did not sample, its best-fit
+    cross included, and each fit is drawn in the style of its own
+    ``contours``. The
     parameters are those of
     :func:`plot_posterior_contours`.
     """
-    return _posterior_contours(fits, latex_label, params_to_plot, bounds_levels, hatch)
+    return _posterior_contours(
+        fits, latex_label, params_to_plot, bounds_levels, hatch, show_best_fit
+    )
 
 
 @figure

@@ -18,7 +18,12 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from reportengine.figure import figure, figuregen
 
 from smefit.credible_intervals import bounds_settings
-from smefit.plot_utils import rescale_exponents, select_params, set_plot_style
+from smefit.plot_utils import (
+    rescale_exponents,
+    select_params,
+    set_plot_style,
+    thin_tick_labels,
+)
 
 log = logging.getLogger(__name__)
 
@@ -1324,9 +1329,14 @@ def _posterior_contours(
     grid = plt.GridSpec(n_cells, n_cols, hspace=0.1, wspace=0.1)
 
     handles = [None] * len(fits)
+    # the panels showing each coefficient along x, and along y
+    columns = {}
+    rows = {}
     for i, j in itertools.combinations(range(n_par), 2):
         x_name, y_name = names[i], names[j]
         ax = fig.add_subplot(grid[j - 1, i])
+        columns.setdefault(x_name, []).append(ax)
+        rows.setdefault(y_name, []).append(ax)
 
         for idx, fit_samples in enumerate(samples):
             if x_name not in fit_samples or y_name not in fit_samples:
@@ -1356,8 +1366,6 @@ def _posterior_contours(
 
         ax.set_xlim(*limits[x_name])
         ax.set_ylim(*limits[y_name])
-        ax.locator_params(axis="x", nbins=5)
-        ax.locator_params(axis="y", nbins=6)
         ax.minorticks_on()
         ax.grid(linestyle="dotted", linewidth=0.5)
         ax.tick_params(axis="both", which="major", labelsize=tick_size)
@@ -1370,6 +1378,13 @@ def _posterior_contours(
             ax.set_ylabel(latex_label(y_name), fontsize=label_size)
         else:
             ax.tick_params(axis="y", which="both", labelleft=False)
+
+    # as many ticks as the labels leave room for: a coefficient with a narrow
+    # range has long labels, which a fixed count would run into each other
+    for column in columns.values():
+        thin_tick_labels(column, "x", max_nbins=5)
+    for row in rows.values():
+        thin_tick_labels(row, "y", max_nbins=6)
 
     # a fit every panel left out (it sampled no pair of the selection) has
     # nothing to stand for in the legend

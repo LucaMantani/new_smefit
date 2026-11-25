@@ -1727,6 +1727,33 @@ def test_plot_posterior_contours_follow_the_params_to_plot_order() -> None:
     assert [panels[j, 0].get_ylabel() for j in range(2)] == ["OpA", "OpB"]
 
 
+def test_plot_posterior_contours_keep_the_tick_labels_of_a_narrow_range_apart() -> None:
+    # a range of a few hundredths labels its ticks with three decimals, too
+    # wide for the five intervals a panel otherwise gets
+    wide = _contour_fit()
+    samples = wide.fit_results.samples
+    assert samples is not None
+    narrow = _fit(
+        free=["OpA", "OpB", "OpC"],
+        samples={name: 0.02 * np.asarray(vals) for name, vals in samples.items()},
+    )
+    fig = plot_posterior_contours(narrow, latex_label=_plain)
+    fig.canvas.draw()
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    for ax in (panels[1, 0], panels[1, 1]):
+        low, high = ax.get_xlim()
+        extents = sorted(
+            tuple(tick.label1.get_window_extent().intervalx)
+            for tick in ax.xaxis.get_major_ticks()
+            if low <= tick.get_loc() <= high
+        )
+        assert len(extents) >= 2
+        assert all(b[0] > a[1] for a, b in zip(extents, extents[1:]))
+    # the unlabelled panel above shares the ticks, so the grids line up
+    assert list(panels[0, 0].get_xticks()) == list(panels[1, 0].get_xticks())
+
+
 def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
     with pytest.raises(ValueError, match="at least two coefficients"):
         plot_posterior_contours(

@@ -73,6 +73,40 @@ def test_load_dataset_length_mismatch(tmp_path):
         load_dataset(tmp_path, {"name": "TMP"})
 
 
+def test_load_dataset_empty_systematics(tmp_path):
+    data = {
+        "dataset_name": "TMP",
+        "num_data": 3,
+        "data_central": [1.0, 2.0, 3.0],
+        "statistical_error": [0.1, 0.2, 0.3],
+        "systematics": [],
+        "sys_names": [],
+        "sys_type": [],
+    }
+    (tmp_path / "TMP.yaml").write_text(yaml.dump(data))
+    ds = load_dataset(tmp_path, {"name": "TMP"})
+    assert ds.syst_err.shape == (0, 3)
+    # the data axis must survive, so per-point cuts still apply
+    keep = jnp.array([True, False, True])
+    assert ds.select(keep).syst_err.shape == (0, 2)
+    assert load_dataset(tmp_path, {"name": "TMP"}, keep=keep).num_data == 2
+
+
+def test_load_dataset_systematics_shape_mismatch(tmp_path):
+    data = {
+        "dataset_name": "TMP",
+        "num_data": 3,
+        "data_central": [1.0, 2.0, 3.0],
+        "statistical_error": [0.1, 0.2, 0.3],
+        "systematics": [[0.05, 0.10]],  # 2 points, but num_data=3
+        "sys_names": ["UNCORR"],
+        "sys_type": ["ADD"],
+    }
+    (tmp_path / "TMP.yaml").write_text(yaml.dump(data))
+    with pytest.raises(ValueError, match="systematics shape"):
+        load_dataset(tmp_path, {"name": "TMP"})
+
+
 def test_load_dataset_not_found(fixtures_data_path):
     with pytest.raises(FileNotFoundError):
         load_dataset(fixtures_data_path, {"name": "NONEXISTENT"})

@@ -50,7 +50,10 @@ def load_dataset(data_path, dataset_dict, keep=None):
     # if 1D because it's a single datapoint, reshape accordingly
     syst_err = jnp.asarray(dataset["systematics"], dtype=float)
 
-    if syst_err.ndim == 1:
+    if syst_err.size == 0:
+        # no systematics at all: keep the data axis so per-point slicing works
+        syst_err = jnp.zeros((0, num_data))
+    elif syst_err.ndim == 1:
         # interpret as n_sys systematics for one datapoint
         syst_err = syst_err[:, None]  # (n_sys, 1)
 
@@ -83,6 +86,12 @@ def load_dataset(data_path, dataset_dict, keep=None):
 
     if len(sys_names) != len(sys_types):
         raise ValueError(f"{name}: sys_names and sys_type length mismatch")
+
+    if syst_err.shape != (len(sys_names), num_data):
+        raise ValueError(
+            f"{name}: systematics shape {syst_err.shape} does not match "
+            f"(len(sys_names), num_data) = ({len(sys_names)}, {num_data})"
+        )
 
     luminosity = dataset.get("luminosity", None)
     if luminosity is not None:

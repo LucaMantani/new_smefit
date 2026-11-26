@@ -636,6 +636,16 @@ def test_produce_fit_covmat_name_mismatch_raises(cfg, dataset_a, theory_b):
         cfg.produce_fit_covmat(data, theory)
 
 
+def test_produce_pseudodata_size_mismatch_raises(cfg, dataset_a, theory_a):
+    # the projection slices the theory by data offsets: a 2-point dataset
+    # against 3 predictions must be refused, not silently truncated
+    data = DataGroup([dataset_a.select(jnp.array([True, True, False]))])
+    theory = TheoryGroup([theory_a])
+    settings = cfg.parse_pseudodata_settings({})
+    with pytest.raises(ValueError, match="DS_A: 2 data vs 3 theory points"):
+        cfg.produce_pseudodata(data, theory, settings, scale_masks={})
+
+
 def test_produce_fit_covmat_singular_dataset_raises(cfg, dataset_a, theory_a):
     # zero out DS_A's stat and syst uncertainties, and its theory covmat: its
     # diagonal block becomes all zeros, i.e. singular

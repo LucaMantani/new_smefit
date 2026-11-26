@@ -146,6 +146,37 @@ def test_data_group_sorted_by_name(dataset_a, dataset_b):
     assert dg.names == ["DS_A", "DS_B"]
 
 
+_FIRST_TWO = jnp.array([True, True, False])
+
+
+def test_data_group_check_matches_accepts_matching(
+    dataset_a, dataset_b, theory_a, theory_b
+):
+    DataGroup([dataset_a, dataset_b]).check_matches(TheoryGroup([theory_a, theory_b]))
+
+
+def test_data_group_check_matches_rejects_other_datasets(dataset_a, theory_b):
+    with pytest.raises(ValueError, match="different datasets"):
+        DataGroup([dataset_a]).check_matches(TheoryGroup([theory_b]))
+
+
+def test_data_group_check_matches_rejects_size_mismatch(dataset_a, theory_a):
+    data = DataGroup([dataset_a.select(_FIRST_TWO)])
+    with pytest.raises(ValueError, match="DS_A: 2 data vs 3 theory points"):
+        data.check_matches(TheoryGroup([theory_a]))
+
+
+def test_data_group_check_matches_compares_per_dataset(
+    dataset_a, dataset_b, theory_a, theory_b
+):
+    # 2 + 3 data points against 3 + 2 predictions: equal totals, wrong pairing
+    data = DataGroup([dataset_a.select(_FIRST_TWO), dataset_b])
+    theory = TheoryGroup([theory_a, theory_b.select(_FIRST_TWO)])
+    assert data.num_data == theory.n_data
+    with pytest.raises(ValueError, match="different numbers of data points"):
+        data.check_matches(theory)
+
+
 # ---------------------------------------------------------------------------
 # TheoryGroup
 # ---------------------------------------------------------------------------

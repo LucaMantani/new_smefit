@@ -383,17 +383,7 @@ class smefitConfig(Config):
     @staticmethod
     def _build_fit_covmat(data, theory, use_t0, use_theory_covmat):
         """The worker of :meth:`produce_fit_covmat`."""
-        if data.names != theory.names:
-            raise ValueError(
-                f"DataGroup and TheoryGroup contain different datasets.\n"
-                f"  data:   {data.names}\n"
-                f"  theory: {theory.names}"
-            )
-        if data.num_data != theory.n_data:
-            raise ValueError(
-                f"DataGroup and TheoryGroup have different total number of data points: "
-                f"{data.num_data} vs {theory.n_data}"
-            )
+        data.check_matches(theory)
         if use_t0:
             log.info("Using t0 covariance matrix.")
             # build t0 covmat using theory predictions
@@ -1068,6 +1058,9 @@ class smefitConfig(Config):
                 "runcard and apply it in the fits that use the pseudodata. Cut "
                 f"here: {', '.join(sorted(scale_masks))}."
             )
+        # the projection slices the theory by data offsets, so a size
+        # mismatch would silently pair points with the wrong predictions
+        data.check_matches(theory)
         return Projection(
             data=data,
             theory=theory,

@@ -282,6 +282,30 @@ class DataGroup:
         # build full exp covariance matrix
         self.exp_covmat = self._build_exp_covmat()
 
+    def check_matches(self, theory: "TheoryGroup") -> None:
+        """Raise ``ValueError`` unless ``theory`` covers the same datasets,
+        each with the same number of points.
+
+        Sizes are compared per dataset: equal totals can still pair the
+        points of one dataset with the predictions of another.
+        """
+        if self.names != theory.names:
+            raise ValueError(
+                f"DataGroup and TheoryGroup contain different datasets.\n"
+                f"  data:   {self.names}\n"
+                f"  theory: {theory.names}"
+            )
+        mismatched = [
+            f"{name}: {n_dat} data vs {th.n_data} theory points"
+            for name, n_dat, th in zip(self.names, self.ndata_list, theory.theories)
+            if n_dat != th.n_data
+        ]
+        if mismatched:
+            raise ValueError(
+                "DataGroup and TheoryGroup have different numbers of data "
+                "points:\n  " + "\n  ".join(mismatched)
+            )
+
     def _build_exp_covmat(self) -> jnp.ndarray:
         """Build experimental covariance matrix from all datasets in the group.
 

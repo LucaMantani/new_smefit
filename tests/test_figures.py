@@ -309,6 +309,7 @@ def _fit(
     action="run_analytic_fit",
     use_quad=False,
     contours="kde",
+    best_fit=None,
 ):
     """A joint fit holding the given posterior samples.
 
@@ -320,7 +321,9 @@ def _fit(
     return Fit(
         fit_results=FitResult(
             free_parameters=list(free),
-            best_fit_point={name: 0.0 for name in free},
+            best_fit_point=(
+                best_fit if best_fit is not None else {name: 0.0 for name in free}
+            ),
             max_loglikelihood=-1.0,
             num_data=10,
             samples={name: jnp.array(vals) for name, vals in samples.items()},
@@ -1628,6 +1631,7 @@ def _contour_fit(
     contours: str = "kde",
     n: int = 400,
     seed: int = 0,
+    best_fit: dict[str, float] | None = None,
 ) -> Fit:
     """A joint fit with a correlated Gaussian posterior over ``names``."""
     rng = np.random.default_rng(seed)
@@ -1641,6 +1645,7 @@ def _contour_fit(
         label=label,
         use_quad=use_quad,
         contours=contours,
+        best_fit=best_fit,
     )
 
 
@@ -1720,6 +1725,33 @@ def test_plot_posterior_contours_follow_the_params_to_plot_order() -> None:
     panels = {_cell(ax): ax for ax in _panels(fig)}
     assert [panels[1, i].get_xlabel() for i in range(2)] == ["OpC", "OpA"]
     assert [panels[j, 0].get_ylabel() for j in range(2)] == ["OpA", "OpB"]
+
+
+def test_plot_posterior_contours_keep_the_tick_labels_of_a_narrow_range_apart() -> None:
+    # a range of a few hundredths labels its ticks with three decimals, too
+    # wide for the five intervals a panel otherwise gets
+    wide = _contour_fit()
+    samples = wide.fit_results.samples
+    assert samples is not None
+    narrow = _fit(
+        free=["OpA", "OpB", "OpC"],
+        samples={name: 0.02 * np.asarray(vals) for name, vals in samples.items()},
+    )
+    fig = plot_posterior_contours(narrow, latex_label=_plain)
+    fig.canvas.draw()
+
+    panels = {_cell(ax): ax for ax in _panels(fig)}
+    for ax in (panels[1, 0], panels[1, 1]):
+        low, high = ax.get_xlim()
+        extents = sorted(
+            tuple(tick.label1.get_window_extent().intervalx)
+            for tick in ax.xaxis.get_major_ticks()
+            if low <= tick.get_loc() <= high
+        )
+        assert len(extents) >= 2
+        assert all(b[0] > a[1] for a, b in zip(extents, extents[1:]))
+    # the unlabelled panel above shares the ticks, so the grids line up
+    assert list(panels[0, 0].get_xticks()) == list(panels[1, 0].get_xticks())
 
 
 def test_plot_posterior_contours_rejects_fewer_than_two_coefficients() -> None:
@@ -2033,6 +2065,134 @@ def test_plot_posterior_contours_comparison_rejects_a_fit_without_samples() -> N
 
     with pytest.raises(ValueError, match="no_samples"):
         plot_posterior_contours_comparison([_contour_fit(), empty], latex_label=_plain)
+
+
+# show_best_fit: the stored best-fit point of each fit, as a cross per panel.
+# Gaussian contours throughout: ellipses are patches, so the collections of a
+# panel are the crosses alone.
+
+_BEST: dict[str, float] = {"OpA": 0.1, "OpB": -0.2, "OpC": 0.3}
+
+
+def _crosses(ax: matplotlib.axes.Axes) -> list[PathCollection]:
+    """The best-fit markers of a panel: what ``scatter`` drew on it."""
+    return [c for c in ax.collections if isinstance(c, PathCollection)]
+
+
+def _legend_labels(fig: matplotlib.figure.Figure) -> list[str]:
+    [legend] = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    return [t.get_text() for t in legend.get_texts()]
+
+
+def test_plot_posterior_contours_mark_no_best_fit_by_default() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(contours="gaussian", best_fit=_BEST), latex_label=_plain
+    )
+
+    assert not any(_crosses(ax) for ax in _panels(fig))
+    assert r"$\mathrm{Best\ fit}$" not in _legend_labels(fig)
+
+
+def test_plot_posterior_contours_mark_the_stored_best_fit_on_every_panel() -> None:
+    fig = plot_posterior_contours(
+        _contour_fit(contours="gaussian", best_fit=_BEST),
+        latex_label=_plain,
+        show_best_fit=True,
+    )
+
+    panels = _panels(fig)
+    assert len(panels) == 3
+    for ax in panels:
+        [cross] = _crosses(ax)
+        # the panel's own pair, read off its labels' cell: x is the column's
+        # coefficient, y the next row's
+        row, col = _cell(ax)
+        x_name, y_name = ("OpA", "OpB", "OpC")[col], ("OpA", "OpB", "OpC")[row + 1]
+        np.testing.assert_allclose(
+            cross.get_offsets(), [[_BEST[x_name], _BEST[y_name]]]
+        )
+        assert matplotlib.colors.to_hex(cross.get_facecolor()[0]) == (
+            matplotlib.colors.to_hex("C0")
+        )
+        # outlined in black, to read on the fill of its own colour
+        [outline] = cross.get_path_effects()
+        assert outline._gc["foreground"] == "black"
+        assert outline._gc["linewidth"] > cross.get_linewidths()[0]
+        # ... all the way round its tips: stroke and cross share projecting caps
+        assert outline._gc["capstyle"] == cross.get_capstyle() == "projecting"
+
+
+def test_plot_posterior_contours_comparison_mark_each_fit_where_it_is_drawn() -> None:
+    """One cross per fit and panel, in the fit's colour; a fit left out of a
+    panel leaves no cross on it either."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(
+                names=("OpA", "OpB"),
+                fit_name="ab",
+                contours="gaussian",
+                best_fit={"OpA": 0.1, "OpB": -0.2},
+            ),
+            _contour_fit(
+                names=("OpA", "OpC"),
+                fit_name="ac",
+                contours="gaussian",
+                best_fit={"OpA": 0.4, "OpC": 0.3},
+            ),
+        ],
+        latex_label=_plain,
+        show_best_fit=True,
+    )
+
+    marked = {
+        _cell(ax): [
+            (matplotlib.colors.to_hex(c.get_facecolor()[0]), *c.get_offsets()[0])
+            for c in _crosses(ax)
+        ]
+        for ax in _panels(fig)
+    }
+    c0, c1 = matplotlib.colors.to_hex("C0"), matplotlib.colors.to_hex("C1")
+    # (OpA, OpB) at (0, 0), (OpA, OpC) at (1, 0), (OpB, OpC) at (1, 1)
+    assert marked[(1, 1)] == []
+    [(color, x, y)] = marked[(0, 0)]
+    assert (color, x, y) == (c0, pytest.approx(0.1), pytest.approx(-0.2))
+    [(color, x, y)] = marked[(1, 0)]
+    assert (color, x, y) == (c1, pytest.approx(0.4), pytest.approx(0.3))
+
+
+def test_plot_posterior_contours_keep_a_best_fit_outside_the_samples_in_view() -> None:
+    """A sampler's best point need not be among the samples it stored."""
+    far = {"OpA": 50.0, "OpB": 0.0}
+    fit = _contour_fit(names=("OpA", "OpB"), contours="gaussian", best_fit=far)
+
+    [unmarked] = plot_posterior_contours(fit, latex_label=_plain).axes
+    [marked] = plot_posterior_contours(fit, latex_label=_plain, show_best_fit=True).axes
+
+    assert unmarked.get_xlim()[1] < 50.0 < marked.get_xlim()[1]
+    assert unmarked.get_ylim() == marked.get_ylim()
+
+
+@pytest.mark.parametrize("names", [("OpA", "OpB"), ("OpA", "OpB", "OpC")])
+def test_plot_posterior_contours_legend_the_best_fit_once_after_the_levels(
+    names: tuple[str, ...],
+) -> None:
+    """In the single panel's legend and in the corner plot's alike."""
+    fig = plot_posterior_contours_comparison(
+        [
+            _contour_fit(names=names, fit_name="a", contours="gaussian"),
+            _contour_fit(names=names, fit_name="b", seed=1, contours="gaussian"),
+        ],
+        latex_label=_plain,
+        show_best_fit=True,
+    )
+
+    assert _legend_labels(fig) == [
+        "a",
+        "b",
+        r"$95\%\ \mathrm{CL}$",
+        r"$68\%\ \mathrm{CL}$",
+        r"$\mathrm{Best\ fit}$",
+    ]
 
 
 def test_plot_coefficient_bounds_labels_the_axis_with_a_coefficient() -> None:

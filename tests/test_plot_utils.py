@@ -7,9 +7,16 @@ import subprocess
 import sys
 
 import matplotlib
+import matplotlib.pyplot as plt
 import pytest
 
-from smefit.plot_utils import rescale_exponents, select_params, set_plot_style
+from smefit.plot_utils import (
+    _tick_labels_crowded,
+    rescale_exponents,
+    select_params,
+    set_plot_style,
+    thin_tick_labels,
+)
 
 
 def test_select_params_without_a_list_keeps_everything():
@@ -152,3 +159,105 @@ def test_importing_smefit_does_not_touch_matplotlib_settings():
     )
     before, after = json.loads(out.stdout)
     assert before is False and after is False
+
+
+# ---------------------------------------------------------------------------
+# thin_tick_labels
+# ---------------------------------------------------------------------------
+
+
+def _drawn_label_gaps(ax, which):
+    """The gaps, in pixels, between the neighbouring tick labels drawn along
+    one axis of *ax*."""
+    ax.figure.canvas.draw()
+    axis = getattr(ax, f"{which}axis")
+    low, high = sorted(axis.get_view_interval())
+    extents = sorted(
+        tuple(getattr(tick.label1.get_window_extent(), f"interval{which}"))
+        for tick in axis.get_major_ticks()
+        if low <= tick.get_loc() <= high
+    )
+    return [start - end for (_, end), (start, _) in zip(extents, extents[1:])]
+
+
+def _ticks_with(nbins, which, limits, **subplots):
+    """The ticks a plain ``nbins`` gives an axis of the same figure."""
+    fig, ax = plt.subplots(**subplots)
+    getattr(ax, f"set_{which}lim")(*limits)
+    ax.locator_params(axis=which, nbins=nbins)
+    return list(getattr(ax, f"get_{which}ticks")())
+
+
+def test_tick_labels_crowded_tells_touching_labels_from_clear_ones():
+    fig, ax = plt.subplots(figsize=(4, 4))
+
+    ax.set_xticks([0.2, 0.8])
+    ax.set_xlim(0, 1)
+    assert not _tick_labels_crowded(ax.xaxis)
+
+    ax.set_xticks([0.5, 0.501])
+    assert _tick_labels_crowded(ax.xaxis)
+
+
+def test_tick_labels_crowded_ignores_labels_that_are_not_drawn():
+    fig, ax = plt.subplots(figsize=(4, 4))
+
+    # past the view limits, set last: placing ticks widens them
+    ax.set_xticks([0.2, 0.8, 5.0, 5.001])
+    ax.set_xlim(0, 1)
+    assert not _tick_labels_crowded(ax.xaxis)
+
+    # hidden, as on the inner panels of a corner plot
+    ax.set_xticks([0.5, 0.501])
+    ax.tick_params(axis="x", labelbottom=False)
+    assert not _tick_labels_crowded(ax.xaxis)
+
+
+def test_thin_tick_labels_keeps_the_most_ticks_where_they_fit():
+    limits, size = (0, 1), {"figsize": (8, 4)}
+    fig, ax = plt.subplots(**size)
+    ax.set_xlim(*limits)
+
+    thin_tick_labels([ax], "x", max_nbins=5)
+
+    assert list(ax.get_xticks()) == _ticks_with(5, "x", limits, **size)
+
+
+def test_thin_tick_labels_drops_ticks_whose_labels_run_into_each_other():
+    limits, size = (-0.058, 0.058), {"figsize": (3, 3)}
+    fig, ax = plt.subplots(**size)
+    ax.set_xlim(*limits)
+    ax.tick_params(axis="x", labelsize=22)
+    # the case to fix: at five intervals the labels overlap
+    ax.locator_params(axis="x", nbins=5)
+    assert min(_drawn_label_gaps(ax, "x")) < 0
+
+    thin_tick_labels([ax], "x", max_nbins=5)
+
+    assert len(ax.get_xticks()) < len(_ticks_with(5, "x", limits, **size))
+    assert min(_drawn_label_gaps(ax, "x")) >= 11 * fig.dpi / 72
+
+
+def test_thin_tick_labels_works_along_y_too():
+    limits, size = (0, 1), {"figsize": (3, 1.5)}
+    fig, ax = plt.subplots(**size)
+    ax.set_ylim(*limits)
+    ax.tick_params(axis="y", labelsize=22)
+
+    thin_tick_labels([ax], "y", max_nbins=6)
+
+    assert len(ax.get_yticks()) < len(_ticks_with(6, "y", limits, **size))
+    assert min(_drawn_label_gaps(ax, "y")) >= 11 * fig.dpi / 72
+
+
+def test_thin_tick_labels_gives_every_panel_the_ticks_of_the_labelled_one():
+    fig, (inner, outer) = plt.subplots(2, 1, figsize=(3, 6))
+    for ax in (inner, outer):
+        ax.set_xlim(-0.058, 0.058)
+        ax.tick_params(axis="x", labelsize=22)
+    inner.tick_params(axis="x", labelbottom=False)
+
+    thin_tick_labels([inner, outer], "x", max_nbins=5)
+
+    assert list(inner.get_xticks()) == list(outer.get_xticks())
+    assert min(_drawn_label_gaps(outer, "x")) > 0

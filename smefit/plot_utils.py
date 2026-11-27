@@ -119,3 +119,67 @@ def rescale_exponents(extents, floor=1e-10):
     nonzero = extents > floor * reference
     exponents[nonzero] = np.floor(np.log10(reference / extents[nonzero]))
     return exponents.tolist()
+
+
+def _tick_labels_crowded(axis):
+    """Whether two neighbouring major tick labels of *axis* are less than half
+    a font size apart, measured as they will be rendered.
+
+    Only the labels that get drawn count: a locator may return ticks past the
+    view limits, and an inner panel hides its labels altogether.
+    """
+    low, high = sorted(axis.get_view_interval())
+    tolerance = 1e-9 * (high - low)
+    # asking for the labels is what brings the ticks in line with the locator
+    axis.get_majorticklabels()
+    labels = [
+        tick.label1
+        for tick in axis.get_major_ticks()
+        if low - tolerance <= tick.get_loc() <= high + tolerance
+        and tick.label1.get_visible()
+        and tick.label1.get_text()
+    ]
+    if len(labels) < 2:
+        return False
+    extents = sorted(
+        tuple(
+            label.get_window_extent().intervalx
+            if axis.axis_name == "x"
+            else label.get_window_extent().intervaly
+        )
+        for label in labels
+    )
+    gap = 0.5 * labels[0].get_fontsize() * axis.get_figure().dpi / 72
+    return any(start - end < gap for (_, end), (start, _) in zip(extents, extents[1:]))
+
+
+def thin_tick_labels(axes, which, max_nbins):
+    """Give *axes* the most major ticks whose labels stay clear of each other.
+
+    No fixed tick count suits every coefficient: how many labels fit along an
+    axis depends on how wide they come out — ``-0.025`` takes twice the room
+    of ``0.2`` — and that is only known once the limits are. So the labels
+    are measured as rendered, starting from ``max_nbins`` intervals and going
+    down one at a time until neighbouring labels are at least half a font size
+    apart.
+
+    Call it once the limits, the tick label size and the figure size are
+    final, since all three enter the measurement.
+
+    Parameters
+    ----------
+    axes : sequence of matplotlib.axes.Axes
+        Panels showing the same quantity along ``which``, a column of a corner
+        plot for instance. They all get the same ticks, so their grids line
+        up, whichever of them carries the labels.
+    which : {"x", "y"}
+        The axis to set the ticks of.
+    max_nbins : int
+        The most intervals between ticks to settle for, as ``nbins`` of
+        :class:`matplotlib.ticker.MaxNLocator`.
+    """
+    for nbins in range(max_nbins, 0, -1):
+        for ax in axes:
+            ax.locator_params(axis=which, nbins=nbins)
+        if not any(_tick_labels_crowded(getattr(ax, f"{which}axis")) for ax in axes):
+            break
